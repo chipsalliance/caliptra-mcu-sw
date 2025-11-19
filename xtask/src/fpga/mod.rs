@@ -335,6 +335,14 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
     // so we can use JTAG/TAP.
     let bootfsm_break = uds;
     let mut model = ModelFpgaRealtime::new_unbooted(InitParams {
+        fuses: caliptra_api_types::Fuses {
+            vendor_pk_hash: binaries
+                .vendor_pk_hash()
+                .map(|h| to_hw_format(&h))
+                .unwrap_or([0u32; 12]),
+            fuse_pqc_key_type: u8::from(FwVerificationPqcKeyType::LMS).into(),
+            ..Default::default()
+        },
         caliptra_rom: &binaries.caliptra_rom,
         caliptra_firmware: &binaries.caliptra_fw,
         mcu_rom: &binaries.mcu_rom,
@@ -351,14 +359,6 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
     })
     .unwrap();
     model.boot(BootParams {
-        fuses: caliptra_api_types::Fuses {
-            vendor_pk_hash: binaries
-                .vendor_pk_hash()
-                .map(|h| to_hw_format(&h))
-                .unwrap_or([0u32; 12]),
-            fuse_pqc_key_type: u8::from(FwVerificationPqcKeyType::LMS).into(),
-            ..Default::default()
-        },
         fw_image: Some(binaries.caliptra_fw.as_slice()),
         soc_manifest: Some(binaries.soc_manifest.as_slice()),
         mcu_fw_image: Some(binaries.mcu_runtime.as_slice()),

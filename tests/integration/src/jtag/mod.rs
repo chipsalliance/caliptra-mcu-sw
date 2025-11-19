@@ -14,6 +14,7 @@ mod test {
 
     pub fn ss_setup(
         initial_lc_state: Option<LifecycleControllerState>,
+        rma_or_scrap_ppd: bool,
         debug_intent: bool,
         bootfsm_break: bool,
         enable_mcu_uart_log: bool,
@@ -21,19 +22,16 @@ mod test {
         let firmware_bundle = FirmwareBinaries::from_env().unwrap();
 
         let init_params = InitParams {
+            fuses: Fuses::default(),
             caliptra_rom: &firmware_bundle.caliptra_rom,
             mcu_rom: &firmware_bundle.mcu_rom,
             lifecycle_controller_state: initial_lc_state,
+            rma_or_scrap_ppd,
             debug_intent,
             bootfsm_break,
             enable_mcu_uart_log,
             ..Default::default()
         };
-        let mut model = DefaultHwModel::new_unbooted(init_params).unwrap();
-        model
-            .base
-            .init_otp(&Fuses::default())
-            .expect("Failed to init OTP.");
-        model
+        DefaultHwModel::new_unbooted(init_params).unwrap()
     }
 }

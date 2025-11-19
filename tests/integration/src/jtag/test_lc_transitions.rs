@@ -9,7 +9,6 @@ mod test {
     use crate::jtag::test::ss_setup;
 
     use caliptra_hw_model::jtag::CaliptraCoreReg;
-    use caliptra_hw_model::lcc::LcCtrlStatus;
     use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
     use caliptra_hw_model::HwModel;
     use caliptra_hw_model::DEFAULT_LIFECYCLE_RAW_TOKEN;
@@ -26,7 +25,7 @@ mod test {
         prod_debug_unlock_wait_for_in_progress,
     };
     use mcu_hw_model::jtag::jtag_wait_for_caliptra_mailbox_resp;
-    use mcu_hw_model::lcc::{lc_token_to_words, lc_transition, read_lc_state, LccUtilError};
+    use mcu_hw_model::lcc::{lc_token_to_words, lc_transition, read_lc_state};
     use mcu_rom_common::LifecycleControllerState;
 
     use fips204::ml_dsa_87::PrivateKey as MldsaPrivateKey;
@@ -38,6 +37,7 @@ mod test {
     fn test_raw_unlock() {
         let mut model = ss_setup(
             Some(LifecycleControllerState::Raw),
+            /*rma_or_scrap_ppd=*/ false,
             /*debug_intent=*/ false,
             /*bootfsm_break=*/ false,
             /*enable_mcu_uart_log=*/ false,
@@ -69,8 +69,7 @@ mod test {
         println!("Post transition LC state: {}", lc_state);
 
         // Reset and read the LC state again.
-        model.set_subsystem_reset(true);
-        model.set_subsystem_reset(false);
+        model.base.cold_reset();
         lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
         println!("LC state after reset: {}", lc_state);
         assert_eq!(lc_state, LifecycleControllerState::TestUnlocked0);
@@ -101,6 +100,7 @@ mod test {
         // Initialize Caliptra SS in first LC state.
         let mut model = ss_setup(
             Some(lc_states[0]),
+            /*rma_or_scrap_ppd=*/ false,
             /*debug_intent=*/ false,
             /*bootfsm_break=*/ false,
             /*enable_mcu_uart_log=*/ false,
@@ -140,8 +140,7 @@ mod test {
             println!("Post transition LC state: {}", lc_state);
 
             // Reset and read the LC state again.
-            model.set_subsystem_reset(true);
-            model.set_subsystem_reset(false);
+            model.base.cold_reset();
             lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
             println!("LC state after reset: {}", lc_state);
             assert_eq!(lc_state, lc_states[i + 1]);
@@ -152,7 +151,8 @@ mod test {
     fn test_prod_rma_unlock() {
         let mut model = ss_setup(
             Some(LifecycleControllerState::Prod),
-            /*debug_intent=*/ false,
+            /*rma_or_scrap_ppd=*/ true,
+            /*debug_intent=*/ true,
             /*bootfsm_break=*/ false,
             /*enable_mcu_uart_log=*/ false,
         );
@@ -168,35 +168,31 @@ mod test {
             .expect("Failed to connect to the LCC JTAG TAP.");
 
         // Read the LC state.
-        let lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
+        let mut lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
         println!("Initial LC state: {}", lc_state);
         assert_eq!(lc_state, LifecycleControllerState::Prod);
 
         // Perform the RMA LC transition operation.
-        // TODO(caliptra-mcu-sw/issues/454): expect a failure until the PPD pin
-        // is exposed to the FPGA model to enable testing RMA transitions.
-        let result = lc_transition(
+        lc_state = lc_transition(
             &mut *tap,
             LifecycleControllerState::Rma,
             Some(lc_token_to_words(&DEFAULT_LIFECYCLE_RAW_TOKEN.0)),
-        );
-        let err = result.unwrap_err();
-        let lcc_err = err.downcast_ref::<LccUtilError>().unwrap();
-        let status = match lcc_err {
-            LccUtilError::StatusErrors(status) => status,
-            _ => panic!("Expected LccUtilError::StatusErrors, but got {:?}", lcc_err),
-        };
+        )
+        .expect("Unable to transition to RMA.");
+        println!("Post transition LC state: {}", lc_state);
 
-        assert_eq!(
-            *status,
-            LcCtrlStatus::TOKEN_ERROR | LcCtrlStatus::INITIALIZED
-        );
+        // Reset and read the LC state again.
+        model.base.cold_reset();
+        lc_state = read_lc_state(&mut *tap).expect("Unable to read LC state.");
+        println!("LC state after reset: {}", lc_state);
+        assert_eq!(lc_state, LifecycleControllerState::Rma);
     }
 
     #[test]
     fn test_prod_debug_unlock() {
         let mut model = ss_setup(
             Some(LifecycleControllerState::Prod),
+            /*rma_or_scrap_ppd=*/ false,
             /*debug_intent=*/ true,
             /*bootfsm_break=*/ true,
             /*enable_mcu_uart_log=*/ true,
