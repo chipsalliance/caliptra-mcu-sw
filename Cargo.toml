@@ -194,6 +194,7 @@ mcu-rom-common = { path = "rom" }
 mcu-test-harness = {path = "platforms/test_harness"}
 mcu-testing-common = { path = "common/testing" }
 mcu-tock-veer = { path = "runtime/kernel/veer" }
+ocp-eat = { path = "runtime/userspace/api/eat", default-features = false }
 pldm-common = { path = "common/pldm"}
 pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
 pldm-ua = { path = "emulator/bmc/pldm-ua"}

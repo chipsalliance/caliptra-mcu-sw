@@ -17,7 +17,7 @@ pub const EMULATOR_APPS: &[App] = &[
     App {
         name: "user-app",
         permissions: vec![],
-        minimum_ram: 112 * 1024,
+        minimum_ram: 116 * 1024,
     },
 ];
 
@@ -31,7 +31,7 @@ pub const FPGA_APPS: &[App] = &[
     App {
         name: "user-app",
         permissions: vec![],
-        minimum_ram: 106 * 1024,
+        minimum_ram: 116 * 1024,
     },
 ];
 

@@ -35,6 +35,7 @@ pub enum MeasurementsError {
     InvalidOperation,
     InvalidSlotId,
     InvalidParam,
+    InvalidInput,
     MissingParam(&'static str),
     MeasurementSizeMismatch,
     CaliptraApi(CaliptraApiError),

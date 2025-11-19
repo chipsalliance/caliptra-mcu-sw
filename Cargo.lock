@@ -2462,6 +2462,7 @@ dependencies = [
  "libtock_runtime",
  "libtock_unittest",
  "libtockasync",
+ "ocp-eat",
  "pldm-common",
  "pldm-lib",
  "zerocopy",
@@ -4638,6 +4639,7 @@ dependencies = [
 name = "user-app"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
  "async-trait",
  "critical-section",
  "embassy-executor",
@@ -4658,6 +4660,7 @@ dependencies = [
  "mcu-config-emulator",
  "mcu-mbox-common",
  "mcu-mbox-lib",
+ "ocp-eat",
  "pldm-common",
  "pldm-lib",
  "portable-atomic",
