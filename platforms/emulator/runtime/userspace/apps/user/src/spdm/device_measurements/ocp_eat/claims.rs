@@ -18,6 +18,7 @@ use ocp_eat::{
     EvidenceTripleRecord, MeasurementMap, MeasurementValue,
 };
 use spdm_lib::measurements::{MeasurementsError, MeasurementsResult};
+use zerocopy::IntoBytes;
 
 const NUM_FW_TARGET_ENV: usize = NUM_DEFAULT_FW_COMPONENTS + NUM_SOC_FW_COMPONENTS;
 const NUM_HW_TARGET_ENV: usize = 0; // For now, no HW IDs
@@ -25,6 +26,7 @@ const NUM_SW_TARGET_ENV: usize = 0; // For now, no SW IDs
 const NUM_FW_HW_TARGET_ENV: usize = NUM_FW_TARGET_ENV + NUM_HW_TARGET_ENV;
 const NUM_HW_SW_TARGET_ENV: usize = NUM_HW_TARGET_ENV + NUM_SW_TARGET_ENV;
 const TOTAL_TARGET_ENV: usize = NUM_FW_TARGET_ENV + NUM_HW_TARGET_ENV + NUM_SW_TARGET_ENV;
+const SHA384_HASH_WORDS: usize = SHA384_HASH_SIZE / 4; // Number of u32 words in a SHA384 hash
 
 const FMC_FW_JOURNEY_PCR_INDEX: usize = 1;
 const RT_FW_JOURNEY_PCR_INDEX: usize = 3;
@@ -123,7 +125,7 @@ pub async fn generate_claims(claims_buf: &mut [u8], nonce: &[u8]) -> Measurement
     // digests, raw values applicable to HW target envs
     let mut versions = [0u32; NUM_FW_TARGET_ENV];
     let mut svns = [0u32; NUM_FW_TARGET_ENV];
-    let mut digests = [[0u8; SHA384_HASH_SIZE]; NUM_FW_HW_TARGET_ENV];
+    let mut digests = [[0u32; SHA384_HASH_WORDS]; NUM_FW_HW_TARGET_ENV];
     let mut journey_digests = [[0u8; SHA384_HASH_SIZE]; NUM_FW_TARGET_ENV];
 
     // Raw values only for HW and SW target envs
@@ -186,7 +188,7 @@ pub async fn generate_claims(claims_buf: &mut [u8], nonce: &[u8]) -> Measurement
     for i in 0..NUM_FW_TARGET_ENV {
         digest_entries_arr[i][0] = DigestEntry {
             alg_id: 7,
-            value: &digests[i],
+            value: digests[i].as_bytes(),
         };
         integrity_registers_arr[i][0] = IntegrityRegisterEntry {
             id: IntegrityRegisterIdChoice::Uint(0),
@@ -266,7 +268,7 @@ fn version_to_str(ver: u32) -> ArrayString<MAX_SEMVER_LEN> {
 async fn fill_fw_config_info(
     versions: &mut [u32; NUM_FW_TARGET_ENV],
     svns: &mut [u32; NUM_FW_TARGET_ENV],
-    digests: &mut [[u8; SHA384_HASH_SIZE]],
+    digests: &mut [[u32; SHA384_HASH_WORDS]],
     journey_digests: &mut [[u8; SHA384_HASH_SIZE]; NUM_FW_TARGET_ENV],
 ) -> MeasurementsResult<()> {
     if digests.len() != NUM_FW_TARGET_ENV {
@@ -292,21 +294,18 @@ async fn fill_fw_config_info(
     svns[AUTHMAN_MEASUREMENT_INDEX] = fw_info.fw_svn;
 
     // DIGESTS: Get digests from fw_info
-    digests[FMC_MEASUREMENT_INDEX]
-        .copy_from_slice(&u32_array_to_u8_array(&fw_info.fmc_sha384_digest));
-    digests[RT_MEASUREMENT_INDEX]
-        .copy_from_slice(&u32_array_to_u8_array(&fw_info.runtime_sha384_digest));
-    digests[AUTHMAN_MEASUREMENT_INDEX]
-        .copy_from_slice(&u32_array_to_u8_array(&fw_info.authman_sha384_digest));
+    digests[FMC_MEASUREMENT_INDEX] = fw_info.fmc_sha384_digest;
+    digests[RT_MEASUREMENT_INDEX] = fw_info.runtime_sha384_digest;
+    digests[AUTHMAN_MEASUREMENT_INDEX] = fw_info.authman_sha384_digest;
 
     // JOURNEY DIGESTS: Get journey digests from PCRs
     let pcrs = PcrQuote::get_pcrs()
         .await
         .map_err(MeasurementsError::CaliptraApi)?;
-    journey_digests[FMC_MEASUREMENT_INDEX].copy_from_slice(&pcrs[FMC_FW_JOURNEY_PCR_INDEX]);
-    journey_digests[RT_MEASUREMENT_INDEX][..].copy_from_slice(&pcrs[RT_FW_JOURNEY_PCR_INDEX]);
-    // TODO: AuthMan journey digest is combined with RT journey digest
-    journey_digests[AUTHMAN_MEASUREMENT_INDEX][..].copy_from_slice(&pcrs[RT_FW_JOURNEY_PCR_INDEX]);
+
+    journey_digests[FMC_MEASUREMENT_INDEX] = pcrs[FMC_FW_JOURNEY_PCR_INDEX];
+    journey_digests[RT_MEASUREMENT_INDEX] = pcrs[RT_FW_JOURNEY_PCR_INDEX];
+    journey_digests[AUTHMAN_MEASUREMENT_INDEX] = pcrs[RT_FW_JOURNEY_PCR_INDEX];
 
     // Populate for SOC FW components next
     #[allow(clippy::reversed_empty_ranges)]
@@ -314,18 +313,17 @@ async fn fill_fw_config_info(
         let _image_info = DeviceState::image_info(SOC_FW_IDS[i])
             .await
             .map_err(MeasurementsError::CaliptraApi)?;
-        // TODO: Nothing useful in image_info for now, need to add fields as needed
         // For now, set dummy values
         versions[NUM_DEFAULT_FW_COMPONENTS + i] = 0;
         svns[NUM_DEFAULT_FW_COMPONENTS + i] = 0;
-        digests[NUM_DEFAULT_FW_COMPONENTS + i].copy_from_slice(&[0u8; SHA384_HASH_SIZE]);
-        journey_digests[NUM_DEFAULT_FW_COMPONENTS + i].copy_from_slice(&[0u8; SHA384_HASH_SIZE]);
+        digests[NUM_DEFAULT_FW_COMPONENTS + i] = [0u32; SHA384_HASH_WORDS];
+        journey_digests[NUM_DEFAULT_FW_COMPONENTS + i] = [0u8; SHA384_HASH_SIZE];
     }
     Ok(())
 }
 
 async fn fill_hw_config_info(
-    digests: &mut [[u8; SHA384_HASH_SIZE]],
+    digests: &mut [[u32; SHA384_HASH_WORDS]],
     raw_values: &mut [Option<ArrayVec<u8, MAX_RAW_VALUE_LEN>>],
 ) -> MeasurementsResult<()> {
     if digests.len() != NUM_HW_TARGET_ENV || raw_values.len() != NUM_HW_TARGET_ENV {
@@ -335,7 +333,7 @@ async fn fill_hw_config_info(
     // For now, set dummy values
     #[allow(clippy::reversed_empty_ranges)]
     for i in 0..NUM_HW_TARGET_ENV {
-        digests[i].copy_from_slice(&[0u8; SHA384_HASH_SIZE]);
+        digests[i] = [0u32; SHA384_HASH_WORDS];
         raw_values[i] = None; // or Some(ArrayVec::from_slice(&[...]).unwrap());
     }
     Ok(())
@@ -356,14 +354,4 @@ async fn fill_sw_config_info(
         raw_value_masks[i] = None; // or Some(ArrayVec::from_slice(&[...]).unwrap());
     }
     Ok(())
-}
-
-// Helper to convert u32 array to u8 array
-fn u32_array_to_u8_array(input: &[u32; 12]) -> [u8; 48] {
-    let mut out = [0u8; 48];
-    for (i, &val) in input.iter().enumerate() {
-        out[i * 4..(i + 1) * 4].copy_from_slice(&val.to_le_bytes());
-        // Use val.to_be_bytes() for big-endian
-    }
-    out
 }
