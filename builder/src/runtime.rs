@@ -27,7 +27,7 @@ const DEFAULT_PLATFORM: &str = "emulator";
 const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
 const INTERRUPT_TABLE_SIZE: usize = 128;
 // amount to reserve for data RAM at the end of RAM
-const DATA_RAM_SIZE: usize = 148 * 1024;
+const DATA_RAM_SIZE: usize = 152 * 1024;
 
 fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize> {
     let elf_bytes = std::fs::read(&elf_file)?;

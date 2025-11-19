@@ -31,6 +31,8 @@ pldm-lib.workspace = true
 romtime.workspace = true
 spdm-lib.workspace = true
 zerocopy.workspace = true
+arrayvec.workspace = true
+ocp-eat.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 libtock_unittest.workspace = true
