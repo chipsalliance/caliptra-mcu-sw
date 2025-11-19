@@ -253,7 +253,7 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         romtime::println!("[mcu-rom] Populating fuses");
-        soc.populate_fuses(fuses, mci, params.program_field_entropy.iter().any(|x| *x));
+        soc.populate_fuses(fuses, mci);
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
         romtime::println!("[mcu-rom] Setting Caliptra fuse write done");

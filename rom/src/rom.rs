@@ -125,15 +125,11 @@ impl Soc {
         self.registers.ss_caliptra_dma_axi_user.set(value);
     }
 
-    pub fn populate_fuses(&self, fuses: &Fuses, mci: &romtime::Mci, field_entropy: bool) {
+    pub fn populate_fuses(&self, fuses: &Fuses, mci: &romtime::Mci) {
         // secret fuses are populated by a hardware state machine, so we can skip those
 
-        // Field Entropy.
-        let offset = if field_entropy {
-            registers_generated::fuses::SECRET_PROD_PARTITION_0_BYTE_OFFSET
-        } else {
-            registers_generated::fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET
-        };
+        // UDS partition base address. (FE offset is calculated automatically by Caliptra ROM.)
+        let offset = registers_generated::fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET;
         romtime::println!(
             "[mcu-fuse-write] Setting UDS/FE base address to {:x}",
             offset
