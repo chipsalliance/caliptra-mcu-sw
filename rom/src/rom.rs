@@ -145,9 +145,7 @@ impl Soc {
             OTP_DIRECT_ACCESS_CMD_REG_OFFSET
         );
         self.registers.ss_strap_generic[0].set(OTP_DAI_IDLE_BIT_OFFSET << 16);
-        self.registers
-            .ss_strap_generic[1]
-            .set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
+        self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
 
         // PQC Key Type.
         let pqc_type = match fuses.cptra_core_pqc_key_type_0()[0] & 1 {
