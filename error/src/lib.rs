@@ -247,6 +247,11 @@ impl McuError {
             0x5_000B,
             "SOC Caliptra fatal error before firmware ready"
         ),
+        (
+            ROM_SOC_HEK_SEED_LEN_MISMATCH,
+            0x5_000C,
+            "SOC HEK seed length mismatch"
+        ),
     ];
 }
 

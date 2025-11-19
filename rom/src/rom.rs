@@ -187,11 +187,18 @@ impl Soc {
         }
         romtime::println!("");
 
-        // TODO(clundin): Pass OCP LOCK fuses as a parameter.
-        romtime::println!("[mcu-fuse-write] Attempting to write OCP LOCK fuses");
-
-        for i in 0..8 {
-            self.registers.fuse_hek_seed[i].set(0xABDE);
+        // OCP LOCK HEK Seed.
+        romtime::println!("[mcu-fuse-write] Writing OCP LOCK HEK seed");
+        for (idx, word) in fuses
+            .cptra_ss_lock_hek_prod_0_ratchet_seed()
+            .chunks_exact(4)
+            .enumerate()
+        {
+            let word = u32::from_le_bytes(
+                word.try_into()
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_HEK_SEED_LEN_MISMATCH)),
+            );
+            self.registers.fuse_hek_seed[idx].set(word);
         }
 
         romtime::println!("[mcu-fuse-write] Writing key release fuses");
