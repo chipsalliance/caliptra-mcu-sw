@@ -78,11 +78,11 @@ impl ModelFpgaRealtime {
 
     // send a recovery block write request to the I3C target
     pub fn send_i3c_write(&mut self, payload: &[u8]) {
-        self.base.i3c_controller.write(payload).unwrap();
+        self.base.i3c_controller().unwrap().write(payload).unwrap();
     }
 
     pub fn recv_i3c(&mut self, len: u16) -> Vec<u8> {
-        self.base.i3c_controller.read(len).unwrap()
+        self.base.i3c_controller().unwrap().read(len).unwrap()
     }
 
     /// Connect to a JTAG TAP by spawning an OpenOCD process.
@@ -130,11 +130,11 @@ impl ModelFpgaRealtime {
 
     fn caliptra_axi_bus(&mut self) -> FpgaRealtimeBus<'_> {
         FpgaRealtimeBus {
-            caliptra_mmio: self.base.caliptra_mmio,
-            i3c_mmio: self.base.i3c_mmio,
-            mci_mmio: self.base.mci.ptr,
-            otp_mmio: self.base.otp_mmio,
-            lc_mmio: self.base.lc_mmio,
+            caliptra_mmio: self.base.mmio.caliptra_mmio().unwrap(),
+            i3c_mmio: self.base.mmio.i3c_mmio().unwrap(),
+            mci_mmio: self.base.mmio.mci().unwrap().ptr,
+            otp_mmio: self.base.mmio.otp_mmio().unwrap(),
+            lc_mmio: self.base.mmio.lc_mmio().unwrap(),
             phantom: Default::default(),
         }
     }
@@ -179,8 +179,8 @@ impl ModelFpgaRealtime {
             return;
         };
         // check if we need to read any I3C packets from Caliptra
-        if self.base.i3c_controller().ibi_ready() {
-            match self.base.i3c_controller().ibi_recv(None) {
+        if self.base.i3c_controller().unwrap().ibi_ready() {
+            match self.base.i3c_controller().unwrap().ibi_recv(None) {
                 Ok(ibi) => {
                     // process each IBI in the buffer (each is 4 bytes)
                     for ibi in ibi.chunks(4) {
@@ -209,7 +209,7 @@ impl ModelFpgaRealtime {
         }
         // check if we should do attempt a private read
         if let Some(private_read_len) = self.i3c_next_private_read_len.take() {
-            match self.base.i3c_controller().read(private_read_len) {
+            match self.base.i3c_controller().unwrap().read(private_read_len) {
                 Ok(data) => {
                     let data = data[0..private_read_len as usize].to_vec();
                     // forward the private read
@@ -301,6 +301,7 @@ impl McuHwModel for ModelFpgaRealtime {
                 enable_mcu_uart_log: params.enable_mcu_uart_log,
                 num_prod_dbg_unlock_pk_hashes: params.num_prod_dbg_unlock_pk_hashes,
                 prod_dbg_unlock_pk_hashes_offset: params.prod_dbg_unlock_pk_hashes_offset,
+                ..Default::default()
             },
         };
         println!("Starting base model");
@@ -323,7 +324,7 @@ impl McuHwModel for ModelFpgaRealtime {
         let i3c_handle = if let Some(i3c_rx) = i3c_rx {
             // start a thread to forward I3C packets from the mpsc receiver to the I3C controller in the FPGA model
             let running = base.realtime_thread_exit_flag.clone();
-            let controller = base.i3c_controller();
+            let controller = base.i3c_controller().unwrap();
             let i3c_handle = std::thread::spawn(move || {
                 Self::forward_i3c_to_controller(running, i3c_rx, controller);
             });
@@ -382,10 +383,11 @@ impl McuHwModel for ModelFpgaRealtime {
         self.base.recovery_started = false;
         println!("Resetting I3C controller");
         {
-            let ctrl = self.base.i3c_controller.controller.lock().unwrap();
+            let i3c_ctrl = self.base.i3c_controller().unwrap();
+            let ctrl = i3c_ctrl.controller.lock().unwrap();
             ctrl.ready.set(false);
         }
-        self.base.i3c_controller.configure();
+        self.base.i3c_controller().unwrap().configure();
 
         Ok(())
     }
@@ -416,7 +418,13 @@ impl McuHwModel for ModelFpgaRealtime {
     }
 
     fn set_caliptra_boot_go(&mut self, go: bool) {
-        self.base.mci.regs().cptra_boot_go().write(|w| w.go(go));
+        self.base
+            .mmio
+            .mci()
+            .unwrap()
+            .regs()
+            .cptra_boot_go()
+            .write(|w| w.go(go));
     }
 
     fn set_itrng_divider(&mut self, divider: u32) {
@@ -466,7 +474,8 @@ impl McuHwModel for ModelFpgaRealtime {
 
     fn start_i3c_controller(&mut self) {
         self.base
-            .i3c_controller
+            .i3c_controller()
+            .unwrap()
             .controller
             .lock()
             .unwrap()
@@ -474,7 +483,7 @@ impl McuHwModel for ModelFpgaRealtime {
     }
 
     fn i3c_address(&self) -> Option<u8> {
-        Some(self.base.i3c_controller.get_primary_addr())
+        Some(self.base.i3c_controller().unwrap().get_primary_addr())
     }
 
     fn i3c_port(&self) -> Option<u16> {
@@ -586,7 +595,9 @@ impl Drop for ModelFpgaRealtime {
 
         // ensure that we put the I3C target into a state where we will reset it properly
         self.base
+            .mmio
             .i3c_core()
+            .unwrap()
             .stdby_ctrl_mode()
             .stby_cr_device_addr()
             .write(|_| StbyCrDeviceAddrWriteVal::from(0));

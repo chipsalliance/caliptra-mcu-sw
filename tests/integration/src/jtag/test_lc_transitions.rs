@@ -59,7 +59,7 @@ mod test {
         assert_eq!(lc_state, LifecycleControllerState::Raw);
 
         // Perform the raw unlock LC transition operation.
-        const RAW_UNLOCK_TOKEN: [u32; 4] = [0xef1fadea, 0xadfc9693, 0x421748a2, 0xf12a5911];
+        const RAW_UNLOCK_TOKEN: [u32; 4] = [0xb532a0ca, 0x74ce9687, 0xa2ecef9a, 0x6141be65];
         lc_state = lc_transition(
             &mut *tap,
             LifecycleControllerState::TestUnlocked0,
@@ -189,7 +189,7 @@ mod test {
 
         assert_eq!(
             *status,
-            LcCtrlStatus::FLASH_RMA_ERROR | LcCtrlStatus::INITIALIZED
+            LcCtrlStatus::TOKEN_ERROR | LcCtrlStatus::INITIALIZED
         );
     }
 

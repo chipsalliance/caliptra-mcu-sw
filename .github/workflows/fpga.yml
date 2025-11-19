@@ -155,20 +155,6 @@ jobs:
           tar xvf /tmp/caliptra-test-binaries.tar.zst -C /tmp/caliptra-test-binaries/
           mksquashfs /tmp/caliptra-test-binaries /tmp/caliptra-test-binaries.sqsh -comp zstd
 
-      - name: Download bitstream
-        run: |
-          cargo install --git https://github.com/chipsalliance/caliptra-sw --branch main-2.x bitstream-downloader --root /tmp/bitstream-downloader
-          /tmp/bitstream-downloader/bin/bitstream-downloader --bitstream-manifest hw/fpga/bitstream_manifests/subsystem.toml
-          mv subsystem.pdi /tmp/caliptra-bitstream.pdi
-
-      - name: 'Upload bitstream'
-        uses: actions/upload-artifact@v4
-        with:
-          name: caliptra-bitstream${{ inputs.artifact-suffix }}
-          path: /tmp/caliptra-bitstream.pdi
-          retention-days: 1
-
-
       - name: 'Upload test binaries artifact'
         uses: actions/upload-artifact@v4
         with:
@@ -184,7 +170,7 @@ jobs:
           retention-days: 1
 
   test_artifacts:
-    runs-on: vck190-subsystem
+    runs-on: vck190-subsystem-2.0
     needs: build_test_binaries
     timeout-minutes: 120
 
@@ -205,19 +191,6 @@ jobs:
         with:
           name: caliptra-test-firmware${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-binaries
-
-      - name: 'Download Bitstream'
-        uses: actions/download-artifact@v4
-        with:
-          name: caliptra-bitstream${{ inputs.artifact-suffix }}
-          path: /tmp/caliptra-bitstream
-
-      - name: Load bitstream
-        run: |
-          sudo mkdir -p /lib/firmware
-          ls /tmp/caliptra-bitstream
-          sudo cp /tmp/caliptra-bitstream/caliptra-bitstream.pdi /lib/firmware
-          sudo bash -c 'echo "caliptra-bitstream.pdi" > /sys/class/fpga_manager/fpga0/firmware'
 
       - name: Mount binaries
         run: |
@@ -240,8 +213,9 @@ jobs:
               --target-dir-remap="${TEST_BIN}/target"
               --workspace-remap=.
               -E 'package(mcu-hw-model) - test(model_emulated::test::test_new_unbooted)'
-              -E 'package(tests-integration) and test(test_axi_bypass)' # Modify this as we onboard crates to the FPGA test suite.
-              -E 'package(tests-integration) and test(test_jtag_taps) and test(test_lc_transitions) and test(test_uds)' # Modify this as we onboard crates to the FPGA test suite.
+              -E 'package(tests-integration) and test(test_jtag_taps)'
+              -E 'package(tests-integration) and test(test_lc_transitions)'
+              -E 'package(tests-integration) and test(test_uds)' # Modify this as we onboard crates to the FPGA test suite.
           )
               # disabled for now due to flakiness of recovery boot
               # -E 'package(tests-integration) and test(test_mctp_capsule_loopback)'
