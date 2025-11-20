@@ -14,17 +14,6 @@ fn test_warm_reset_success() -> Result<()> {
     let binaries = mcu_builder::FirmwareBinaries::from_env()?;
     let mut hw = new(
         InitParams {
-            caliptra_rom: &binaries.caliptra_rom,
-            mcu_rom: &binaries.mcu_rom,
-            vendor_pk_hash: binaries.vendor_pk_hash(),
-            active_mode: true,
-            vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
-            ..Default::default()
-        },
-        BootParams {
-            fw_image: Some(&binaries.caliptra_fw),
-            soc_manifest: Some(&binaries.soc_manifest),
-            mcu_fw_image: Some(&binaries.mcu_runtime),
             fuses: Fuses {
                 fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
                 vendor_pk_hash: {
@@ -43,6 +32,17 @@ fn test_warm_reset_success() -> Result<()> {
                 },
                 ..Default::default()
             },
+            caliptra_rom: &binaries.caliptra_rom,
+            mcu_rom: &binaries.mcu_rom,
+            vendor_pk_hash: binaries.vendor_pk_hash(),
+            active_mode: true,
+            vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
+            ..Default::default()
+        },
+        BootParams {
+            fw_image: Some(&binaries.caliptra_fw),
+            soc_manifest: Some(&binaries.soc_manifest),
+            mcu_fw_image: Some(&binaries.mcu_runtime),
             ..Default::default()
         },
     )?;

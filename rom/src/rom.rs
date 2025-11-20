@@ -42,6 +42,8 @@ const MLDSA_FUSE_VALUE: u8 = 0;
 // values when setting in Caliptra
 const MLDSA_CALIPTRA_VALUE: u8 = 1;
 const LMS_CALIPTRA_VALUE: u8 = 3;
+const OTP_DAI_IDLE_BIT_OFFSET: u32 = 22;
+const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x60;
 
 /// Trait for different boot flows (cold boot, warm reset, firmware update)
 pub trait BootFlow {
@@ -136,6 +138,14 @@ impl Soc {
         );
         self.registers.ss_uds_seed_base_addr_l.set(offset as u32);
         self.registers.ss_uds_seed_base_addr_h.set(0);
+
+        romtime::println!(
+            "[mcu-fuse-write] Setting UDS/FE DAI idle bit offset to {} and direct access cmd reg offset to {}",
+            OTP_DAI_IDLE_BIT_OFFSET,
+            OTP_DIRECT_ACCESS_CMD_REG_OFFSET
+        );
+        self.registers.ss_strap_generic[0].set(OTP_DAI_IDLE_BIT_OFFSET << 16);
+        self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
 
         // PQC Key Type.
         let pqc_type = match fuses.cptra_core_pqc_key_type_0()[0] & 1 {

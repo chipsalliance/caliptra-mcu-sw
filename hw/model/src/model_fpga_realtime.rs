@@ -5,7 +5,6 @@
 use crate::{InitParams, McuHwModel, McuManager};
 use anyhow::{bail, Result};
 use caliptra_api::SocManager;
-use caliptra_api_types::Fuses;
 use caliptra_emu_bus::{Bus, BusError, BusMmio, Event};
 use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
@@ -63,10 +62,6 @@ pub struct ModelFpgaRealtime {
 }
 
 impl ModelFpgaRealtime {
-    pub fn init_fuses(&mut self, fuses: &Fuses) {
-        HwModel::init_fuses(&mut self.base, fuses);
-    }
-
     pub fn set_subsystem_reset(&mut self, reset: bool) {
         self.base.set_subsystem_reset(reset);
     }
@@ -287,6 +282,7 @@ impl McuHwModel for ModelFpgaRealtime {
         };
 
         let cptra_init = CaliptraInitParams {
+            fuses: params.fuses,
             rom: params.caliptra_rom,
             dccm: params.caliptra_dccm,
             iccm: params.caliptra_iccm,
@@ -295,6 +291,8 @@ impl McuHwModel for ModelFpgaRealtime {
             dbg_manuf_service: params.dbg_manuf_service,
             subsystem_mode: true,
             uds_granularity_64: !params.uds_granularity_32,
+            otp_dai_idle_bit_offset: params.otp_dai_idle_bit_offset,
+            otp_direct_access_cmd_reg_offset: params.otp_direct_access_cmd_reg_offset,
             prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs,
             debug_intent: params.debug_intent,
             bootfsm_break: params.bootfsm_break,
@@ -312,6 +310,7 @@ impl McuHwModel for ModelFpgaRealtime {
             ss_init_params: SubsystemInitParams {
                 mcu_rom: Some(params.mcu_rom),
                 enable_mcu_uart_log: params.enable_mcu_uart_log,
+                rma_or_scrap_ppd: params.rma_or_scrap_ppd,
                 num_prod_dbg_unlock_pk_hashes: params.num_prod_dbg_unlock_pk_hashes,
                 prod_dbg_unlock_pk_hashes_offset: params.prod_dbg_unlock_pk_hashes_offset,
                 ..Default::default()

@@ -22,6 +22,7 @@ mod test {
     fn test_manuf_debug_unlock() {
         let mut model = ss_setup(
             Some(LifecycleControllerState::Dev),
+            /*rma_or_scrap_ppd=*/ false,
             /*debug_intent=*/ true,
             /*bootfsm_break=*/ true,
             /*enable_mcu_uart_log=*/ true,

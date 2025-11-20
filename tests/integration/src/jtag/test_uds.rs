@@ -21,6 +21,7 @@ mod test {
     fn test_uds() {
         let mut model = ss_setup(
             Some(LifecycleControllerState::Dev),
+            /*rma_or_scrap_ppd=*/ false,
             /*debug_intent=*/ false,
             /*bootfsm_break=*/ true,
             /*enable_mcu_uart_log=*/ true,

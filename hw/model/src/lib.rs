@@ -102,6 +102,8 @@ pub fn new(init_params: InitParams, boot_params: BootParams) -> Result<DefaultHw
 }
 
 pub struct InitParams<'a> {
+    /// Fuse settings
+    pub fuses: Fuses,
     /// The contents of the Caliptra ROM
     pub caliptra_rom: &'a [u8],
     /// Caliptra's firmware bundle.
@@ -158,6 +160,8 @@ pub struct InitParams<'a> {
 
     pub bootfsm_break: bool,
 
+    pub rma_or_scrap_ppd: bool,
+
     pub debug_intent: bool,
 
     pub uds_program_req: bool,
@@ -168,6 +172,10 @@ pub struct InitParams<'a> {
     pub csr_hmac_key: [u32; 16],
 
     pub uds_granularity_32: bool,
+
+    pub otp_dai_idle_bit_offset: u32,
+
+    pub otp_direct_access_cmd_reg_offset: u32,
 
     // 4-bit nibbles of raw entropy to feed into the internal TRNG (ENTROPY_SRC
     // peripheral).
@@ -222,6 +230,7 @@ impl Default for InitParams<'_> {
                 Box::new(RandomEtrngResponses::new_from_stdrng())
             };
         Self {
+            fuses: Default::default(),
             caliptra_rom: Default::default(),
             caliptra_firmware: Default::default(),
             mcu_rom: Default::default(),
@@ -234,6 +243,8 @@ impl Default for InitParams<'_> {
             log_writer: Box::new(stdout()),
             dbg_manuf_service: Default::default(),
             uds_granularity_32: false, // 64-bit granularity
+            otp_dai_idle_bit_offset: 22,
+            otp_direct_access_cmd_reg_offset: 0x60,
             bootfsm_break: false,
             uds_program_req: false,
             active_mode: false,
@@ -243,6 +254,7 @@ impl Default for InitParams<'_> {
             // Must match offset of `mci_reg_prod_debug_unlock_pk_hash_reg` in
             // `registers/generated-firmware/src/mci.rs`.
             prod_dbg_unlock_pk_hashes_offset: 0x480,
+            rma_or_scrap_ppd: false,
             debug_intent: false,
             cptra_obf_key: DEFAULT_CPTRA_OBF_KEY,
             itrng_nibbles,
@@ -597,17 +609,6 @@ fn reg_access_test() {
     let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
     let mut hw = new(
         InitParams {
-            caliptra_rom: &binaries.caliptra_rom,
-            mcu_rom: &binaries.mcu_rom,
-            vendor_pk_hash: binaries.vendor_pk_hash(),
-            active_mode: true,
-            vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
-            ..Default::default()
-        },
-        BootParams {
-            fw_image: Some(&binaries.caliptra_fw),
-            soc_manifest: Some(&binaries.soc_manifest),
-            mcu_fw_image: Some(&binaries.mcu_runtime),
             fuses: Fuses {
                 fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
                 vendor_pk_hash: {
@@ -626,6 +627,17 @@ fn reg_access_test() {
                 },
                 ..Default::default()
             },
+            caliptra_rom: &binaries.caliptra_rom,
+            mcu_rom: &binaries.mcu_rom,
+            vendor_pk_hash: binaries.vendor_pk_hash(),
+            active_mode: true,
+            vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
+            ..Default::default()
+        },
+        BootParams {
+            fw_image: Some(&binaries.caliptra_fw),
+            soc_manifest: Some(&binaries.soc_manifest),
+            mcu_fw_image: Some(&binaries.mcu_runtime),
             ..Default::default()
         },
     )

@@ -231,6 +231,11 @@ mod test {
         // TODO: read the PQC type
         mcu_hw_model::new(
             InitParams {
+                fuses: Fuses {
+                    fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
+                    vendor_pk_hash,
+                    ..Default::default()
+                },
                 caliptra_rom: &caliptra_rom,
                 mcu_rom: &mcu_rom,
                 vendor_pk_hash: Some(vendor_pk_hash_u8.try_into().unwrap()),
@@ -244,11 +249,6 @@ mod test {
                 fw_image: Some(&caliptra_fw),
                 soc_manifest: Some(&soc_manifest),
                 mcu_fw_image: Some(&mcu_runtime),
-                fuses: Fuses {
-                    fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
-                    vendor_pk_hash,
-                    ..Default::default()
-                },
                 ..Default::default()
             },
         )
