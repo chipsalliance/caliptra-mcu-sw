@@ -4,7 +4,7 @@ This contains details about the Caliptra implementation of Device Ownership Tran
 
 Device Ownership Transfer (DOT) is a security mechanism implemented in Caliptra that enables device owners to establish code signing capabilities rooted in the hardware root of trust without permanently burning the Code Authentication Key (CAK) into fuses. This provides flexibility in ownership management while maintaining strong security guarantees.
 
-Reference: [OCP Device Ownership Transfer specification](TBD).
+Reference: [OCP Device Ownership Transfer specification](https://opencomputeproject.github.io/Security/device-ownership-transfer/HEAD/).
 
 ## Table of Contents
 1. [Diagrams](#diagrams)
