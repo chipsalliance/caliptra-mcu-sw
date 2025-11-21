@@ -32,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MDBOOK_VERSION: 0.4.52
+      MDBOOK_MERMAID_VERSION: 0.16.2
+      MDBOOK_PLANTUML_VERSION: 0.8.0
     steps:
       - uses: actions/checkout@v4
       - name: Install required packages
@@ -42,8 +44,8 @@ jobs:
       - name: Install mdBook
         run: |
           cargo install --version ${MDBOOK_VERSION} mdbook
-          cargo install mdbook-mermaid
-          cargo install mdbook-plantuml --no-default-features
+          cargo install --version ${MDBOOK_MERMAID_VERSION} mdbook-mermaid
+          cargo install --version ${MDBOOK_PLANTUML_VERSION} mdbook-plantuml --no-default-features
           wget https://github.com/plantuml/plantuml/releases/download/v1.2025.7/plantuml-asl-1.2025.7.jar -O docs/plantuml-asl-1.2025.7.jar
 
       - name: Setup Pages
