@@ -259,6 +259,8 @@ pub struct EmulatorArgs {
     pub fuse_soc_manifest_max_svn: Option<u32>,
     #[arg(long)]
     pub fuse_vendor_hashes_prod_partition: Option<String>,
+    #[arg(long)]
+    pub fuse_vendor_test_partition: Option<String>,
 }
 
 pub struct Emulator {
@@ -731,6 +733,9 @@ impl Emulator {
         let fuse_vendor_hashes_prod_partition = cli
             .fuse_vendor_hashes_prod_partition
             .map(|fuse| hex::decode(fuse).expect("Invalid hex in vendor_hashes_prod_partition"));
+        let fuse_vendor_test_partition = cli
+            .fuse_vendor_test_partition
+            .map(|fuse| hex::decode(fuse).expect("Invalid hex in vendor_test_partition"));
 
         let lc = LcCtrl::new();
 
@@ -744,6 +749,7 @@ impl Emulator {
                 soc_manifest_svn: cli.fuse_soc_manifest_svn.map(|v| v as u8),
                 soc_manifest_max_svn: cli.fuse_soc_manifest_max_svn.map(|v| v as u8),
                 vendor_hashes_prod_partition: fuse_vendor_hashes_prod_partition,
+                vendor_test_partition: fuse_vendor_test_partition,
                 ..Default::default()
             },
         )?;
