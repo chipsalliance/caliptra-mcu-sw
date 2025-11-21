@@ -78,51 +78,48 @@ impl McuMailboxTransport {
             .unwrap()
             .read_mcu_mbox0_csr_mbox_cmd_status();
 
-        // Read the data from MBOX_SRAM
+        let status_val = status_code
+            .reg
+            .read(registers_generated::mci::bits::MboxCmdStatus::Status);
         let mut data = Vec::new();
-        let len = self
-            .mbox
-            .regs
-            .lock()
-            .unwrap()
-            .read_mcu_mbox0_csr_mbox_dlen();
 
-        // Round up to the nearest multiple of 4 for dword alignment
-        let dw_len = len.div_ceil(4) as usize;
-        for i in 0..dw_len {
-            let val = self
+        if status_val == registers_generated::mci::bits::MboxCmdStatus::Status::CmdComplete.value {
+            // Read the data from MBOX_SRAM only if command is completed
+            let len = self
                 .mbox
                 .regs
                 .lock()
                 .unwrap()
-                .read_mcu_mbox0_csr_mbox_sram(i);
-            data.extend_from_slice(&val.to_le_bytes());
+                .read_mcu_mbox0_csr_mbox_dlen();
+
+            let dw_len = len.div_ceil(4) as usize;
+            for i in 0..dw_len {
+                let val = self
+                    .mbox
+                    .regs
+                    .lock()
+                    .unwrap()
+                    .read_mcu_mbox0_csr_mbox_sram(i);
+                data.extend_from_slice(&val.to_le_bytes());
+            }
+            data.truncate(len as usize);
         }
-        // Truncate to the actual data length
-        data.truncate(len as usize);
 
         self.finalize();
 
-        match status_code
-            .reg
-            .read(registers_generated::mci::bits::MboxCmdStatus::Status)
-        {
-            val if val
-                == registers_generated::mci::bits::MboxCmdStatus::Status::CmdComplete.value =>
-            {
-                Ok(McuMailboxResponse {
-                    status_code: status_code
-                        .reg
-                        .read(registers_generated::mci::bits::MboxCmdStatus::Status),
-                    data,
-                })
-            }
-            _ => {
-                Err(McuMailboxError::StatusCode(status_code.reg.read(
-                    registers_generated::mci::bits::MboxCmdStatus::Status,
-                )))
-            }
-        }
+        Ok(McuMailboxResponse {
+            status_code: status_val,
+            data,
+        })
+        /*
+        if status_val == registers_generated::mci::bits::MboxCmdStatus::Status::CmdComplete.value {
+            Ok(McuMailboxResponse {
+                status_code: status_val,
+                data,
+            })
+        } else {
+            Err(McuMailboxError::StatusCode(status_val))
+        } */
     }
 
     pub fn is_response_available(&self) -> bool {

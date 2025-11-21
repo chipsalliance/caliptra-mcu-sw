@@ -2780,10 +2780,13 @@ dependencies = [
 name = "mcu-mbox-lib"
 version = "0.1.0"
 dependencies = [
+ "caliptra-api",
  "embassy-executor",
  "embassy-sync",
  "external-cmds-common",
+ "libapi-caliptra",
  "libsyscall-caliptra",
+ "libtock_console",
  "libtock_platform",
  "libtock_runtime",
  "libtockasync",
