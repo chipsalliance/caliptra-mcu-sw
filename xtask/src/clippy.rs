@@ -16,7 +16,7 @@ fn clippy_all() -> Result<()> {
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
         .args(args)
-        .env("RUSTFLAGS", "-Cpanic=abort -Zpanic_abort_tests")
+        .env("RUSTFLAGS", "-Cpanic=abort")
         .status()?;
 
     if !status.success() {

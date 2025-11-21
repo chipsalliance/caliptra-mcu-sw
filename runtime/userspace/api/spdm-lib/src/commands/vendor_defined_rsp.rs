@@ -83,21 +83,40 @@ impl VendorDefRespHdr {
 // This is treated as a header kind
 impl Codec for VendorDefRespHdr {
     fn encode(&self, buffer: &mut MessageBuf) -> CodecResult<usize> {
-        let spdm_version = self.spdm_version;
-        let resp_code = self.resp_code;
-        let param1 = self.param1;
-        let param2 = self.param2;
-        let standard_id = self.standard_id;
-        let vendor_id_len = self.vendor_id_len;
-        let resp_len = self.resp_len;
-        let mut len = u8::encode(&spdm_version, buffer)?;
-        len += u8::encode(&resp_code, buffer)?;
-        len += u8::encode(&param1, buffer)?;
-        len += u8::encode(&param2, buffer)?;
-        len += u16::encode(&standard_id, buffer)?;
-        len += u8::encode(&vendor_id_len, buffer)?;
-        len += encode_u8_slice(&self.vendor_id[..vendor_id_len as usize], buffer)?;
-        len += u16::encode(&resp_len, buffer)?;
+        let len = self.len();
+        let vendor_id_len = self.vendor_id_len as usize;
+        // Sanity check
+        if vendor_id_len > MAX_SPDM_VENDOR_ID_LEN as usize {
+            Err(CodecError::BufferOverflow)?;
+        }
+        // Allocate space for header at front of payload region
+        buffer.push_data(len)?;
+        let header = buffer.data_mut(len)?;
+        // Sequentially write fields
+        let mut offset = 0;
+        header[offset] = self.spdm_version;
+        offset += 1;
+        header[offset] = self.resp_code;
+        offset += 1;
+        header[offset] = self.param1;
+        offset += 1;
+        header[offset] = self.param2;
+        offset += 1;
+        header[offset..offset + 2].copy_from_slice(&self.standard_id.to_le_bytes());
+        offset += 2;
+        header[offset] = self.vendor_id_len;
+        offset += 1;
+        // Copy exactly vendor_id_len bytes of vendor_id
+        header[offset..offset + vendor_id_len].copy_from_slice(&self.vendor_id[..vendor_id_len]);
+        offset += vendor_id_len;
+        header[offset..offset + 2].copy_from_slice(&self.resp_len.to_le_bytes());
+        offset += 2; // offset now equals full header length
+        debug_assert_eq!(
+            offset, len,
+            "VendorDefRespHdr encode length mismatch: {} != {}",
+            offset, len
+        );
+        buffer.push_head(len)?;
         Ok(len)
     }
 
@@ -330,7 +349,7 @@ pub(crate) async fn handle_vendor_defined_request<'a>(
     let (standard_id, vendor_id, mut vdm_req, vdm_req_len) =
         process_vendor_defined_request(ctx, spdm_hdr, req_payload).await?;
 
-    let mut vdm_req_buf = MessageBuf::new(&mut vdm_req[..vdm_req_len]);
+    let mut vdm_req_buf = MessageBuf::from(&mut vdm_req[..vdm_req_len]);
     ctx.prepare_response_buffer(req_payload)?;
 
     // Generate VENDOR_DEFINED_RESPONSE

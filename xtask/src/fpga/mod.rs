@@ -22,6 +22,7 @@ mod utils;
 
 #[derive(Default)]
 struct BuildArgs<'a> {
+    mcu: bool,
     // Marker type to preserve lifetime until arguments get re-introduced.
     _marker: PhantomData<&'a Path>,
 }
@@ -96,6 +97,10 @@ pub(crate) enum Fpga {
         /// When set copy firmware to `target_host`
         #[arg(long)]
         target_host: Option<String>,
+
+        /// Only Build MCU binaries
+        #[arg(long, default_value_t = false)]
+        mcu: bool,
     },
     /// Build FPGA test binaries
     BuildTest {
@@ -182,13 +187,16 @@ fn is_module_loaded(module: &str, target_host: Option<&str>) -> Result<bool> {
 pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
     check_host_dependencies()?;
     match args {
-        Fpga::Build { target_host } => {
+        Fpga::Build { target_host, mcu } => {
             println!("Building FPGA firmware");
             let config = Configuration::from_cmd(target_host.as_deref())?;
             config
                 .executor()
                 .set_target_host(target_host.as_deref())
-                .build(&BuildArgs::default())?;
+                .build(&BuildArgs {
+                    mcu: *mcu,
+                    ..Default::default()
+                })?;
         }
         Fpga::BuildTest { target_host } => {
             println!("Building FPGA tests");
@@ -327,6 +335,14 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
     // so we can use JTAG/TAP.
     let bootfsm_break = uds;
     let mut model = ModelFpgaRealtime::new_unbooted(InitParams {
+        fuses: caliptra_api_types::Fuses {
+            vendor_pk_hash: binaries
+                .vendor_pk_hash()
+                .map(|h| to_hw_format(&h))
+                .unwrap_or([0u32; 12]),
+            fuse_pqc_key_type: u8::from(FwVerificationPqcKeyType::LMS).into(),
+            ..Default::default()
+        },
         caliptra_rom: &binaries.caliptra_rom,
         caliptra_firmware: &binaries.caliptra_fw,
         mcu_rom: &binaries.mcu_rom,
@@ -343,14 +359,6 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
     })
     .unwrap();
     model.boot(BootParams {
-        fuses: caliptra_api_types::Fuses {
-            vendor_pk_hash: binaries
-                .vendor_pk_hash()
-                .map(|h| to_hw_format(&h))
-                .unwrap_or([0u32; 12]),
-            fuse_pqc_key_type: u8::from(FwVerificationPqcKeyType::LMS).into(),
-            ..Default::default()
-        },
         fw_image: Some(binaries.caliptra_fw.as_slice()),
         soc_manifest: Some(binaries.soc_manifest.as_slice()),
         mcu_fw_image: Some(binaries.mcu_runtime.as_slice()),

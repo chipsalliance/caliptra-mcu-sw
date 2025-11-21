@@ -2,7 +2,7 @@
 
 use crate::static_ref::StaticRef;
 use registers_generated::mci;
-use tock_registers::interfaces::{Readable, Writeable};
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 /// MCU Reset Reason
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -175,10 +175,12 @@ impl Mci {
     /// and performing the necessary actions based on the interrupt type.
     pub fn handle_interrupt(&self) {
         const NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK: u32 = 0x2;
-        let intr_status = self.read_notif0_intr_trig_r();
+        let intr_status = self.registers.intr_block_rf_notif0_internal_intr_r.get();
         if intr_status & NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK != 0 {
-            // Clear interrupt
-            self.write_notif0_intr_trig_r(NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK);
+            // Disable the interrupt, on reset, MCU ROM will clear the interrupt
+            self.registers
+                .intr_block_rf_notif0_intr_en_r
+                .modify(mci::bits::Notif0IntrEnT::NotifCptraMcuResetReqEn::CLEAR);
             // Request MCU reset
             self.registers.mci_reg_reset_request.set(1); // Any value will trigger reset
         }

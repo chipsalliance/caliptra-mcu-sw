@@ -31,12 +31,14 @@ pldm-lib.workspace = true
 romtime.workspace = true
 spdm-lib.workspace = true
 zerocopy.workspace = true
+arrayvec.workspace = true
+ocp-eat.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 libtock_unittest.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
-embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
+embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
 embedded-alloc.workspace = true
 
 [features]
@@ -84,3 +86,4 @@ test-pldm-fw-update-e2e = []
 test-pldm-streaming-boot = []
 test-mctp-spdm-responder-conformance = []
 test-doe-spdm-responder-conformance = []
+test-doe-spdm-tdisp-ide-validator = []

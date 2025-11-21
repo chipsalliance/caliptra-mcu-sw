@@ -2,6 +2,7 @@
 
 - [MCU Specification](./mcu.md)
 - [Reference ROM Specification](./rom.md)
+    - [Device Ownership Transfer](./dot.md)
 - [Runtime Specification](./runtime.md)
     - [PLDM Package](./pldm_package.md)
     - [Flash Layout](./flash_layout.md)
@@ -20,3 +21,4 @@
     - [Logging](./logging.md)
     - [In-Field Fuse Programming](./fuses.md)
 - [Running with an FPGA](./fpga.md)
+- [Caliptra Utility Host Library](./caliptra_util_host_library.md)

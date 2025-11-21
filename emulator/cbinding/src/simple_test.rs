@@ -44,6 +44,7 @@ fn test_emulator_args_creation() {
         trace_instr: false,
         stdin_uart: false,
         _no_stdin_uart: false,
+        flash_based_boot: false,
         i3c_port: None,
         manufacturing_mode: false,
         vendor_pk_hash: None,
@@ -87,6 +88,7 @@ fn test_emulator_args_creation() {
         fuse_soc_manifest_max_svn: None,
         fuse_soc_manifest_svn: None,
         fuse_vendor_hashes_prod_partition: None,
+        fuse_vendor_test_partition: None,
     };
 
     println!("EmulatorArgs created successfully");

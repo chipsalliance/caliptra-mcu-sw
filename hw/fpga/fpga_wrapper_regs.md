@@ -103,6 +103,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 | 0x140|            ss_key_release_key_size           |  — |
 | 0x144|      ss_external_staging_area_base_addr      |  — |
 | 0x148|             cptra_ss_mcu_ext_int             |  — |
+| 0x14C|       cptra_ss_raw_unlock_token_hash[0]      |  — |
+| 0x150|       cptra_ss_raw_unlock_token_hash[1]      |  — |
+| 0x154|       cptra_ss_raw_unlock_token_hash[2]      |  — |
+| 0x158|       cptra_ss_raw_unlock_token_hash[3]      |  — |
 | 0x200|          ocp_lock_key_release_reg[0]         |  — |
 | 0x204|          ocp_lock_key_release_reg[1]         |  — |
 | 0x208|          ocp_lock_key_release_reg[2]         |  — |
@@ -1224,6 +1228,58 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 #### cptra_ss_mcu_ext_int field
 
 <p>RSVD in core</p>
+
+### cptra_ss_raw_unlock_token_hash register
+
+- Absolute Address: 0xA401014C
+- Base Offset: 0x14C
+- Size: 0x4
+- Array Dimensions: [4]
+- Array Stride: 0x4
+- Total Size: 0x10
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   value  |  rw  | 0x0 |  — |
+
+### cptra_ss_raw_unlock_token_hash register
+
+- Absolute Address: 0xA4010150
+- Base Offset: 0x14C
+- Size: 0x4
+- Array Dimensions: [4]
+- Array Stride: 0x4
+- Total Size: 0x10
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   value  |  rw  | 0x0 |  — |
+
+### cptra_ss_raw_unlock_token_hash register
+
+- Absolute Address: 0xA4010154
+- Base Offset: 0x14C
+- Size: 0x4
+- Array Dimensions: [4]
+- Array Stride: 0x4
+- Total Size: 0x10
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   value  |  rw  | 0x0 |  — |
+
+### cptra_ss_raw_unlock_token_hash register
+
+- Absolute Address: 0xA4010158
+- Base Offset: 0x14C
+- Size: 0x4
+- Array Dimensions: [4]
+- Array Stride: 0x4
+- Total Size: 0x10
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   value  |  rw  | 0x0 |  — |
 
 ### ocp_lock_key_release_reg register
 

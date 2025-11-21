@@ -2,7 +2,6 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![cfg_attr(target_arch = "riscv32", no_main)]
-#![feature(impl_trait_in_assoc_type)]
 #![allow(static_mut_refs)]
 
 use core::fmt::Write;
@@ -73,6 +72,12 @@ async fn start() {
 }
 
 pub(crate) async fn async_main() {
+    // TODO: Debug spawning the SPDM task causes a hardfault in FPGA when firmware update is enabled
+    // for now, disable the SPDM task if either FW update test is enabled
+    #[cfg(not(any(
+        feature = "test-firmware-update-streaming",
+        feature = "test-firmware-update-flash"
+    )))]
     EXECUTOR
         .get()
         .spawner()

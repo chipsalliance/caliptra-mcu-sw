@@ -12,8 +12,6 @@ Abstract:
 
 --*/
 
-#![feature(cell_update)]
-
 mod axicdma;
 mod caliptra_to_ext_bus;
 mod doe_mbox;

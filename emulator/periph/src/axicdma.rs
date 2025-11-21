@@ -7,7 +7,7 @@ use crate::McuMailbox0Internal;
 use caliptra_emu_bus::{ActionHandle, Clock, Ram, ReadWriteRegister, Timer};
 use caliptra_emu_cpu::Irq;
 use emulator_consts::{RAM_ORG, RAM_SIZE};
-use emulator_registers_generated::axicdma::AxicdmaPeripheral;
+use emulator_registers_generated::axicdma::{AxicdmaGenerated, AxicdmaPeripheral};
 use registers_generated::axicdma::bits::{AxicdmaBytesToTransfer, AxicdmaControl, AxicdmaStatus};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
@@ -55,6 +55,7 @@ pub struct AxiCDMA {
     dst_addr_lsb: ReadWriteRegister<u32>,                      // 0x20
     dst_addr_msb: ReadWriteRegister<u32>,                      // 0x24
     btt: ReadWriteRegister<u32, AxicdmaBytesToTransfer::Register>, // 0x28
+    generated: AxicdmaGenerated,
 
     mcu_sram: Option<Rc<RefCell<Ram>>>,
     external_sram: Option<Rc<RefCell<Ram>>>,
@@ -88,6 +89,7 @@ impl AxiCDMA {
             dst_addr_lsb: ReadWriteRegister::new(0),
             dst_addr_msb: ReadWriteRegister::new(0),
             btt: ReadWriteRegister::new(0),
+            generated: AxicdmaGenerated::default(),
             mcu_sram: None,
             external_sram,
             mcu_mailbox0,
@@ -281,6 +283,10 @@ impl AxiCDMA {
 }
 
 impl AxicdmaPeripheral for AxiCDMA {
+    fn generated(&mut self) -> Option<&mut AxicdmaGenerated> {
+        Some(&mut self.generated)
+    }
+
     fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {
         self.mcu_sram = Some(ram);
     }

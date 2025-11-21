@@ -5,7 +5,7 @@ use crate::reset_reason::ResetReasonEmulator;
 use caliptra_emu_bus::{ActionHandle, Clock, ReadWriteRegister, Timer, TimerAction};
 use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
-use emulator_registers_generated::mci::MciPeripheral;
+use emulator_registers_generated::mci::{MciGenerated, MciPeripheral};
 use registers_generated::mci::bits::{
     Error0IntrT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest, WdtStatus, WdtTimer1Ctrl,
     WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
@@ -18,6 +18,7 @@ const RESET_REQUEST_MCU_REQ_MASK: u32 = 0x1; // McuReq bit (bit 0)
 
 pub struct Mci {
     ext_mci_regs: caliptra_emu_periph::mci::Mci,
+    generated: MciGenerated,
 
     error0_internal_intr_r: ReadWriteRegister<u32, Error0IntrT::Register>,
     timer: Timer,
@@ -59,6 +60,7 @@ impl Mci {
 
         Self {
             ext_mci_regs,
+            generated: MciGenerated::default(),
 
             error0_internal_intr_r: ReadWriteRegister::new(0),
             timer: Timer::new(clock),
@@ -105,6 +107,10 @@ impl Mci {
 }
 
 impl MciPeripheral for Mci {
+    fn generated(&mut self) -> Option<&mut MciGenerated> {
+        Some(&mut self.generated)
+    }
+
     fn read_mci_reg_fw_flow_status(&mut self) -> caliptra_emu_types::RvData {
         self.ext_mci_regs.regs.borrow().flow_status
     }
@@ -204,7 +210,7 @@ impl MciPeripheral for Mci {
         let en = ReadWriteRegister::<u32, WdtTimer1En::Register>::new(val.reg.get());
         if en.reg.is_set(WdtTimer1En::Timer1En) {
             let timer_period: u64 =
-                (self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32
+                ((self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[0] as u64;
 
             self.op_wdt_timer1_expired_action = Some(self.timer.schedule_poll_in(timer_period));
@@ -232,7 +238,7 @@ impl MciPeripheral for Mci {
             self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
             let timer_period: u64 =
-                (self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32
+                ((self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[0] as u64;
 
             self.op_wdt_timer1_expired_action = Some(self.timer.schedule_poll_in(timer_period));
@@ -261,7 +267,7 @@ impl MciPeripheral for Mci {
         );
         if en.reg.is_set(WdtTimer2En::Timer2En) {
             let timer_period: u64 =
-                (self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32
+                ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
             self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
@@ -287,7 +293,7 @@ impl MciPeripheral for Mci {
             self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
             let timer_period: u64 =
-                (self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32
+                ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
             self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
@@ -949,7 +955,7 @@ impl MciPeripheral for Mci {
                     .modify(Error0IntrT::ErrorWdtTimer2TimeoutSts::CLEAR);
 
                 let timer_period: u64 =
-                    (self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32
+                    ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                         | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
                 self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));

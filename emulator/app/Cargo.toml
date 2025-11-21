@@ -14,7 +14,6 @@ caliptra-emu-cpu.workspace = true
 caliptra-emu-periph.workspace = true
 caliptra-emu-types.workspace = true
 caliptra-image-types.workspace = true
-caliptra-test.workspace = true
 chrono.workspace = true
 clap.workspace = true
 clap-num.workspace = true
@@ -54,6 +53,9 @@ tock-registers.workspace = true
 uuid.workspace = true
 zerocopy.workspace = true
 
+[dev-dependencies]
+caliptra-test.workspace = true
+
 [[bin]]
 name = "emulator"
 path = "src/main.rs"
@@ -73,6 +75,9 @@ test-doe-transport-loopback = ["emulator-periph/test-doe-transport-loopback"]
 test-doe-discovery = ["emulator-periph/test-doe-discovery"]
 test-doe-spdm-responder-conformance = [
     "emulator-periph/test-doe-spdm-responder-conformance",
+]
+test-doe-spdm-tdisp-ide-validator = [
+    "emulator-periph/test-doe-spdm-tdisp-ide-validator",
 ]
 test-doe-user-loopback = ["emulator-periph/test-doe-user-loopback"]
 test-i3c-simple = []

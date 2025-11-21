@@ -16,6 +16,7 @@ use crate::otp_digest;
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_types::{RvAddr, RvData};
 use caliptra_image_types::FwVerificationPqcKeyType;
+use emulator_registers_generated::otp::OtpGenerated;
 use registers_generated::fuses::{self};
 use registers_generated::otp_ctrl::bits::{DirectAccessCmd, OtpStatus};
 use serde::{Deserialize, Serialize};
@@ -114,6 +115,7 @@ pub struct OtpArgs {
     pub soc_manifest_svn: Option<u8>,
     pub soc_manifest_max_svn: Option<u8>,
     pub vendor_hashes_prod_partition: Option<Vec<u8>>,
+    pub vendor_test_partition: Option<Vec<u8>>,
 }
 
 //#[derive(Bus)]
@@ -130,6 +132,7 @@ pub struct Otp {
     digests: [u32; PARTITIONS.len() * 2],
     /// Partitions to calculate digests for on reset.
     calculate_digests_on_reset: HashSet<usize>,
+    generated: OtpGenerated,
 }
 
 // Ensure that we save the state before we drop the OTP instance.
@@ -180,6 +183,7 @@ impl Otp {
             timer: Timer::new(clock),
             partitions: vec![0u8; TOTAL_SIZE],
             digests: [0; PARTITIONS.len() * 2],
+            generated: OtpGenerated::default(),
         };
         otp.read_from_file()?;
         if let Some(mut vendor_pk_hash) = args.vendor_pk_hash {
@@ -209,6 +213,13 @@ impl Otp {
             let copy_len = vendor_hashes_prod_partition.len().min(max_len);
             otp.partitions[dst_start..dst_start + copy_len]
                 .copy_from_slice(&vendor_hashes_prod_partition[..copy_len]);
+        }
+        if let Some(vendor_test_partition) = args.vendor_test_partition {
+            let dst_start = fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET;
+            let max_len = fuses::VENDOR_TEST_PARTITION_BYTE_SIZE;
+            let copy_len = vendor_test_partition.len().min(max_len);
+            otp.partitions[dst_start..dst_start + copy_len]
+                .copy_from_slice(&vendor_test_partition[..copy_len]);
         }
 
         // if there were digests that were pending a reset, then calculate them now
@@ -300,6 +311,10 @@ impl Otp {
 }
 
 impl emulator_registers_generated::otp::OtpPeripheral for Otp {
+    fn generated(&mut self) -> Option<&mut OtpGenerated> {
+        Some(&mut self.generated)
+    }
+
     fn read_otp_status(&mut self) -> caliptra_emu_bus::ReadWriteRegister<u32, OtpStatus::Register> {
         ReadWriteRegister::new(self.status.reg.get())
     }

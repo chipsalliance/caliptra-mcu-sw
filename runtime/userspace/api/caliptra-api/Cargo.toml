@@ -23,17 +23,17 @@ libtock_runtime.workspace = true
 pldm-common.workspace = true
 pldm-lib.workspace = true
 zerocopy.workspace = true
+ocp-eat.workspace = true
 
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 libtock_unittest.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
-embassy-executor = { version = "0.6.3", features = ["arch-riscv32", "nightly"] }
+embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
 embedded-alloc.workspace = true
 
 
 [dev-dependencies]
 libtock_unittest.workspace = true
 futures.workspace = true
-

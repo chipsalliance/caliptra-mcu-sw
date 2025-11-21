@@ -17,8 +17,10 @@ use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::{RvData, RvSize};
 use core::convert::TryInto;
 use emulator_consts::{RAM_ORG, RAM_SIZE, ROM_DEDICATED_RAM_ORG, ROM_DEDICATED_RAM_SIZE};
-use emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
-use emulator_registers_generated::secondary_flash::SecondaryFlashPeripheral;
+use emulator_registers_generated::primary_flash::{PrimaryFlashGenerated, PrimaryFlashPeripheral};
+use emulator_registers_generated::secondary_flash::{
+    SecondaryFlashGenerated, SecondaryFlashPeripheral,
+};
 use registers_generated::primary_flash_ctrl;
 use registers_generated::primary_flash_ctrl::bits::{
     CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
@@ -90,6 +92,8 @@ pub struct DummyFlashCtrl {
     operation_start: Option<ActionHandle>,
     error_irq: Irq,
     event_irq: Irq,
+    primary_generated: PrimaryFlashGenerated,
+    secondary_generated: SecondaryFlashGenerated,
 }
 
 impl DummyFlashCtrl {
@@ -180,6 +184,8 @@ impl DummyFlashCtrl {
             operation_start: None,
             error_irq,
             event_irq,
+            primary_generated: PrimaryFlashGenerated::default(),
+            secondary_generated: SecondaryFlashGenerated::default(),
         })
     }
 
@@ -427,6 +433,10 @@ impl DummyFlashCtrl {
 }
 
 impl PrimaryFlashPeripheral for DummyFlashCtrl {
+    fn generated(&mut self) -> Option<&mut PrimaryFlashGenerated> {
+        Some(&mut self.primary_generated)
+    }
+
     fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {
         self.dma_ram = Some(ram);
     }
@@ -596,6 +606,10 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
 }
 
 impl SecondaryFlashPeripheral for DummyFlashCtrl {
+    fn generated(&mut self) -> Option<&mut SecondaryFlashGenerated> {
+        Some(&mut self.secondary_generated)
+    }
+
     fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {
         self.dma_ram = Some(ram);
     }

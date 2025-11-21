@@ -229,6 +229,11 @@ mod test {
         // TODO: read the PQC type
         mcu_hw_model::new(
             InitParams {
+                fuses: Fuses {
+                    fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
+                    vendor_pk_hash,
+                    ..Default::default()
+                },
                 caliptra_rom: &caliptra_rom,
                 mcu_rom: &mcu_rom,
                 vendor_pk_hash: Some(vendor_pk_hash_u8.try_into().unwrap()),
@@ -242,11 +247,6 @@ mod test {
                 fw_image: Some(&caliptra_fw),
                 soc_manifest: Some(&soc_manifest),
                 mcu_fw_image: Some(&mcu_runtime),
-                fuses: Fuses {
-                    fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
-                    vendor_pk_hash,
-                    ..Default::default()
-                },
                 ..Default::default()
             },
         )
@@ -279,7 +279,7 @@ mod test {
         hw_revision: Option<String>,
         fuse_soc_manifest_svn: Option<u8>,
         fuse_soc_manifest_max_svn: Option<u8>,
-        fuse_vendor_hashes_prod_partition: Option<Vec<u8>>,
+        fuse_vendor_test_partition: Option<Vec<u8>>,
     ) -> i32 {
         let mut cargo_run_args = vec![
             "run",
@@ -449,15 +449,11 @@ mod test {
                 cargo_run_args.push(soc_manifest_max_svn_str.as_str());
             }
 
-            let fuse_vendor_hashes_prod_partition_str;
-            if let Some(fuse_vendor_hashes_prod_partition) = fuse_vendor_hashes_prod_partition {
-                let hex_string: String = fuse_vendor_hashes_prod_partition
-                    .iter()
-                    .map(|b| format!("{:02x}", b))
-                    .collect();
-                cargo_run_args.push("--fuse-vendor-hashes-prod-partition");
-                fuse_vendor_hashes_prod_partition_str = hex_string;
-                cargo_run_args.push(fuse_vendor_hashes_prod_partition_str.as_str());
+            let fuse_vendor_test_partition_str;
+            if let Some(fuse_vendor_test_partition) = fuse_vendor_test_partition {
+                cargo_run_args.push("--fuse-vendor-test-partition");
+                fuse_vendor_test_partition_str = hex::encode(fuse_vendor_test_partition);
+                cargo_run_args.push(fuse_vendor_test_partition_str.as_str());
             }
 
             println!("Running test firmware {}", feature.replace("_", "-"));
@@ -567,6 +563,7 @@ mod test {
     run_test!(test_pldm_fw_update);
     run_test!(test_mctp_spdm_responder_conformance, nightly);
     run_test!(test_doe_spdm_responder_conformance, nightly);
+    run_test!(test_doe_spdm_tdisp_ide_validator, nightly);
     run_test!(test_mci, example_app);
     run_test!(test_mcu_mbox);
     run_test!(test_mcu_mbox_soc_requester_loopback, example_app);

@@ -21,7 +21,7 @@ pub(crate) async fn handle_key_set_go_stop(
     key_set_go: bool,
     req_buf: &mut MessageBuf<'_>,
     rsp_buf: &mut MessageBuf<'_>,
-    ide_km_driver: &dyn IdeDriver,
+    ide_km_driver: &mut dyn IdeDriver,
 ) -> crate::vdm_handler::VdmResult<usize> {
     // Process KEY_SET_GO or KEY_SET_STOP request
     let key_set_go_stop =
@@ -63,5 +63,8 @@ pub(crate) async fn handle_key_set_go_stop(
     len += key_go_stop_ack
         .encode(rsp_buf)
         .map_err(crate::vdm_handler::VdmError::Codec)?;
+
+    rsp_buf.push_data(len).map_err(VdmError::Codec)?;
+
     Ok(len)
 }

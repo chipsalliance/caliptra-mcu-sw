@@ -164,14 +164,14 @@ impl SyscallDriver for Dma<'_> {
                 Err(e) => CommandReturn::failure(e),
             },
             dma_cmd::SET_SRC_ADDR => {
-                let addr: u64 = (r3 as u64) << 32 | (r2 as u64);
+                let addr: u64 = ((r3 as u64) << 32) | (r2 as u64);
                 match self.set_source_address(addr, Some(processid)) {
                     Ok(()) => CommandReturn::success(),
                     Err(e) => CommandReturn::failure(e),
                 }
             }
             dma_cmd::SET_DEST_ADDR => {
-                let addr: u64 = (r3 as u64) << 32 | (r2 as u64);
+                let addr: u64 = ((r3 as u64) << 32) | (r2 as u64);
                 match self.set_destination_address(addr, Some(processid)) {
                     Ok(()) => CommandReturn::success(),
                     Err(e) => CommandReturn::failure(e),

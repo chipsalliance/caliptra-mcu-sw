@@ -212,17 +212,20 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-sw repo")?;
         Ok(())
     }
-    fn build(&self, _args: &'a BuildArgs<'a>) -> Result<()> {
+    fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
         run_command(
             None,
             "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
         )?;
         let caliptra_sw = caliptra_sw_workspace_root()
             .expect("core-on-subsystem only supported when using a local copy of caliptra-sw");
-        run_command(
+        // Skip building Caliptra binaries when the MCU flag is set.
+        if !args.mcu {
+            run_command(
                         None,
                         &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display()),
                     )?;
+        }
         let rom_path = mcu_builder::rom_build(Some("fpga"), "core_test")?;
         if let Some(target_host) = &self.target_host {
             rsync_file(

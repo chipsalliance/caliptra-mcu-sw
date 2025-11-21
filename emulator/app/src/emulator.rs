@@ -16,6 +16,7 @@ use crate::dis;
 use crate::doe_mbox_fsm;
 use crate::elf;
 use crate::tests;
+use crate::tests::spdm_responder_validator::SpdmTestType;
 use caliptra_emu_bus::{Bus, Clock, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
@@ -111,6 +112,10 @@ pub struct EmulatorArgs {
     // this is used only to set stdin_uart to false
     #[arg(long = "stdin-uart", overrides_with = "stdin_uart")]
     pub _no_stdin_uart: bool,
+
+    /// Enable flash based boot (default false).
+    #[arg(long, default_value_t = false)]
+    pub flash_based_boot: bool,
 
     /// The ROM path for the Caliptra CPU.
     #[arg(long)]
@@ -254,6 +259,8 @@ pub struct EmulatorArgs {
     pub fuse_soc_manifest_max_svn: Option<u32>,
     #[arg(long)]
     pub fuse_vendor_hashes_prod_partition: Option<String>,
+    #[arg(long)]
+    pub fuse_vendor_test_partition: Option<String>,
 }
 
 pub struct Emulator {
@@ -291,6 +298,12 @@ impl Emulator {
         external_read_callback: Option<ExternalReadCallback>,
         external_write_callback: Option<ExternalWriteCallback>,
     ) -> std::io::Result<Self> {
+        #[cfg(feature = "test-flash-based-boot")]
+        let is_flash_based_boot = true;
+
+        #[cfg(not(feature = "test-flash-based-boot"))]
+        let is_flash_based_boot = cli.flash_based_boot;
+
         let args_rom = &cli.rom;
         let args_log_dir = &cli.log_dir.unwrap_or_else(|| PathBuf::from("/tmp"));
 
@@ -311,15 +324,7 @@ impl Emulator {
             None
         };
 
-        let use_mcu_recovery_interface;
-        #[cfg(feature = "test-flash-based-boot")]
-        {
-            use_mcu_recovery_interface = true;
-        }
-        #[cfg(not(feature = "test-flash-based-boot"))]
-        {
-            use_mcu_recovery_interface = false;
-        }
+        let use_mcu_recovery_interface = is_flash_based_boot;
 
         let (mut caliptra_cpu, soc_to_caliptra, ext_mci) = start_caliptra(&StartCaliptraArgs {
             rom: BytesOrPath::Path(cli.caliptra_rom),
@@ -561,6 +566,7 @@ impl Emulator {
             crate::tests::spdm_responder_validator::mctp::run_mctp_spdm_conformance_test(
                 cli.i3c_port.unwrap(),
                 i3c.get_dynamic_address().unwrap(),
+                SpdmTestType::SpdmResponderConformance,
                 std::time::Duration::from_secs(9000), // timeout in seconds
             );
         } else if cfg!(feature = "test-doe-spdm-responder-conformance") {
@@ -572,6 +578,19 @@ impl Emulator {
             crate::tests::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
                 test_tx,
                 test_rx,
+                SpdmTestType::SpdmResponderConformance,
+                std::time::Duration::from_secs(9000), // timeout in seconds
+            );
+        } else if cfg!(feature = "test-doe-spdm-tdisp-ide-validator") {
+            if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
+                println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
+                exit(0);
+            }
+            let (test_rx, test_tx) = doe_mbox_fsm.start();
+            crate::tests::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
+                test_tx,
+                test_rx,
+                SpdmTestType::SpdmTeeIoValidator,
                 std::time::Duration::from_secs(9000), // timeout in seconds
             );
         }
@@ -714,6 +733,9 @@ impl Emulator {
         let fuse_vendor_hashes_prod_partition = cli
             .fuse_vendor_hashes_prod_partition
             .map(|fuse| hex::decode(fuse).expect("Invalid hex in vendor_hashes_prod_partition"));
+        let fuse_vendor_test_partition = cli
+            .fuse_vendor_test_partition
+            .map(|fuse| hex::decode(fuse).expect("Invalid hex in vendor_test_partition"));
 
         let lc = LcCtrl::new();
 
@@ -727,6 +749,7 @@ impl Emulator {
                 soc_manifest_svn: cli.fuse_soc_manifest_svn.map(|v| v as u8),
                 soc_manifest_max_svn: cli.fuse_soc_manifest_max_svn.map(|v| v as u8),
                 vendor_hashes_prod_partition: fuse_vendor_hashes_prod_partition,
+                vendor_test_partition: fuse_vendor_test_partition,
                 ..Default::default()
             },
         )?;
@@ -800,8 +823,7 @@ impl Emulator {
         cpu.register_events();
 
         let mut bmc;
-        #[cfg(feature = "test-flash-based-boot")]
-        {
+        if is_flash_based_boot {
             println!("Emulator is using MCU recovery interface");
             bmc = None;
             let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
@@ -817,9 +839,7 @@ impl Emulator {
                     mcu_event_sender,
                     mcu_event_receiver,
                 );
-        }
-        #[cfg(not(feature = "test-flash-based-boot"))]
-        {
+        } else {
             let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
             let (mcu_event_sender, mcu_event_reciever) = cpu.register_events();
             // prepare the BMC recovery interface emulator
