@@ -3,6 +3,7 @@
 mod test_jtag_taps;
 mod test_lc_transitions;
 mod test_manuf_debug_unlock;
+mod test_prod_debug_unlock;
 mod test_uds;
 
 #[cfg(test)]
