@@ -215,6 +215,8 @@ jobs:
               -E 'package(mcu-hw-model) - test(model_emulated::test::test_new_unbooted)'
               -E 'package(tests-integration) and test(test_jtag_taps)'
               -E 'package(tests-integration) and test(test_lc_transitions)'
+              -E 'package(tests-integration) and test(test_manuf_debug_unlock)'
+              -E 'package(tests-integration) and test(test_prod_debug_unlock)'
               -E 'package(tests-integration) and test(test_uds)' # Modify this as we onboard crates to the FPGA test suite.
           )
               # disabled for now due to flakiness of recovery boot
