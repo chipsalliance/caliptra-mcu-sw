@@ -100,7 +100,8 @@ impl Default for McuMemoryMap {
 #[repr(C)]
 pub struct McuStraps {
     pub i3c_static_addr: u8,
-    pub axi_user: u32,
+    pub axi_user0: u32,
+    pub axi_user1: u32,
     pub cptra_wdt_cfg0: u32,
     pub cptra_wdt_cfg1: u32,
     pub mcu_wdt_cfg0: u32,
@@ -111,7 +112,8 @@ impl McuStraps {
     pub const fn default() -> Self {
         McuStraps {
             i3c_static_addr: 0x3a,
-            axi_user: 0xcccc_cccc,
+            axi_user0: 0xcccc_cccc,
+            axi_user1: 0xdddd_dddd,
             cptra_wdt_cfg0: 100_000_000,
             cptra_wdt_cfg1: 100_000_000,
             mcu_wdt_cfg0: 20_000_000,
