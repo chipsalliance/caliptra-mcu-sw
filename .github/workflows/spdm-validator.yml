@@ -154,7 +154,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: parvathib/spdm-rs
-          ref: pbhogaraju/custom_v0.4.2
+          ref: pbhogaraju/custom_v0.5.0
           path: spdm-rs
           submodules: recursive
 
