@@ -11,8 +11,8 @@ members = [
     "common/testing",
     "emulator/app",
     "emulator/app/mcu-mbox",
-    "emulator/bmc/pldm-ua",
     "emulator/bmc/pldm-fw-pkg",
+    "emulator/bmc/pldm-ua",
     "emulator/caliptra",
     "emulator/cbinding",
     "emulator/compliance-test",
@@ -21,11 +21,6 @@ members = [
     "error",
     "hw/model",
     "hw/model/test-fw",
-    "registers/generated-emulator",
-    "registers/generated-firmware",
-    "registers/generator",
-    "registers/systemrdl",
-    "registers/systemrdl-new",
     "platforms/common",
     "platforms/emulator/config",
     "platforms/emulator/mcu-image-header",
@@ -42,12 +37,18 @@ members = [
     "platforms/fpga/rom",
     "platforms/fpga/runtime",
     "platforms/test_harness",
+    "registers/fuses",
+    "registers/generated-emulator",
+    "registers/generated-firmware",
+    "registers/generator",
+    "registers/systemrdl-new",
+    "registers/systemrdl",
     "rom",
     "romtime",
     "runtime/kernel/capsules",
     "runtime/kernel/components",
-    "runtime/kernel/drivers/i3c",
     "runtime/kernel/drivers/doe",
+    "runtime/kernel/drivers/i3c",
     "runtime/kernel/drivers/mcu_mbox",
     "runtime/kernel/veer",
     "runtime/userspace/api/caliptra-api",
@@ -131,7 +132,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 pkcs8 = "0.10.2"
 portable-atomic = "1.7.0"
 p384 = "0.13.0"
-prettyplease = "0.2.31"
+prettyplease = "0.2.37"
 proc-macro2 = "1.0.66"
 quote = "1.0"
 rand = "0.8.5"
@@ -149,6 +150,7 @@ subst = "0.3.8"
 sudo = "0.6.0"
 strum = "0.24"
 strum_macros = "0.24"
+syn = { version = "2", default-features = false, features = ["full", "parsing"] }
 tempfile = "3.14.0"
 thiserror = "2"
 toml = "0.8.19"
@@ -183,6 +185,7 @@ mcu-config = { path = "common/config" }
 mcu-config-emulator = { path = "platforms/emulator/config" }
 mcu-config-fpga = { path = "platforms/fpga/config" }
 mcu-error = { path = "error" }
+mcu-fuses-generator = { path = "registers/fuses" }
 mcu-hw-model = { path = "hw/model" }
 mcu-hw-model-test-fw = { path = "hw/model/test-fw" }
 mcu-image-header = { path = "platforms/emulator/mcu-image-header" }

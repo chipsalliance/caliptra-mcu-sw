@@ -29,6 +29,7 @@ mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true
 mcu-rom-common.workspace = true
 mcu-hw-model = { workspace = true, optional = true }
+mcu-fuses-generator.workspace = true
 pldm-fw-pkg.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
