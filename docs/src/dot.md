@@ -44,7 +44,7 @@ Reference: [OCP Device Ownership Transfer specification](https://opencomputeproj
 
 **Caliptra_Core**: Component within Caliptra that performs cryptographic operations offload (key derivation, HMAC, signature verification), derives DOT_EFFECTIVE_KEY, authenticates DOT_BLOBs and commands, and manages owner public key hash.
 
-**Caliptra_MCU**: Microcontroller component that manages DOT state machine, handles runtime commands, controls fuse burning operations, coordinates with Caliptra_Core, and manages Ownership_RAM.
+**Caliptra_MCU**: Microcontroller component that manages DOT state machine, handles runtime commands, controls fuse burning operations, coordinates with Caliptra_Core, and manages Ownership_Storage.
 
 **DOT (Device Ownership Transfer)**: Security mechanism for flexible ownership management that enables device owners to establish code signing capabilities rooted in hardware without permanently burning keys into fuses.
 
@@ -69,7 +69,7 @@ Reference: [OCP Device Ownership Transfer specification](https://opencomputeproj
 
 **ODD STATE**: Locked/Disabled state (fuse value % 2 == 1) where ownership is cryptographically bound to the silicon via DOT_BLOB.
 
-**Ownership_RAM**: Volatile memory (e.g., FLOP-based register or SRAM) that stores the current CAK and LAK during runtime. Cleared on power cycle. Also stores desired DOT_FUSE_ARRAY state for pending transitions.
+**Ownership_Storage**: Volatile memory (e.g., FLOP-based register) that stores the current CAK and LAK during runtime. Must be retained across at least one MCU reset level and invalidated power cycle. Contents are not updatable once marked valid by a non-Caliptra entity. Also stores desired DOT_FUSE_ARRAY state for pending transitions.
 
 **ROM (Read-Only Memory)**: Immutable boot code that executes first on device startup.
 
@@ -96,7 +96,7 @@ Reference: [OCP Device Ownership Transfer specification](https://opencomputeproj
 
 **Characteristics:**
 - CAK is installed per boot cycle
-- Ownership information is stored only in Ownership_RAM
+- Ownership information is stored only in Ownership_Storage
 - Power cycle clears ownership
 - No fuse burning required
 - DOT_FUSE_ARRAY remains in EVEN state
@@ -180,7 +180,7 @@ The DOT_BLOB is authenticated on every boot in ODD state to ensure the CAK and L
 - Handles runtime commands
 - Controls fuse burning operations
 - Coordinates with Caliptra_Core for cryptographic operations
-- Manages Ownership_RAM
+- Manages Ownership_Storage
 
 ### Caliptra_Core
 - Performs cryptographic operations offload(key derivation, HMAC, signature verification)
@@ -195,10 +195,11 @@ The DOT_BLOB is authenticated on every boot in ODD state to ensure the CAK and L
 - Written during state transitions
 - One-time programmable (OTP) per bit
 
-### Ownership_RAM
-- Volatile storage for current CAK and LAK (ex, FLOP based register or SRAM)
-- Cleared on power cycle
-- Updated during DOT_CAK_INSTALL, parsing DOT_BLOB on boot
+### Ownership_Storage
+- Volatile storage for current CAK and LAK (ex, FLOP based register)
+- Content must be retained across at least one MCU reset level; should be retained across as many MCU reset levels as possible
+- Ownership data must be invalidated and/or scrubbed on power cycle
+- Ownership data must not be updatable once marked as valid by a non-Caliptra entity
 - Stores desired DOT_FUSE_ARRAY state for pending transitions
 
 ### Storage (Flash)
@@ -220,20 +221,20 @@ The DOT_BLOB is authenticated on every boot in ODD state to ensure the CAK and L
 
 #### 1. Uninitialized (EVEN State)
 - DOT_FUSE_ARRAY is in EVEN state
-- No CAK in Ownership_RAM
+- No CAK in Ownership_Storage
 - Device boots without owner authentication
 - No DOT_BLOB exists
 
 #### 2. Volatile (EVEN State)
 - DOT_FUSE_ARRAY is in EVEN state
-- CAK present in Ownership_RAM
+- CAK present in Ownership_Storage
 - Device boots with owner authentication
 - Ownership lost on power cycle
 - No DOT_BLOB present
 
 #### 3. Locked (ODD State)
 - DOT_FUSE_ARRAY is in ODD state
-- CAK present in Ownership_RAM (retrieved from DOT_BLOB)
+- CAK present in Ownership_Storage (retrieved from DOT_BLOB)
 - DOT_BLOB authenticated
 - Device boots with owner authentication
 - Ownership persists across power cycles
@@ -330,7 +331,7 @@ skinparam sequence {
 participant Caliptra_MCU
 participant Caliptra_Core
 participant DOT_FUSE_ARRAY
-participant Ownership_RAM
+participant Ownership_Storage
 participant Storage
 
 autonumber
@@ -350,7 +351,7 @@ else DOT FUSE is in ODD STATE
     note across : In the ODD State, DOT_BLOB must be available from storage
     Caliptra_MCU -> Caliptra_Core : MCU ROM asks Core-ROM to authenticate DOT_BLOB with DOT_EFFECTIVE_KEY (HMAC function)
     alt DOT_BLOB is authentic (Contains CAK / LAK)
-        Caliptra_MCU -> Ownership_RAM : MCU ROM programs CAK / LAK from DOT_BLOB into Ownership_RAM
+        Caliptra_MCU -> Ownership_Storage : MCU ROM programs CAK / LAK from DOT_BLOB into Ownership_Storage
         note across : This would overwrite existing CAK / LAK from previous volatile install if exist, but that's ok
     end
     alt DOT_BLOB corruptted
@@ -358,7 +359,7 @@ else DOT FUSE is in ODD STATE
         note across: MCU RT is implemented to only recover device DOT state when booted into DOT recovery mode
         note across : For more details, Ref "DOT Recovery Mode and FMC Flow Management"
     end
-    Caliptra_MCU -> Ownership_RAM : MCU ROM reads Ownership_RAM for CAK and calls Core-ROM to SET_OWNER_PK_HASH with CAK as input
+    Caliptra_MCU -> Ownership_Storage : MCU ROM reads Ownership_Storage for CAK and calls Core-ROM to SET_OWNER_PK_HASH with CAK as input
     note across : This is the common path, either volatile or locked CAK might exist (or none)
 end
 Caliptra_MCU -> Caliptra_Core : MCU ROM asks Core-ROM to run RI_DOWNLOAD_FIRMWARE to boot
@@ -384,11 +385,11 @@ Caliptra_MCU -> Caliptra_MCU : MCU ROM resets and jumps to RT
 4. **ODD State Processing**
    - Read DOT_BLOB from storage
    - Authenticate DOT_BLOB using HMAC with DOT_EFFECTIVE_KEY
-   - **If authentic**: Extract CAK/LAK and program into Ownership_RAM
+   - **If authentic**: Extract CAK/LAK and program into Ownership_Storage
    - **If corrupted**: Boot into DOT recovery mode (recovery flow documented in [later diagram](#dot-2-recovery))
 
 5. **Set Owner Public Key**
-   - Read CAK from Ownership_RAM (if present)
+   - Read CAK from Ownership_Storage (if present)
    - Call Caliptra_Core ROM SET_OWNER_PK_HASH with CAK
 
 6. **Boot Firmware**
@@ -408,7 +409,7 @@ if (DOT_FUSE_ARRAY % 2 == 0) {
     DOT_BLOB = Read_Storage()
     if (Authenticate(DOT_BLOB, DOT_EFFECTIVE_KEY)) {
         CAK, LAK = Extract(DOT_BLOB)
-        Write_Ownership_RAM(CAK, LAK)
+        Write_Ownership_Storage(CAK, LAK)
     } else {
         Boot_Recovery_Mode()
     }
@@ -456,16 +457,16 @@ skinparam sequence {
 participant BMC
 participant Caliptra_MCU
 participant Caliptra_Core
-participant Ownership_RAM
+participant Ownership_Storage
 
 autonumber
 
 BMC -> Caliptra_MCU : DOT_CAK_INSTALL command to install Volatile DOT
-Caliptra_MCU -> Ownership_RAM : Check existing ownership
+Caliptra_MCU -> Ownership_Storage : Check existing ownership
 alt Existing ownership
     Caliptra_MCU -> BMC : Error
 end
-Caliptra_MCU -> Ownership_RAM : MCU RT installs ownership
+Caliptra_MCU -> Ownership_Storage : MCU RT installs ownership
 Caliptra_MCU -> Caliptra_MCU : Requests subsystem reset
 note across : The request to reset can be self reset or waiting for BMC to reset
 note across : After reset, Ref "DOT State Management" for more details
@@ -475,15 +476,15 @@ note across : After reset, Ref "DOT State Management" for more details
 **Purpose:** Install CAK for volatile DOT ownership.
 
 **Preconditions:**
-- No existing ownership (Ownership_RAM empty)
+- No existing ownership (Ownership_Storage empty)
 - DOT_FUSE_ARRAY is in EVEN state
 
 **Flow:**
 1. BMC issues DOT_CAK_INSTALL command with CAK (and optionally LAK)
-2. MCU RT checks Ownership_RAM for existing ownership
+2. MCU RT checks Ownership_Storage for existing ownership
    - If ownership exists: Return error
-3. MCU RT writes CAK/LAK to Ownership_RAM
-4. Request subsystem reset (lower level reset that should not clear out Ownership_RAM)
+3. MCU RT writes CAK/LAK to Ownership_Storage
+4. Request subsystem reset (lower level reset that should not clear out Ownership_Storage)
 5. On next boot, CAK will be active for firmware authentication
 
 **Result:** Device enters Volatile state with CAK active until power cycle.
@@ -524,7 +525,7 @@ skinparam sequence {
 participant BMC
 participant Caliptra_MCU
 participant Caliptra_Core
-participant Ownership_RAM
+participant Ownership_Storage
 participant Storage
 
 autonumber
@@ -547,8 +548,8 @@ end
 Caliptra_MCU -> Caliptra_MCU : MCU creates a valid DOT_BLOB with DOT_EFFECTIVE_KEY
 Caliptra_MCU -> Storage : MCU updates DOT_BLOB
 note across : Updates both primary and redundant DOT_BLOB.
-Caliptra_MCU -> Ownership_RAM : MCU updates Ownership_RAM with DOT desired state
-note across : Ownership_RAM is updated with the new desired DOT_FUSE_ARRAY state
+Caliptra_MCU -> Ownership_Storage : MCU updates Ownership_Storage with DOT desired state
+note across : Ownership_Storage is updated with the new desired DOT_FUSE_ARRAY state
 Caliptra_MCU -> BMC : DOT process started, request subsystem reset
 note across : Only Caliptra_MCU ROM/FMC should blow fuses
 note across : After reset, Ref "DOT State Management" for more details
@@ -560,7 +561,7 @@ note across : After reset, Ref "DOT State Management" for more details
 
 **Preconditions:**
 - DOT_FUSE_ARRAY in EVEN state
-- CAK present in Ownership_RAM
+- CAK present in Ownership_Storage
 
 **Flow:**
 1. BMC issues DOT_LOCK command (signed with LAK.priv)
@@ -572,10 +573,10 @@ note across : After reset, Ref "DOT State Management" for more details
 5. MCU RT seals DOT_BLOB with HMAC(DOT_EFFECTIVE_KEY, DOT_BLOB)
    - DOT_EFFECTIVE_KEY was derived with (n+1) during boot
 6. Write DOT_BLOB to storage (primary and redundant copies)
-7. Update Ownership_RAM with desired DOT_FUSE_ARRAY state = (n+1)
+7. Update Ownership_Storage with desired DOT_FUSE_ARRAY state = (n+1)
 8. Return success and request subsystem reset
 9. **On next boot** (see State Management, diagram reference: `dot-3-state`):
-   - ROM/FMC reads Ownership_RAM desired state
+   - ROM/FMC reads Ownership_Storage desired state
    - Verifies DOT_BLOB is valid in storage
    - Burns DOT_FUSE_ARRAY from (n) to (n+1)
    - Requests another reset
@@ -600,24 +601,24 @@ Diagram is [above](#dot-5-command-lock).
 
 **Preconditions:**
 - DOT_FUSE_ARRAY in EVEN state
-- Device in Uninitialized state (no ownership in Ownership_RAM)
+- Device in Uninitialized state (no ownership in Ownership_Storage)
 - LAK provided in command
 
 **Flow:**
 1. BMC issues DOT_DISABLE command with LAK (signed with LAK.priv)
 2. MCU RT checks DOT_FUSE_ARRAY state
    - If ODD state: Return error (already locked or disabled)
-3. MCU RT checks Ownership_RAM is empty (Uninitialized state)
+3. MCU RT checks Ownership_Storage is empty (Uninitialized state)
    - If ownership exists: Return error
 4. MCU RT authenticates command with LAK.pub
    - If authentication fails: Return error
 5. MCU RT creates DOT_BLOB containing LAK but no CAK
 6. MCU RT seals DOT_BLOB with HMAC(DOT_EFFECTIVE_KEY, DOT_BLOB)
 7. Write DOT_BLOB to storage (primary and redundant copies)
-8. Update Ownership_RAM with desired DOT_FUSE_ARRAY state = (n+1)
+8. Update Ownership_Storage with desired DOT_FUSE_ARRAY state = (n+1)
 9. Return success and request subsystem reset
 10. **On next boot** (see [State Management](#dot-3-state)):
-    - ROM/FMC reads Ownership_RAM desired state
+    - ROM/FMC reads Ownership_Storage desired state
     - Verifies DOT_BLOB is valid in storage
     - Burns DOT_FUSE_ARRAY from (n) to (n+1)
     - Requests another reset
@@ -665,7 +666,7 @@ skinparam sequence {
 participant BMC
 participant Caliptra_MCU
 participant Caliptra_Core
-participant Ownership_RAM
+participant Ownership_Storage
 
 autonumber
 
@@ -684,8 +685,8 @@ alt Authentication Fail
     Caliptra_MCU -> BMC : DOT request invalid
     Caliptra_MCU -> Caliptra_MCU : Abort sequence
 end
-Caliptra_MCU -> Ownership_RAM : MCU updates with DOT_FUSE_ARRAY desired state
-note across : Ownership_RAM is updated with the new desired DOT_FUSE_ARRAY state
+Caliptra_MCU -> Ownership_Storage : MCU updates with DOT_FUSE_ARRAY desired state
+note across : Ownership_Storage is updated with the new desired DOT_FUSE_ARRAY state
 Caliptra_MCU -> BMC : DOT process started, request subsystem reset
 note across : Only Caliptra_MCU ROM/FMC should blow fuses, do not delete DOT_BLOB until fuse has advanced
 note across : After reset, Ref "DOT State Management" for more details
@@ -710,17 +711,17 @@ note across : After reset, Ref "DOT State Management" for more details
 6. MCU RT verifies challenge matches
 7. MCU RT authenticates command using LAK.pub from DOT_BLOB
    - If authentication fails: Return error
-8. MCU RT updates Ownership_RAM with desired DOT_FUSE_ARRAY state = (n+1)
+8. MCU RT updates Ownership_Storage with desired DOT_FUSE_ARRAY state = (n+1)
 9. Return success and request subsystem reset
 10. **On next boot** (see [State Management](#dot-3-state)):
-    - ROM/FMC reads Ownership_RAM desired state
+    - ROM/FMC reads Ownership_Storage desired state
     - Burns DOT_FUSE_ARRAY from (n) to (n+1)
     - Erases DOT_BLOB from storage (no longer needed)
     - Requests another reset
 11. **On subsequent boot**:
     - Device boots in EVEN state (n+1)
-    - **If unlocked from Locked state:** CAK still in Ownership_RAM → enters Volatile state
-    - **If unlocked from Disabled state:** No CAK in Ownership_RAM → enters Uninitialized state
+    - **If unlocked from Locked state:** CAK still in Ownership_Storage → enters Volatile state
+    - **If unlocked from Disabled state:** No CAK in Ownership_Storage → enters Uninitialized state
 
 **Result:**
 - **From Locked:** Device enters Volatile state. Power cycle will return to Uninitialized.
@@ -764,13 +765,13 @@ skinparam sequence {
 
 participant Caliptra_MCU
 participant Caliptra_Core
-participant Ownership_RAM
+participant Ownership_Storage
 participant DOT_FUSE_ARRAY
 participant Storage
 
 autonumber
-Caliptra_MCU -> Ownership_RAM : Check if Ownership_RAM indicates a desired DOT_FUSE_ARRAY state change is needed
-Caliptra_MCU -> Ownership_RAM : check if desired DOT_FUSE_ARRAY state is exactly 1 more (n+1) than current DOT_FUSE_ARRAY state (n)
+Caliptra_MCU -> Ownership_Storage : Check if Ownership_Storage indicates a desired DOT_FUSE_ARRAY state change is needed
+Caliptra_MCU -> Ownership_Storage : check if desired DOT_FUSE_ARRAY state is exactly 1 more (n+1) than current DOT_FUSE_ARRAY state (n)
 alt DOT_FUSE_ARRAY state change is needed
     alt DOT_FUSE_ARRAY is in EVEN STATE
         note across : DOT_LOCK / DOT_DISABLE scenario
@@ -789,13 +790,13 @@ end
 @enduml
 ```
 
-State transitions require fuse burning, which is performed by ROM/FMC (not RT) for security reasons. The Ownership_RAM is used to communicate the desired state change from RT to ROM/FMC.
+State transitions require fuse burning, which is performed by ROM/FMC (not RT) for security reasons. The Ownership_Storage is used to communicate the desired state change from RT to ROM/FMC.
 
 ### State Transition Protocol
 
 **Executed by ROM/FMC on boot:**
 
-1. Check Ownership_RAM for desired DOT_FUSE_ARRAY state
+1. Check Ownership_Storage for desired DOT_FUSE_ARRAY state
 2. Verify desired state is exactly (n+1) where n is current state
 3. **If transition from EVEN to ODD (LOCK/DISABLE):**
    - Read DOT_BLOB from storage
@@ -902,38 +903,38 @@ skinparam sequence {
 participant BMC
 participant Caliptra_MCU
 participant Caliptra_Core
-participant Ownership_RAM
+participant Ownership_Storage
 participant Storage
 participant DOT_FUSE_ARRAY
 
 Caliptra_MCU -> Caliptra_MCU : MCU boots up to RT
 
 group Uninitialized
-    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_RAM is empty, Device boot up with out owner authentication and is in uninitialized state
+    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_Storage is empty, Device boot up with out owner authentication and is in uninitialized state
     BMC -> Caliptra_MCU : DOT_CAK_INSTALL
-    Caliptra_MCU -> Caliptra_MCU : Installs CAK into Ownership_RAM
+    Caliptra_MCU -> Caliptra_MCU : Installs CAK into Ownership_Storage
     Caliptra_MCU -> BMC : Success
     Caliptra_MCU -> Caliptra_MCU : Request subsystem reset
 end
 
 group Volatile
-    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_RAM has CAK, Device boot up with CAK used for owner authentication and is now in a volatile state
-    BMC -> Caliptra_MCU : DOT_LOCK to lock CAK, mark Ownership_RAM with new desired DOT_FUSE_ARRAY state
+    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_Storage has CAK, Device boot up with CAK used for owner authentication and is now in a volatile state
+    BMC -> Caliptra_MCU : DOT_LOCK to lock CAK, mark Ownership_Storage with new desired DOT_FUSE_ARRAY state
     Caliptra_MCU -> Caliptra_Core : Authenticates DOT_LOCK command
     Caliptra_MCU -> Caliptra_MCU : Creates new DOT_BLOB
     Caliptra_MCU -> Caliptra_Core : HMACs DOT_BLOB
     Caliptra_MCU -> Storage : Store new DOT_BLOB in flash
-    Caliptra_MCU -> Ownership_RAM : Update Ownership_RAM with new desired DOT_FUSE_ARRAY state
+    Caliptra_MCU -> Ownership_Storage : Update Ownership_Storage with new desired DOT_FUSE_ARRAY state
     Caliptra_MCU -> BMC : Waiting for reset to complete
     Caliptra_MCU -> Caliptra_MCU : Request subsystem reset
     Caliptra_MCU -> Caliptra_MCU : Boots to ROM or RT
-    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_RAM has CAK and DOT_FUSE_ARRAY has new desired state, Device boot up with CAK used for owner authentication and is still in a volatile state
+    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_Storage has CAK and DOT_FUSE_ARRAY has new desired state, Device boot up with CAK used for owner authentication and is still in a volatile state
     Caliptra_MCU -> DOT_FUSE_ARRAY : ROM or FMC increment DOT_FUSE_ARRAY from EVEN to ODD
     Caliptra_MCU -> Caliptra_MCU : Request subsystem reset
 end
 
 group Locked
-    note across : DOT_FUSE_ARRAY is in ODD state, Ownership_RAM has CAK, Device boot up with CAK used for owner authentication and is now in a Locked state
+    note across : DOT_FUSE_ARRAY is in ODD state, Ownership_Storage has CAK, Device boot up with CAK used for owner authentication and is now in a Locked state
 end
 
 @enduml
@@ -941,10 +942,10 @@ end
 
 **Phase 1: Uninitialized → Volatile**
 1. Device boots with DOT_FUSE_ARRAY in EVEN state
-2. Ownership_RAM is empty
+2. Ownership_Storage is empty
 3. No owner authentication active
 4. BMC issues DOT_CAK_INSTALL with CAK and LAK
-5. CAK/LAK written to Ownership_RAM
+5. CAK/LAK written to Ownership_Storage
 6. Reset device
 7. Device boots with CAK active for authentication
 8. **Result:** Volatile ownership (lost on power cycle)
@@ -956,14 +957,14 @@ end
 4. MCU RT creates DOT_BLOB with CAK and LAK
 5. DOT_BLOB sealed with HMAC using DOT_EFFECTIVE_KEY
 6. DOT_BLOB written to flash storage
-7. Ownership_RAM updated with desired state (n+1)
+7. Ownership_Storage updated with desired state (n+1)
 8. Reset device
-9. ROM/FMC reads desired state from Ownership_RAM
+9. ROM/FMC reads desired state from Ownership_Storage
 10. ROM/FMC validates DOT_BLOB in storage
 11. ROM/FMC burns DOT_FUSE_ARRAY from EVEN(n) to ODD(n+1)
 12. Reset device again
 13. Device boots in ODD state
-14. DOT_BLOB authenticated and CAK/LAK recovered to Ownership_RAM
+14. DOT_BLOB authenticated and CAK/LAK recovered to Ownership_Storage
 15. **Result:** Locked ownership (persists across power cycles)
 
 ### Full Lifecycle: Locked → Volatile → Uninitialized
@@ -1003,23 +1004,23 @@ skinparam sequence {
 participant BMC
 participant Caliptra_MCU
 participant Caliptra_Core
-participant Ownership_RAM
+participant Ownership_Storage
 participant Storage
 participant DOT_FUSE_ARRAY
 
 Caliptra_MCU -> Caliptra_MCU : MCU boots to runtime
 group Locked
-    note across : DOT_FUSE_ARRAY is in ODD state, Ownership_RAM has CAK, Device boot up with CAK used for owner authentication and is in a Locked state
+    note across : DOT_FUSE_ARRAY is in ODD state, Ownership_Storage has CAK, Device boot up with CAK used for owner authentication and is in a Locked state
     BMC -> Caliptra_MCU : DOT_UNLOCK_CHALLENGE
     Caliptra_MCU -> BMC : Challenge
     BMC -> Caliptra_MCU : BMC issue DOT_UNLOCK command to Caliptra_MCU where the command is signed by LAK.priv
     Caliptra_MCU -> Caliptra_MCU: Ensures challenge matches
     Caliptra_MCU -> Caliptra_Core : Authenticate command with LAK.pub
-    Caliptra_MCU -> Ownership_RAM : Caliptra_MCU writes to Ownership_RAM to indicate DOT_FUSE_ARRAY state change is needed
+    Caliptra_MCU -> Ownership_Storage : Caliptra_MCU writes to Ownership_Storage to indicate DOT_FUSE_ARRAY state change is needed
     Caliptra_MCU -> BMC : Reset needed to complete DOT_UNLOCK command
     Caliptra_MCU -> Caliptra_MCU : Request subsystem reset
     Caliptra_MCU -> Caliptra_MCU : Caliptra_MCU boot up to ROM or FMC
-    note across : DOT_FUSE_ARRAY is in ODD state, Ownership_RAM has CAK and DOT_FUSE_ARRAY new desired state, Device boot up with CAK used for owner authentication and is in a Locked state
+    note across : DOT_FUSE_ARRAY is in ODD state, Ownership_Storage has CAK and DOT_FUSE_ARRAY new desired state, Device boot up with CAK used for owner authentication and is in a Locked state
     Caliptra_MCU -> DOT_FUSE_ARRAY : ROM or FMC increment DOT_FUSE_ARRAY from ODD to EVEN
     Caliptra_MCU -> Storage : Erase DOT_BLOB
     Caliptra_MCU -> Caliptra_MCU : Request subsystem reset
@@ -1027,12 +1028,12 @@ group Locked
 end
 
 group Volatile (assume reset)
-    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_RAM has CAK, Device boot up with CAK used for owner authentication and is now in a volatile state
-    BMC -> Caliptra_MCU : BMC power cycles the device so the device loses Ownership_RAM contents
+    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_Storage has CAK, Device boot up with CAK used for owner authentication and is now in a volatile state
+    BMC -> Caliptra_MCU : BMC power cycles the device so the device loses Ownership_Storage contents
 end
 
 group Uninitialized
-    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_RAM is empty, Device boot up with out owner authentication and is now in uninitialized state
+    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_Storage is empty, Device boot up with out owner authentication and is now in uninitialized state
 end
 
 @enduml
@@ -1045,19 +1046,19 @@ end
 4. BMC signs challenge with LAK.priv
 5. BMC issues DOT_UNLOCK command with signed challenge
 6. MCU RT verifies challenge and authenticates with LAK.pub
-7. Ownership_RAM updated with desired state (n+1)
+7. Ownership_Storage updated with desired state (n+1)
 8. Reset device
 9. ROM/FMC reads desired state
 10. ROM/FMC burns DOT_FUSE_ARRAY from ODD(n) to EVEN(n+1)
 11. ROM/FMC erases DOT_BLOB from storage
 12. Reset device again
-13. Device boots in EVEN state with CAK still in Ownership_RAM
+13. Device boots in EVEN state with CAK still in Ownership_Storage
 14. **Result:** Volatile ownership (temporary)
 
 **Phase 2: Volatile → Uninitialized**
 1. Device in Volatile state (EVEN, CAK in RAM)
 2. BMC power cycles device
-3. Ownership_RAM contents lost
+3. Ownership_Storage contents lost
 4. Device boots with no CAK
 5. **Result:** Uninitialized state (no ownership)
 
@@ -1199,7 +1200,7 @@ participant Caliptra_Core
 
 group Locked
     Caliptra_MCU -> Caliptra_MCU : MCU boots to ROM but DOT_BLOB is corrupted, ROM boots up to FMC or RT for DOT recovery
-    note across : DOT_FUSE_ARRAY is in ODD state, Ownership_RAM has no CAK, Device boot up with FMC without CAK in DOT recovery mode
+    note across : DOT_FUSE_ARRAY is in ODD state, Ownership_Storage has no CAK, Device boot up with FMC without CAK in DOT recovery mode
     note across : Either MCU notify BMC or BMC detects that the silicon is in DOT recovery mode.  This is a silicon specific function, examples can be BMC tracking boot progress/error codes of the silicon boot
     alt BMC / platform has a backup copy of DOT_BLOB
         BMC -> Caliptra_MCU : DOT_RECOVERY
