@@ -1,0 +1,13 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-util-host-session"
+version.workspace = true
+edition.workspace = true
+description = "Session management for Caliptra Utility Host Library"
+
+[dependencies]
+caliptra-util-host-osal = { workspace = true, features = ["alloc"] }
+caliptra-util-host-transport.workspace = true
+caliptra-util-host-command-types.workspace = true
+zerocopy.workspace = true

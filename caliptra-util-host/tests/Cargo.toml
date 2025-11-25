@@ -1,0 +1,17 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-util-host-tests"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# New modular architecture dependencies
+caliptra-util-host-session.workspace = true
+caliptra-util-host-transport.workspace = true
+caliptra-util-host-commands.workspace = true
+caliptra-util-host-command-types.workspace = true
+zerocopy.workspace = true
+
+# Integration tests are now organized in src/lib.rs as a library
+# This allows adding new test modules without updating Cargo.toml
