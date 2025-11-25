@@ -39,7 +39,7 @@ pub struct CaliptraErrorContext {
 pub enum ErrorLocation {
     Unknown = 0,
     Transport = 1,
-    Session = 2, 
+    Session = 2,
     Command = 3,
     Protocol = 4,
     Device = 5,

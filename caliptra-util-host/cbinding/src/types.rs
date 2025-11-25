@@ -5,10 +5,10 @@
 use caliptra_util_host_command_types::device_info::GetDeviceIdResponse;
 
 /// Device ID information structure
-/// 
+///
 /// This structure contains device identification information retrieved from
 /// a Caliptra device. All fields use little-endian byte order.
-/// 
+///
 /// This type is memory-layout compatible with GetDeviceIdResponse for zero-cost conversion.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]

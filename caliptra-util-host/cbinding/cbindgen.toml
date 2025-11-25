@@ -49,5 +49,3 @@ packed = "C"
 [defines]
 # Add header guards and includes
 "CALIPTRA_UTIL_HOST_H" = "1"
-
-header = "/* Auto-generated from Rust caliptra-util-host library */"

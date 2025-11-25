@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 //! Integration tests for caliptra-util-host
-//! 
+//!
 //! This module organizes all integration tests in a single library
 //! to avoid the need to list each test file in Cargo.toml
 
@@ -14,4 +14,3 @@ pub mod integration_tests;
 
 #[cfg(test)]
 pub mod test_get_device_id;
-

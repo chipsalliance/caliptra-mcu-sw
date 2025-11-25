@@ -80,8 +80,16 @@ pub struct PlatformInfo {
 
 pub fn platform_info() -> PlatformInfo {
     PlatformInfo {
+        #[cfg(feature = "std")]
         os_name: std::env::consts::OS,
+        #[cfg(not(feature = "std"))]
+        os_name: "unknown",
+
+        #[cfg(feature = "std")]
         arch: std::env::consts::ARCH,
+        #[cfg(not(feature = "std"))]
+        arch: "unknown",
+
         has_std: cfg!(feature = "std"),
         has_alloc: cfg!(feature = "alloc"),
     }

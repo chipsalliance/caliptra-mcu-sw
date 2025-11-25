@@ -9,6 +9,7 @@ members = [
     "transport",
     "cbinding",
     "tests",
+    "xtask",
     "apps/mailbox/client",
     "apps/mailbox/server"
 ]
@@ -16,8 +17,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "Apache-2.0"
-authors = ["Caliptra Team"]
+authors = ["Caliptra contributors"]
 
 [workspace.dependencies]
 # Internal workspace dependencies
@@ -29,16 +29,21 @@ caliptra-util-host-transport = { path = "transport" }
 caliptra-util-host-cbinding = { path = "cbinding" }
 
 # External dependencies
-zerocopy = { version = "0.8.17", features = ["derive"] }
+anyhow = "1.0.97"
+cargo_metadata = "0.18.1"
 cc = "1.0"
-cbindgen = "0.26"
-tokio = { version = "1.0", features = ["full"] }
-clap = { version = "4.0", features = ["derive"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-anyhow = "1.0"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+cbindgen = "0.24"
+clap = { version = "4.5.23", features = [
+    "cargo",
+    "derive",
+    "env",
+    "string",
+    "unicode",
+    "wrap_help",
+] }
+serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
+serde_json = { version = "1.0.127", features = ["alloc"] }
+zerocopy = { version = "0.8.17", features = ["derive"] }
 
 [package]
 name = "caliptra-util-host"

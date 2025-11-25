@@ -103,39 +103,93 @@ The `apps/mailbox/` directory contains ready-to-use applications for sending Ext
 A UDP-based mailbox server that receives commands and returns responses. The library can be used by the subsystem to receive commands from a client through the network.
 
 ```bash
-cd apps/mailbox/server
-cargo run -- --bind 127.0.0.1:8080
+# Run mailbox server on default address (127.0.0.1:8080)
+cargo xtask server
+
+# Run server on custom address with verbose output
+cargo xtask server --address 192.168.1.100:9090 --verbose
 ```
 
 ### Mailbox Client (`apps/mailbox/client`) 
 
-A client library and validator for sending external mailbox requests to the server (Caliptra subsystem). It also provides a validator application to execute test commands against the target.
+A client library and validator for sending external mailbox requests to the server (Caliptra subsystem). It also provides a validator binary to execute test commands against the target.
 
 ```bash
-cd apps/mailbox/client
-# Run validator against a server
-cargo run --example validator -- --server 127.0.0.1:8080
+# Run validator against default server (127.0.0.1:8080)
+cargo xtask validator
+
+# Run validator against a custom server with verbose output
+cargo xtask validator --server 192.168.1.100:9090 --verbose
 ```
 
-## Building
+## Building and Testing with XTask
+
+The library includes a powerful CLI toolkit (`xtask`) for development workflow:
 
 ```bash
-# Build all crates
-cargo build --workspace
+# Build all components
+cargo xtask build
 
-# Build C bindings  
-cd cbinding && make
+# Build in release mode
+cargo xtask build --release
 
-# Run integration tests
-cd tests && cargo test
+# Build specific packages
+cargo xtask build -p caliptra-util-host-transport
 
-# Run C binding tests
-cd cbinding/tests && make && make test
+# Run all tests (Rust + C bindings)
+cargo xtask test
+
+# Run only Rust tests
+cargo xtask test --rust-only
+
+# Run only C binding tests  
+cargo xtask test --c-only
+
+# Format code
+cargo xtask fmt
+
+# Run clippy lints
+cargo xtask clippy
+
+# Generate C bindings
+cargo xtask cbindings
+
+# Clean artifacts
+cargo xtask clean
+
+# Run comprehensive checks (build, test, format, clippy)
+cargo xtask check
+```
+
+## Cargo Aliases
+
+For convenience, you can use the shorter aliases:
+
+```bash
+# Short form aliases
+cargo x build      # Same as cargo xtask build
+cargo x test       # Same as cargo xtask test  
+cargo x server     # Same as cargo xtask server
+cargo x validator  # Same as cargo xtask validator
+cargo x clean      # Same as cargo xtask clean
+cargo x fmt        # Same as cargo xtask fmt
+cargo x clippy     # Same as cargo xtask clippy
 ```
 
 ## Testing
 
-The library includes comprehensive tests:
+The library includes comprehensive tests that can be run using xtask:
+
+```bash
+# Run all tests (Rust + C bindings)
+cargo xtask test
+
+# Run only Rust tests
+cargo xtask test --rust-only
+
+# Run only C binding tests
+cargo xtask test --c-only
+```
 
 - **Rust Integration Tests**: `tests/` - Test command execution and session management
 - **C Binding Tests**: `cbinding/tests/` - Verify C API functionality  

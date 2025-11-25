@@ -1,11 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 //! Error types for OSAL
-
-#[cfg(feature = "std")]
-use std::fmt;
-
-#[cfg(not(feature = "std"))]
 use core::fmt;
 
 pub type OsalResult<T> = Result<T, OsalError>;

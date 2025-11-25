@@ -4,26 +4,26 @@
 //!
 //! This module contains C-exportable wrapper functions for Caliptra commands.
 
+use crate::error::CaliptraError;
 use caliptra_util_host_command_types::device_info::GetDeviceIdResponse;
 use caliptra_util_host_session::CaliptraSession;
-use crate::error::CaliptraError;
 
 /// Get device identification information (C-exportable version)
-/// 
+///
 /// This function can be called from C code and takes a direct session pointer.
-/// 
+///
 /// # Parameters
-/// 
+///
 /// - `session_ptr`: Direct pointer to CaliptraSession
 /// - `device_id`: Pointer to store the device ID response
-/// 
+///
 /// # Returns
-/// 
+///
 /// - `CaliptraError::Success` on success
 /// - Error code on failure
-/// 
+///
 /// # Safety
-/// 
+///
 /// This function is unsafe because it works with raw pointers.
 /// The caller must ensure both pointers are valid.
 #[no_mangle]

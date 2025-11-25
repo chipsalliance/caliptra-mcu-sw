@@ -1,5 +1,7 @@
 // Licensed under the Apache-2.0 license
 
+/* Auto-generated from Rust caliptra-util-host library */
+
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -68,35 +70,6 @@ typedef struct CaliptraTransport {
 } CaliptraTransport;
 
 /**
- * Function pointer types for MailboxDriver implementation in C
- */
-typedef struct CMailboxDriverVTable {
-  enum CaliptraError (*send_command)(struct CMailboxDriver *driver,
-                                     uint32_t external_cmd,
-                                     const uint8_t *payload,
-                                     uintptr_t payload_len,
-                                     const uint8_t **response,
-                                     uintptr_t *response_len);
-  bool (*is_ready)(struct CMailboxDriver *driver);
-  enum CaliptraError (*connect)(struct CMailboxDriver *driver);
-  enum CaliptraError (*disconnect)(struct CMailboxDriver *driver);
-} CMailboxDriverVTable;
-
-/**
- * Complete C MailboxDriver implementation
- */
-typedef struct CMailboxDriver {
-  struct CMailboxDriverVTable *vtable;
-  uint16_t device_id;
-  uint16_t vendor_id;
-  uint16_t subsystem_vendor_id;
-  uint16_t subsystem_id;
-  bool ready;
-  bool connected;
-  uint8_t response_buffer[32];
-} CMailboxDriver;
-
-/**
  * C function pointer types for custom transport implementation
  */
 typedef enum CaliptraError (*CTransportSendFn)(void *ctx,
@@ -129,6 +102,35 @@ typedef struct CTransportVTable {
   CTransportDestroyFn destroy;
 } CTransportVTable;
 
+/**
+ * Function pointer types for MailboxDriver implementation in C
+ */
+typedef struct CMailboxDriverVTable {
+  enum CaliptraError (*send_command)(struct CMailboxDriver *driver,
+                                     uint32_t external_cmd,
+                                     const uint8_t *payload,
+                                     uintptr_t payload_len,
+                                     const uint8_t **response,
+                                     uintptr_t *response_len);
+  bool (*is_ready)(struct CMailboxDriver *driver);
+  enum CaliptraError (*connect)(struct CMailboxDriver *driver);
+  enum CaliptraError (*disconnect)(struct CMailboxDriver *driver);
+} CMailboxDriverVTable;
+
+/**
+ * Complete C MailboxDriver implementation
+ */
+typedef struct CMailboxDriver {
+  struct CMailboxDriverVTable *vtable;
+  uint16_t device_id;
+  uint16_t vendor_id;
+  uint16_t subsystem_vendor_id;
+  uint16_t subsystem_id;
+  bool ready;
+  bool connected;
+  uint8_t response_buffer[32];
+} CMailboxDriver;
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -137,9 +139,27 @@ enum CaliptraError caliptra_cmd_get_device_id(struct CaliptraSession *session,
                                               struct GetDeviceIdResponse *device_id);
 
 /**
- * Destroy transport instance (from design document)
+ * Get device identification information (C-exportable version)
+ *
+ * This function can be called from C code and takes a direct session pointer.
+ *
+ * # Parameters
+ *
+ * - `session_ptr`: Direct pointer to CaliptraSession
+ * - `device_id`: Pointer to store the device ID response
+ *
+ * # Returns
+ *
+ * - `CaliptraError::Success` on success
+ * - Error code on failure
+ *
+ * # Safety
+ *
+ * This function is unsafe because it works with raw pointers.
+ * The caller must ensure both pointers are valid.
  */
-enum CaliptraError caliptra_transport_destroy(struct CaliptraTransport *transport);
+enum CaliptraError caliptra_cmd_get_device_id_c_impl(struct CaliptraSession *session_ptr,
+                                                     struct GetDeviceIdResponse *device_id);
 
 /**
  * Create a new Caliptra session with transport
@@ -214,33 +234,9 @@ enum CaliptraError caliptra_session_disconnect(struct CaliptraSession *session);
 enum CaliptraError caliptra_session_destroy(struct CaliptraSession *session);
 
 /**
- * Get device identification information (C-exportable version)
- *
- * This function can be called from C code and takes a direct session pointer.
- *
- * # Parameters
- *
- * - `session_ptr`: Direct pointer to CaliptraSession
- * - `device_id`: Pointer to store the device ID response
- *
- * # Returns
- *
- * - `CaliptraError::Success` on success
- * - Error code on failure
- *
- * # Safety
- *
- * This function is unsafe because it works with raw pointers.
- * The caller must ensure both pointers are valid.
+ * Destroy transport instance (from design document)
  */
-enum CaliptraError caliptra_cmd_get_device_id_c_impl(struct CaliptraSession *session_ptr,
-                                                     struct GetDeviceIdResponse *device_id);
-
-/**
- * Create a transport from a C MailboxDriver
- */
-enum CaliptraError caliptra_transport_create_from_c_mailbox_driver(struct CMailboxDriver *c_driver,
-                                                                   struct CaliptraTransport **transport);
+enum CaliptraError caliptra_transport_destroy(struct CaliptraTransport *transport);
 
 /**
  * Create a transport from C function pointers (C-exportable)
@@ -248,6 +244,12 @@ enum CaliptraError caliptra_transport_create_from_c_mailbox_driver(struct CMailb
 enum CaliptraError caliptra_transport_create_from_c_vtable(const struct CTransportVTable *vtable,
                                                            void *context,
                                                            struct CaliptraTransport **transport);
+
+/**
+ * Create a transport from a C MailboxDriver
+ */
+enum CaliptraError caliptra_transport_create_from_c_mailbox_driver(struct CMailboxDriver *c_driver,
+                                                                   struct CaliptraTransport **transport);
 
 #ifdef __cplusplus
 } // extern "C"

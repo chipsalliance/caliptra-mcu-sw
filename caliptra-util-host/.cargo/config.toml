@@ -1,0 +1,20 @@
+# Licensed under the Apache-2.0 license
+
+# Cargo configuration for caliptra-util-host workspace
+
+[build]
+# Use the top-level target directory to unify build artifacts
+target-dir = "../target/caliptra-util-host"
+
+[alias]
+# XTask alias - allows running 'cargo xtask <command>' instead of 'cargo run -p caliptra-util-host-xtask --'
+xtask = "run -p caliptra-util-host-xtask --"
+
+# Additional convenient aliases
+x = "run -p caliptra-util-host-xtask --"
+build-all = "run -p caliptra-util-host-xtask -- build"
+test-all = "run -p caliptra-util-host-xtask -- test"
+test-rust = "run -p caliptra-util-host-xtask -- test --rust-only"
+test-c = "run -p caliptra-util-host-xtask -- test --c-only"
+check-all = "run -p caliptra-util-host-xtask -- check"
+check-quick = "run -p caliptra-util-host-xtask -- check --quick"

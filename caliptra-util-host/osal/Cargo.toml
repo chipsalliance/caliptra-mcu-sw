@@ -6,17 +6,7 @@ version.workspace = true
 edition.workspace = true
 description = "OS Abstraction Layer for Caliptra Utility Host Library"
 
-[dependencies]
-# Core dependencies that work in no_std
-nb = "1.0"
-
 [features]
 default = ["std"]
-std = ["libc", "windows-sys"]
+std = []
 alloc = []
-
-[target.'cfg(unix)'.dependencies]
-libc = { version = "0.2", optional = true }
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.48", optional = true, features = ["Win32_Foundation", "Win32_System_Threading"] }

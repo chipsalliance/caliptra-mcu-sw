@@ -1,18 +1,18 @@
 # Caliptra Mailbox Applications
 
-This directory contains client and server applications for communicating with Caliptra devices over UDP/TCP networks.
+This directory contains client and server applications for communicating with Caliptra devices over UDP networks.
 
 ## Overview
 
 The mailbox applications provide a network-based interface to Caliptra devices, allowing remote command execution and device simulation:
 
-- **Client**: Sends Caliptra mailbox commands over UDP/TCP to a remote device or simulator
-- **Server**: Simulates a Caliptra device, responding to mailbox commands over UDP/TCP
+- **Client**: Sends Caliptra mailbox commands over UDP to a remote device or simulator
+- **Server**: Simulates a Caliptra device, responding to mailbox commands over UDP
 
 ## Architecture
 
 ```
-┌─────────────────┐    UDP/TCP     ┌─────────────────┐
+┌─────────────────┐       UDP      ┌─────────────────┐
 │  Mailbox Client │◄──────────────►│  Mailbox Server │
 │                 │                │   (Simulator)   │
 │ ┌─────────────┐ │                │ ┌─────────────┐ │
@@ -22,7 +22,7 @@ The mailbox applications provide a network-based interface to Caliptra devices, 
 │ │   Mailbox   │ │                │ ┌─────────────┐ │
 │ └─────────────┘ │                │ │   Device    │ │
 │ ┌─────────────┐ │                │ │ Simulator   │ │
-│ │ UDP/TCP     │ │                │ └─────────────┘ │
+│ │ UDP         │ │                │ └─────────────┘ │
 │ │ Driver      │ │                └─────────────────┘
 │ └─────────────┘ │
 └─────────────────┘

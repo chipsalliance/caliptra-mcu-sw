@@ -2,10 +2,10 @@
 
 //! Custom transport support for C-defined transports
 
-use std::ffi::c_void;
-use caliptra_util_host_transport::{Transport, TransportResult, TransportError};
 use crate::error::CaliptraError::{self, Success};
 use crate::transport::CaliptraTransport;
+use caliptra_util_host_transport::{Transport, TransportError, TransportResult};
+use std::ffi::c_void;
 
 /// C function pointer types for custom transport implementation
 pub type CTransportSendFn = unsafe extern "C" fn(
@@ -52,10 +52,7 @@ unsafe impl Sync for CTransportWrapper {}
 impl CTransportWrapper {
     /// Create a new C transport wrapper
     pub fn new(vtable: CTransportVTable, context: *mut c_void) -> Self {
-        Self {
-            vtable,
-            context,
-        }
+        Self { vtable, context }
     }
 }
 
@@ -134,7 +131,7 @@ pub extern "C" fn caliptra_transport_create_from_c_vtable(
         let wrapper = CTransportWrapper::new(vtable_copy, context);
         let boxed_transport = Box::new(wrapper);
         let raw_transport = Box::into_raw(boxed_transport);
-        
+
         // Cast to CaliptraTransport pointer
         *transport = raw_transport as *mut CaliptraTransport;
     }
@@ -149,5 +146,5 @@ impl Clone for CTransportVTable {
     }
 }
 
-// Need to implement Copy for CTransportVTable  
+// Need to implement Copy for CTransportVTable
 impl Copy for CTransportVTable {}

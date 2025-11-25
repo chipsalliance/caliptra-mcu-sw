@@ -7,7 +7,7 @@ INCLUDES = -I../include
 LDFLAGS = -ldl -lpthread -lm
 
 # Directories
-TARGET_DIR = ../../target/debug
+TARGET_DIR = ../../../target/caliptra-util-host/debug
 INCLUDE_DIR = ../include
 TEST_DIR = .
 
@@ -39,11 +39,13 @@ build-rust:
 # Build test executables
 test_get_device_id: test_get_device_id.c $(STATIC_LIB) $(TEST_UTILS_LIB) $(HEADER)
 	@echo "Building test: $@"
-	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $< $(STATIC_LIB) $(TEST_UTILS_LIB) $(LDFLAGS)
+	@mkdir -p $(TARGET_DIR)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $(TARGET_DIR)/$@ $< $(STATIC_LIB) $(TEST_UTILS_LIB) $(LDFLAGS)
 
 test_custom_c_transport: test_custom_c_transport.c $(STATIC_LIB) $(HEADER)
 	@echo "Building test: $@"
-	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $< $(STATIC_LIB) $(LDFLAGS)
+	@mkdir -p $(TARGET_DIR)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $(TARGET_DIR)/$@ $< $(STATIC_LIB) $(LDFLAGS)
 
 # Run tests
 test: $(TESTS)
@@ -51,7 +53,7 @@ test: $(TESTS)
 	@for test in $(TESTS); do \
 		echo ""; \
 		echo "Running $$test..."; \
-		LD_LIBRARY_PATH=$(TARGET_DIR):$$LD_LIBRARY_PATH ./$$test; \
+		LD_LIBRARY_PATH=$(TARGET_DIR):$$LD_LIBRARY_PATH $(TARGET_DIR)/$$test; \
 		if [ $$? -ne 0 ]; then \
 			echo "Test $$test failed!"; \
 			exit 1; \
@@ -62,7 +64,7 @@ test: $(TESTS)
 
 # Clean build artifacts
 clean:
-	rm -f $(TESTS)
+	rm -f $(foreach test,$(TESTS),$(TARGET_DIR)/$(test))
 	rm -f *.o
 	cd .. && cargo clean
 

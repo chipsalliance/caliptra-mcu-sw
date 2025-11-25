@@ -11,10 +11,16 @@ description = "Caliptra Mailbox Client Library with Validation Support"
 name = "caliptra_mailbox_client"
 path = "src/lib.rs"
 
+# Binary
+[[bin]]
+name = "validator"
+path = "src/main.rs"
+
 [dependencies]
+anyhow.workspace = true
+clap.workspace = true
 caliptra-util-host-session.workspace = true
 caliptra-util-host-transport.workspace = true
 caliptra-util-host-commands.workspace = true
 caliptra-util-host-command-types.workspace = true
-anyhow = "1.0"
 zerocopy.workspace = true

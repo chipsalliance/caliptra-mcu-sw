@@ -14,9 +14,7 @@ pub struct CaliptraTransport {
 
 /// Destroy transport instance (from design document)
 #[no_mangle]
-pub extern "C" fn caliptra_transport_destroy(
-    transport: *mut CaliptraTransport
-) -> CaliptraError {
+pub extern "C" fn caliptra_transport_destroy(transport: *mut CaliptraTransport) -> CaliptraError {
     if transport.is_null() {
         return CaliptraError::InvalidArgument;
     }
@@ -26,7 +24,7 @@ pub extern "C" fn caliptra_transport_destroy(
     // The transport wrapper will be automatically cleaned up when dropped
     if !transport.is_null() {
         unsafe {
-            let _ = Box::from_raw(transport);  // Convert back to Box to drop it
+            let _ = Box::from_raw(transport); // Convert back to Box to drop it
         }
     }
     CaliptraError::Success

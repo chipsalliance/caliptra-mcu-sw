@@ -3,12 +3,12 @@
 //! Caliptra Utility Host Library
 //!
 //! A robust library for communicating with Caliptra devices using the Mailbox transport protocol.
-//! 
+//!
 //! This library provides a modular architecture for Caliptra device communication with
 //! automatic command translation between internal and external formats:
 //!
 //! - **command-types**: Command structures and type definitions with zerocopy support
-//! - **transport**: Mailbox transport layer with command translation 
+//! - **transport**: Mailbox transport layer with command translation
 //! - **session**: Session management for command execution
 //! - **commands**: High-level API functions for device commands
 //! - **osal**: Operating System Abstraction Layer for cross-platform compatibility
@@ -78,16 +78,14 @@
 //! ```
 
 // Re-export main public APIs for convenience
+pub use caliptra_util_host_command_types::{
+    CaliptraCommandId, GetDeviceCapabilitiesRequest, GetDeviceCapabilitiesResponse,
+    GetDeviceIdRequest, GetDeviceIdResponse, GetDeviceInfoRequest, GetDeviceInfoResponse,
+    GetFirmwareVersionRequest, GetFirmwareVersionResponse,
+};
+pub use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_id;
 pub use caliptra_util_host_session::CaliptraSession;
 pub use caliptra_util_host_transport::{Mailbox, Transport};
-pub use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_id;
-pub use caliptra_util_host_command_types::{
-    CaliptraCommandId, 
-    GetDeviceIdRequest, GetDeviceIdResponse,
-    GetDeviceInfoRequest, GetDeviceInfoResponse,
-    GetFirmwareVersionRequest, GetFirmwareVersionResponse,
-    GetDeviceCapabilitiesRequest, GetDeviceCapabilitiesResponse,
-};
 
 // Re-export error types
 pub use caliptra_util_host_session::SessionError;

@@ -5,14 +5,12 @@
 //! This module contains mock transport implementations used only for testing.
 //! These are not part of the production API.
 
-use crate::transport::CaliptraTransport;
 use crate::error::CaliptraError;
+use crate::transport::CaliptraTransport;
 use caliptra_util_host_transport::transports::mailbox::transport::Mailbox;
 use caliptra_util_host_transport::transports::mailbox::MailboxDriver;
 use caliptra_util_host_transport::transports::mailbox::MailboxError;
 use std::boxed::Box;
-
-
 
 /// Function pointer types for MailboxDriver implementation in C
 #[repr(C)]
@@ -64,7 +62,7 @@ impl MailboxDriver for CMailboxDriverWrapper {
             let vtable = (*self.c_driver).vtable;
             let mut response_ptr: *const u8 = std::ptr::null();
             let mut response_len: usize = 0;
-            
+
             let result = ((*vtable).send_command)(
                 self.c_driver,
                 external_cmd,
@@ -73,7 +71,7 @@ impl MailboxDriver for CMailboxDriverWrapper {
                 &mut response_ptr,
                 &mut response_len,
             );
-            
+
             match result {
                 CaliptraError::Success => {
                     if response_ptr.is_null() || response_len == 0 {
@@ -81,21 +79,21 @@ impl MailboxDriver for CMailboxDriverWrapper {
                     } else {
                         Ok(std::slice::from_raw_parts(response_ptr, response_len))
                     }
-                },
+                }
                 CaliptraError::NotSupported => Err(MailboxError::InvalidCommand),
                 CaliptraError::Timeout => Err(MailboxError::Timeout),
                 _ => Err(MailboxError::CommunicationError),
             }
         }
     }
-    
+
     fn is_ready(&self) -> bool {
         unsafe {
             let vtable = (*self.c_driver).vtable;
             ((*vtable).is_ready)(self.c_driver)
         }
     }
-    
+
     fn connect(&mut self) -> Result<(), MailboxError> {
         unsafe {
             let vtable = (*self.c_driver).vtable;
@@ -106,7 +104,7 @@ impl MailboxDriver for CMailboxDriverWrapper {
             }
         }
     }
-    
+
     fn disconnect(&mut self) -> Result<(), MailboxError> {
         unsafe {
             let vtable = (*self.c_driver).vtable;
@@ -118,7 +116,6 @@ impl MailboxDriver for CMailboxDriverWrapper {
         }
     }
 }
-
 
 /// Create a transport from a C MailboxDriver
 #[no_mangle]
@@ -132,18 +129,18 @@ pub extern "C" fn caliptra_transport_create_from_c_mailbox_driver(
 
     // Create a wrapper that implements MailboxDriver
     let wrapper = CMailboxDriverWrapper::new(c_driver);
-    
+
     // Create a boxed mailbox driver for dynamic dispatch
     let boxed_mailbox = Box::new(wrapper) as Box<dyn MailboxDriver>;
-    
+
     // Leak the box to get a static reference (this is for testing only)
     let leaked_mailbox: &'static mut dyn MailboxDriver = Box::leak(boxed_mailbox);
     let mailbox_transport = Mailbox::new(leaked_mailbox);
     let transport_box = Box::new(mailbox_transport);
-    
+
     unsafe {
         *transport = Box::into_raw(transport_box) as *mut CaliptraTransport;
     }
-    
+
     CaliptraError::Success
 }
