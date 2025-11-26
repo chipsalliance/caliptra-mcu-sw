@@ -193,6 +193,11 @@ impl McuError {
             "One-hot encoded output should be single u32"
         ),
         (
+            ROM_FUSE_VALUE_TOO_LARGE,
+            0x3_000a,
+            "Fuse value too large for layout"
+        ),
+        (
             ROM_I3C_CONFIG_RING_HEADER_ERROR,
             0x4_0000,
             "I3C config ring header error"

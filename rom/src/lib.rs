@@ -18,6 +18,8 @@ pub mod boot_status;
 pub use boot_status::*;
 pub mod flash;
 pub use flash::*;
+mod fuse_layout;
+pub use fuse_layout::*;
 mod fuses;
 pub use fuses::*;
 pub mod image_verifier;
