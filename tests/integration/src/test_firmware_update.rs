@@ -8,7 +8,7 @@ mod test {
     use mcu_builder::{CaliptraBuilder, ImageCfg};
     use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use mcu_config_emulator::flash::{
-        PartitionTable, StandAloneChecksumCalculator, DOWNLOAD_PARTITION,
+        PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
     };
     use mcu_config_emulator::EMULATOR_MEMORY_MAP;
     use pldm_fw_pkg::manifest::{
@@ -333,7 +333,7 @@ mod test {
         // Copy flash image to partition B and download partition
         let mut secondary_flash_content = flash_image.clone().to_vec();
         // Pad with zeros until the DOWNLOAD partition offset
-        let download_partition_offset = DOWNLOAD_PARTITION.offset;
+        let download_partition_offset = STAGING_PARTITION.offset;
         if secondary_flash_content.len() < download_partition_offset {
             secondary_flash_content.resize(download_partition_offset, 0);
         }

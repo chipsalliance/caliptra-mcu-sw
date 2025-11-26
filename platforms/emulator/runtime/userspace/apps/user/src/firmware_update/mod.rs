@@ -171,7 +171,7 @@ mod flash_memory {
     };
     use libtock_platform::ErrorCode;
     use mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
-    use mcu_config_emulator::flash::DOWNLOAD_PARTITION;
+    use mcu_config_emulator::flash::STAGING_PARTITION;
 
     use core::fmt::Write;
     use libtock_console::Console;
@@ -183,7 +183,7 @@ mod flash_memory {
     impl ExternalFlash {
         pub async fn new() -> Result<Self, ErrorCode> {
             Ok(ExternalFlash {
-                flash_syscall: FlashSyscall::new(DOWNLOAD_PARTITION.driver_num),
+                flash_syscall: FlashSyscall::new(STAGING_PARTITION.driver_num),
             })
         }
     }
@@ -211,7 +211,7 @@ mod flash_memory {
 
             writeln!(
                 Console::<DefaultSyscalls>::writer(),
-                "[FW Upd] Copying image from download to inactive partition {:?} length {}",
+                "[FW Upd] Copying image from staging to inactive partition {:?} length {}",
                 inactive_partition_id,
                 img_sz
             )
@@ -222,7 +222,7 @@ mod flash_memory {
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
 
-            // Copy the image from download partition to inactive partition
+            // Copy the image from staging partition to inactive partition
             let mut buffer: [u8; 256] = [0; 256];
             let mut bytes_copied = 0;
             let inactive_flash_syscall =

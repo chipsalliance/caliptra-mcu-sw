@@ -32,8 +32,8 @@ pub const IMAGE_B_PARTITION: FlashPartition = FlashPartition {
     driver_num: 0x7000_0007,
 };
 
-pub const DOWNLOAD_PARTITION: FlashPartition = FlashPartition {
-    name: "download",
+pub const STAGING_PARTITION: FlashPartition = FlashPartition {
+    name: "staging",
     offset: IMAGE_B_PARTITION.offset + IMAGE_B_PARTITION.size,
     size: (BLOCK_SIZE * 0x10),
     driver_num: 0x7000_0009,
@@ -51,7 +51,7 @@ macro_rules! flash_partition_list_primary {
 macro_rules! flash_partition_list_secondary {
     ($macro:ident) => {{
         $macro!(2, image_b, IMAGE_B_PARTITION);
-        $macro!(3, download, DOWNLOAD_PARTITION);
+        $macro!(3, staging, STAGING_PARTITION);
     }};
 }
 
