@@ -140,7 +140,7 @@ mod external_memory {
             self.dma_syscall.xfer(&transaction).await
         }
 
-        async fn image_valid(&self) -> Result<(), ErrorCode> {
+        async fn image_valid(&self, img_sz: usize) -> Result<(), ErrorCode> {
             Ok(())
         }
 
@@ -165,37 +165,25 @@ mod flash_memory {
     use core::fmt::Debug;
     use libapi_caliptra::firmware_update::StagingMemory;
     use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
-    use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash as FlashSyscall};
+    use libsyscall_caliptra::{
+        flash::{FlashCapacity, SpiFlash as FlashSyscall},
+        DefaultSyscalls,
+    };
     use libtock_platform::ErrorCode;
     use mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
+    use mcu_config_emulator::flash::STAGING_PARTITION;
+
+    use core::fmt::Write;
+    use libtock_console::Console;
 
     pub struct ExternalFlash {
         flash_syscall: FlashSyscall,
-        download_partition: PartitionId,
     }
 
     impl ExternalFlash {
         pub async fn new() -> Result<Self, ErrorCode> {
-            let mut boot_config = FlashBootConfig::new();
-
-            let inactive_partition_id = boot_config
-                .get_inactive_partition()
-                .await
-                .map_err(|_| ErrorCode::Fail)?;
-
-            // Mark the partition as invalid
-            boot_config
-                .set_partition_status(inactive_partition_id, PartitionStatus::Invalid)
-                .await
-                .map_err(|_| ErrorCode::Fail)?;
-
-            let inactive_partition = boot_config
-                .get_partition_from_id(inactive_partition_id)
-                .map_err(|_| ErrorCode::Fail)?;
-
             Ok(ExternalFlash {
-                flash_syscall: FlashSyscall::new(inactive_partition.driver_num),
-                download_partition: inactive_partition_id,
+                flash_syscall: FlashSyscall::new(STAGING_PARTITION.driver_num),
             })
         }
     }
@@ -210,12 +198,52 @@ mod flash_memory {
             self.flash_syscall.read(offset, data.len(), data).await
         }
 
-        async fn image_valid(&self) -> Result<(), ErrorCode> {
+        async fn image_valid(&self, img_sz: usize) -> Result<(), ErrorCode> {
+            // Copy image to the inactive partition
             let mut boot_config = FlashBootConfig::new();
-            boot_config
-                .set_partition_status(self.download_partition, PartitionStatus::Valid)
+            let inactive_partition_id = boot_config
+                .get_inactive_partition()
                 .await
-                .map_err(|_| ErrorCode::Fail)
+                .map_err(|_| ErrorCode::Fail)?;
+            let inactive_partition = boot_config
+                .get_partition_from_id(inactive_partition_id)
+                .map_err(|_| ErrorCode::Fail)?;
+
+            writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] Copying image from staging to inactive partition {:?} length {}",
+                inactive_partition_id,
+                img_sz
+            )
+            .unwrap();
+            // Mark inactive partittion as invalid
+            boot_config
+                .set_partition_status(inactive_partition_id, PartitionStatus::Invalid)
+                .await
+                .map_err(|_| ErrorCode::Fail)?;
+
+            // Copy the image from staging partition to inactive partition
+            let mut buffer: [u8; 256] = [0; 256];
+            let mut bytes_copied = 0;
+            let inactive_flash_syscall =
+                FlashSyscall::<DefaultSyscalls>::new(inactive_partition.driver_num);
+            while bytes_copied < img_sz {
+                let chunk_size = (img_sz - bytes_copied).min(buffer.len());
+                self.flash_syscall
+                    .read(bytes_copied, chunk_size, &mut buffer[..chunk_size])
+                    .await?;
+                inactive_flash_syscall
+                    .write(bytes_copied, chunk_size, &buffer[..chunk_size])
+                    .await?;
+                bytes_copied += chunk_size;
+            }
+
+            // Mark inactive partition as valid
+            boot_config
+                .set_partition_status(inactive_partition_id, PartitionStatus::Valid)
+                .await
+                .map_err(|_| ErrorCode::Fail)?;
+            Ok(())
         }
 
         fn size(&self) -> usize {

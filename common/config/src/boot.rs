@@ -142,6 +142,7 @@ pub enum PartitionId {
     None = 0x0000_0000,
     A = 0x0000_0001,
     B = 0x0000_0002,
+    Staging = 0x0000_0003,
 }
 
 impl core::convert::TryFrom<u32> for PartitionId {

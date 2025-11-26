@@ -7,7 +7,9 @@ mod test {
     use flash_image::{MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER};
     use mcu_builder::{CaliptraBuilder, ImageCfg};
     use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
-    use mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator};
+    use mcu_config_emulator::flash::{
+        PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
+    };
     use mcu_config_emulator::EMULATOR_MEMORY_MAP;
     use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
@@ -323,7 +325,25 @@ mod test {
             get_streaming_boot_pldm_fw_manifest(&get_device_uuid(), truncated_flash_image);
         let pldm_fw_pkg_path = create_pldm_fw_package(&pldm_manifest);
         new_opts.pldm_fw_pkg_path = Some(pldm_fw_pkg_path);
-        new_opts.secondary_flash_image_path = Some(update_flash_image_path.clone());
+        let secondary_flash_image_path = tempfile::NamedTempFile::new()
+            .expect("Failed to create temp file")
+            .path()
+            .to_path_buf();
+
+        // Copy flash image to partition B and download partition
+        let mut secondary_flash_content = flash_image.clone().to_vec();
+        // Pad with zeros until the DOWNLOAD partition offset
+        let download_partition_offset = STAGING_PARTITION.offset;
+        if secondary_flash_content.len() < download_partition_offset {
+            secondary_flash_content.resize(download_partition_offset, 0);
+        }
+        // Append the full flash image in the DOWNLOAD partition
+        secondary_flash_content.append(&mut flash_image.clone());
+
+        std::fs::write(secondary_flash_image_path.clone(), secondary_flash_content)
+            .expect("Failed to write secondary flash image");
+
+        new_opts.secondary_flash_image_path = Some(secondary_flash_image_path.clone());
         new_opts
     }
 

@@ -3,11 +3,11 @@ use core::mem::offset_of;
 use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-pub const FLASH_PARTITIONS_COUNT: usize = 3; // Number of flash partitions
+pub const FLASH_PARTITIONS_COUNT: usize = 4; // Number of flash partitions
 
 // Allocate driver numbers for flash partitions
-pub const DRIVER_NUM_START: usize = 0x8000_0006; // Base driver number for flash partitions
-pub const DRIVER_NUM_END: usize = 0x8000_0008; // End driver number for flash partitions
+pub const DRIVER_NUM_START: usize = 0x7000_0006; // Base driver number for flash partitions
+pub const DRIVER_NUM_END: usize = 0x7000_0009; // End driver number for flash partitions
 
 pub const BLOCK_SIZE: usize = 64 * 1024; // Block size for flash partitions
 
@@ -15,21 +15,28 @@ pub const PARTITION_TABLE: FlashPartition = FlashPartition {
     name: "partition_table",
     offset: 0x00000000,
     size: BLOCK_SIZE,
-    driver_num: 0x8000_0008,
+    driver_num: 0x7000_0008,
 };
 
 pub const IMAGE_A_PARTITION: FlashPartition = FlashPartition {
     name: "image_a",
     offset: BLOCK_SIZE,
-    size: (BLOCK_SIZE * 0x200),
-    driver_num: 0x8000_0006,
+    size: (BLOCK_SIZE * 0x20),
+    driver_num: 0x7000_0006,
 };
 
 pub const IMAGE_B_PARTITION: FlashPartition = FlashPartition {
     name: "image_b",
     offset: 0x00000000,
-    size: (BLOCK_SIZE * 0x200),
-    driver_num: 0x8000_0007,
+    size: (BLOCK_SIZE * 0x10),
+    driver_num: 0x7000_0007,
+};
+
+pub const STAGING_PARTITION: FlashPartition = FlashPartition {
+    name: "staging",
+    offset: IMAGE_B_PARTITION.offset + IMAGE_B_PARTITION.size,
+    size: (BLOCK_SIZE * 0x10),
+    driver_num: 0x7000_0009,
 };
 
 #[macro_export]
@@ -44,6 +51,7 @@ macro_rules! flash_partition_list_primary {
 macro_rules! flash_partition_list_secondary {
     ($macro:ident) => {{
         $macro!(2, image_b, IMAGE_B_PARTITION);
+        $macro!(3, staging, STAGING_PARTITION);
     }};
 }
 
