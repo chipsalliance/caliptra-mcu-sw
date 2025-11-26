@@ -34,6 +34,7 @@ tempfile.workspace = true
 
 [features]
 default = []
+test-caliptra-util-host-validator = []
 test-dma = []
 test-doe-transport-loopback = []
 test-doe-discovery = []

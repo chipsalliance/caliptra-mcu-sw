@@ -1,0 +1,71 @@
+# Licensed under the Apache-2.0 license
+
+[workspace]
+members = [
+    "osal",
+    "command-types", 
+    "commands",
+    "session",
+    "transport",
+    "cbinding",
+    "tests",
+    "xtask",
+    "apps/mailbox/client",
+    "apps/mailbox/server"
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Caliptra contributors"]
+
+[workspace.dependencies]
+# Internal workspace dependencies
+caliptra-util-host-osal = { path = "osal" }
+caliptra-util-host-command-types = { path = "command-types" }
+caliptra-util-host-commands = { path = "commands" }
+caliptra-util-host-session = { path = "session" }
+caliptra-util-host-transport = { path = "transport" }
+caliptra-util-host-cbinding = { path = "cbinding" }
+
+# External dependencies
+anyhow = "1.0.97"
+cargo_metadata = "0.18.1"
+cc = "1.0"
+cbindgen = "0.24"
+clap = { version = "4.5.23", features = [
+    "cargo",
+    "derive",
+    "env",
+    "string",
+    "unicode",
+    "wrap_help",
+] }
+serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
+serde_json = { version = "1.0.127", features = ["alloc"] }
+zerocopy = { version = "0.8.17", features = ["derive"] }
+
+[package]
+name = "caliptra-util-host"
+version.workspace = true
+edition.workspace = true
+description = "Caliptra Utility Host Library - A flexible framework for communicating with Caliptra devices"
+
+[dependencies]
+# Test dependencies to allow running tests from workspace root
+caliptra-util-host-session.workspace = true
+caliptra-util-host-transport.workspace = true
+caliptra-util-host-commands.workspace = true
+caliptra-util-host-command-types.workspace = true
+zerocopy.workspace = true
+
+[dev-dependencies]
+# Same dependencies for test builds  
+caliptra-util-host-session.workspace = true
+caliptra-util-host-transport.workspace = true
+caliptra-util-host-commands.workspace = true
+caliptra-util-host-command-types.workspace = true
+zerocopy.workspace = true
+
+[features]
+default = []

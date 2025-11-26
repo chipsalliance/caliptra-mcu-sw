@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+pub mod caliptra_util_host_validator;
 pub mod doe_discovery;
 pub mod doe_transport_loopback;
 pub mod doe_user_loopback;

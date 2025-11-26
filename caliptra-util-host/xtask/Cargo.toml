@@ -1,0 +1,21 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-util-host-xtask"
+version.workspace = true
+edition.workspace = true
+description = "Command-line toolkit for caliptra-util-host library development and testing"
+
+[[bin]]
+name = "caliptra-util-host-xtask"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace dependencies
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# Additional dependencies for xtask functionality
+cargo_metadata.workspace = true

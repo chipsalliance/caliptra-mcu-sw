@@ -741,6 +741,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mailbox-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-util-host-command-types",
+ "caliptra-util-host-commands",
+ "caliptra-util-host-session",
+ "caliptra-util-host-transport",
+ "clap 4.5.51",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mailbox-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-util-host-command-types",
+ "clap 4.5.51",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-okref"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=dde1255d634389a05872db1b6edd7ee88020da3b#dde1255d634389a05872db1b6edd7ee88020da3b"
@@ -842,6 +865,46 @@ dependencies = [
 name = "caliptra-test-harness-types"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=dde1255d634389a05872db1b6edd7ee88020da3b#dde1255d634389a05872db1b6edd7ee88020da3b"
+
+[[package]]
+name = "caliptra-util-host-command-types"
+version = "0.1.0"
+dependencies = [
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-util-host-commands"
+version = "0.1.0"
+dependencies = [
+ "caliptra-util-host-command-types",
+ "caliptra-util-host-osal",
+ "caliptra-util-host-session",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-util-host-osal"
+version = "0.1.0"
+
+[[package]]
+name = "caliptra-util-host-session"
+version = "0.1.0"
+dependencies = [
+ "caliptra-util-host-command-types",
+ "caliptra-util-host-osal",
+ "caliptra-util-host-transport",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-util-host-transport"
+version = "0.1.0"
+dependencies = [
+ "caliptra-util-host-command-types",
+ "caliptra-util-host-osal",
+ "zerocopy",
+]
 
 [[package]]
 name = "caliptra-x509"
@@ -1677,6 +1740,8 @@ dependencies = [
  "caliptra-emu-periph",
  "caliptra-emu-types",
  "caliptra-image-types",
+ "caliptra-mailbox-client",
+ "caliptra-mailbox-server",
  "caliptra-registers",
  "caliptra-test",
  "chrono",

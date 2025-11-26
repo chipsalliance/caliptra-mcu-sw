@@ -1,0 +1,51 @@
+# Licensed under the Apache-2.0 license
+
+language = "C"
+cpp_compat = true
+style = "both"
+
+[parse]
+parse_deps = true
+include = [
+    "caliptra-util-host-cbinding",
+    "caliptra-util-host-commands", 
+    "caliptra-util-host-command-types",
+    "caliptra-util-host-session",
+    "caliptra-util-host-transport"
+]
+
+# Export only the real caliptra-util-host library API  
+[export]
+# Include the real C binding API that wraps caliptra-util-host
+include = [
+    "CaliptraError",
+    "CaliptraProtocolType",
+    "CaliptraSessionHandle", 
+    "CaliptraTransport",
+    "CaliptraTransportOps",
+    "CaliptraTransportDesc",
+    "GetDeviceIdResponse",
+    "CMockMailboxDriver",
+    "CMockMailboxDriverVTable",
+]
+# Exclude only documentation-specific types that aren't part of functional API
+exclude = [
+    "CaliptraErrorContext",
+    "ErrorLocation", 
+    "CaliptraFwVersion",
+    "CaliptraCapabilities",
+    "CaliptraFwIndex",
+    "CaliptraLogType",
+]
+
+# Command types from caliptra-command-types
+[export.rename]
+"CaliptraCommandId" = "CaliptraCommandId"
+
+# All public functions will be auto-exported if they have #[no_mangle]
+[layout]
+packed = "C"
+
+[defines]
+# Add header guards and includes
+"CALIPTRA_UTIL_HOST_H" = "1"

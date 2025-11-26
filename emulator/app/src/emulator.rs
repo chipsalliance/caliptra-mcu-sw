@@ -776,6 +776,7 @@ impl Emulator {
             feature = "test-mcu-mbox-soc-requester-loopback",
             feature = "test-mcu-mbox-usermode",
             feature = "test-mcu-mbox-cmds",
+            feature = "test-caliptra-util-host-validator",
         ))]
         let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
         let soc_ifc = unsafe {
@@ -906,6 +907,14 @@ impl Emulator {
             let transport = McuMailboxTransport::new(ext_mcu_mailbox0);
             let test = crate::tests::emulator_mcu_mailbox_test::RequestResponseTest::new(transport);
             test.run();
+        }
+
+        #[cfg(feature = "test-caliptra-util-host-validator")]
+        {
+            use emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;
+            let transport = McuMailboxTransport::new(ext_mcu_mailbox0);
+            crate::tests::caliptra_util_host_validator::run_mbox_responder(transport);
+            crate::tests::caliptra_util_host_validator::run_caliptra_util_host_validator();
         }
 
         if cli.streaming_boot.is_some() {

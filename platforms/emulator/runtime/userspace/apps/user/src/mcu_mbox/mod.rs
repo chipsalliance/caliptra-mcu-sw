@@ -1,6 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-#[cfg(feature = "test-mcu-mbox-cmds")]
+#[cfg(any(
+    feature = "test-mcu-mbox-cmds",
+    feature = "test-caliptra-util-host-validator"
+))]
 mod cmd_handler_mock;
 
 use core::fmt::Write;
@@ -27,7 +30,10 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     writeln!(console_writer, "Starting MCU_MBOX task...").unwrap();
 
-    #[cfg(feature = "test-mcu-mbox-cmds")]
+    #[cfg(any(
+        feature = "test-mcu-mbox-cmds",
+        feature = "test-caliptra-util-host-validator"
+    ))]
     {
         let handler = cmd_handler_mock::NonCryptoCmdHandlerMock::default();
         let mut transport = mcu_mbox_lib::transport::McuMboxTransport::new(

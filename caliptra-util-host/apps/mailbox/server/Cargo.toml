@@ -1,0 +1,21 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mailbox-server"
+version.workspace = true
+edition.workspace = true
+description = "Caliptra Mailbox Server Library and Application"
+
+[[bin]]
+name = "caliptra-mailbox-server"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+caliptra-util-host-command-types.workspace = true
+clap.workspace = true
+zerocopy.workspace = true
+
+[lib]
+name = "caliptra_mailbox_server"
+path = "src/lib.rs"

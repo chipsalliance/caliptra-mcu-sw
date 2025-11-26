@@ -165,6 +165,13 @@ zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_de
 zip = { version = "4.3.0", default-features = false, features = ["chrono", "deflate"] }
 
 # local dependencies
+caliptra-mailbox-client = { path = "caliptra-util-host/apps/mailbox/client" }
+caliptra-mailbox-server = { path = "caliptra-util-host/apps/mailbox/server" }
+caliptra-util-host-command-types = { path = "caliptra-util-host/command-types", default-features = false }
+caliptra-util-host-commands = { path = "caliptra-util-host/commands" }
+caliptra-util-host-osal = { path = "caliptra-util-host/osal" }
+caliptra-util-host-session = { path = "caliptra-util-host/session" }
+caliptra-util-host-transport = { path = "caliptra-util-host/transport" }
 capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
 capsules-runtime = { path = "runtime/kernel/capsules" }
 dma-driver = { path = "platforms/emulator/runtime/kernel/drivers/dma" }

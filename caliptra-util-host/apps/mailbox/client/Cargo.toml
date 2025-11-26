@@ -1,0 +1,26 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mailbox-client"
+version.workspace = true
+edition.workspace = true
+description = "Caliptra Mailbox Client Library with Validation Support"
+
+# Library
+[lib]
+name = "caliptra_mailbox_client"
+path = "src/lib.rs"
+
+# Binary
+[[bin]]
+name = "validator"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+caliptra-util-host-session.workspace = true
+caliptra-util-host-transport.workspace = true
+caliptra-util-host-commands.workspace = true
+caliptra-util-host-command-types.workspace = true
+zerocopy.workspace = true
