@@ -247,6 +247,16 @@ impl McuError {
             0x5_000B,
             "SOC Caliptra fatal error before firmware ready"
         ),
+        (
+            ROM_SOC_MBOX_USER_OUT_OF_RANGE,
+            0x5_000C,
+            "SOC tried to set an Mbox user out of range"
+        ),
+        (
+            ROM_SOC_MBOX_USER_LOCK_OUT_OF_RANGE,
+            0x5_000D,
+            "SOC tried to lock an Mbox user out of range"
+        ),
     ];
 }
 

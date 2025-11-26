@@ -27,6 +27,7 @@ use crate::McuBootMilestones;
 use crate::RomEnv;
 use crate::WarmBoot;
 use core::fmt::Write;
+use mcu_config::McuStraps;
 use mcu_error::McuError;
 use registers_generated::fuses::Fuses;
 use registers_generated::mci;
@@ -100,10 +101,16 @@ impl Soc {
     }
 
     pub fn set_cptra_mbox_valid_axi_user(&self, index: usize, value: u32) {
+        if index >= self.registers.cptra_mbox_valid_axi_user.len() {
+            fatal_error(McuError::ROM_SOC_MBOX_USER_OUT_OF_RANGE)
+        }
         self.registers.cptra_mbox_valid_axi_user[index].set(value);
     }
 
     pub fn set_cptra_mbox_axi_user_lock(&self, index: usize, value: u32) {
+        if index >= self.registers.cptra_mbox_valid_axi_user.len() {
+            fatal_error(McuError::ROM_SOC_MBOX_USER_LOCK_OUT_OF_RANGE)
+        }
         self.registers.cptra_mbox_axi_user_lock[index].set(value);
     }
 
@@ -394,6 +401,38 @@ impl Soc {
         }
     }
 
+    pub fn set_axi_users(&self, users: AxiUsers) {
+        let AxiUsers {
+            mbox_users,
+            fuse_user,
+            trng_user,
+            dma_user,
+        } = users;
+
+        for (i, user) in mbox_users.iter().enumerate() {
+            if let Some(user) = *user {
+                romtime::println!(
+                    "[mcu-rom] Setting Caliptra mailbox user {i} to {}",
+                    HexWord(user)
+                );
+                self.set_cptra_mbox_valid_axi_user(i, user);
+                romtime::println!("[mcu-rom] Locking Caliptra mailbox user {i}");
+                self.set_cptra_mbox_axi_user_lock(i, 1);
+            }
+        }
+
+        romtime::println!("[mcu-rom] Setting fuse user");
+        self.set_cptra_fuse_valid_axi_user(fuse_user);
+        romtime::println!("[mcu-rom] Locking fuse user");
+        self.set_cptra_fuse_axi_user_lock(1);
+        romtime::println!("[mcu-rom] Setting TRNG user");
+        self.set_cptra_trng_valid_axi_user(trng_user);
+        romtime::println!("[mcu-rom] Locking TRNG user");
+        self.set_cptra_trng_axi_user_lock(1);
+        romtime::println!("[mcu-rom] Setting DMA user");
+        self.set_ss_caliptra_dma_axi_user(dma_user);
+    }
+
     pub fn fuse_write_done(&self) {
         self.registers.cptra_fuse_wr_done.set(1);
     }
@@ -480,6 +519,31 @@ pub fn rom_start(params: RomParameters) {
         McuResetReason::Invalid => {
             romtime::println!("[mcu-rom] Invalid reset reason: multiple bits set");
             fatal_error(McuError::ROM_ROM_INVALID_RESET_REASON);
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct AxiUsers {
+    pub mbox_users: [Option<u32>; 5],
+    pub fuse_user: u32,
+    pub trng_user: u32,
+    pub dma_user: u32,
+}
+
+impl From<&McuStraps> for AxiUsers {
+    fn from(straps: &McuStraps) -> Self {
+        AxiUsers {
+            mbox_users: [
+                Some(straps.axi_user0),
+                Some(straps.axi_user1),
+                None,
+                None,
+                None,
+            ],
+            fuse_user: straps.axi_user0,
+            trng_user: straps.axi_user0,
+            dma_user: straps.axi_user0,
         }
     }
 }

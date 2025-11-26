@@ -18,7 +18,7 @@ use crate::{
     fatal_error, BootFlow, McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters,
     MCU_MEMORY_MAP,
 };
-use core::fmt::Write;
+use core::{fmt::Write, ops::Deref};
 use mcu_error::McuError;
 
 pub struct WarmBoot {}
@@ -32,6 +32,7 @@ impl BootFlow for WarmBoot {
         // Create local references to minimize code changes
         let mci = &env.mci;
         let soc = &env.soc;
+        let straps = env.straps.deref();
 
         romtime::println!("[mcu-rom] Setting Caliptra boot go");
         mci.caliptra_boot_go();
@@ -44,6 +45,19 @@ impl BootFlow for WarmBoot {
         );
         while !soc.ready_for_fuses() {}
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraReadyForFuses.into());
+
+        // TODO: Handle flash image loading with the watchdog enabled
+        if params.flash_partition_driver.is_none() {
+            soc.set_cptra_wdt_cfg(0, straps.cptra_wdt_cfg0);
+            soc.set_cptra_wdt_cfg(1, straps.cptra_wdt_cfg1);
+
+            mci.set_nmi_vector(unsafe { MCU_MEMORY_MAP.rom_offset });
+            mci.configure_wdt(straps.mcu_wdt_cfg0, straps.mcu_wdt_cfg1);
+            mci.set_flow_checkpoint(McuRomBootStatus::WatchdogConfigured.into());
+        }
+
+        soc.set_axi_users(straps.into());
+        mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         // According to https://github.com/chipsalliance/caliptra-rtl/blob/main/docs/CaliptraIntegrationSpecification.md#fuses
         // we still need to write the fuse write done bit even though fuses can't be changed on a
