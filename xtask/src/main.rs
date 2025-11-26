@@ -2,8 +2,8 @@
 
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
-use core::panic;
-use mcu_builder::ImageCfg;
+use mcu_builder::{select_memory_map, ImageCfg};
+use std::env;
 use std::path::PathBuf;
 
 mod auth_manifest;
@@ -370,8 +370,35 @@ enum EmulatorCbindingCommands {
     },
 }
 
+/// Parses the command line platform parameter, applies the default,
+/// sets environment/cargo flags, and returns the selected platform name.
+fn get_platform_name(cli: &Xtask) -> String {
+    let platform_param = match &cli.xtask {
+        Commands::AllBuild { platform, .. }
+        | Commands::RuntimeBuild { platform, .. }
+        | Commands::RomBuild { platform, .. } => platform.clone(),
+        _ => None,
+    };
+
+    // If no platform specified by the user select emulator as default
+    let platform_name = platform_param
+        // Use the explicitly provided name
+        .unwrap_or_else(|| {
+            // If None, use the default platform name
+            "emulator".to_string()
+        });
+
+    // Set Environment flag
+    env::set_var("PLATFORM", &platform_name);
+
+    platform_name
+}
+
 fn main() {
     let cli = Xtask::parse();
+    let platform_name = get_platform_name(&cli);
+    println!("PLATFORM: {}", platform_name);
+    let memory_map_dev = select_memory_map(&platform_name);
     let result = match &cli.xtask {
         Commands::AllBuild {
             output,
@@ -413,21 +440,11 @@ fn main() {
                 output.as_deref(),
                 false,
                 platform.as_deref(),
-                match platform.as_deref() {
-                    None | Some("emulator") => Some(&mcu_config_emulator::EMULATOR_MEMORY_MAP),
-                    Some("fpga") => Some(&mcu_config_fpga::FPGA_MEMORY_MAP),
-                    _ => panic!("Unsupported platform"),
-                },
+                Some(&memory_map_dev),
                 *use_dccm_for_stack,
                 *dccm_offset,
                 *dccm_size,
-                match platform.as_deref() {
-                    None | Some("emulator") => {
-                        Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG)
-                    }
-                    Some("fpga") => None,
-                    _ => panic!("Unsupported platform"),
-                },
+                mcu_builder::select_logging_flash_config(&platform_name),
                 None,
             )
             .map(|_| ())

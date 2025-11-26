@@ -46,10 +46,11 @@ fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize> {
 }
 
 pub(crate) fn bit_flags(platform: &str) -> &str {
-    match platform {
-        // TODO: remove this hack when the FPGA has another apeture for MCU SRAM
-        "fpga" => "-C target-feature=+relax", // no-op since this is already included
-        _ => "-C target-feature=+unaligned-scalar-mem",
+    // TODO: remove this hack when the FPGA has another apeture for MCU SRAM
+    if platform.contains("fpga") {
+        "-C target-feature=+relax" // no-op since this is already included
+    } else {
+        "-C target-feature=+unaligned-scalar-mem"
     }
 }
 

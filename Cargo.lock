@@ -4915,6 +4915,7 @@ dependencies = [
  "crc32fast",
  "elf",
  "mcu-builder",
+ "mcu-config",
  "mcu-config-emulator",
  "mcu-config-fpga",
  "mcu-hw-model",

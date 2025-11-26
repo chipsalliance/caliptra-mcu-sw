@@ -24,7 +24,7 @@ use zip::{
 use crate::CaliptraBuilder;
 use crate::PROJECT_ROOT;
 use crate::TARGET;
-use crate::{firmware, ImageCfg};
+use crate::{firmware, select_memory_map, ImageCfg};
 
 use std::{env::var, sync::OnceLock};
 
@@ -201,11 +201,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let platform = platform.unwrap_or("emulator");
     let rom_features = rom_features.unwrap_or_default();
     let mcu_rom = crate::rom_build(Some(platform), rom_features)?;
-    let memory_map = match platform {
-        "emulator" => &mcu_config_emulator::EMULATOR_MEMORY_MAP,
-        "fpga" => &mcu_config_fpga::FPGA_MEMORY_MAP,
-        _ => bail!("Unknown platform: {:?}", platform),
-    };
+    let memory_map = select_memory_map(platform);
 
     let mut used_filenames = std::collections::HashSet::new();
     let mut test_roms = vec![];
@@ -261,7 +257,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         Some(base_runtime_path),
         false,
         Some(platform),
-        Some(memory_map),
+        Some(&memory_map),
         use_dccm_for_stack,
         dccm_offset,
         dccm_size,
@@ -269,7 +265,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         None,
     )?;
 
-    let fpga = platform == "fpga";
+    let fpga = platform.contains("fpga");
     let mut caliptra_builder = crate::CaliptraBuilder::new(
         fpga,
         None,
@@ -332,7 +328,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             Some(&feature_runtime_path),
             false,
             Some(platform),
-            Some(memory_map),
+            Some(&memory_map),
             use_dccm_for_stack,
             dccm_offset,
             dccm_size,
