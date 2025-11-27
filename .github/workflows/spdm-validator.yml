@@ -45,6 +45,11 @@ jobs:
           tar xvzf cmake-3.31.6-linux-x86_64.tar.gz -C /opt/cmake --strip-components=1 &&
           echo "/opt/cmake/bin" >> $GITHUB_PATH
 
+      - name: Install Python dependencies for EAT decoder
+        run: |
+          sudo apt-get install -qy python3-pip
+          pip3 install asn1crypto cryptography
+
       - name: Restore sccache binary
         uses: actions/cache/restore@v3
         id: sccache_bin_restore
@@ -78,7 +83,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: parvathib/spdm-emu
-          ref: pbhogaraju/custom-3.8.0
+          ref: pbhogaraju/test_eat
           path: spdm-emu
           submodules: recursive
 
@@ -94,13 +99,28 @@ jobs:
           popd
           popd
 
+      - name: Generate SPDM nonce
+        run: |
+          echo "SPDM_NONCE=$(openssl rand -hex 32)" >> $GITHUB_ENV
+
       - name: Run SPDM validator tests on MCTP transport
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
+          echo "SPDM_NONCE in MCTP stage: ${SPDM_NONCE}"
+          echo "SPDM_NONCE length: ${#SPDM_NONCE}"
           cargo xtask all-build
           cargo t -p tests-integration -- --test test_mctp_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
+
+      - name: Test EAT decoder with generated nonce (MCTP only)
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+        run: |
+          echo "SPDM_NONCE in EAT decoder stage: ${SPDM_NONCE}"
+          echo "SPDM_NONCE length: ${#SPDM_NONCE}"
+          cd runtime/userspace/api/eat/decoder
+          python3 decode_json.py 0
 
       - name: Display SPDM Validator test results on MCTP transport
         env:
@@ -115,6 +135,15 @@ jobs:
             exit 1
           fi
 
+      - name: Upload logs and traces for MCTP transport
+        if: always()
+        uses: actions/upload-artifact@v4
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+        with:
+          name: spdm-mctp-validator-test-results
+          path: ${{ env.SPDM_VALIDATOR_DIR }}
+
       - name: Run SPDM validator tests on DOE transport
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
@@ -123,6 +152,12 @@ jobs:
           cargo t -p tests-integration -- --test test_doe_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
 
+      - name: Display SPDM Validator test results for DOE transport
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+        run: |
+          cat $SPDM_VALIDATOR_DIR/test.log
+
       - name: Upload logs and traces for DOE transport
         if: always()
         uses: actions/upload-artifact@v4
@@ -130,16 +165,7 @@ jobs:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:
           name: spdm-doe-validator-test-results
-          path: |
-            ${{ env.SPDM_VALIDATOR_DIR }}/test.log
-            ${{ env.SPDM_VALIDATOR_DIR }}/caliptra_spdm_validator.pcap
-            ${{ env.SPDM_VALIDATOR_DIR }}/spdm_device_validator_output.txt
-
-      - name: Display SPDM Validator test results for DOE transport
-        env:
-          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
-        run: |
-          cat $SPDM_VALIDATOR_DIR/test.log
+          path: ${{ env.SPDM_VALIDATOR_DIR }}
 
       - name: Check for test failures on DOE transport
         env:
@@ -188,5 +214,4 @@ jobs:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
         with:
           name: spdm-tdisp-ide-validator-test-results
-          path: |
-            ${{ env.SPDM_VALIDATOR_DIR }}/tdisp_ide_validator_output.txt
+          path: ${{ env.SPDM_VALIDATOR_DIR }}
