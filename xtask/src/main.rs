@@ -15,6 +15,7 @@ mod emulator_cbinding;
 mod format;
 #[cfg(feature = "fpga_realtime")]
 mod fpga;
+mod fuses;
 mod header;
 mod pldm_fw_pkg;
 mod precheckin;
@@ -215,6 +216,14 @@ enum Commands {
         /// Must be in the format of "type@addr"
         #[arg(short, long)]
         addrmap: Vec<String>,
+
+        /// Path to fuses.hjson file. Default: hw/fuses.hjson
+        #[arg(long)]
+        fuses_hjson: Option<PathBuf>,
+
+        /// Path to otp_ctrl_mmap.hjson file. Default: hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson
+        #[arg(long)]
+        otp_mmap_hjson: Option<PathBuf>,
     },
     /// Check dependencies
     Deps,
@@ -468,7 +477,15 @@ fn main() {
             check,
             files,
             addrmap,
-        } => registers::autogen(*check, files, addrmap),
+            fuses_hjson,
+            otp_mmap_hjson,
+        } => registers::autogen(
+            *check,
+            files,
+            addrmap,
+            fuses_hjson.as_deref(),
+            otp_mmap_hjson.as_deref(),
+        ),
         Commands::Deps => deps::check(),
         #[cfg(feature = "fpga_realtime")]
         Commands::Fpga { subcommand } => fpga::fpga_entry(subcommand),
