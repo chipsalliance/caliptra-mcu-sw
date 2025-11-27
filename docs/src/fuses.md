@@ -151,3 +151,87 @@ sequenceDiagram
   MCU->>Caliptra: HMAC DOT blob with normal key
   end
 ```
+
+## Fuse Layout Options
+
+The firmware uses a `FuseLayout` enum to define how fuse values are stored and interpreted. This provides flexibility for different encoding schemes including redundancy and error tolerance. The layout policy can be customized per platform via `McuFuseLayoutPolicy`.
+
+Note that u32s (dwords) are always packed in little-endian byte order and big-endian bit order.
+
+### Layout Types
+
+#### Single
+
+Values are stored literally without any encoding.
+
+Values stored this way in fuses should be protected with ECC.
+
+**Example:** A 4-bit value `0b1101` is stored as `0b1101`
+
+#### OneHot
+
+The logical value is the count of bits set to 1 in the fuse field. This is commonly used for version numbers and counters where incrementing requires only burning one additional fuse.
+
+The values can span multiple u32 words but the result is always a single u32 count value.
+
+**Example:**
+- `0b0000` → 0
+- `0b0111` → 3
+
+Caution: This method of storing fuses is dangerous, since generally ECC cannot be used if the value can be incremented after the initial value is written.
+
+#### LinearMajorityVote
+
+Each logical bit is duplicated multiple times within a single u32 (or across adjacent u32s). The final value uses majority voting for each bit position to provide error tolerance.
+
+Duplication is limited to < 32x and should be odd.
+
+**Example:** With 2-bit logical value and 3x duplication:
+- Raw fuses: `0b100_110_111` (bit 0 has votes `111`, bit 1 has votes `110`, bit 2 has votes `100`)
+- Result: `0b011`
+
+Generally this method is used for values that do not have ECC protection but are only written once, usually that only are a few bits in size or less.
+
+#### OneHotLinearMajorityVote
+
+Combines `LinearMajorityVote` with `OneHot` encoding. First applies majority voting to each duplicated bit, then counts the number of bits set.
+
+This is the recommended way to
+
+**Example:** With 3 logical bits and 3x duplication:
+- Raw fuses: `0b100_110_111` (bit 0 has votes `111`, bit 1 has votes `110`, bit 2 has votes `100`)
+- After majority vote on each bit: `0b011` (2 bits set)
+- Result: 2
+
+Generally this method is used for counters and version numbers that can be updated in production and therefore do not have ECC protection.
+
+#### WordMajorityVote
+
+Entire u32 words are duplicated. Each bit position across the duplicated words is decided by majority vote.
+
+**Example:** With 3 duplicated words:
+- Raw fuses: `[0b100, 0b110, 0b111]`
+- Bit 0: votes are `0,0,1` → majority is `0`
+- Bit 1: votes are `0,1,1` → majority is `1`
+- Bit 2: votes are `1,1,1` → majority is `1`
+- Result: `[0b110]`
+
+This is an alternative to LinearMajorityVote for larger values.
+
+### Common Limitations
+
+- Maximum result size for single value extraction is 32 bits
+- For multi-word extraction, the result array size must match the expected output
+- All layouts return `McuError::ROM_FUSE_LAYOUT_TOO_LARGE` if constraints are violated
+- Unsupported or invalid configurations return `McuError::ROM_UNSUPPORTED_FUSE_LAYOUT`
+- Majority vote calculations use ceiling division (e.g., need ≥2 votes for 3 duplicates)
+
+### Default Platform Configuration
+
+The default `McuFuseLayoutPolicy` uses:
+- `Single`: For certificate data, identifiers, and validity flags that are assumed to be protected by ECC
+- `OneHotLinearMajorityVote` (3x): For SVN fields and counters
+- `LinearMajorityVote` (3x): for single revocation fields
+- `WordMajorityVote` (3x): for revocation bitmasks
+
+This provides a balance between redundancy for critical security fields and storage efficiency for larger data structures.
