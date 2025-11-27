@@ -6,7 +6,7 @@ use ocp_eat::eat_encoder::{
     CborEncoder, ConciseEvidence, DebugStatus, EatEncoder, MeasurementFormat, OcpEatClaims,
 };
 
-const OCP_SECURITY_OID: &str = "1.3.6.1.4.1.42623.1";
+const OCP_SECURITY_OID: &str = "1.3.6.1.4.1.42623.1.3";
 
 pub async fn generate_eat_claims(
     issuer: &str,
