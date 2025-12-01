@@ -1,0 +1,12 @@
+# EAT Validation Environment Requirements
+# These specific versions are required to handle malformed TCG DICE extensions
+# in certificate chains from SPDM devices
+
+# Core cryptographic libraries
+cryptography==3.4.8    # Older version handles malformed ASN.1 in TCG DICE extensions
+asn1crypto==1.5.1      # ASN.1 parsing and certificate chain validation
+cbor2                   # CBOR/COSE decoding for EAT tokens
+
+# Note: cryptography versions 41+ fail on DPE leaf cert with:
+# ParseError { kind: EncodedDefault, location: [Certificate::tbs_cert, TbsCertificate::raw_extensions, 0, Extension::critical] }
+# OID 2.23.133.5.4.5 (MultiTcbInfo) has malformed ASN.1 encoding
