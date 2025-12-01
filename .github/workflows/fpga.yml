@@ -157,8 +157,8 @@ jobs:
 
       - name: Download bitstream
         run: |
-          cargo install --git https://github.com/chipsalliance/caliptra-sw --branch main-2.x bitstream-downloader --root /tmp/bitstream-downloader
-          /tmp/bitstream-downloader/bin/bitstream-downloader --bitstream-manifest hw/fpga/bitstream_manifests/subsystem.toml
+          cargo install --git https://github.com/chipsalliance/caliptra-sw --branch main-2.x caliptra-bitstream-downloader --root /tmp/bitstream-downloader
+          /tmp/bitstream-downloader/bin/caliptra-bitstream-downloader --bitstream-manifest hw/fpga/bitstream_manifests/subsystem.toml
           mv subsystem.pdi /tmp/caliptra-bitstream.pdi
 
       - name: 'Upload bitstream'

@@ -2,11 +2,14 @@
 
 use anyhow::{bail, Context, Result};
 use clap::ValueEnum;
-use mcu_builder::AllBuildArgs;
+use mcu_builder::{AllBuildArgs, PROJECT_ROOT};
 
 use super::{
     run_command, run_command_with_output,
-    utils::{build_base_docker_command, caliptra_sw_workspace_root, rsync_file, run_test_suite},
+    utils::{
+        build_base_docker_command, caliptra_sw_workspace_root, download_bitstream_pdi, rsync_file,
+        run_test_suite,
+    },
     ActionHandler, BuildArgs, BuildTestArgs, TestArgs,
 };
 
@@ -119,17 +122,29 @@ impl CommandExecutor {
         };
         self
     }
+    pub fn set_caliptra_fpga(&mut self, caliptra_fpga: bool) -> &mut Self {
+        match self {
+            Self::Subsystem(sub) => sub.set_caliptra_fpga(caliptra_fpga),
+            Self::CoreOnSubsystem(core) => core.set_caliptra_fpga(caliptra_fpga),
+            Self::Core(core) => core.set_caliptra_fpga(caliptra_fpga),
+        };
+        self
+    }
 }
 
 #[derive(Clone, Default, Debug)]
 /// Implements FPGA actions for a Subsystem FPGA.
 pub struct Subsystem {
     target_host: Option<String>,
+    caliptra_fpga: bool,
 }
 
 impl Subsystem {
     fn set_target_host(&mut self, target_host: Option<&str>) {
         self.target_host = target_host.map(|f| f.to_owned());
+    }
+    fn set_caliptra_fpga(&mut self, caliptra_fpga: bool) {
+        self.caliptra_fpga = caliptra_fpga;
     }
 }
 
@@ -138,6 +153,18 @@ impl<'a> ActionHandler<'a> for Subsystem {
         let bootstrap_cmd= "[ -d caliptra-mcu-sw ] || git clone https://github.com/chipsalliance/caliptra-mcu-sw --branch=main --depth=1";
         let target_host = self.target_host.as_deref();
         run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-mcu-sw repo")?;
+
+        // Only Petalinux images (similar to the Caliptra CI image) support segmented bitstreams.
+        if !self.caliptra_fpga {
+            return Ok(());
+        }
+
+        let subsystem_bitstream = PROJECT_ROOT
+            .join("hw")
+            .join("fpga")
+            .join("bitstream_manifests")
+            .join("subsystem.toml");
+        download_bitstream_pdi(self.target_host.as_deref(), &subsystem_bitstream)?;
         Ok(())
     }
 
@@ -196,11 +223,15 @@ impl<'a> ActionHandler<'a> for Subsystem {
 /// Implements FPGA actions for a Core on Subsystem FPGA.
 pub struct CoreOnSubsystem {
     target_host: Option<String>,
+    caliptra_fpga: bool,
 }
 
 impl CoreOnSubsystem {
     fn set_target_host(&mut self, target_host: Option<&str>) {
         self.target_host = target_host.map(|f| f.to_owned());
+    }
+    fn set_caliptra_fpga(&mut self, caliptra_fpga: bool) {
+        self.caliptra_fpga = caliptra_fpga;
     }
 }
 
@@ -210,6 +241,19 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=main-2.x --depth=1";
         let target_host = self.target_host.as_deref();
         run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-sw repo")?;
+
+        // Only Petalinux images (similar to the Caliptra CI image) support segmented bitstreams.
+        if !self.caliptra_fpga {
+            return Ok(());
+        }
+
+        let caliptra_sw = caliptra_sw_workspace_root();
+        let subsystem_bitstream = caliptra_sw
+            .join("hw")
+            .join("fpga")
+            .join("bitstream_manifests")
+            .join("subsystem.toml");
+        download_bitstream_pdi(self.target_host.as_deref(), &subsystem_bitstream)?;
         Ok(())
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
@@ -217,8 +261,7 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
             None,
             "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
         )?;
-        let caliptra_sw = caliptra_sw_workspace_root()
-            .expect("core-on-subsystem only supported when using a local copy of caliptra-sw");
+        let caliptra_sw = caliptra_sw_workspace_root();
         // Skip building Caliptra binaries when the MCU flag is set.
         if !args.mcu {
             run_command(
@@ -240,8 +283,7 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
     }
 
     fn build_test(&self, _args: &'a BuildTestArgs<'a>) -> Result<()> {
-        let caliptra_sw = caliptra_sw_workspace_root()
-            .expect("core-on-subsystem only supported when using a local copy of caliptra-sw");
+        let caliptra_sw = caliptra_sw_workspace_root();
         let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
         let mut base_cmd = build_base_docker_command()?;
         base_cmd.arg(
@@ -281,11 +323,15 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
 /// Implements FPGA actions for a Core FPGA.
 pub struct Core {
     target_host: Option<String>,
+    caliptra_fpga: bool,
 }
 
 impl Core {
     fn set_target_host(&mut self, target_host: Option<&str>) {
         self.target_host = target_host.map(|f| f.to_owned());
+    }
+    fn set_caliptra_fpga(&mut self, caliptra_fpga: bool) {
+        self.caliptra_fpga = caliptra_fpga;
     }
 }
 
@@ -294,6 +340,19 @@ impl<'a> ActionHandler<'a> for Core {
         let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=main-2.x --depth=1";
         let target_host = self.target_host.as_deref();
         run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-sw repo")?;
+
+        // Only Petalinux images (similar to the Caliptra CI image) support segmented bitstreams.
+        if !self.caliptra_fpga {
+            return Ok(());
+        }
+
+        let caliptra_sw = caliptra_sw_workspace_root();
+        let core_bitstream = caliptra_sw
+            .join("hw")
+            .join("fpga")
+            .join("bitstream_manifests")
+            .join("core.toml");
+        download_bitstream_pdi(self.target_host.as_deref(), &core_bitstream)?;
         Ok(())
     }
     fn build(&self, _args: &'a BuildArgs<'a>) -> Result<()> {
@@ -301,8 +360,7 @@ impl<'a> ActionHandler<'a> for Core {
             None,
             "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
         )?;
-        let caliptra_sw = caliptra_sw_workspace_root()
-            .expect("core only supported when using a local copy of caliptra-sw");
+        let caliptra_sw = caliptra_sw_workspace_root();
         run_command(
                         None,
                         &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display()),
@@ -319,8 +377,7 @@ impl<'a> ActionHandler<'a> for Core {
     }
 
     fn build_test(&self, _args: &'a BuildTestArgs<'a>) -> Result<()> {
-        let caliptra_sw = caliptra_sw_workspace_root()
-            .expect("core only supported when using a local copy of caliptra-sw");
+        let caliptra_sw = caliptra_sw_workspace_root();
         let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
 
         let mut base_cmd = build_base_docker_command()?;

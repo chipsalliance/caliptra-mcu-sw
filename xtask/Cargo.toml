@@ -43,6 +43,7 @@ tempfile.workspace = true
 toml.workspace = true
 walkdir.workspace = true
 zerocopy.workspace = true
+caliptra-bitstream-downloader.workspace = true
 
 [build-dependencies]
 cc.workspace = true
