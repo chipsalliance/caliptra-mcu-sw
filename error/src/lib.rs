@@ -178,6 +178,26 @@ impl McuError {
             "Failed to finalize digest"
         ),
         (
+            ROM_UNSUPPORTED_FUSE_LAYOUT,
+            0x3_0007,
+            "Unsupported layout for fuse extraction"
+        ),
+        (
+            ROM_FUSE_LAYOUT_TOO_LARGE,
+            0x3_0008,
+            "Fuse layout too large for data"
+        ),
+        (
+            ROM_FUSE_LAYOUT_ONE_HOT_RESULT_SHOULD_BE_SINGLE_U32,
+            0x3_0009,
+            "One-hot encoded output should be single u32"
+        ),
+        (
+            ROM_FUSE_VALUE_TOO_LARGE,
+            0x3_000a,
+            "Fuse value too large for layout"
+        ),
+        (
             ROM_I3C_CONFIG_RING_HEADER_ERROR,
             0x4_0000,
             "I3C config ring header error"
