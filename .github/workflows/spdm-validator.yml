@@ -94,13 +94,33 @@ jobs:
           popd
           popd
 
+      - name: Generate SPDM nonce
+        run: |
+          echo "SPDM_NONCE=$(openssl rand -hex 32)" >> $GITHUB_ENV
+
       - name: Run SPDM validator tests on MCTP transport
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
+          echo "SPDM_NONCE in MCTP stage: ${SPDM_NONCE}"
+          echo "SPDM_NONCE length: ${#SPDM_NONCE}"
           cargo xtask all-build
           cargo t -p tests-integration -- --test test_mctp_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
+
+      - name: Upload logs and traces for MCTP transport
+        if: always()
+        uses: actions/upload-artifact@v4
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+        with:
+          name: spdm-mctp-validator-test-results
+          path: |
+            ${{ env.SPDM_VALIDATOR_DIR }}/test.log
+            ${{ env.SPDM_VALIDATOR_DIR }}/caliptra_spdm_validator.pcap
+            ${{ env.SPDM_VALIDATOR_DIR }}/spdm_device_validator_output.txt
+            ${{ env.SPDM_VALIDATOR_DIR }}/measurement_block_fd.bin
+            ${{ env.SPDM_VALIDATOR_DIR }}/certificate_chain_slot_00.der
 
       - name: Display SPDM Validator test results on MCTP transport
         env:
