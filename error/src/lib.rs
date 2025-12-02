@@ -119,6 +119,16 @@ impl McuError {
             "Invalid reset reason"
         ),
         (
+            ROM_COLD_BOOT_DOT_ERROR,
+            0x1_000e,
+            "Device Ownership Transfer generic error"
+        ),
+        (
+            ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR,
+            0x1_000f,
+            "Device Ownership Transfer corrupt blob"
+        ),
+        (
             ROM_LC_TRANSITION_ERROR,
             0x2_0000,
             "Lifecycle transition error"

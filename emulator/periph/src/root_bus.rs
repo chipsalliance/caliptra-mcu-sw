@@ -19,8 +19,9 @@ use caliptra_emu_bus::{Device, Event, EventData};
 use caliptra_emu_cpu::{Irq, Pic, PicMmioRegisters};
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use emulator_consts::{
-    DIRECT_READ_FLASH_ORG, DIRECT_READ_FLASH_SIZE, EXTERNAL_TEST_SRAM_SIZE, MCU_MAILBOX0_SRAM_SIZE,
-    MCU_MAILBOX1_SRAM_SIZE, RAM_SIZE, ROM_DEDICATED_RAM_ORG, ROM_DEDICATED_RAM_SIZE,
+    DIRECT_READ_FLASH_ORG, DIRECT_READ_FLASH_SIZE, DOT_FLASH_SIZE, EXTERNAL_TEST_SRAM_SIZE,
+    MCU_MAILBOX0_SRAM_SIZE, MCU_MAILBOX1_SRAM_SIZE, RAM_SIZE, ROM_DEDICATED_RAM_ORG,
+    ROM_DEDICATED_RAM_SIZE,
 };
 use std::{
     cell::RefCell,
@@ -46,6 +47,8 @@ pub struct McuRootBusOffsets {
     pub external_test_sram_size: u32,
     pub direct_read_flash_offset: u32,
     pub direct_read_flash_size: u32,
+    pub dot_flash_offset: u32,
+    pub dot_flash_size: u32,
 }
 
 impl Default for McuRootBusOffsets {
@@ -66,13 +69,15 @@ impl Default for McuRootBusOffsets {
             external_test_sram_size: EXTERNAL_TEST_SRAM_SIZE,
             direct_read_flash_offset: DIRECT_READ_FLASH_ORG,
             direct_read_flash_size: DIRECT_READ_FLASH_SIZE,
+            dot_flash_offset: 0x8100_0000,
+            dot_flash_size: DOT_FLASH_SIZE,
         }
     }
 }
 
 const PIC_SIZE: u32 = 0x5400;
 
-/// Caliptra Root Bus Arguments
+/// MCU Root Bus Arguments
 #[derive(Default)]
 pub struct McuRootBusArgs {
     pub pic: Rc<Pic>,
@@ -95,6 +100,7 @@ pub struct McuRootBus {
     pub mcu_mailbox0: McuMailbox0Internal,
     pub mcu_mailbox1: McuMailbox0Internal,
     pub direct_read_flash: Rc<RefCell<Ram>>,
+    pub dot_flash: Rc<RefCell<Ram>>,
     pub mci_irq: Rc<RefCell<Irq>>,
     event_sender: Option<mpsc::Sender<Event>>,
     offsets: McuRootBusOffsets,
@@ -121,6 +127,7 @@ impl McuRootBus {
         let rom_sram = Ram::new(vec![0; args.offsets.rom_dedicated_ram_size as usize]);
         let external_test_sram = Ram::new(vec![0; EXTERNAL_TEST_SRAM_SIZE as usize]);
         let direct_read_flash = Ram::new(vec![0; DIRECT_READ_FLASH_SIZE as usize]);
+        let dot_flash = Ram::new(vec![0; DOT_FLASH_SIZE as usize]);
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
         let mcu_mailbox0 = McuMailbox0Internal::new(&clock.clone());
         let mcu_mailbox1 = McuMailbox0Internal::new(&clock.clone());
@@ -135,6 +142,7 @@ impl McuRootBus {
             event_sender: None,
             external_test_sram: Rc::new(RefCell::new(external_test_sram)),
             direct_read_flash: Rc::new(RefCell::new(direct_read_flash)),
+            dot_flash: Rc::new(RefCell::new(dot_flash)),
             offsets: args.offsets,
             mci_irq: Rc::new(RefCell::new(mci_irq)),
             mcu_mailbox0,
@@ -206,6 +214,14 @@ impl Bus for McuRootBus {
                 .direct_read_flash
                 .borrow_mut()
                 .read(size, addr - self.offsets.direct_read_flash_offset);
+        }
+        if addr >= self.offsets.dot_flash_offset
+            && addr < self.offsets.dot_flash_offset + self.offsets.dot_flash_size
+        {
+            return self
+                .dot_flash
+                .borrow_mut()
+                .read(size, addr - self.offsets.dot_flash_offset);
         }
         Err(BusError::LoadAccessFault)
     }

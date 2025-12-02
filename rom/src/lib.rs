@@ -16,6 +16,8 @@ Abstract:
 
 pub mod boot_status;
 pub use boot_status::*;
+mod device_ownership_transfer;
+pub use device_ownership_transfer::*;
 pub mod flash;
 pub use flash::*;
 mod fuse_layout;
@@ -88,7 +90,8 @@ fn fatal_error_raw(code: u32) -> ! {
     if let Some(handler) = unsafe { FATAL_ERROR_HANDLER.as_mut() } {
         handler.fatal_error(code);
     } else {
-        // If no handler is set, just loop forever
+        // If no handler is set, just set the MCI fatal error code and loop forever
+        RomEnv::new().mci.set_fw_fatal_error(code);
         loop {}
     }
 }

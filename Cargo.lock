@@ -2879,6 +2879,9 @@ dependencies = [
 [[package]]
 name = "mcu-config"
 version = "0.1.0"
+dependencies = [
+ "registers-generated",
+]
 
 [[package]]
 name = "mcu-config-emulator"
@@ -4581,6 +4584,7 @@ dependencies = [
  "mcu-config",
  "mcu-config-emulator",
  "mcu-config-fpga",
+ "mcu-error",
  "mcu-hw-model",
  "mcu-image-header",
  "mcu-rom-common",

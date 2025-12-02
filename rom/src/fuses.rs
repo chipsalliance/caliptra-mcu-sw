@@ -4,15 +4,17 @@
 #![allow(dead_code)]
 #![allow(unused)]
 
+use crate::{Bits, Duplication, FuseLayout};
 use core::num::NonZero;
 use mcu_error::{McuError, McuResult};
-
-use crate::{Bits, Duplication, FuseLayout};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 /// Owner public key hash structure.
-pub struct OwnerPkHash([u32; 12]);
+#[derive(Clone, FromBytes, IntoBytes, Immutable, KnownLayout)]
+pub struct OwnerPkHash(pub [u32; 12]);
 /// Vendor public key hash structure.
-pub struct VendorPkHash([u32; 12]);
+#[derive(Clone, FromBytes, IntoBytes, Immutable, KnownLayout)]
+pub struct VendorPkHash(pub [u32; 12]);
 
 /// MCU fuses implemented on top of a view of raw fuses.
 pub struct McuFuses {

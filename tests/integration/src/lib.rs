@@ -5,6 +5,7 @@ mod i3c_socket;
 mod jtag;
 #[cfg(test)]
 mod rom;
+mod test_dot;
 mod test_firmware_update;
 mod test_mctp_capsule_loopback;
 mod test_pldm_fw_update;
@@ -34,6 +35,14 @@ mod test {
         sync::LazyLock,
     };
     use zerocopy::IntoBytes;
+
+    #[derive(Default)]
+    pub struct TestParams<'a> {
+        pub feature: Option<&'a str>,
+        pub i3c_port: Option<u16>,
+        pub dot_flash_initial_contents: Option<Vec<u8>>,
+        pub rom_only: bool,
+    }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
         Path::new(&env!("CARGO_MANIFEST_DIR"))
@@ -200,7 +209,7 @@ mod test {
         }
     }
 
-    pub fn start_runtime_hw_model(feature: Option<&str>, i3c_port: Option<u16>) -> DefaultHwModel {
+    pub fn start_runtime_hw_model(params: TestParams) -> DefaultHwModel {
         let TestBinaries {
             vendor_pk_hash_u8,
             caliptra_rom,
@@ -209,10 +218,10 @@ mod test {
             soc_manifest,
             mcu_runtime,
         } = match FirmwareBinaries::from_env() {
-            Ok(binaries) => prebuilt_binaries(feature, binaries),
+            Ok(binaries) => prebuilt_binaries(params.feature, binaries),
             _ => {
                 println!("Could not find prebuilt firmware binaries, building firmware...");
-                build_test_binaries(feature)
+                build_test_binaries(params.feature)
             }
         };
 
@@ -239,8 +248,10 @@ mod test {
                 vendor_pk_hash: Some(vendor_pk_hash_u8.try_into().unwrap()),
                 active_mode: true,
                 vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
-                i3c_port,
+                i3c_port: params.i3c_port,
                 enable_mcu_uart_log: true,
+                dot_flash_initial_contents: params.dot_flash_initial_contents,
+                check_booted_to_runtime: !params.rom_only,
                 ..Default::default()
             },
             BootParams {

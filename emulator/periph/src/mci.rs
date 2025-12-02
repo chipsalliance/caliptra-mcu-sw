@@ -925,6 +925,22 @@ impl MciPeripheral for Mci {
         caliptra_emu_bus::ReadWriteRegister::new(0x1000)
     }
 
+    fn read_mci_reg_fw_error_fatal(&mut self) -> caliptra_emu_types::RvData {
+        self.ext_mci_regs.regs.borrow().fw_error_fatal
+    }
+
+    fn write_mci_reg_fw_error_fatal(&mut self, val: caliptra_emu_types::RvData) {
+        self.ext_mci_regs.regs.borrow_mut().fw_error_fatal = val;
+    }
+
+    fn read_mci_reg_fw_error_non_fatal(&mut self) -> caliptra_emu_types::RvData {
+        self.ext_mci_regs.regs.borrow().fw_error_non_fatal
+    }
+
+    fn write_mci_reg_fw_error_non_fatal(&mut self, val: caliptra_emu_types::RvData) {
+        self.ext_mci_regs.regs.borrow_mut().fw_error_non_fatal = val;
+    }
+
     fn poll(&mut self) {
         if self.timer.fired(&mut self.op_wdt_timer1_expired_action) {
             // Set T1Timeout in WDT status register

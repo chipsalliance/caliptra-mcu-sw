@@ -9,11 +9,13 @@ use crate::InitParams;
 use crate::McuHwModel;
 use crate::McuManager;
 use crate::DEFAULT_LIFECYCLE_RAW_TOKENS;
+use anyhow::bail;
 use anyhow::Result;
 use caliptra_api::SocManager;
 use caliptra_emu_bus::Bus;
 use caliptra_emu_bus::BusError;
 use caliptra_emu_bus::BusMmio;
+use caliptra_emu_bus::Ram;
 use caliptra_emu_bus::{Clock, Event};
 use caliptra_emu_cpu::CpuOrgArgs;
 use caliptra_emu_cpu::{Cpu, CpuArgs, InstrTracer, Pic};
@@ -88,6 +90,8 @@ pub struct ModelEmulated {
     i3c_controller: I3cController,
     i3c_address: Option<u8>,
     i3c_controller_join_handle: Option<JoinHandle<()>>,
+    dot_flash: Rc<RefCell<Ram>>,
+    check_booted_to_runtime: bool,
 }
 
 fn hash_slice(slice: &[u8]) -> u64 {
@@ -218,6 +222,7 @@ impl McuHwModel for ModelEmulated {
 
         let dma_ram = mcu_root_bus.ram.clone();
         let direct_read_flash = mcu_root_bus.direct_read_flash.clone();
+        let dot_flash = mcu_root_bus.dot_flash.clone();
 
         let i3c = I3c::new(
             &clock.clone(),
@@ -404,9 +409,14 @@ impl McuHwModel for ModelEmulated {
             i3c_controller,
             i3c_address: Some(i3c_dynamic_address.into()),
             i3c_controller_join_handle: None,
+            dot_flash,
+            check_booted_to_runtime: params.check_booted_to_runtime,
         };
         // Turn tracing on if the trace path was set
         m.tracing_hint(true);
+        if let Some(dot_flash_data) = params.dot_flash_initial_contents.as_deref() {
+            m.write_dot_flash(dot_flash_data)?;
+        }
 
         Ok(m)
     }
@@ -424,22 +434,26 @@ impl McuHwModel for ModelEmulated {
             .push_recovery_image(boot_params.mcu_fw_image.unwrap_or_default().to_vec());
 
         self.cpu_enabled.set(true);
-        self.step_until(|hw| {
-            hw.cycle_count() >= BOOT_CYCLES
-                || hw
-                    .mci_boot_milestones()
-                    .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-        });
-        use std::io::Write;
-        let mut w = std::io::Sink::default();
-        if !self.output().peek().is_empty() {
-            w.write_all(self.output().take(usize::MAX).as_bytes())
-                .unwrap();
+
+        if self.check_booted_to_runtime {
+            self.step_until(|hw| {
+                hw.cycle_count() >= BOOT_CYCLES
+                    || hw
+                        .mci_boot_milestones()
+                        .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+            });
+            use std::io::Write;
+            let mut w = std::io::Sink::default();
+            if !self.output().peek().is_empty() {
+                w.write_all(self.output().take(usize::MAX).as_bytes())
+                    .unwrap();
+            }
+            assert!(self
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
+            MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
         }
-        assert!(self
-            .mci_boot_milestones()
-            .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
-        MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
+
         Ok(())
     }
 
@@ -532,6 +546,21 @@ impl McuHwModel for ModelEmulated {
 
     fn read_otp_memory(&self) -> Vec<u8> {
         unimplemented!()
+    }
+
+    fn read_dot_flash(&self) -> Vec<u8> {
+        self.dot_flash.borrow().data().to_vec()
+    }
+
+    fn write_dot_flash(&mut self, data: &[u8]) -> Result<()> {
+        let mut flash = self.dot_flash.borrow_mut();
+        let flash = flash.data_mut();
+        if data.len() > flash.len() {
+            bail!("Data length exceeds DOT flash size");
+        }
+        let len = data.len().min(flash.len());
+        flash[..len].copy_from_slice(&data[..len]);
+        Ok(())
     }
 
     fn mcu_manager(&mut self) -> impl McuManager {

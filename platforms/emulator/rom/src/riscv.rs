@@ -31,6 +31,8 @@ use mcu_config_emulator::flash::{
     PARTITION_TABLE,
 };
 use mcu_rom_common::flash::flash_partition::FlashPartition;
+use mcu_rom_common::hil::FlashStorage;
+use mcu_rom_common::memory::SimpleFlash;
 use mcu_rom_common::{fatal_error, RomParameters};
 use romtime::HexWord;
 use zerocopy::{FromBytes, IntoBytes};
@@ -57,6 +59,16 @@ pub extern "C" fn rom_entry() -> ! {
         #[allow(static_mut_refs)]
         romtime::set_exiter(&mut EMULATOR_EXITER);
     }
+
+    const EMULATOR_DOT_FLASH_ADDR: *mut u8 = 0x8100_0000 as *mut u8;
+    const EMULATOR_DOT_FLASH_SIZE: usize = 4 * 1024;
+
+    let raw_dot_flash = unsafe {
+        core::slice::from_raw_parts_mut(EMULATOR_DOT_FLASH_ADDR, EMULATOR_DOT_FLASH_SIZE)
+    };
+
+    let dot_flash: &dyn FlashStorage = &SimpleFlash::new(raw_dot_flash);
+    let dot_flash = Some(dot_flash);
 
     if cfg!(feature = "test-flash-based-boot") {
         // Initialize the flash controller for testing purposes
@@ -122,6 +134,7 @@ pub extern "C" fn rom_entry() -> ! {
 
         mcu_rom_common::rom_start(RomParameters {
             flash_partition_driver: Some(&mut flash_image_partition_driver),
+            dot_flash,
             ..Default::default()
         });
     } else if cfg!(any(
@@ -133,11 +146,15 @@ pub extern "C" fn rom_entry() -> ! {
         let rom_parameters = RomParameters {
             mcu_image_verifier: Some(&mcu_image_verifier),
             mcu_image_header_size: core::mem::size_of::<mcu_image_header::McuImageHeader>(),
+            dot_flash,
             ..Default::default()
         };
         mcu_rom_common::rom_start(rom_parameters);
     } else {
-        mcu_rom_common::rom_start(RomParameters::default());
+        mcu_rom_common::rom_start(RomParameters {
+            dot_flash,
+            ..Default::default()
+        });
     }
 
     #[cfg(feature = "test-mcu-rom-flash-access")]
