@@ -65,7 +65,7 @@
 //! impl MailboxDriver for UdpMailboxDriver { /* ... */ }
 //!
 //! // Create mailbox transport with your driver
-//! let mut udp_driver = UdpMailboxDriver::new("127.0.0.1:8080".parse()?);
+//! let mut udp_driver = UdpMailboxDriver::new("127.0.0.1:62222".parse()?);
 //! let mut mailbox_transport = Mailbox::new(&mut udp_driver);
 //!
 //! // Create session and connect

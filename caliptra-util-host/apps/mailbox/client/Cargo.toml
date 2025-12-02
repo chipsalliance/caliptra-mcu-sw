@@ -19,6 +19,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+caliptra-util-host-mailbox-test-config.workspace = true
 caliptra-util-host-session.workspace = true
 caliptra-util-host-transport.workspace = true
 caliptra-util-host-commands.workspace = true

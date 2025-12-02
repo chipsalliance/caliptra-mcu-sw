@@ -2,6 +2,7 @@
 
 use caliptra_util_host_transport::{MailboxDriver, MailboxError};
 use std::net::{SocketAddr, UdpSocket};
+use std::time::Duration;
 
 /// UDP-based mailbox driver for network communication
 pub struct UdpTransportDriver {
@@ -36,9 +37,22 @@ impl MailboxDriver for UdpTransportDriver {
             .map_err(|_| MailboxError::CommunicationError)?;
 
         // Receive response
-        let (bytes_received, _) = socket
-            .recv_from(&mut self.buffer)
-            .map_err(|_| MailboxError::CommunicationError)?;
+        let (bytes_received, _) = socket.recv_from(&mut self.buffer).map_err(|e| {
+            match e.kind() {
+                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock => {
+                    eprintln!(
+                        "Timeout waiting for response from server at {}",
+                        self.server_addr
+                    );
+                    eprintln!("Make sure the server is running and accessible");
+                }
+                _ => {
+                    eprintln!("Communication error: {}", e);
+                    eprintln!("Server address: {}", self.server_addr);
+                }
+            }
+            MailboxError::CommunicationError
+        })?;
 
         Ok(&self.buffer[..bytes_received])
     }
@@ -49,6 +63,11 @@ impl MailboxDriver for UdpTransportDriver {
 
     fn connect(&mut self) -> Result<(), MailboxError> {
         let socket = UdpSocket::bind("0.0.0.0:0").map_err(|_| MailboxError::CommunicationError)?;
+
+        // Set a timeout for receive operations (5 seconds)
+        socket
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .map_err(|_| MailboxError::CommunicationError)?;
 
         self.socket = Some(socket);
         self.connected = true;

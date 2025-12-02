@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
-use crate::{MailboxClient, UdpTransportDriver};
+use crate::{MailboxClient, TestConfig, UdpTransportDriver};
 use anyhow::Result;
 use std::net::SocketAddr;
 
-/// Hardcoded expected device responses for validation
+/// Hardcoded fallback expected device responses for validation (when config is not available)
 pub const DEFAULT_EXPECTED_DEVICE_ID: u16 = 0x1234;
 pub const DEFAULT_EXPECTED_VENDOR_ID: u16 = 0x5678;
 pub const DEFAULT_EXPECTED_SUBSYSTEM_VENDOR_ID: u16 = 0x9ABC;
@@ -29,7 +29,7 @@ pub struct Validator {
 }
 
 impl Validator {
-    /// Create a new validator instance
+    /// Create a new validator instance with default values
     pub fn new(server_addr: SocketAddr) -> Self {
         Self {
             server_addr,
@@ -37,6 +37,28 @@ impl Validator {
             expected_device_id: Some(DEFAULT_EXPECTED_DEVICE_ID),
             expected_vendor_id: Some(DEFAULT_EXPECTED_VENDOR_ID),
         }
+    }
+
+    /// Create a validator from a configuration file
+    pub fn from_config(config: &TestConfig) -> Result<Self> {
+        let server_addr: SocketAddr = config
+            .network
+            .default_server_address
+            .parse()
+            .map_err(|e| anyhow::anyhow!("Invalid server address in config: {}", e))?;
+
+        Ok(Self {
+            server_addr,
+            verbose: config.validation.verbose_output,
+            expected_device_id: Some(config.device.device_id),
+            expected_vendor_id: Some(config.device.vendor_id),
+        })
+    }
+
+    /// Create a validator from the default configuration file
+    pub fn from_default_config() -> Result<Self> {
+        let config = TestConfig::load_default()?;
+        Self::from_config(&config)
     }
 
     /// Create a validator with custom expected values

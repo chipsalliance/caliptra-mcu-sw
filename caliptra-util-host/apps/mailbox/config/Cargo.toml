@@ -1,0 +1,11 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-util-host-mailbox-test-config"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+toml.workspace = true
+anyhow.workspace = true
