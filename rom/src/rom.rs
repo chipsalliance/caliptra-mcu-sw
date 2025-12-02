@@ -45,8 +45,8 @@ const MLDSA_FUSE_VALUE: u8 = 0;
 // values when setting in Caliptra
 const MLDSA_CALIPTRA_VALUE: u8 = 1;
 const LMS_CALIPTRA_VALUE: u8 = 3;
-const OTP_DAI_IDLE_BIT_OFFSET: u32 = 22;
-const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x60;
+const OTP_DAI_IDLE_BIT_OFFSET: u32 = 30;
+const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x80;
 
 /// Trait for different boot flows (cold boot, warm reset, firmware update)
 pub trait BootFlow {
