@@ -675,12 +675,12 @@ impl Otp {
             fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
             &mut fuses.vendor_hashes_prod_partition,
         )?;
-        // romtime::println!("[mcu-rom-otp] Reading vendor revocations production partition");
-        // self.read_data(
-        //     fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,
-        //     fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
-        //     &mut fuses.vendor_revocations_prod_partition,
-        // )?;
+        romtime::println!("[mcu-rom-otp] Reading vendor revocations production partition");
+        self.read_data(
+            fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,
+            fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
+            &mut fuses.vendor_revocations_prod_partition,
+        )?;
         // romtime::println!("[mcu-rom-otp] Reading vendor non-secret production partition");
         // self.read_data(
         //     fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
