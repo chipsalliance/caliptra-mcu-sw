@@ -115,6 +115,7 @@ pub struct OtpArgs {
     pub soc_manifest_svn: Option<u8>,
     pub soc_manifest_max_svn: Option<u8>,
     pub vendor_hashes_prod_partition: Option<Vec<u8>>,
+    pub vendor_test_partition: Option<Vec<u8>>,
 }
 
 //#[derive(Bus)]
@@ -212,6 +213,13 @@ impl Otp {
             let copy_len = vendor_hashes_prod_partition.len().min(max_len);
             otp.partitions[dst_start..dst_start + copy_len]
                 .copy_from_slice(&vendor_hashes_prod_partition[..copy_len]);
+        }
+        if let Some(vendor_test_partition) = args.vendor_test_partition {
+            let dst_start = fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET;
+            let max_len = fuses::VENDOR_TEST_PARTITION_BYTE_SIZE;
+            let copy_len = vendor_test_partition.len().min(max_len);
+            otp.partitions[dst_start..dst_start + copy_len]
+                .copy_from_slice(&vendor_test_partition[..copy_len]);
         }
 
         // if there were digests that were pending a reset, then calculate them now

@@ -42,6 +42,8 @@ const MLDSA_FUSE_VALUE: u8 = 0;
 // values when setting in Caliptra
 const MLDSA_CALIPTRA_VALUE: u8 = 1;
 const LMS_CALIPTRA_VALUE: u8 = 3;
+const OTP_DAI_IDLE_BIT_OFFSET: u32 = 30;
+const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x80;
 
 /// Trait for different boot flows (cold boot, warm reset, firmware update)
 pub trait BootFlow {
@@ -125,21 +127,25 @@ impl Soc {
         self.registers.ss_caliptra_dma_axi_user.set(value);
     }
 
-    pub fn populate_fuses(&self, fuses: &Fuses, mci: &romtime::Mci, field_entropy: bool) {
+    pub fn populate_fuses(&self, fuses: &Fuses, mci: &romtime::Mci) {
         // secret fuses are populated by a hardware state machine, so we can skip those
 
-        // Field Entropy.
-        let offset = if field_entropy {
-            registers_generated::fuses::SECRET_PROD_PARTITION_0_BYTE_OFFSET
-        } else {
-            registers_generated::fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET
-        };
+        // UDS partition base address. (FE offset is calculated automatically by Caliptra ROM.)
+        let offset = registers_generated::fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET;
         romtime::println!(
             "[mcu-fuse-write] Setting UDS/FE base address to {:x}",
             offset
         );
         self.registers.ss_uds_seed_base_addr_l.set(offset as u32);
         self.registers.ss_uds_seed_base_addr_h.set(0);
+
+        romtime::println!(
+            "[mcu-fuse-write] Setting UDS/FE DAI idle bit offset to {} and direct access cmd reg offset to {}",
+            OTP_DAI_IDLE_BIT_OFFSET,
+            OTP_DIRECT_ACCESS_CMD_REG_OFFSET
+        );
+        self.registers.ss_strap_generic[0].set(OTP_DAI_IDLE_BIT_OFFSET << 16);
+        self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
 
         // PQC Key Type.
         let pqc_type = match fuses.cptra_core_pqc_key_type_0()[0] & 1 {
@@ -272,9 +278,65 @@ impl Soc {
         }
 
         // TODO: vendor-specific fuses when those are supported
-        // TODO: load ECC Revocation CSRs.
-        // TODO: load LMS Revocation CSRs.
-        // TODO: load MLDSA Revocation CSRs.
+        // Load Owner ECC/LMS/MLDSA revocation CSRs.
+        // ECC Revocation.
+        let vendor_ecc_revocation =
+            u32::from_le_bytes(fuses.cptra_core_ecc_revocation_0().try_into().unwrap());
+        self.registers
+            .fuse_ecc_revocation
+            .set(vendor_ecc_revocation);
+
+        // LMS Revocation.
+
+        let vendor_lms_revocation = u32::from_le_bytes(
+            fuses
+                .cptra_core_lms_revocation_0()
+                .try_into()
+                .unwrap_or_else(|_| {
+                    fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
+                }),
+        );
+        self.registers
+            .fuse_lms_revocation
+            .set(vendor_lms_revocation);
+
+        // MLDSA Revocation.
+        let vendor_mldsa_revocation = u32::from_le_bytes(
+            fuses
+                .cptra_core_mldsa_revocation_0()
+                .try_into()
+                .unwrap_or_else(|_| {
+                    fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
+                }),
+        );
+        self.registers
+            .fuse_mldsa_revocation
+            .set(vendor_mldsa_revocation);
+
+        // Owner PK Hash.
+        // TBD: Device Ownership Transfer
+        if !fuses.cptra_ss_owner_pk_hash().iter().all(|&x| x == 0) {
+            romtime::print!("[mcu-fuse-write] Writing fuse key owner PK hash: ");
+
+            if size_of_val(fuses.cptra_ss_owner_pk_hash())
+                != size_of_val(&self.registers.cptra_owner_pk_hash)
+            {
+                fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
+            }
+            for i in 0..self.registers.cptra_owner_pk_hash.len() {
+                let word = u32::from_le_bytes(
+                    fuses.cptra_ss_owner_pk_hash()[i * 4..i * 4 + 4]
+                        .try_into()
+                        .unwrap_or_else(|_| {
+                            fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
+                        }),
+                );
+                romtime::print!("{}", HexWord(word));
+                self.registers.cptra_owner_pk_hash[i].set(word);
+            }
+            romtime::println!("");
+        }
+
         // TODO: load HEK Seed CSRs.
 
         // SoC Stepping ID (only 16-bits are relevant).
