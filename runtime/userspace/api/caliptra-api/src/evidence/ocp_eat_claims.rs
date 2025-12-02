@@ -6,7 +6,7 @@ use ocp_eat::eat_encoder::{
     CborEncoder, ConciseEvidence, DebugStatus, EatEncoder, MeasurementFormat, OcpEatClaims,
 };
 
-const OCP_SECURITY_OID: &str = "1.3.6.1.4.1.42623.1";
+const OCP_EAT_PROFILE_OID: &str = "1.3.6.1.4.1.42623.1.3";
 
 pub async fn generate_eat_claims(
     issuer: &str,
@@ -26,14 +26,14 @@ pub async fn generate_eat_claims(
     let debug_status = DebugStatus::Disabled;
 
     // prepare EAT claims
-    let eat_claims = OcpEatClaims::new(
-        issuer,
-        &cti[..cti_len],
+    let mut eat_claims = OcpEatClaims::new(
         eat_nonce,
         debug_status,
-        OCP_SECURITY_OID,
+        OCP_EAT_PROFILE_OID,
         &measurements_array,
     );
+    eat_claims.issuer = Some(issuer);
+    eat_claims.cti = Some(&cti[..cti_len]);
 
     EatEncoder::validate_claims(&eat_claims).map_err(CaliptraApiError::Eat)?;
     // Encode payload
