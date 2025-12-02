@@ -1,7 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use cargo_metadata::MetadataCommand;
+
+use std::path::Path;
 
 use std::{
     path::PathBuf,
@@ -50,7 +52,6 @@ fn check_dependencies(target_host: Option<&str>, tools: &[(&str, &str)]) -> Resu
             target_host,
             command,
             output: Output::Silence,
-            ..Default::default()
         })
         .is_err()
         {
@@ -193,12 +194,11 @@ pub fn build_base_docker_command() -> Result<Command> {
         &format!("-v{home}/.cargo/registry:/root/.cargo/registry"),
         &format!("-v{home}/.cargo/git:/root/.cargo/git"),
     ]);
-    if let Some(caliptra_sw) = caliptra_sw_workspace_root() {
-        let caliptra_path = caliptra_sw.canonicalize()?;
-        let basename = caliptra_sw.file_name().unwrap().to_str().unwrap();
-        let display = caliptra_path.display();
-        cmd.arg(format!("-v{display}:/{basename}"));
-    }
+    let caliptra_sw = caliptra_sw_workspace_root();
+    let caliptra_path = caliptra_sw.canonicalize()?;
+    let basename = caliptra_sw.file_name().unwrap().to_str().unwrap();
+    let display = caliptra_path.display();
+    cmd.arg(format!("-v{display}:/{basename}"));
     cmd.arg("ghcr.io/chipsalliance/caliptra-build-image:latest")
         .arg("/bin/bash")
         .arg("-c");
@@ -233,7 +233,7 @@ pub fn run_test_suite(
 /// Checks if any caliptra_sw dependencies are a local path.
 ///
 /// If so, returns the Path to the caliptra_sw workspace root.
-pub fn caliptra_sw_workspace_root() -> Option<PathBuf> {
+pub fn caliptra_sw_workspace_root() -> PathBuf {
     let metadata = MetadataCommand::new().exec().unwrap();
 
     // Look at the workspace dependencies for xtask and find a caliptra-sw crate.
@@ -251,18 +251,51 @@ pub fn caliptra_sw_workspace_root() -> Option<PathBuf> {
                 .iter()
                 .find(|p| p.name == "caliptra-api-types")
         })
-        .and_then(|caliptra_package| caliptra_package.path.clone());
+        .and_then(|caliptra_package| caliptra_package.path.clone())
+        .and_then(|p| p.ancestors().nth(2).map(|p| p.to_path_buf()))
+        // Fallback to the git manifest if caliptra-sw doesn't appear to be local.
+        .or_else(|| {
+            let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
+            let package = metadata
+                .packages
+                .iter()
+                .find(|p| p.name.to_string() == "caliptra-api-types")
+                .map(|p| p.manifest_path.clone())
+                .and_then(|p| p.ancestors().nth(3).map(|p| p.to_path_buf()));
+            package
+        });
 
     match caliptra_path {
-        Some(path) => {
-            // This code should search for the caliptra_sw Cargo.toml, for now hard code the folder
-            // structure.
-            let path = path
-                .ancestors()
-                .nth(2)
-                .expect("caliptra-api-types should be nested two directories in caliptra-sw");
-            Some(path.into())
-        }
-        _ => None,
+        Some(path) => path.into(),
+        None => panic!("Could not determine caliptra-sw path"),
     }
+}
+
+/// Download a bitstream from a Caliptra bitstream manifest
+pub fn download_bitstream_pdi<P: AsRef<Path>>(
+    target_host: Option<&str>,
+    manifest: P,
+) -> Result<()> {
+    // Assumes bitstream file is placed in the current directory.
+    let bitstream = caliptra_bitstream_downloader::download_bitstream(manifest.as_ref())?;
+
+    if let Some(target_host) = target_host {
+        rsync_file(
+            target_host,
+            &bitstream.display().to_string(),
+            "caliptra-bitstream.pdi",
+            false,
+        )
+        .context("failed to copy tests to fpga")?;
+    } else {
+        std::fs::rename(&bitstream, "caliptra-bitstream.pdi").context("rename bitstream pdi")?;
+    }
+
+    run_command(target_host, "sudo mkdir -p /lib/firmware")?;
+    run_command(target_host, "sudo mv caliptra-bitstream.pdi /lib/firmware")?;
+    run_command(
+        target_host,
+        r#"sudo bash -c 'echo "caliptra-bitstream.pdi" > /sys/class/fpga_manager/fpga0/firmware'"#,
+    )?;
+    Ok(())
 }
