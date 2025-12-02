@@ -24,6 +24,7 @@ pub mod test {
     use pldm_ua::daemon::PldmDaemon;
     use pldm_ua::transport::{EndpointId, PldmSocket, PldmTransport};
     use pldm_ua::{discovery_sm, update_sm};
+    use random_port::PortPicker;
     use simple_logger::SimpleLogger;
     use std::process::exit;
     use std::sync::atomic::Ordering;
@@ -37,7 +38,7 @@ pub mod test {
         let feature = feature.replace("_", "-");
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some(&feature),
-            i3c_port: Some(65534),
+            i3c_port: Some(PortPicker::new().pick().unwrap()),
             ..Default::default()
         });
 

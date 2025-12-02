@@ -27,7 +27,9 @@ mod test {
     use mcu_config::McuMemoryMap;
     use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
     use mcu_image_header::McuImageHeader;
-    use std::sync::atomic::AtomicU32;
+    use mcu_testing_common::MCU_RUNNING;
+    use random_port::PortPicker;
+    use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Mutex;
     use std::{
         path::{Path, PathBuf},
@@ -210,6 +212,9 @@ mod test {
     }
 
     pub fn start_runtime_hw_model(params: TestParams) -> DefaultHwModel {
+        // reset to known good state for beginning of test so that I3C socket will start correctly
+        MCU_RUNNING.store(true, Ordering::Relaxed);
+
         let TestBinaries {
             vendor_pk_hash_u8,
             caliptra_rom,
@@ -486,7 +491,7 @@ mod test {
         println!("Compiling test firmware {}", feature);
         let feature = feature.replace("_", "-");
         let test_runtime = compile_runtime(Some(&feature), example_app);
-        let i3c_port = "65534".to_string();
+        let i3c_port = PortPicker::new().pick().unwrap().to_string();
         let test = run_runtime(
             &feature,
             ROM.to_path_buf(),
@@ -595,7 +600,7 @@ mod test {
         let feature = "test-exit-immediately".to_string();
         println!("Compiling test firmware {}", &feature);
         let test_runtime = compile_runtime(Some(&feature), false);
-        let i3c_port = "65534".to_string();
+        let i3c_port = PortPicker::new().pick().unwrap().to_string();
         let test = run_runtime(
             &feature,
             ROM.to_path_buf(),
@@ -627,7 +632,7 @@ mod test {
         let feature = "test-mcu-rom-flash-access".to_string();
         println!("Compiling test firmware {}", &feature);
         let test_runtime = compile_runtime(Some(&feature), false);
-        let i3c_port = "65534".to_string();
+        let i3c_port = PortPicker::new().pick().unwrap().to_string();
         let test = run_runtime(
             &feature,
             get_rom_with_feature(&feature),
@@ -696,7 +701,7 @@ mod test {
             val.to_le_bytes()
         };
 
-        let i3c_port = "65534".to_string();
+        let i3c_port = PortPicker::new().pick().unwrap().to_string();
         Some(run_runtime(
             feature,
             get_rom_with_feature(feature),

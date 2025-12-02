@@ -136,6 +136,7 @@ prettyplease = "0.2.37"
 proc-macro2 = "1.0.66"
 quote = "1.0"
 rand = "0.8.5"
+random-port = "0.1.1"
 same-file = "1"
 semver = "1.0.23"
 sec1 = { version = "0.7.3" }
