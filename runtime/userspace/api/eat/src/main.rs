@@ -244,14 +244,14 @@ pub fn create_example_eat(
     let measurement = MeasurementFormat::new(concise_evidence);
     let measurements_array = [measurement];
 
-    let claims = OcpEatClaims::new(
-        issuer,
-        &cti,
+    let mut claims = OcpEatClaims::new(
         &nonce,
         DebugStatus::Disabled,
         "1.2.3.4.5",
         &measurements_array,
     );
+    claims.issuer = Some(issuer);
+    claims.cti = Some(&cti);
 
     // Use P-384 (ES384) for our P-384 key
     let protected_header = ProtectedHeader::new_es384();
@@ -792,14 +792,10 @@ mod tests {
         let measurement = MeasurementFormat::new(&evidence);
         let measurements = [measurement];
 
-        let claims = OcpEatClaims::new(
-            "Test Issuer",
-            &cti,
-            &nonce,
-            DebugStatus::Disabled,
-            "1.2.3.4.5",
-            &measurements,
-        );
+        let mut claims =
+            OcpEatClaims::new(&nonce, DebugStatus::Disabled, "1.2.3.4.5", &measurements);
+        claims.issuer = Some("Test Issuer");
+        claims.cti = Some(&cti);
 
         let estimated = EatEncoder::estimate_buffer_size(&claims);
         assert!(estimated > 100); // Should be reasonable size
@@ -814,14 +810,10 @@ mod tests {
         let measurement = MeasurementFormat::new(&evidence);
         let measurements = [measurement];
 
-        let claims = OcpEatClaims::new(
-            "Valid Issuer",
-            &cti,
-            &nonce,
-            DebugStatus::Disabled,
-            "1.2.3.4.5",
-            &measurements,
-        );
+        let mut claims =
+            OcpEatClaims::new(&nonce, DebugStatus::Disabled, "1.2.3.4.5", &measurements);
+        claims.issuer = Some("Valid Issuer");
+        claims.cti = Some(&cti);
 
         assert!(EatEncoder::validate_claims(&claims).is_ok());
 
@@ -829,14 +821,14 @@ mod tests {
         let short_cti = [0u8; 4]; // Too short
         let invalid_measurement = MeasurementFormat::new(&evidence);
         let invalid_measurements = [invalid_measurement];
-        let invalid_claims = OcpEatClaims::new(
-            "Valid Issuer",
-            &short_cti,
+        let mut invalid_claims = OcpEatClaims::new(
             &nonce,
             DebugStatus::Disabled,
             "1.2.3.4.5",
             &invalid_measurements,
         );
+        invalid_claims.issuer = Some("Valid Issuer");
+        invalid_claims.cti = Some(&short_cti);
 
         assert!(EatEncoder::validate_claims(&invalid_claims).is_err());
     }
