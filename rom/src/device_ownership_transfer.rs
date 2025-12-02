@@ -46,6 +46,7 @@ pub struct DotBlob {
 /// 4. Determining the final owner based on fuse state and DOT blob
 ///
 /// # Arguments
+/// * `main_fuses` - Main fuse data.
 /// * `dot_fuses` - DOT fuse data.
 /// * `blob` - DOT blob loaded from storage.
 /// * `stable_key_type` - The type of stable key to derive to verify the DOT blob with.
