@@ -25,7 +25,7 @@ impl FlashStorage for SimpleFlash {
         let result = match mem.get(address..address + buffer.len()) {
             Some(slice) if buffer.len() == slice.len() => {
                 // SAFETY: This is the same as copy_from_slice, but for some reason
-                // the Rust compiler is not optimizing out the panic if the lengths don't
+                // the Rust compiler is not optimizing out the panic if the lengths
                 // match, even though the lengths always match.
                 // Possibly a compiler bug?
                 unsafe {
