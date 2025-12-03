@@ -1,0 +1,39 @@
+// Example fuses for MCU based on the default caliptra-ss fuse map (otp_ctrl.hjson).
+
+{
+  // Vendor-specific secret fuses for DOT operations
+  secret_vendor: [
+    {"vendor_recovery_pk_hash": 48},    // Vendor master key for catastrophic recovery (384 bits)
+  ],
+
+  // Vendor-specific non-secret fuses
+  non_secret_vendor: [
+    // DOT state tracking fuses
+    // Each state transition burns one bit in the DOT_FUSE_ARRAY
+    // EVEN state (n % 2 == 0): Uninitialized or Volatile
+    // ODD state (n % 2 == 1): Locked or Disabled
+    // Supporting 128 lock/unlock cycles (256 total state transitions)
+    {"dot_initialized": 1}, // 1 bit used to indicate that DOT is enabled and blob is written
+    {"dot_fuse_array": 32},  // 256 bits = 128 complete lock/unlock cycles
+  ],
+
+  // Field definitions specify bit-level details within fuse bytes
+  fields: [
+    // DOT-specific fields
+    {
+        name: "dot_initialized",
+        bits: 1,
+        description: "DOT is enabled an initialized for this part.",
+    },
+    {
+      name: "dot_fuse_array",
+      bits: 256,
+      description: "One-time programmable state counter for DOT transitions. Each bit represents one state change. Increments from 0 to 255."
+    },
+    {
+      name: "vendor_recovery_pk_hash",
+      bits: 384,
+      description: "Vendor recovery key for DOT_OVERRIDE catastrophic recovery operations"
+    },
+  ]
+}
