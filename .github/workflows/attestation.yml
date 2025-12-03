@@ -128,6 +128,7 @@ jobs:
       - name: Run SPDM attestation test on MCTP transport
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+          CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
         run: |
           cargo t -p tests-integration -- --test test_mctp_spdm_attestation --nocapture  --include-ignored
 

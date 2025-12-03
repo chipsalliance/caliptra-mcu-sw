@@ -1,6 +1,6 @@
 //! Licensed under the Apache-2.0 license
 
-//! This module tests the PLDM Firmware Update
+//! This module tests MCTP Capsule Loopback functionality
 
 #[cfg(test)]
 mod test {

@@ -14,6 +14,8 @@ mod test_fpga_flash_ctrl;
 mod test_i3c_constant_writes;
 mod test_i3c_simple;
 mod test_mctp_capsule_loopback;
+mod test_mctp_spdm_attestation;
+mod test_mctp_spdm_responder_conformance;
 mod test_mctp_vdm_cmds;
 mod test_mcu_mbox;
 mod test_pldm_fw_update;
@@ -799,8 +801,6 @@ mod test {
     // run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);
-    run_test!(test_mctp_spdm_responder_conformance, nightly);
-    run_test!(test_mctp_spdm_attestation, nightly);
     run_test!(test_doe_spdm_responder_conformance, nightly);
     run_test!(test_doe_spdm_tdisp_ide_validator, nightly);
     run_test!(test_mci, example_app);
