@@ -231,8 +231,8 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             let hostname = run_command_with_output(target_host, "hostname")?;
 
             // skip this step for CI images. Kernel modules are already installed.
-            let caliptra_fpga = hostname.trim_end() != "caliptra-fpga";
-            if caliptra_fpga {
+            let caliptra_fpga = hostname.trim_end() == "caliptra-fpga";
+            if !caliptra_fpga {
                 fpga_install_kernel_modules(target_host)?;
             }
 
