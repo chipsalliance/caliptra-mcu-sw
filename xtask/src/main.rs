@@ -22,6 +22,7 @@ mod precheckin;
 mod registers;
 mod rom;
 mod runtime;
+mod stack_size;
 mod test;
 
 #[cfg(feature = "fpga_realtime")]
@@ -288,6 +289,12 @@ enum Commands {
         #[command(subcommand)]
         subcommand: AuthManifestCommands,
     },
+    /// Analyze the stack usage of an ELF file that was compiled with '-Z emit-stack-sizes'
+    StackSize {
+        /// Path to the ELF file to analyze
+        #[arg(value_name = "ELF_PATH")]
+        elf_path: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -513,6 +520,10 @@ fn main() {
                 output,
             } => auth_manifest::create(images, mcu_image, output),
         },
+        Commands::StackSize { elf_path } => {
+            let path = PathBuf::from(elf_path);
+            stack_size::analyze_stack_size(&path)
+        }
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {}", e);
