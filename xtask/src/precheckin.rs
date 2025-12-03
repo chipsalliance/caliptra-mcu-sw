@@ -8,6 +8,7 @@ pub(crate) fn precheckin() -> Result<()> {
     crate::clippy::clippy()?;
     crate::header::check()?;
     crate::deps::check()?;
+    crate::registers::autogen(true, &[], &[], None, None)?;
     mcu_builder::runtime_build_with_apps_cached(
         &[],
         None,
