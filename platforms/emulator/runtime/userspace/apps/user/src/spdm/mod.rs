@@ -7,10 +7,6 @@ mod endorsement_certs;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 mod integration_example;
 
-#[cfg(any(
-    feature = "test-mctp-spdm-responder-conformance",
-    feature = "test-mctp-spdm-attestation"
-))]
 use crate::spdm::device_measurements::ocp_eat::init_target_env_claims;
 use core::fmt::Write;
 use device_cert_store::{initialize_cert_store, SharedCertStore};
@@ -54,16 +50,8 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
     }
 
     // initialize target environment for claims
-    #[cfg(any(
-        feature = "test-mctp-spdm-responder-conformance",
-        feature = "test-mctp-spdm-attestation"
-    ))]
     init_target_env_claims();
 
-    #[cfg(any(
-        feature = "test-mctp-spdm-responder-conformance",
-        feature = "test-mctp-spdm-attestation"
-    ))]
     if let Err(e) = spawner.spawn(spdm_mctp_responder()) {
         writeln!(
             console_writer,
@@ -72,6 +60,8 @@ pub(crate) async fn spdm_task(spawner: Spawner) {
         )
         .unwrap();
     }
+
+    #[cfg(feature = "doe")]
     if let Err(e) = spawner.spawn(spdm_doe_responder()) {
         writeln!(
             console_writer,
@@ -104,29 +94,9 @@ async fn spdm_mctp_responder() {
     let shared_cert_store = SharedCertStore::new();
 
     // Measurements in OCP EAT format
-    #[cfg(any(
-        feature = "test-mctp-spdm-responder-conformance",
-        feature = "test-mctp-spdm-attestation"
-    ))]
     let (mut device_ocp_eat, meas_value_info) =
         device_measurements::ocp_eat::create_manifest_with_ocp_eat();
-    #[cfg(any(
-        feature = "test-mctp-spdm-responder-conformance",
-        feature = "test-mctp-spdm-attestation"
-    ))]
     let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_ocp_eat);
-
-    #[cfg(not(any(
-        feature = "test-mctp-spdm-responder-conformance",
-        feature = "test-mctp-spdm-attestation"
-    )))]
-    let (mut device_pcr_quote, meas_value_info) =
-        device_measurements::pcr_quote::create_manifest_with_pcr_quote();
-    #[cfg(not(any(
-        feature = "test-mctp-spdm-responder-conformance",
-        feature = "test-mctp-spdm-attestation"
-    )))]
-    let device_measurements = SpdmMeasurements::new(&meas_value_info, &mut device_pcr_quote);
 
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,
