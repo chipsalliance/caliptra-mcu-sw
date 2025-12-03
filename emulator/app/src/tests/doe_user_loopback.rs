@@ -6,8 +6,8 @@ use rand::Rng;
 const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_DWORDS: usize = 1; // minimum size of test vectors
 const MAX_TEST_DATA_DWORDS: usize = 250; // maximum size of test vectors
-use crate::tests::doe_util::common::DoeUtil;
-use crate::tests::doe_util::protocol::DataObjectType;
+use mcu_testing_common::doe_util::common::DoeUtil;
+use mcu_testing_common::doe_util::protocol::DataObjectType;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};
 

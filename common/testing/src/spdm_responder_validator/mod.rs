@@ -9,3 +9,5 @@ pub enum SpdmTestType {
     SpdmResponderConformance,
     SpdmTeeIoValidator,
 }
+
+pub use common::{execute_spdm_responder_validator, SpdmValidatorRunner, SERVER_LISTENING};

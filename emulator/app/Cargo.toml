@@ -101,9 +101,6 @@ test-mbox-sram = []
 test-mci = []
 test-mctp-ctrl-cmds = ["emulator-periph/test-mctp-ctrl-cmds"]
 test-mctp-user-loopback = ["emulator-periph/test-mctp-user-loopback"]
-test-mctp-spdm-responder-conformance = [
-    "emulator-periph/test-mctp-spdm-responder-conformance",
-]
 test-mcu-mbox = ["emulator-periph/test-mcu-mbox"]
 test-mcu-mbox-soc-requester-loopback = []
 test-mcu-mbox-usermode = []

@@ -1,21 +1,12 @@
 // Licensed under the Apache-2.0 license
 
-use crate::tests::spdm_responder_validator::common::{
-    execute_spdm_responder_validator, SpdmValidatorRunner, SERVER_LISTENING,
-};
-use crate::tests::spdm_responder_validator::transport::{
+use crate::i3c_socket::BufferedStream;
+use crate::mctp_util::common::MctpUtil;
+use crate::spdm_responder_validator::transport::{
     Transport, MAX_CMD_TIMEOUT_SECONDS, SOCKET_TRANSPORT_TYPE_MCTP,
 };
-use crate::tests::spdm_responder_validator::SpdmTestType;
-use mcu_testing_common::i3c::DynamicI3cAddress;
-use mcu_testing_common::i3c_socket::BufferedStream;
-use mcu_testing_common::mctp_util::common::MctpUtil;
-use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
-use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::process::exit;
+use crate::MCU_RUNNING;
 use std::sync::atomic::Ordering;
-use std::thread;
-use std::time::Duration;
 
 const TEST_NAME: &str = "MCTP-SPDM-RESPONDER-VALIDATOR";
 
@@ -145,53 +136,4 @@ impl Transport for MctpTransport {
     fn transport_type(&self) -> u32 {
         SOCKET_TRANSPORT_TYPE_MCTP
     }
-}
-
-pub fn run_mctp_spdm_conformance_test(
-    port: u16,
-    target_addr: DynamicI3cAddress,
-    _test_type: SpdmTestType,
-    test_timeout_seconds: Duration,
-) {
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let stream = TcpStream::connect(addr).unwrap();
-    let transport = MctpTransport::new(BufferedStream::new(stream), target_addr.into(), 1);
-
-    thread::spawn(move || {
-        thread::sleep(test_timeout_seconds);
-        println!(
-            "[{}] TIMED OUT AFTER {:?} SECONDS",
-            TEST_NAME,
-            test_timeout_seconds.as_secs()
-        );
-        exit(-1);
-    });
-
-    thread::spawn(move || {
-        wait_for_runtime_start();
-
-        if !MCU_RUNNING.load(Ordering::Relaxed) {
-            exit(-1);
-        }
-        let listener =
-            TcpListener::bind("127.0.0.1:2323").expect("Could not bind to the SPDM listerner port");
-        println!("[{}]: Spdm Server Listening on port 2323", TEST_NAME);
-        SERVER_LISTENING.store(true, Ordering::Relaxed);
-
-        if let Some(spdm_stream) = listener.incoming().next() {
-            let mut spdm_stream = spdm_stream.expect("Failed to accept connection");
-
-            let mut test = SpdmValidatorRunner::new(Box::new(transport), TEST_NAME);
-            test.run_test(&mut spdm_stream);
-            if !test.is_passed() {
-                println!("[{}]: Spdm Responder Conformance Test Failed", TEST_NAME);
-                exit(-1);
-            } else {
-                println!("[{}]: Spdm Responder Conformance Test Passed", TEST_NAME);
-                exit(0);
-            }
-        }
-    });
-
-    execute_spdm_responder_validator("MCTP");
 }
