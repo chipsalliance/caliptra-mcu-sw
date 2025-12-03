@@ -4,7 +4,7 @@
 
 #[cfg(test)]
 pub mod test {
-    use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TEST_LOCK};
+    use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
 
     use chrono::{TimeZone, Utc};
     use lazy_static::lazy_static;
@@ -24,6 +24,7 @@ pub mod test {
     use pldm_ua::daemon::PldmDaemon;
     use pldm_ua::transport::{EndpointId, PldmSocket, PldmTransport};
     use pldm_ua::{discovery_sm, update_sm};
+    use random_port::PortPicker;
     use simple_logger::SimpleLogger;
     use std::process::exit;
     use std::sync::atomic::Ordering;
@@ -35,7 +36,11 @@ pub mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let feature = feature.replace("_", "-");
-        let mut hw = start_runtime_hw_model(Some(&feature), Some(65534));
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some(&feature),
+            i3c_port: Some(PortPicker::new().pick().unwrap()),
+            ..Default::default()
+        });
 
         hw.start_i3c_controller();
 

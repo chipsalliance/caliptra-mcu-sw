@@ -16,6 +16,7 @@ Abstract:
 
 use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
+use crate::hil::FlashStorage;
 use crate::ColdBoot;
 use crate::FwBoot;
 use crate::FwHitlessUpdate;
@@ -26,6 +27,7 @@ use crate::LifecycleToken;
 use crate::McuBootMilestones;
 use crate::RomEnv;
 use crate::WarmBoot;
+use caliptra_api::mailbox::CmStableKeyType;
 use core::fmt::Write;
 use mcu_config::McuStraps;
 use mcu_error::McuError;
@@ -200,29 +202,6 @@ impl Soc {
         }
         romtime::println!("");
 
-        // TODO(clundin): Pass OCP LOCK fuses as a parameter.
-        romtime::println!("[mcu-fuse-write] Attempting to write OCP LOCK fuses");
-
-        for i in 0..8 {
-            self.registers.fuse_hek_seed[i].set(0xABDE);
-        }
-
-        romtime::println!("[mcu-fuse-write] Writing key release fuses");
-        self.registers.ss_key_release_size.set(0x40);
-
-        let mci_base_addr: u64 = self.registers.ss_mci_base_addr_l.get() as u64
-            + ((self.registers.ss_mci_base_addr_h.get() as u64) << 32);
-        let mcu_sram_addr: u64 = 0xc0_0000 + mci_base_addr;
-        self.registers
-            .ss_key_release_base_addr_h
-            .set((mcu_sram_addr >> 32) as u32);
-        self.registers
-            .ss_key_release_base_addr_l
-            .set(mcu_sram_addr as u32);
-
-        romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
-        romtime::println!("");
-
         // Runtime SVN.
         if size_of_val(fuses.cptra_core_runtime_svn())
             != size_of_val(&self.registers.fuse_runtime_svn)
@@ -285,9 +264,66 @@ impl Soc {
         }
 
         // TODO: vendor-specific fuses when those are supported
-        // TODO: load ECC Revocation CSRs.
-        // TODO: load LMS Revocation CSRs.
-        // TODO: load MLDSA Revocation CSRs.
+        // Load Owner ECC/LMS/MLDSA revocation CSRs.
+        // ECC Revocation.
+        let vendor_ecc_revocation =
+            u32::from_le_bytes(fuses.cptra_core_ecc_revocation_0().try_into().unwrap());
+        self.registers
+            .fuse_ecc_revocation
+            .set(vendor_ecc_revocation);
+
+        // LMS Revocation.
+
+        let vendor_lms_revocation = u32::from_le_bytes(
+            fuses
+                .cptra_core_lms_revocation_0()
+                .try_into()
+                .unwrap_or_else(|_| {
+                    fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
+                }),
+        );
+        self.registers
+            .fuse_lms_revocation
+            .set(vendor_lms_revocation);
+
+        // MLDSA Revocation.
+        let vendor_mldsa_revocation = u32::from_le_bytes(
+            fuses
+                .cptra_core_mldsa_revocation_0()
+                .try_into()
+                .unwrap_or_else(|_| {
+                    fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
+                }),
+        );
+        self.registers
+            .fuse_mldsa_revocation
+            .set(vendor_mldsa_revocation);
+
+        // Owner PK Hash.
+        // TBD: Device Ownership Transfer
+        if !fuses.cptra_ss_owner_pk_hash().iter().all(|&x| x == 0) {
+            romtime::print!("[mcu-fuse-write] Writing fuse key owner PK hash: ");
+
+            if size_of_val(fuses.cptra_ss_owner_pk_hash())
+                != size_of_val(&self.registers.cptra_owner_pk_hash)
+            {
+                fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
+            }
+
+            for i in 0..self.registers.cptra_owner_pk_hash.len() {
+                let word = u32::from_le_bytes(
+                    fuses.cptra_ss_owner_pk_hash()[i * 4..i * 4 + 4]
+                        .try_into()
+                        .unwrap_or_else(|_| {
+                            fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
+                        }),
+                );
+                romtime::print!("{}", HexWord(word));
+                self.registers.cptra_owner_pk_hash[i].set(word);
+            }
+            romtime::println!("");
+        }
+
         // TODO: load HEK Seed CSRs.
 
         // SoC Stepping ID (only 16-bits are relevant).
@@ -463,6 +499,10 @@ pub struct RomParameters<'a> {
     pub program_field_entropy: [bool; 4],
     pub mcu_image_header_size: usize,
     pub mcu_image_verifier: Option<&'a dyn ImageVerifier>,
+    /// The stable key type to use for DOT operations (IDevID or LDevID; IDevID is the default if not specified).
+    pub dot_stable_key_type: Option<CmStableKeyType>,
+    /// Flash storage interface for DOT blob.
+    pub dot_flash: Option<&'a dyn FlashStorage>,
 }
 
 pub fn rom_start(params: RomParameters) {

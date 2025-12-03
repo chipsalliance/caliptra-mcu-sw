@@ -65,6 +65,10 @@ impl Mci {
         (self.flow_status() & 0x0000_ffff) as u16
     }
 
+    pub fn set_fw_fatal_error(&self, code: u32) {
+        self.registers.mci_reg_fw_error_fatal.set(code);
+    }
+
     /// Union of current milestones with incoming milestones
     pub fn set_flow_milestone(&self, milestone: u16) {
         let milestone = u32::from(milestone) << 16;

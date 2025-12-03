@@ -2814,6 +2814,9 @@ dependencies = [
 [[package]]
 name = "mcu-config"
 version = "0.1.0"
+dependencies = [
+ "registers-generated",
+]
 
 [[package]]
 name = "mcu-config-emulator"
@@ -3196,6 +3199,18 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "network-interface"
+version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4a43439bf756eed340bdf8feba761e2d50c7d47175d87545cd5cbe4a137c4d1"
+dependencies = [
+ "cc",
+ "libc",
+ "thiserror 1.0.69",
+ "winapi",
 ]
 
 [[package]]
@@ -3750,6 +3765,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "99d9a13982dcf210057a8a78572b2217b667c3beacbf3a0d8b454f6f82837d38"
 dependencies = [
  "getrandom 0.3.4",
+]
+
+[[package]]
+name = "random-port"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d52b7d0e298a1b2f2f46c8d5da944c80ed1e5e6b032521cc44ee2b1dcbe2b94a"
+dependencies = [
+ "network-interface",
+ "rand 0.8.5",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -4516,6 +4542,7 @@ dependencies = [
  "mcu-config",
  "mcu-config-emulator",
  "mcu-config-fpga",
+ "mcu-error",
  "mcu-hw-model",
  "mcu-image-header",
  "mcu-rom-common",
@@ -4524,6 +4551,7 @@ dependencies = [
  "pldm-common",
  "pldm-fw-pkg",
  "pldm-ua",
+ "random-port",
  "registers-generated",
  "sha2",
  "simple_logger",

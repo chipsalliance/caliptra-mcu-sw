@@ -2,3 +2,4 @@
 
 pub mod flash_partition;
 pub mod hil;
+pub mod memory;

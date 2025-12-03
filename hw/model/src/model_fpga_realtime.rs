@@ -510,6 +510,14 @@ impl McuHwModel for ModelFpgaRealtime {
     fn warm_reset(&mut self) {
         self.base.warm_reset()
     }
+
+    fn read_dot_flash(&self) -> Vec<u8> {
+        todo!()
+    }
+
+    fn write_dot_flash(&mut self, _data: &[u8]) -> Result<()> {
+        todo!()
+    }
 }
 
 pub struct FpgaRealtimeBus<'a> {

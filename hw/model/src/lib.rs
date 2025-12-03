@@ -202,6 +202,11 @@ pub struct InitParams<'a> {
     pub enable_mcu_uart_log: bool,
 
     pub i3c_port: Option<u16>,
+
+    /// Initial contents of DOT flash.
+    pub dot_flash_initial_contents: Option<Vec<u8>>,
+
+    pub check_booted_to_runtime: bool,
 }
 
 impl InitParams<'_> {
@@ -268,6 +273,8 @@ impl Default for InitParams<'_> {
             vendor_pk_hash: None,
             vendor_pqc_type: None,
             i3c_port: None,
+            dot_flash_initial_contents: None,
+            check_booted_to_runtime: true,
         }
     }
 }
@@ -327,6 +334,9 @@ pub trait McuHwModel {
 
     fn save_otp_memory(&self, path: &Path) -> Result<()>;
     fn read_otp_memory(&self) -> Vec<u8>;
+
+    fn read_dot_flash(&self) -> Vec<u8>;
+    fn write_dot_flash(&mut self, data: &[u8]) -> Result<()>;
 
     /// The type name of this model
     fn type_name(&self) -> &'static str;
@@ -598,6 +608,10 @@ pub trait McuHwModel {
             mbox.mbox_execute().write(|w| w.execute(false));
             Ok(Some(output))
         })
+    }
+
+    fn mci_fw_fatal_error(&mut self) -> Option<u32> {
+        Some(self.mcu_manager().mci().fw_error_fatal().read()).filter(|&e| e != 0)
     }
 
     fn warm_reset(&mut self);

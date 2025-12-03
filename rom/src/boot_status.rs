@@ -55,6 +55,12 @@ pub enum McuRomBootStatus {
     FusesPopulatedToCaliptra = CALIPTRA_SETUP_BASE + 4,
     FuseWriteComplete = CALIPTRA_SETUP_BASE + 5,
     CaliptraReadyForMailbox = CALIPTRA_SETUP_BASE + 6,
+    DeviceOwnershipTransferFlashRead = CALIPTRA_SETUP_BASE + 7,
+    DeviceOwnershipTransferStarted = CALIPTRA_SETUP_BASE + 8,
+    DeviceOwnershipDeriveStableKey = CALIPTRA_SETUP_BASE + 9,
+    DeviceOwnershipBurnFuses = CALIPTRA_SETUP_BASE + 10,
+    DeviceOwnershipDetermineOwner = CALIPTRA_SETUP_BASE + 11,
+    DeviceOwnershipTransferComplete = CALIPTRA_SETUP_BASE + 12,
 
     // Firmware Loading Statuses
     RiDownloadFirmwareCommandSent = FIRMWARE_LOADING_BASE,
