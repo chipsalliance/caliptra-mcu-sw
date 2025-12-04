@@ -147,7 +147,7 @@ fn app_build_tbf(
     )?;
     let objcopy = objcopy()?;
 
-    let app_bin = target_binary(&format!("{}.bin", app.name));
+    let app_bin = target_binary(&format!("{}-{}.bin", app.name, platform));
 
     let mut app_cmd = Command::new(&objcopy);
     let app_cmd = app_cmd
