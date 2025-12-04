@@ -242,10 +242,22 @@ struct CachedValues {
 
 impl Default for CachedValues {
     fn default() -> Self {
-        CachedValues {
-            kernel_size: 140 * 1024,
-            apps_offset: (mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset + 140 * 1024)
-                as usize,
+        Self::platform_default(DEFAULT_PLATFORM)
+    }
+}
+
+impl CachedValues {
+    fn platform_default(platform: &str) -> Self {
+        let kernel_size: usize = 140 * 1024;
+        let apps_offset = kernel_size
+            + match platform {
+                "fpga" => mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset,
+                _ => mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset,
+            } as usize;
+
+        Self {
+            kernel_size,
+            apps_offset,
             apps_size: 80 * 1024,
         }
     }
@@ -258,7 +270,7 @@ fn read_cached_values(platform: &str) -> CachedValues {
             return values;
         }
     }
-    CachedValues::default()
+    CachedValues::platform_default(platform)
 }
 
 fn write_cached_values(platform: &str, values: &CachedValues) {

@@ -1,13 +1,14 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use mcu_builder::{rom_build, PROJECT_ROOT, TARGET};
+use mcu_builder::{rom_build, target_dir, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
 use crate::emulator_cbinding;
 
 pub(crate) fn test() -> Result<()> {
     test_panic_missing()?;
+    test_default_cached_value()?;
     e2e_tests()?;
     cargo_test()
 }
@@ -140,6 +141,24 @@ pub(crate) fn test_panic_missing() -> Result<()> {
                 Please remove any code that might panic."
         );
     }
+    Ok(())
+}
+
+pub(crate) fn test_default_cached_value() -> Result<()> {
+    let platform = "fpga";
+
+    // Make sure the cache file is removed before build so that the error path will be taken, and
+    // thus the default values will be used.
+    let cache_file = target_dir().join(format!("cached-values-{}.json", platform));
+    let _ = std::fs::remove_file(cache_file);
+
+    let status = Command::new("cargo")
+        .args(["xtask", "runtime-build", "--platform", platform])
+        .status()?;
+    if !status.success() {
+        bail!("Failed to build runtime for FPGA with default cache values");
+    }
+
     Ok(())
 }
 
