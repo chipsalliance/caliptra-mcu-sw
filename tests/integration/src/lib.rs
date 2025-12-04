@@ -106,7 +106,7 @@ mod test {
         let feature = feature.map(|f| format!("-{f}")).unwrap_or_default();
         let output = target_binary(&format!("runtime{}-{}.bin", feature, platform()));
         let output_name = format!("{}", output.display());
-        mcu_builder::runtime_build_with_apps_cached(
+        mcu_builder::runtime_build_with_apps(
             &features,
             Some(output_name),
             example_app,
@@ -667,7 +667,7 @@ mod test {
 
         let test_runtime = target_binary(&format!("runtime-{}.bin", feature));
         let output_name = format!("{}", test_runtime.display());
-        mcu_builder::runtime_build_with_apps_cached(
+        mcu_builder::runtime_build_with_apps(
             &[feature],
             Some(output_name),
             true,
