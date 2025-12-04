@@ -24,7 +24,6 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const DEFAULT_PLATFORM: &str = "emulator";
-const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
 const INTERRUPT_TABLE_SIZE: usize = 128;
 // amount to reserve for data RAM at the end of RAM
 const DATA_RAM_SIZE: usize = 152 * 1024;
@@ -282,7 +281,7 @@ fn write_cached_values(platform: &str, values: &CachedValues) {
 #[allow(clippy::too_many_arguments)]
 pub fn runtime_build_with_apps_cached(
     features: &[&str],
-    output_name: Option<&str>,
+    output_name: Option<String>,
     example_app: bool,
     platform: Option<&str>,
     memory_map: Option<&McuMemoryMap>,
@@ -294,10 +293,10 @@ pub fn runtime_build_with_apps_cached(
 ) -> Result<String> {
     let memory_map = memory_map.unwrap_or(&mcu_config_emulator::EMULATOR_MEMORY_MAP);
     let mut app_offset = memory_map.sram_offset as usize;
-    let output_name = output_name.unwrap_or(DEFAULT_RUNTIME_NAME);
-    let runtime_bin = target_binary(output_name);
-
     let platform = platform.unwrap_or(DEFAULT_PLATFORM);
+    let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform));
+    let runtime_bin = target_binary(&output_name);
+
     let mut cached_values = read_cached_values(platform);
     println!(
         "Read cached values for platform {}: {:?}",
@@ -316,7 +315,7 @@ pub fn runtime_build_with_apps_cached(
         cached_values.apps_offset,
         cached_values.apps_size,
         features,
-        output_name,
+        &output_name,
         platform,
         memory_map,
         use_dccm_for_stack,
@@ -339,7 +338,7 @@ pub fn runtime_build_with_apps_cached(
                 cached_values.apps_offset,
                 cached_values.apps_size,
                 features,
-                output_name,
+                &output_name,
                 platform,
                 memory_map,
                 use_dccm_for_stack,
@@ -382,7 +381,7 @@ pub fn runtime_build_with_apps_cached(
             apps_offset,
             apps_bin_len,
             features,
-            output_name,
+            &output_name,
             platform,
             memory_map,
             use_dccm_for_stack,

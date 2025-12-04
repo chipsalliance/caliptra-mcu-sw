@@ -108,7 +108,7 @@ mod test {
         let output_name = format!("{}", output.display());
         mcu_builder::runtime_build_with_apps_cached(
             &features,
-            Some(&output_name),
+            Some(output_name),
             example_app,
             Some(platform()),
             Some(memory_map()),
@@ -669,7 +669,7 @@ mod test {
         let output_name = format!("{}", test_runtime.display());
         mcu_builder::runtime_build_with_apps_cached(
             &[feature],
-            Some(&output_name),
+            Some(output_name),
             true,
             None,
             None,
