@@ -287,6 +287,11 @@ impl McuError {
             0x5_000D,
             "SOC tried to lock an Mbox user out of range"
         ),
+        (
+            GENERIC_EXCEPTION,
+            0xF_0000,
+            "Machine level exception was encountered during ROM execution"
+        ),
     ];
 }
 
