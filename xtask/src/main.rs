@@ -419,7 +419,7 @@ fn main() {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
             mcu_builder::runtime_build_with_apps_cached(
                 &features,
-                output.as_deref(),
+                output.clone(),
                 false,
                 platform.as_deref(),
                 match platform.as_deref() {
