@@ -38,13 +38,6 @@ jobs:
           sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
-      - name: Install cmake 3.x
-        run: |
-          wget https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz &&
-          mkdir -p /opt/cmake &&
-          tar xvzf cmake-3.31.6-linux-x86_64.tar.gz -C /opt/cmake --strip-components=1 &&
-          echo "/opt/cmake/bin" >> $GITHUB_PATH
-
       - name: Restore sccache binary
         uses: actions/cache/restore@v3
         id: sccache_bin_restore
