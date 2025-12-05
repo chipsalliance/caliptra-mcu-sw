@@ -63,6 +63,24 @@ pub fn rom_build(platform: Option<&str>, feature: &str) -> Result<String> {
         &rom_binary,
         std::fs::metadata(&rom_binary)?.len()
     );
+
+    let hex_binary = rom_binary.with_extension("hex");
+    let mut xxd_cmd = Command::new("xxd");
+
+    let xxd_result = xxd_cmd
+        .arg("-p")
+        .arg("-c")
+        .arg("8")
+        .arg(&rom_binary)
+        .arg(&hex_binary)
+        .output();
+
+    println!("Building {:?}", &hex_binary);
+
+    if xxd_result.is_err() || !xxd_result.as_ref().unwrap().status.success() {
+        bail!("xxd failed to build ROM hex");
+    }
+
     Ok(rom_binary.to_string_lossy().to_string())
 }
 
@@ -84,7 +102,8 @@ pub fn test_rom_build(platform: Option<&str>, fwid: &FwId) -> Result<String> {
     if !features.contains(&"riscv") {
         features.push("riscv");
     }
-    if platform != "emulator" {
+
+    if platform.contains("fpga") {
         features.push("fpga_realtime");
     }
     cmd.args(["--features", &features.join(",")]);

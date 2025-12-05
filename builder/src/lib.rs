@@ -11,6 +11,7 @@ mod tbf;
 
 pub use all::{all_build, AllBuildArgs, FirmwareBinaries};
 pub use caliptra::{CaliptraBuilder, ImageCfg};
+pub use mcu_config::McuMemoryMap;
 pub use rom::{rom_build, rom_ld_script, test_rom_build};
 pub use runtime::{
     runtime_build_no_apps_uncached, runtime_build_with_apps_cached, runtime_ld_script,
@@ -113,4 +114,24 @@ pub(crate) fn target_binary(name: &str) -> PathBuf {
         .join(TARGET)
         .join("release")
         .join(name)
+}
+
+/// Selects and returns the memory map based on the platform name.
+pub fn select_memory_map(platform_name: &str) -> McuMemoryMap {
+    match platform_name {
+        "emulator" => mcu_config_emulator::EMULATOR_MEMORY_MAP,
+        "fpga" => mcu_config_fpga::FPGA_MEMORY_MAP,
+        _ => mcu_config_emulator::EMULATOR_MEMORY_MAP, /* default to emulator */
+    }
+}
+
+/// Selects and returns the logging flash configuration based on the platform name.
+pub fn select_logging_flash_config(
+    platform_name: &str,
+) -> Option<&mcu_config_emulator::flash::LoggingFlashConfig> {
+    match platform_name {
+        "emulator" => Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG),
+        "fpga" => None,
+        _ => panic!("Unsupported platform"),
+    }
 }
