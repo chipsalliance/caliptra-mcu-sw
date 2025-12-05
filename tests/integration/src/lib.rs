@@ -6,6 +6,7 @@ mod jtag;
 #[cfg(test)]
 mod rom;
 mod test_dot;
+mod test_exception_handler;
 mod test_firmware_update;
 mod test_mctp_capsule_loopback;
 mod test_pldm_fw_update;
@@ -44,6 +45,7 @@ mod test {
         pub i3c_port: Option<u16>,
         pub dot_flash_initial_contents: Option<Vec<u8>>,
         pub rom_only: bool,
+        pub rom_feature: Option<&'a str>,
     }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -161,8 +163,8 @@ mod test {
         test_binaries
     }
 
-    fn build_test_binaries(feature: Option<&str>) -> TestBinaries {
-        let mcu_runtime = compile_runtime(feature, false);
+    fn build_test_binaries(params: &TestParams) -> TestBinaries {
+        let mcu_runtime = compile_runtime(params.feature, false);
         let mut builder = CaliptraBuilder::new(
             cfg!(feature = "fpga_realtime"),
             None,
@@ -190,7 +192,10 @@ mod test {
         )
         .unwrap();
 
-        let mcu_rom = std::fs::read(&*ROM).unwrap();
+        let mcu_rom = match params.rom_feature {
+            Some(feature) => std::fs::read(compile_rom(feature)).unwrap(),
+            None => std::fs::read(&*ROM).unwrap(),
+        };
         let soc_manifest = std::fs::read(
             builder
                 .get_soc_manifest(None)
@@ -226,7 +231,7 @@ mod test {
             Ok(binaries) => prebuilt_binaries(params.feature, binaries),
             _ => {
                 println!("Could not find prebuilt firmware binaries, building firmware...");
-                build_test_binaries(params.feature)
+                build_test_binaries(&params)
             }
         };
 
