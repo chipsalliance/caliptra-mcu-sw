@@ -192,6 +192,11 @@ fn app_build(
     features: &[&str],
 ) -> Result<()> {
     let app_ld_filename = format!("{}-layout.ld", app_name);
+    let mut features = features.to_vec();
+    if platform == "emulator" {
+        // enable doe only for emulator
+        features.push("doe");
+    }
     let layout_ld = &PROJECT_ROOT
         .join("platforms")
         .join("emulator") // TODO: build platform-specific
