@@ -220,7 +220,7 @@ romtime = { path = "romtime" }
 external-cmds-common = { path = "runtime/userspace/api/external-cmds-common" }
 mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
 pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
-spdm-lib = { path = "runtime/userspace/api/spdm-lib" }
+spdm-lib = { path = "runtime/userspace/api/spdm-lib", default-features = false }
 libsyscall-caliptra = { path = "runtime/userspace/syscall" }
 libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }
 libapi-emulated-caliptra = { path = "platforms/emulator/runtime/userspace/api/caliptra-api" }

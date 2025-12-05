@@ -24,7 +24,11 @@ use libapi_caliptra::crypto::asym::*;
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 
 // Maximum SPDM responder buffer size
+#[cfg(feature = "large-buffer")]
 pub const MAX_SPDM_RESPONDER_BUF_SIZE: usize = 2048;
+
+#[cfg(not(feature = "large-buffer"))]
+pub const MAX_SPDM_RESPONDER_BUF_SIZE: usize = 1024;
 
 pub struct SpdmContext<'a> {
     transport: &'a mut dyn SpdmTransport,
