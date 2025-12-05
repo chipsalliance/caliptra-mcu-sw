@@ -59,23 +59,26 @@ pub(crate) fn max_chunked_resp_size(ctx: &SpdmContext) -> usize {
 
 // Computes the chunk size based on the context and the chunk sequence number
 // Returns the chunk size and a boolean indicating if this is the last chunk
-fn compute_chunk_size(ctx: &SpdmContext, chunk_seq_num: u16) -> (usize, bool) {
+fn compute_chunk_size(ctx: &SpdmContext, chunk_seq_num: u16) -> CommandResult<(usize, bool)> {
     let extra_field_size = if chunk_seq_num == 0 {
         size_of::<LargeResponseSize>()
     } else {
         0
     };
-    let chunk_size = ctx.min_data_transfer_size().saturating_sub(
+    let max_chunk_size = ctx.min_data_transfer_size().saturating_sub(
         size_of::<SpdmMsgHdr>() + size_of::<ChunkResponseFixed>() + extra_field_size,
     );
 
-    let (is_last_chunk, remaining_len) = ctx.large_resp_context.last_chunk(chunk_size);
+    let (is_last_chunk, remaining_len) = ctx
+        .large_resp_context
+        .next_chunk_info(max_chunk_size)
+        .map_err(|_| (false, CommandError::InvalidChunkContext))?;
 
-    if is_last_chunk {
+    Ok(if is_last_chunk {
         (remaining_len, true)
     } else {
-        (chunk_size, false)
-    }
+        (max_chunk_size, false)
+    })
 }
 
 fn process_chunk_get<'a>(
@@ -97,9 +100,10 @@ fn process_chunk_get<'a>(
         ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
     })?;
 
-    if !ctx
+    if ctx
         .large_resp_context
-        .valid(chunk_get_req.handle, chunk_get_req.chunk_seq_num)
+        .validate_chunk(chunk_get_req.handle, chunk_get_req.chunk_seq_num)
+        .is_err()
     {
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
@@ -170,6 +174,8 @@ async fn encode_chunk_data(
                         None,
                     )
                     .await?;
+                rsp.pull_data(chunk_size)
+                    .map_err(|e| (false, CommandError::Codec(e)))?;
             }
             LargeResponse::Vdm(_vdm_rsp) => {
                 todo!("implement chunking logic for VDM response")
@@ -200,7 +206,7 @@ async fn generate_chunk_response<'a>(
         .encode(rsp)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    let (chunk_size, last_chunk) = compute_chunk_size(ctx, chunk_seq_num);
+    let (chunk_size, last_chunk) = compute_chunk_size(ctx, chunk_seq_num)?;
     if chunk_size > ctx.large_resp_context.large_response_size() {
         Err((false, CommandError::InvalidChunkContext))?;
     }
@@ -220,6 +226,9 @@ async fn generate_chunk_response<'a>(
     // Encode chunk data of chunk size
     payload_len += encode_chunk_data(ctx, chunk_size, rsp).await?;
 
+    // Mark this chunk as sent in the large response context
+    ctx.large_resp_context.next_chunk_sent(chunk_size);
+
     rsp.push_data(payload_len)
         .map_err(|e| (false, CommandError::Codec(e)))
 }
@@ -237,7 +246,7 @@ pub(crate) async fn handle_chunk_get<'a>(
     // 3. Check if a large response is in progress
     if ctx.state.connection_info.state() < ConnectionState::AfterCapabilities
         || ctx.local_capabilities.flags.chunk_cap() == 0
-        || ctx.large_resp_context.in_progress()
+        || !ctx.large_resp_context.in_progress()
     {
         error_code = Some(ErrorCode::UnexpectedRequest);
     }

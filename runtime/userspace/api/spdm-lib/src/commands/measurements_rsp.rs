@@ -485,7 +485,7 @@ pub(crate) async fn generate_measurements_response<'a>(
         // If the response is larger than the minimum data transfer size, use chunked response
         let large_rsp = LargeResponse::Measurements(rsp_ctx);
         let handle = ctx.large_resp_context.init(large_rsp, rsp_len);
-        Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, handle, None))?
+        Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, 0, Some(&[handle])))?
     } else {
         let session_info = match ctx.session_mgr.active_session_id() {
             Some(session_id) => match ctx.session_mgr.session_info_mut(session_id) {
