@@ -42,3 +42,8 @@ required-features = ["riscv"]
 name = "mailbox_responder"
 path = "mailbox_responder.rs"
 required-features = ["riscv"]
+
+[[bin]]
+name = "exception_handler"
+path = "exception_handler.rs"
+required-features = ["riscv"]
