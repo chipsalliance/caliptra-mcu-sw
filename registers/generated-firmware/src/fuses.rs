@@ -37,7 +37,7 @@ pub struct Fuses {
     pub vendor_revocations_prod_partition: [u8; 216],
 
     /// Vendor secret production partition.
-    pub vendor_secret_prod_partition: [u8; 520],
+    pub vendor_secret_prod_partition: [u8; 528],
 
     /// Vendor non-secret production partition.
     #[zeroize(skip)]
@@ -45,35 +45,35 @@ pub struct Fuses {
 
     /// OCP L.O.C.K Hard Epoch Key (HEK) ratchet seed slot 0.
     #[zeroize(skip)]
-    pub cptra_ss_lock_hek_prod_0: [u8; 40],
+    pub cptra_ss_lock_hek_prod_0: [u8; 48],
 
     /// OCP L.O.C.K Hard Epoch Key (HEK) ratchet seed slot 1.
     #[zeroize(skip)]
-    pub cptra_ss_lock_hek_prod_1: [u8; 40],
+    pub cptra_ss_lock_hek_prod_1: [u8; 48],
 
     /// OCP L.O.C.K Hard Epoch Key (HEK) ratchet seed slot 2.
     #[zeroize(skip)]
-    pub cptra_ss_lock_hek_prod_2: [u8; 40],
+    pub cptra_ss_lock_hek_prod_2: [u8; 48],
 
     /// OCP L.O.C.K Hard Epoch Key (HEK) ratchet seed slot 3.
     #[zeroize(skip)]
-    pub cptra_ss_lock_hek_prod_3: [u8; 40],
+    pub cptra_ss_lock_hek_prod_3: [u8; 48],
 
     /// OCP L.O.C.K Hard Epoch Key (HEK) ratchet seed slot 4.
     #[zeroize(skip)]
-    pub cptra_ss_lock_hek_prod_4: [u8; 40],
+    pub cptra_ss_lock_hek_prod_4: [u8; 48],
 
     /// OCP L.O.C.K Hard Epoch Key (HEK) ratchet seed slot 5.
     #[zeroize(skip)]
-    pub cptra_ss_lock_hek_prod_5: [u8; 40],
+    pub cptra_ss_lock_hek_prod_5: [u8; 48],
 
     /// OCP L.O.C.K Hard Epoch Key (HEK) ratchet seed slot 6.
     #[zeroize(skip)]
-    pub cptra_ss_lock_hek_prod_6: [u8; 40],
+    pub cptra_ss_lock_hek_prod_6: [u8; 48],
 
     /// OCP L.O.C.K Hard Epoch Key (HEK) ratchet seed slot 7.
     #[zeroize(skip)]
-    pub cptra_ss_lock_hek_prod_7: [u8; 40],
+    pub cptra_ss_lock_hek_prod_7: [u8; 48],
 
     /// Lifecycle partition.
     /// This contains lifecycle transition count and state. This partition
@@ -577,16 +577,16 @@ impl Default for Fuses {
             vendor_hashes_manuf_partition: [0; 64],
             vendor_hashes_prod_partition: [0; 864],
             vendor_revocations_prod_partition: [0; 216],
-            vendor_secret_prod_partition: [0; 520],
+            vendor_secret_prod_partition: [0; 528],
             vendor_non_secret_prod_partition: [0; 520],
-            cptra_ss_lock_hek_prod_0: [0; 40],
-            cptra_ss_lock_hek_prod_1: [0; 40],
-            cptra_ss_lock_hek_prod_2: [0; 40],
-            cptra_ss_lock_hek_prod_3: [0; 40],
-            cptra_ss_lock_hek_prod_4: [0; 40],
-            cptra_ss_lock_hek_prod_5: [0; 40],
-            cptra_ss_lock_hek_prod_6: [0; 40],
-            cptra_ss_lock_hek_prod_7: [0; 40],
+            cptra_ss_lock_hek_prod_0: [0; 48],
+            cptra_ss_lock_hek_prod_1: [0; 48],
+            cptra_ss_lock_hek_prod_2: [0; 48],
+            cptra_ss_lock_hek_prod_3: [0; 48],
+            cptra_ss_lock_hek_prod_4: [0; 48],
+            cptra_ss_lock_hek_prod_5: [0; 48],
+            cptra_ss_lock_hek_prod_6: [0; 48],
+            cptra_ss_lock_hek_prod_7: [0; 48],
             life_cycle: [0; 88],
         }
     }
@@ -594,50 +594,50 @@ impl Default for Fuses {
 pub const SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET: usize = 0x0;
 pub const SW_TEST_UNLOCK_PARTITION_BYTE_SIZE: usize = 0x48;
 pub const SECRET_MANUF_PARTITION_BYTE_OFFSET: usize = 0x48;
-pub const SECRET_MANUF_PARTITION_BYTE_SIZE: usize = 0x48;
-pub const SECRET_PROD_PARTITION_0_BYTE_OFFSET: usize = 0x90;
-pub const SECRET_PROD_PARTITION_0_BYTE_SIZE: usize = 0x10;
-pub const SECRET_PROD_PARTITION_1_BYTE_OFFSET: usize = 0xa0;
-pub const SECRET_PROD_PARTITION_1_BYTE_SIZE: usize = 0x10;
-pub const SECRET_PROD_PARTITION_2_BYTE_OFFSET: usize = 0xb0;
-pub const SECRET_PROD_PARTITION_2_BYTE_SIZE: usize = 0x10;
-pub const SECRET_PROD_PARTITION_3_BYTE_OFFSET: usize = 0xc0;
-pub const SECRET_PROD_PARTITION_3_BYTE_SIZE: usize = 0x10;
-pub const SW_MANUF_PARTITION_BYTE_OFFSET: usize = 0xd0;
+pub const SECRET_MANUF_PARTITION_BYTE_SIZE: usize = 0x50;
+pub const SECRET_PROD_PARTITION_0_BYTE_OFFSET: usize = 0x98;
+pub const SECRET_PROD_PARTITION_0_BYTE_SIZE: usize = 0x18;
+pub const SECRET_PROD_PARTITION_1_BYTE_OFFSET: usize = 0xb0;
+pub const SECRET_PROD_PARTITION_1_BYTE_SIZE: usize = 0x18;
+pub const SECRET_PROD_PARTITION_2_BYTE_OFFSET: usize = 0xc8;
+pub const SECRET_PROD_PARTITION_2_BYTE_SIZE: usize = 0x18;
+pub const SECRET_PROD_PARTITION_3_BYTE_OFFSET: usize = 0xe0;
+pub const SECRET_PROD_PARTITION_3_BYTE_SIZE: usize = 0x18;
+pub const SW_MANUF_PARTITION_BYTE_OFFSET: usize = 0xf8;
 pub const SW_MANUF_PARTITION_BYTE_SIZE: usize = 0x208;
-pub const SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET: usize = 0x2d8;
+pub const SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET: usize = 0x300;
 pub const SECRET_LC_TRANSITION_PARTITION_BYTE_SIZE: usize = 0xb8;
-pub const SVN_PARTITION_BYTE_OFFSET: usize = 0x390;
+pub const SVN_PARTITION_BYTE_OFFSET: usize = 0x3b8;
 pub const SVN_PARTITION_BYTE_SIZE: usize = 0x28;
-pub const VENDOR_TEST_PARTITION_BYTE_OFFSET: usize = 0x3b8;
+pub const VENDOR_TEST_PARTITION_BYTE_OFFSET: usize = 0x3e0;
 pub const VENDOR_TEST_PARTITION_BYTE_SIZE: usize = 0x40;
-pub const VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET: usize = 0x3f8;
+pub const VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET: usize = 0x420;
 pub const VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE: usize = 0x40;
-pub const VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET: usize = 0x438;
+pub const VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET: usize = 0x460;
 pub const VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE: usize = 0x360;
-pub const VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET: usize = 0x798;
+pub const VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET: usize = 0x7c0;
 pub const VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE: usize = 0xd8;
-pub const VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET: usize = 0x870;
-pub const VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE: usize = 0x208;
-pub const VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET: usize = 0xa78;
+pub const VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET: usize = 0x898;
+pub const VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE: usize = 0x210;
+pub const VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET: usize = 0xaa8;
 pub const VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE: usize = 0x208;
-pub const CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET: usize = 0xc80;
-pub const CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE: usize = 0x28;
-pub const CPTRA_SS_LOCK_HEK_PROD_1_BYTE_OFFSET: usize = 0xca8;
-pub const CPTRA_SS_LOCK_HEK_PROD_1_BYTE_SIZE: usize = 0x28;
-pub const CPTRA_SS_LOCK_HEK_PROD_2_BYTE_OFFSET: usize = 0xcd0;
-pub const CPTRA_SS_LOCK_HEK_PROD_2_BYTE_SIZE: usize = 0x28;
-pub const CPTRA_SS_LOCK_HEK_PROD_3_BYTE_OFFSET: usize = 0xcf8;
-pub const CPTRA_SS_LOCK_HEK_PROD_3_BYTE_SIZE: usize = 0x28;
-pub const CPTRA_SS_LOCK_HEK_PROD_4_BYTE_OFFSET: usize = 0xd20;
-pub const CPTRA_SS_LOCK_HEK_PROD_4_BYTE_SIZE: usize = 0x28;
-pub const CPTRA_SS_LOCK_HEK_PROD_5_BYTE_OFFSET: usize = 0xd48;
-pub const CPTRA_SS_LOCK_HEK_PROD_5_BYTE_SIZE: usize = 0x28;
-pub const CPTRA_SS_LOCK_HEK_PROD_6_BYTE_OFFSET: usize = 0xd70;
-pub const CPTRA_SS_LOCK_HEK_PROD_6_BYTE_SIZE: usize = 0x28;
-pub const CPTRA_SS_LOCK_HEK_PROD_7_BYTE_OFFSET: usize = 0xd98;
-pub const CPTRA_SS_LOCK_HEK_PROD_7_BYTE_SIZE: usize = 0x28;
-pub const LIFE_CYCLE_BYTE_OFFSET: usize = 0xdc0;
+pub const CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET: usize = 0xcb0;
+pub const CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE: usize = 0x30;
+pub const CPTRA_SS_LOCK_HEK_PROD_1_BYTE_OFFSET: usize = 0xce0;
+pub const CPTRA_SS_LOCK_HEK_PROD_1_BYTE_SIZE: usize = 0x30;
+pub const CPTRA_SS_LOCK_HEK_PROD_2_BYTE_OFFSET: usize = 0xd10;
+pub const CPTRA_SS_LOCK_HEK_PROD_2_BYTE_SIZE: usize = 0x30;
+pub const CPTRA_SS_LOCK_HEK_PROD_3_BYTE_OFFSET: usize = 0xd40;
+pub const CPTRA_SS_LOCK_HEK_PROD_3_BYTE_SIZE: usize = 0x30;
+pub const CPTRA_SS_LOCK_HEK_PROD_4_BYTE_OFFSET: usize = 0xd70;
+pub const CPTRA_SS_LOCK_HEK_PROD_4_BYTE_SIZE: usize = 0x30;
+pub const CPTRA_SS_LOCK_HEK_PROD_5_BYTE_OFFSET: usize = 0xda0;
+pub const CPTRA_SS_LOCK_HEK_PROD_5_BYTE_SIZE: usize = 0x30;
+pub const CPTRA_SS_LOCK_HEK_PROD_6_BYTE_OFFSET: usize = 0xdd0;
+pub const CPTRA_SS_LOCK_HEK_PROD_6_BYTE_SIZE: usize = 0x30;
+pub const CPTRA_SS_LOCK_HEK_PROD_7_BYTE_OFFSET: usize = 0xe00;
+pub const CPTRA_SS_LOCK_HEK_PROD_7_BYTE_SIZE: usize = 0x30;
+pub const LIFE_CYCLE_BYTE_OFFSET: usize = 0xe30;
 pub const LIFE_CYCLE_BYTE_SIZE: usize = 0x58;
 
 // Licensed under the Apache-2.0 license.

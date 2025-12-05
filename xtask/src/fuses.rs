@@ -33,6 +33,7 @@ struct OtpPartition {
     desc: String,
     sw_digest: bool,
     hw_digest: bool,
+    zeroizable: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,6 +133,8 @@ fn generate_fuse_partitions(mmap_hjson: &Path) -> Result<String> {
         } else {
             0
         };
+        let zeroize_size = if partition.zeroizable { 8 } else { 0 };
+
         let calculated_size = partition
             .items
             .iter()
@@ -140,10 +143,10 @@ fn generate_fuse_partitions(mmap_hjson: &Path) -> Result<String> {
 
         let calculated_size = if digest_size == 8 {
             // digests need to be aligned to 8-byte boundary
-            calculated_size.next_multiple_of(8) + digest_size
+            calculated_size.next_multiple_of(8) + digest_size + zeroize_size
         } else {
             // partitions need to be aligned to 4-byte boundary
-            calculated_size.next_multiple_of(4)
+            calculated_size.next_multiple_of(4) + zeroize_size
         };
 
         let size = partition
@@ -201,6 +204,7 @@ fn generate_fuse_partitions(mmap_hjson: &Path) -> Result<String> {
             size,
         );
         offset += size;
+        println!("Partition {} size {} bytes", partition.name, size);
     });
     output += "}\n";
     default_impl_output += "}\n}\n}\n";
