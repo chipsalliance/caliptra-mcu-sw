@@ -62,18 +62,17 @@ statemachine! {
 bitfield! {
     pub struct ProtCap2(u32);
     impl Debug;
-    pub identification, set_identification: 0;
-    pub forced_recovery, set_forced_recovery: 1;
-    pub mgmt_reset, set_mgmt_reset: 2;
-    pub device_reset, set_device_reset: 3;
-    pub device_status, set_device_status: 4;
-    pub recovery_memory_access, set_recovery_memory_access: 5;
-    pub local_c_image_support, set_local_c_image_support: 6;
-    pub push_c_image_support, set_push_c_image_support: 7;
-    pub interface_isolation, set_interface_isolation: 8;
-    pub hardware_status, set_hardware_status: 9;
-    pub vendors_command, set_vendors_command: 10;
-    pub reserved, set_reserved: 31, 11;
+    pub identification, set_identification: 16;
+    pub forced_recovery, set_forced_recovery: 17;
+    pub mgmt_reset, set_mgmt_reset: 18;
+    pub device_reset, set_device_reset: 19;
+    pub device_status, set_device_status: 20;
+    pub recovery_memory_access, set_recovery_memory_access: 21;
+    pub local_c_image_support, set_local_c_image_support: 22;
+    pub push_c_image_support, set_push_c_image_support: 23;
+    pub interface_isolation, set_interface_isolation: 24;
+    pub hardware_status, set_hardware_status: 25;
+    pub vendors_command, set_vendors_command: 26;
 }
 
 bitfield! {
@@ -353,7 +352,7 @@ pub fn load_flash_image_to_recovery(
                             &mut data,
                         )
                         .map_err(|_| ())?;
-                    i3c_periph.tti_tx_data_port.set(u32::from_be_bytes(data));
+                    i3c_periph.tti_tx_data_port.set(u32::from_le_bytes(data));
                     state_machine.context_mut().transfer_offset += 4; // Simulate writing 4 bytes
                 }
             }
