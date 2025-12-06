@@ -417,7 +417,7 @@ fn main() {
             dccm_size,
         } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            mcu_builder::runtime_build_with_apps_cached(
+            mcu_builder::runtime_build_with_apps(
                 &features,
                 output.clone(),
                 false,

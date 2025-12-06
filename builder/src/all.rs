@@ -256,7 +256,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let base_runtime_file = tempfile::NamedTempFile::new().unwrap();
     let base_runtime_path = base_runtime_file.path().to_str().unwrap();
 
-    let mcu_runtime = &crate::runtime_build_with_apps_cached(
+    let mcu_runtime = &crate::runtime_build_with_apps(
         &base_runtime_features,
         Some(base_runtime_path.to_string()),
         false,
@@ -327,7 +327,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         let feature_runtime_file = tempfile::NamedTempFile::new().unwrap();
         let feature_runtime_path = feature_runtime_file.path().to_str().unwrap().to_string();
 
-        crate::runtime_build_with_apps_cached(
+        crate::runtime_build_with_apps(
             &[feature],
             Some(feature_runtime_path),
             false,
