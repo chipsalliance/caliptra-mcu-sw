@@ -1,0 +1,26 @@
+# Licensed under the Apache-2.0 license
+
+# Caliptra Util Host Test Configuration
+# This file contains shared test parameters used by both the server and validator
+
+[device]
+# Device identification values
+device_id = 0x1234
+vendor_id = 0x5678
+subsystem_vendor_id = 0x0001
+subsystem_id = 0x0002
+
+[network]
+# Default network configuration
+default_server_address = "127.0.0.1:62222"
+
+[validation]
+# Validation test configuration
+timeout_seconds = 30
+retry_count = 3
+verbose_output = false
+
+[server]
+# Server-specific configuration
+bind_address = "127.0.0.1:62222"
+max_connections = 10

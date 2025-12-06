@@ -10,6 +10,7 @@ members = [
     "cbinding",
     "tests",
     "xtask",
+    "apps/mailbox/config",
     "apps/mailbox/client",
     "apps/mailbox/server"
 ]
@@ -27,6 +28,9 @@ caliptra-util-host-commands = { path = "commands" }
 caliptra-util-host-session = { path = "session" }
 caliptra-util-host-transport = { path = "transport" }
 caliptra-util-host-cbinding = { path = "cbinding" }
+caliptra-util-host-mailbox-test-config = { path = "apps/mailbox/config" }
+caliptra-mailbox-client = { path = "apps/mailbox/client" }
+caliptra-mailbox-server = { path = "apps/mailbox/server" }
 
 # External dependencies
 anyhow = "1.0.97"
@@ -43,6 +47,7 @@ clap = { version = "4.5.23", features = [
 ] }
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
+toml = "0.8.19"
 zerocopy = { version = "0.8.17", features = ["derive"] }
 
 [package]

@@ -1,14 +1,17 @@
 // Licensed under the Apache-2.0 license
 
 use std::net::SocketAddr;
-use std::process::exit;
+use std::process::{exit, Command};
 use std::sync::atomic::Ordering;
 use std::thread::{self, sleep};
 
-use caliptra_mailbox_client::Validator;
 use caliptra_mailbox_server::ServerConfig;
+use caliptra_util_host_mailbox_test_config::{
+    DeviceConfig, NetworkConfig, ServerConfig as ConfigServerConfig, TestConfig, ValidationConfig,
+};
 use emulator_mcu_mbox::mcu_mailbox_transport::{McuMailboxError, McuMailboxTransport};
 use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+use tempfile::NamedTempFile;
 
 const TEST_DEVICE_ID: u16 = 0x0010;
 const TEST_VENDOR_ID: u16 = 0x1414;
@@ -22,17 +25,71 @@ pub fn run_caliptra_util_host_validator() {
         sleep(std::time::Duration::from_secs(5));
         let server_config = ServerConfig::default();
         let addr: SocketAddr = server_config.bind_addr;
-        let validator =
-            Validator::with_expected_values(addr, Some(TEST_DEVICE_ID), Some(TEST_VENDOR_ID));
-        let result = validator.start().unwrap();
-        for res in result {
-            if res.passed {
-                println!("Test '{}' PASSED", res.test_name);
-            } else {
-                println!("Test '{}' FAILED", res.test_name);
-                std::process::exit(-1);
-            }
+
+        println!("Running validator using cargo xtask validator");
+
+        // Create temporary config file with test parameters using TestConfig struct
+        let test_config = TestConfig {
+            device: DeviceConfig {
+                device_id: TEST_DEVICE_ID,
+                vendor_id: TEST_VENDOR_ID,
+                subsystem_vendor_id: 0x0001,
+                subsystem_id: 0x0002,
+            },
+            network: NetworkConfig {
+                default_server_address: format!("{}:{}", addr.ip(), addr.port()),
+            },
+            validation: ValidationConfig {
+                timeout_seconds: 30,
+                retry_count: 3,
+                verbose_output: false,
+            },
+            server: ConfigServerConfig {
+                bind_address: format!("{}:{}", addr.ip(), addr.port()),
+                max_connections: 10,
+            },
+        };
+
+        let temp_file = NamedTempFile::new().expect("Failed to create temporary file");
+
+        test_config
+            .save_to_file(temp_file.path())
+            .expect("Failed to write config to temporary file");
+
+        println!("Created temporary config file at: {:?}", temp_file.path());
+        println!(
+            "Config contains: device_id=0x{:04X}, vendor_id=0x{:04X}",
+            TEST_DEVICE_ID, TEST_VENDOR_ID
+        );
+
+        // Run the validator using cargo xtask validator command with temporary config
+        let output = Command::new("cargo")
+            .arg("xtask")
+            .arg("validator")
+            .arg("--server")
+            .arg(format!("{}:{}", addr.ip(), addr.port()))
+            .arg("--config")
+            .arg(temp_file.path())
+            .current_dir("caliptra-util-host")
+            .output()
+            .expect("Failed to execute cargo xtask validator");
+
+        // NamedTempFile will automatically clean up when dropped
+
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            println!("Validator output:\n{}", stdout);
+            println!("✓ Caliptra util host validator PASSED");
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            println!("Validator failed:");
+            println!("STDOUT:\n{}", stdout);
+            println!("STDERR:\n{}", stderr);
+            println!("✗ Caliptra util host validator FAILED");
+            std::process::exit(-1);
         }
+
         MCU_RUNNING.store(false, Ordering::Relaxed);
     });
 }

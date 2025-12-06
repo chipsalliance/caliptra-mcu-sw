@@ -102,8 +102,11 @@ enum Commands {
     /// Run the mailbox server
     Server {
         /// Server address to bind to
-        #[arg(short, long, default_value = "127.0.0.1:8080")]
+        #[arg(short, long, default_value = "127.0.0.1:62222")]
         address: String,
+        /// Path to TOML configuration file with device parameters
+        #[arg(short, long)]
+        config: Option<String>,
         /// Build in release mode before running
         #[arg(short, long)]
         release: bool,
@@ -112,11 +115,14 @@ enum Commands {
     /// Run the mailbox client validator
     Validator {
         /// Server address to connect to
-        #[arg(short, long, default_value = "127.0.0.1:8080")]
+        #[arg(short, long, default_value = "127.0.0.1:62222")]
         server: String,
         /// Enable verbose output
         #[arg(short, long)]
         verbose: bool,
+        /// Path to TOML configuration file with test parameters
+        #[arg(short, long)]
+        config: Option<String>,
         /// Build in release mode before running
         #[arg(short, long)]
         release: bool,
@@ -150,12 +156,17 @@ fn main() -> Result<()> {
         Commands::Clippy { fix, deny_warnings } => run_clippy(fix, deny_warnings),
         Commands::Cbindings { force } => run_cbindings(force),
         Commands::Check { quick } => run_check(quick),
-        Commands::Server { address, release } => run_server(address, release),
+        Commands::Server {
+            address,
+            config,
+            release,
+        } => run_server(address, config, release),
         Commands::Validator {
             server,
             verbose,
+            config,
             release,
-        } => run_validator(server, verbose, release),
+        } => run_validator(server, verbose, config, release),
     }
 }
 
@@ -273,7 +284,7 @@ fn run_check(quick: bool) -> Result<()> {
     Ok(())
 }
 
-fn run_server(address: String, release: bool) -> Result<()> {
+fn run_server(address: String, config: Option<String>, release: bool) -> Result<()> {
     println!("Starting Mailbox server on {}", address);
 
     // Build the server first
@@ -289,8 +300,25 @@ fn run_server(address: String, release: bool) -> Result<()> {
 
     // Run the server
     let target_dir = if release { "release" } else { "debug" };
-    let mut cmd = Command::new(format!("./target/{}/caliptra-mailbox-server", target_dir));
-    cmd.arg(&address);
+    let mut cmd = Command::new(format!(
+        "../target/caliptra-util-host/{}/caliptra-mailbox-server",
+        target_dir
+    ));
+    cmd.args(["--server", &address]);
+
+    if let Some(config_path) = config {
+        // Make config path absolute or relative to current working directory (caliptra-util-host)
+        let full_config_path = if config_path.starts_with('/') {
+            config_path
+        } else {
+            std::env::current_dir()
+                .unwrap()
+                .join(&config_path)
+                .to_string_lossy()
+                .to_string()
+        };
+        cmd.args(["--config", &full_config_path]);
+    }
 
     println!("✓ Server starting on {} (Press Ctrl+C to stop)", address);
 
@@ -305,7 +333,12 @@ fn run_server(address: String, release: bool) -> Result<()> {
     Ok(())
 }
 
-fn run_validator(server: String, verbose: bool, release: bool) -> Result<()> {
+fn run_validator(
+    server: String,
+    verbose: bool,
+    config: Option<String>,
+    release: bool,
+) -> Result<()> {
     println!("Starting Mailbox validator (connecting to {})", server);
 
     // Build the validator first
@@ -321,11 +354,28 @@ fn run_validator(server: String, verbose: bool, release: bool) -> Result<()> {
 
     // Run the validator
     let target_dir = if release { "release" } else { "debug" };
-    let mut cmd = Command::new(format!("./target/{}/validator", target_dir));
+    let mut cmd = Command::new(format!(
+        "../target/caliptra-util-host/{}/validator",
+        target_dir
+    ));
     cmd.args(["--server", &server]);
 
     if verbose {
         cmd.arg("--verbose");
+    }
+
+    if let Some(config_path) = config {
+        // Make config path absolute or relative to current working directory (caliptra-util-host)
+        let full_config_path = if config_path.starts_with('/') {
+            config_path
+        } else {
+            std::env::current_dir()
+                .unwrap()
+                .join(&config_path)
+                .to_string_lossy()
+                .to_string()
+        };
+        cmd.args(["--config", &full_config_path]);
     }
 
     run_command("mailbox validator", &mut cmd)
