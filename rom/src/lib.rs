@@ -65,6 +65,32 @@ pub fn set_fatal_error_handler(handler: &'static mut dyn FatalErrorHandler) {
     }
 }
 
+/// A handler which outputs useful debug information if an exception is encountered during ROM
+/// execution.  The vendor is responsible for configuring the `mtvec` register during their start
+/// sequence to call this function or calling this function from their own trap handler.  They are
+/// also responsible for ensuring the `mcause`, `mepc` and `ra` csrs/registers are not overwritten
+/// between the trap occurring and execution of this function.
+#[no_mangle]
+#[cfg(target_arch = "riscv32")]
+fn exception_handler() -> ! {
+    let mut mcause: usize;
+    let mut mepc: usize;
+    let mut ra: usize;
+    unsafe {
+        core::arch::asm!(
+            "csrr {mcause}, mcause",
+            "csrr {mepc}, mepc",
+            "addi {ra}, ra, 0",
+            mcause = out(reg) mcause,
+            mepc = out(reg) mepc,
+            ra = out(reg) ra
+        )
+    };
+
+    romtime::println!("EXCEPTION mcause={mcause:#08X} mepc={mepc:#08X} ra={ra:#08X}");
+    fatal_error(mcu_error::McuError::GENERIC_EXCEPTION)
+}
+
 #[no_mangle]
 #[inline(never)]
 #[cfg(target_arch = "riscv32")]

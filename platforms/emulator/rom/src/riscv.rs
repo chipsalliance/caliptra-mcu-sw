@@ -60,6 +60,12 @@ pub extern "C" fn rom_entry() -> ! {
         romtime::set_exiter(&mut EMULATOR_EXITER);
     }
 
+    if cfg!(feature = "test-exception-handler") {
+        // Once the logger has registered, trigger an exception. This will validate the exception
+        // handler logs output, and then populates the mci register with the appropriate error code.
+        unsafe { core::arch::asm!("unimp") };
+    }
+
     const EMULATOR_DOT_FLASH_ADDR: *mut u8 = 0x8100_0000 as *mut u8;
     const EMULATOR_DOT_FLASH_SIZE: usize = 4 * 1024;
 

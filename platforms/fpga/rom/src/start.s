@@ -26,6 +26,11 @@ _start:
     # Initialize the stack pointer
     la sp, STACK_TOP
 
+    # Interrupts are disabled within the ROM, so the only possible trap trigger is an exception.
+    # As such, configure mtvec with the address of the exception handler in direct mode.
+    la t0, exception_handler
+    csrw mtvec, t0
+
     # Initialize MRAC (Region Access Control Register)
     # MRAC controls cacheability and side effects for 16 memory regions (256MB each)
     # The value is computed from the memory map at build time
