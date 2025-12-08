@@ -14,6 +14,7 @@ fpga_realtime = [
 
 [dependencies]
 caliptra-api-types.workspace = true
+caliptra-builder.workspace = true
 anyhow.workspace = true
 cargo_metadata.workspace = true
 cc.workspace = true
