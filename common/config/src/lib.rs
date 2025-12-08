@@ -54,7 +54,7 @@ impl Default for McuMemoryMap {
     fn default() -> Self {
         McuMemoryMap {
             rom_offset: 0x8000_0000,
-            rom_size: 32 * 1024,
+            rom_size: 64 * 1024,
             rom_stack_size: 0x3000,
             rom_estack_size: 0x800,
             rom_properties: MemoryRegionType::MEMORY,
