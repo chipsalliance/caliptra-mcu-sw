@@ -2,7 +2,11 @@
 
 use core::mem;
 
-use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError, SocManager};
+use caliptra_api::{
+    calc_checksum,
+    mailbox::{MailboxReqHeader, MailboxRespHeader, Request},
+    CaliptraApiError, SocManager,
+};
 use registers_generated::{mbox, soc};
 use ureg::RealMmioMut;
 

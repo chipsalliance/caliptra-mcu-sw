@@ -12,6 +12,7 @@ Abstract:
 
 --*/
 
+use caliptra_api::SocManager;
 use crate::fuses::OwnerPkHash;
 use crate::{McuRomBootStatus, RomEnv};
 use caliptra_api::mailbox::{
@@ -214,14 +215,14 @@ fn cm_derive_stable_key(
     info[..fixed_info_len].copy_from_slice(fixed_info.as_bytes());
     info[fixed_info_len..fixed_info_len + 2].copy_from_slice(&dot_fuses.burned.to_le_bytes());
     let mut resp = [0u8; core::mem::size_of::<CmDeriveStableKeyResp>()];
-    if let Err(err) = env.soc_manager.mailbox_exec_req_iter(
-        CmDeriveStableKeyReq {
-            info,
-            key_type: key_type.into(),
-            ..Default::default()
-        },
-        &mut resp,
-    ) {
+    let req = CmDeriveStableKeyReq {
+        info,
+        key_type: key_type.into(),
+        ..Default::default()
+    };
+    env.soc_manager.start_mailbox_req(cmd, len_bytes, buf)
+
+    if let Err(err) = env.soc_manager.mailbox_exec_req(req, &mut resp) {
         romtime::println!("[mcu-rom] Error deriving DOT stable key: {:?}", err);
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
@@ -245,7 +246,7 @@ fn cm_hmac(env: &mut RomEnv, key: &Cmk, data: &[u8]) -> McuResult<[u32; 16]> {
     let len = data.len().min(req.data.len());
     req.data[..len].copy_from_slice(&data[..len]);
 
-    if let Err(err) = env.soc_manager.mailbox_exec_req_iter(req, &mut resp) {
+    if let Err(err) = env.soc_manager.mailbox_exec_req(req, &mut resp) {
         romtime::println!("[mcu-rom] Error computing HMAC: {:?}", err);
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
