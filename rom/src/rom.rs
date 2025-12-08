@@ -48,6 +48,15 @@ const LMS_CALIPTRA_VALUE: u8 = 3;
 const OTP_DAI_IDLE_BIT_OFFSET: u32 = 22;
 const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x60;
 
+pub const DEFAULT_UDS_SEED: [u32; 16] = [
+    0x00010203, 0x04050607, 0x08090a0b, 0x0c0d0e0f, 0x10111213, 0x14151617, 0x18191a1b, 0x1c1d1e1f,
+    0x20212223, 0x24252627, 0x28292a2b, 0x2c2d2e2f, 0x30313233, 0x34353637, 0x38393a3b, 0x3c3d3e3f,
+];
+
+pub const DEFAULT_FIELD_ENTROPY: [u32; 8] = [
+    0x80818283, 0x84858687, 0x88898a8b, 0x8c8d8e8f, 0x90919293, 0x94959697, 0x98999a9b, 0x9c9d9e9f,
+];
+
 /// Trait for different boot flows (cold boot, warm reset, firmware update)
 pub trait BootFlow {
     /// Execute the boot flow
@@ -462,6 +471,14 @@ impl Soc {
             self.registers
                 .ss_key_release_base_addr_l
                 .set(mcu_sram_addr as u32);
+        }
+
+        for (idx, &word) in DEFAULT_UDS_SEED.iter().enumerate() {
+            self.registers.fuse_uds_seed[idx].set(word);
+        }
+
+        for (idx, &word) in DEFAULT_FIELD_ENTROPY.iter().enumerate() {
+            self.registers.fuse_field_entropy[idx].set(word);
         }
 
         romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
