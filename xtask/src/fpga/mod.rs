@@ -27,10 +27,8 @@ struct BuildArgs<'a> {
     _marker: PhantomData<&'a Path>,
 }
 
-#[derive(Default)]
 struct BuildTestArgs<'a> {
-    // Marker type to preserve lifetime until arguments get re-introduced.
-    _marker: PhantomData<&'a Path>,
+    package_filter: &'a Option<String>,
 }
 struct TestArgs<'a> {
     test_filter: &'a Option<String>,
@@ -104,9 +102,15 @@ pub(crate) enum Fpga {
     },
     /// Build FPGA test binaries
     BuildTest {
-        /// When copy test binaries to `target_host`
+        /// When set copy test binaries to `target_host`
         #[arg(long)]
         target_host: Option<String>,
+        /// Filter packages for the test archive. This can be used to reduce the total archive
+        /// size and speed up `build-test` commands.
+        ///
+        /// Uses a `cargo-nextest` package filter-set, e.g. `package(caliptra-rom)`.
+        #[arg(long)]
+        package_filter: Option<String>,
     },
     /// Run FPGA tests
     Test {
@@ -198,13 +202,16 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                     ..Default::default()
                 })?;
         }
-        Fpga::BuildTest { target_host } => {
+        Fpga::BuildTest {
+            target_host,
+            package_filter,
+        } => {
             println!("Building FPGA tests");
             let config = Configuration::from_cmd(target_host.as_deref())?;
             config
                 .executor()
                 .set_target_host(target_host.as_deref())
-                .build_test(&BuildTestArgs::default())?;
+                .build_test(&BuildTestArgs { package_filter })?;
         }
         Fpga::Bootstrap {
             target_host,
