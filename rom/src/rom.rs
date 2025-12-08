@@ -462,15 +462,13 @@ impl Soc {
         // TODO(clundin): We should pass this from OTP or similar so we can configure in
         // caliptra-sw tests.
         if cfg!(feature = "core_test") {
-            let mci_base_addr: u64 = self.registers.ss_mci_base_addr_l.get() as u64
-                + ((self.registers.ss_mci_base_addr_h.get() as u64) << 32);
-            let mcu_sram_addr: u64 = 0xc0_0000 + mci_base_addr;
+            let key_release_addr: u64 = 0xA4010200;
             self.registers
                 .ss_key_release_base_addr_h
-                .set((mcu_sram_addr >> 32) as u32);
+                .set((key_release_addr >> 32) as u32);
             self.registers
                 .ss_key_release_base_addr_l
-                .set(mcu_sram_addr as u32);
+                .set(key_release_addr as u32);
         }
 
         for (idx, &word) in DEFAULT_UDS_SEED.iter().enumerate() {
