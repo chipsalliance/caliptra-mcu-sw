@@ -155,7 +155,11 @@ pub fn dot_flow(
     blob: &DotBlob,
     stable_key_type: CmStableKeyType,
 ) -> McuResult<Option<OwnerPkHash>> {
-    romtime::println!("[mcu-rom] Performing Device Ownership Transfer flos");
+    romtime::println!("[mcu-rom-dot] Performing Device Ownership Transfer flow");
+    romtime::println!(
+        "[mcu-rom-dot] DOT blob: {}",
+        romtime::HexBytes(blob.as_bytes())
+    );
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferStarted.into());
 
