@@ -22,7 +22,7 @@ use mcu_error::{McuError, McuResult};
 use registers_generated::fuses::Fuses;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
-#[derive(Clone, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[derive(Clone, Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct LakPkHash(pub [u32; 12]);
 
 pub trait OwnerPolicy {}
@@ -66,14 +66,8 @@ pub fn load_owner_pkhash(fuses: &Fuses) -> Option<OwnerPkHash> {
 }
 
 /// Caliptra Cryptographic Mailbox Key (CMK) handle.
-#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct Cmk(pub [u32; 32]);
-
-impl Default for Cmk {
-    fn default() -> Self {
-        Self([0u32; 32])
-    }
-}
 
 /// DOT Effective Key derived from DOT_ROOT_KEY and DOT_FUSE_ARRAY state.
 ///
@@ -86,7 +80,7 @@ pub struct DotEffectiveKey(pub Cmk);
 /// and contains the CAK and LAK, sealed with the DOT_EFFECTIVE_KEY via HMAC.
 /// The blob persists ownership across power cycles when in the Locked state.
 #[repr(C)]
-#[derive(Clone, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[derive(Clone, Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct DotBlob {
     /// Version or format identifier for the DOT blob structure
     pub version: u32,
@@ -111,7 +105,7 @@ pub struct DotBlob {
 
 /// Specifies the method used for unlocking a locked DOT state.
 #[repr(C)]
-#[derive(Clone, Copy, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[derive(Clone, Copy, Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct UnlockMethod(u8);
 
 /// Standard challenge-response unlock method.
@@ -164,9 +158,10 @@ pub fn dot_flow(
 ) -> McuResult<Option<OwnerPkHash>> {
     romtime::println!("[mcu-rom-dot] Performing Device Ownership Transfer flow");
     romtime::println!(
-        "[mcu-rom-dot] DOT blob: {}",
-        romtime::HexBytes(&blob.hmac.as_bytes()[..32])
+        "[mcu-rom-dot] DOT raw blob: {}",
+        romtime::HexBytes(blob.as_bytes())
     );
+    romtime::println!("[mcu-rom-dot] {:x?}", blob);
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferStarted.into());
 
