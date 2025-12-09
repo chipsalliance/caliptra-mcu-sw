@@ -75,6 +75,17 @@
 //! // Execute high-level commands
 //! let device_id = caliptra_cmd_get_device_id(&mut session)?;
 //! println!("Device ID: 0x{:04X}", device_id.device_id);
+//!
+//! let capabilities = caliptra_cmd_get_device_capabilities(&mut session)?;
+//! println!("Device capabilities: 0x{:08X}", capabilities.capabilities);
+//!
+//! let device_info = caliptra_cmd_get_device_info(&mut session, 0)?;
+//! println!("Device info length: {}", device_info.info_length);
+//!
+//! let firmware_version = caliptra_cmd_get_firmware_version(&mut session, 0)?;
+//! println!("Firmware version: {}.{}.{}.{}", 
+//!     firmware_version.version[0], firmware_version.version[1],
+//!     firmware_version.version[2], firmware_version.version[3]);
 //! ```
 
 // Re-export main public APIs for convenience
@@ -83,7 +94,10 @@ pub use caliptra_util_host_command_types::{
     GetDeviceIdRequest, GetDeviceIdResponse, GetDeviceInfoRequest, GetDeviceInfoResponse,
     GetFirmwareVersionRequest, GetFirmwareVersionResponse,
 };
-pub use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_id;
+pub use caliptra_util_host_commands::api::device_info::{
+    caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
+    caliptra_cmd_get_firmware_version,
+};
 pub use caliptra_util_host_session::CaliptraSession;
 pub use caliptra_util_host_transport::{Mailbox, Transport};
 

@@ -24,3 +24,28 @@ verbose_output = false
 # Server-specific configuration
 bind_address = "127.0.0.1:62222"
 max_connections = 10
+
+[device_capabilities]
+# Expected device capabilities for validation
+capabilities = 0x000001F3
+max_cert_size = 4096
+max_csr_size = 2048
+device_lifecycle = 1
+fips_status = 0x00000001
+
+[firmware_version]
+# Expected firmware version information
+rom_version = "1.2.3.4567-mock_commit_hash"
+runtime_version = "1.2.3.4567-mock_commit_hash"
+fips_status = 0x00000001
+# Firmware IDs for validation
+rom_firmware_id = 0
+runtime_firmware_id = 1
+
+[device_info]
+# Expected device information
+info_index = 0  # 0x00 = Unique Chip Identifier
+expected_info = "Caliptra Test Device v1.0"
+min_info_length = 16
+max_info_length = 64
+fips_status = 0
