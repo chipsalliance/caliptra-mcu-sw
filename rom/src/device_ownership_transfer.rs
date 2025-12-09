@@ -22,7 +22,7 @@ use mcu_error::{McuError, McuResult};
 use registers_generated::fuses::Fuses;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
-const DOT_LABEL: &str = "Caliptra DOT stable key";
+const DOT_LABEL: &[u8] = b"Caliptra DOT stable key";
 
 #[derive(Clone, Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct LakPkHash(pub [u32; 12]);
@@ -218,10 +218,12 @@ fn cm_derive_stable_key(
 ) -> McuResult<DotEffectiveKey> {
     // construct the label as fixed label + 16-bit fuse value
     let mut info = [0u8; 32];
-    const LABEL_BYTES = DOT_LABEL.as_bytes();
-    const LABEL_LEN = LABEL_BYTES.len();
-    info[..LABEL_LEN].copy_from_slice(LABEL_BYTES)
-    info[LABEL_LEN..LABEL_LEN + 2].copy_from_slice(&dot_fuses.burned.to_le_bytes());
+    const LABEL_LEN: usize = DOT_LABEL.len();
+    info[..LABEL_LEN].copy_from_slice(DOT_LABEL);
+    let fuse_slice: [u8; 2] = dot_fuses.burned.to_le_bytes();
+    // copy_from_slice wants to insert a panic for some reason
+    info[LABEL_LEN] = fuse_slice[0];
+    info[LABEL_LEN + 1] = fuse_slice[1];
 
     let mut resp = [0u32; core::mem::size_of::<CmDeriveStableKeyResp>() / 4];
     let req = CmDeriveStableKeyReq {
