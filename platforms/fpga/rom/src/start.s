@@ -28,7 +28,7 @@ _start:
 
     # Interrupts are disabled within the ROM, so the only possible trap trigger is an exception.
     # As such, configure mtvec with the address of the exception handler in direct mode.
-    la t0, exception_handler
+    la t0, _exception_handler
     csrw mtvec, t0
 
     # Initialize MRAC (Region Access Control Register)
@@ -66,3 +66,15 @@ end_copy_data:
 
     # call main entry point
     call main
+
+.section .text.init
+.align 2
+_exception_handler:
+    # Save the SP to mscratch
+    csrw mscratch, sp
+    
+    # Switch to the exception stack
+    la sp, ESTACK_START
+
+    # Switch to the exception handler function
+    jal exception_handler
