@@ -6,6 +6,7 @@ mod jtag;
 #[cfg(test)]
 mod rom;
 mod test_dot;
+mod test_exception_handler;
 mod test_firmware_update;
 mod test_mctp_capsule_loopback;
 mod test_pldm_fw_update;

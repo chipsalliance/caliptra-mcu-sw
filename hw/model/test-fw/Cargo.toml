@@ -47,3 +47,8 @@ required-features = ["riscv"]
 name = "axi_bypass"
 path = "axi_bypass.rs"
 required-features = ["riscv"]
+
+[[bin]]
+name = "exception_handler"
+path = "exception_handler.rs"
+required-features = ["riscv"]
