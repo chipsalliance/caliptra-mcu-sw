@@ -817,7 +817,10 @@ impl Emulator {
             .periph
             .set_dma_rom_sram(dma_rom_sram.clone());
 
-        let cpu_args = DEFAULT_CPU_ARGS;
+        let mut cpu_args = DEFAULT_CPU_ARGS;
+        // Ensure CPU reset vector tracks the configured ROM base so resets return to ROM entry
+        cpu_args.org.reset_vector = mcu_root_bus_offsets.rom_offset;
+        cpu_args.org.rom = mcu_root_bus_offsets.rom_offset;
 
         let mut cpu = Cpu::new(auto_root_bus, clock.clone(), pic.clone(), cpu_args);
         cpu.write_pc(mcu_root_bus_offsets.rom_offset);
