@@ -233,6 +233,10 @@ impl CaliptraSoC {
         }))
     }
 
+    /// Executes a mailbox request that is represented as a u32 slice and
+    /// writing the response to a u32 slice.
+    /// This is useful for code size to avoid unaligned and byte-level access,
+    /// when possible.
     pub fn exec_mailbox_req_u32(
         &mut self,
         cmd: u32,
