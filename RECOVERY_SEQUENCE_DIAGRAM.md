@@ -1,18 +1,17 @@
-# MCU ROM Recovery Process Sequence Diagram
+# MCU ROM AXI Recovery Process Sequence Diagram
 
 This diagram shows the sequence of operations in the `load_flash_image_to_recovery()` function, which implements a state machine-based recovery process for loading firmware images.
 
-## Recovery Process Flow
+## AXI Recovery Process Flow
 
 ```mermaid
 sequenceDiagram
     participant ROM as MCU ROM
     participant SM as State Machine
-    participant I3C as I3C Peripheral
+    participant I3C as I3C Peripheral / Recover IF
     participant Flash as Flash Driver
-    participant Device as Recovery Device
 
-    Note over ROM, Device: Recovery Process Entry Point
+    Note over ROM, Flash: Recovery Process Entry Point
     ROM->>SM: Initialize Context & State Machine
     ROM->>I3C: Set recovery interface to AXI_DIRECT mode
 
@@ -102,7 +101,7 @@ sequenceDiagram
 
     end
 
-    Note over ROM, Device: Recovery Complete
+    Note over ROM, Flash: Recovery Complete
     ROM->>I3C: Restore recovery interface to I3C mode
     ROM-->>ROM: Return Ok(())
 ```
