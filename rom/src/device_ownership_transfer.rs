@@ -15,8 +15,8 @@ Abstract:
 use crate::fuses::OwnerPkHash;
 use crate::{McuRomBootStatus, RomEnv};
 use caliptra_api::mailbox::{
-    CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacReq, CmHmacResp,
-    CmStableKeyType, CommandId,
+    CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacResp, CmStableKeyType,
+    CommandId, MailboxReqHeader,
 };
 use mcu_error::{McuError, McuResult};
 use registers_generated::fuses::Fuses;
@@ -66,7 +66,14 @@ pub fn load_owner_pkhash(fuses: &Fuses) -> Option<OwnerPkHash> {
 }
 
 /// Caliptra Cryptographic Mailbox Key (CMK) handle.
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct Cmk(pub [u32; 32]);
+
+impl Default for Cmk {
+    fn default() -> Self {
+        Self([0u32; 32])
+    }
+}
 
 /// DOT Effective Key derived from DOT_ROOT_KEY and DOT_FUSE_ARRAY state.
 ///
@@ -158,7 +165,7 @@ pub fn dot_flow(
     romtime::println!("[mcu-rom-dot] Performing Device Ownership Transfer flow");
     romtime::println!(
         "[mcu-rom-dot] DOT blob: {}",
-        romtime::HexBytes(blob.as_bytes())
+        romtime::HexBytes(&blob.hmac.as_bytes()[..32])
     );
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferStarted.into());
@@ -233,6 +240,29 @@ fn cm_derive_stable_key(
     let resp: CmDeriveStableKeyResp = transmute!(resp);
     let dot_effective_key = DotEffectiveKey(Cmk(transmute!(resp.cmk)));
     Ok(dot_effective_key)
+}
+
+// CM_HMAC copy with smaller data
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct CmHmacReq {
+    pub hdr: MailboxReqHeader,
+    pub cmk: Cmk,
+    pub hash_algorithm: u32,
+    pub data_size: u32,
+    pub data: [u8; core::mem::size_of::<DotBlob>()],
+}
+
+impl Default for CmHmacReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            cmk: Cmk::default(),
+            hash_algorithm: 0,
+            data_size: 0,
+            data: [0u8; core::mem::size_of::<DotBlob>()],
+        }
+    }
 }
 
 /// Calls Caliptra to compute an HMAC.
