@@ -11,6 +11,7 @@ pub struct McuMemoryMap {
     pub rom_offset: u32,
     pub rom_size: u32,
     pub rom_stack_size: u32,
+    pub rom_estack_size: u32,
     pub rom_properties: MemoryRegionType,
 
     pub sram_offset: u32,
@@ -55,6 +56,7 @@ impl Default for McuMemoryMap {
             rom_offset: 0x8000_0000,
             rom_size: 32 * 1024,
             rom_stack_size: 0x3000,
+            rom_estack_size: 0x800,
             rom_properties: MemoryRegionType::MEMORY,
 
             dccm_offset: 0x5000_0000,
@@ -259,6 +261,10 @@ impl McuMemoryMap {
         map.insert(
             "ROM_STACK_SIZE".to_string(),
             format!("0x{:x}", self.rom_stack_size),
+        );
+        map.insert(
+            "ROM_ESTACK_SIZE".to_string(),
+            format!("0x{:x}", self.rom_estack_size),
         );
 
         map.insert(
