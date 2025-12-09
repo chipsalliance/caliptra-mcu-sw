@@ -9,6 +9,34 @@
 use super::checksum::verify_checksum;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
+/// Trait for handling variable-size serialization/deserialization
+/// Default implementation uses zerocopy traits for fixed-size structs
+/// Override for variable-size structs that need custom encoding
+pub trait VariableSizeBytes: IntoBytes + FromBytes + Immutable + Sized {
+    /// Serialize to bytes, returning the actual size used
+    fn to_bytes_variable(&self, buffer: &mut [u8]) -> usize {
+        // Default implementation: use full struct size with zerocopy
+        let data = self.as_bytes();
+        let copy_len = core::cmp::min(data.len(), buffer.len());
+        buffer[..copy_len].copy_from_slice(&data[..copy_len]);
+        copy_len
+    }
+
+    /// Deserialize from bytes with variable-size support
+    fn from_bytes_variable(bytes: &[u8]) -> Result<Self, crate::TransportError> {
+        // Default implementation: use zerocopy read_from_bytes
+        match Self::read_from_bytes(bytes) {
+            Ok(value) => Ok(value),
+            Err(_) => Err(crate::TransportError::InvalidMessage),
+        }
+    }
+
+    /// Create from MCU data with variable length (default does nothing special)
+    fn from_mcu_data_default(bytes: &[u8]) -> Result<Self, crate::TransportError> {
+        Self::from_bytes_variable(bytes)
+    }
+}
+
 /// Trait for converting internal Caliptra commands to external mailbox format
 pub trait FromInternalRequest<T> {
     /// Convert from internal request type to external request type
@@ -30,7 +58,7 @@ pub trait ExternalCommandMetadata {
         + IntoBytes
         + FromBytes
         + Immutable;
-    type ExternalResponse: ToInternalResponse<Self::InternalResponse> + IntoBytes + FromBytes;
+    type ExternalResponse: ToInternalResponse<Self::InternalResponse> + VariableSizeBytes;
 
     /// Get the external mailbox command code
     const EXTERNAL_CMD_CODE: u32;
@@ -52,6 +80,7 @@ pub trait ExternalCommandHandler {
 }
 
 /// Generic command processor that works with any command implementing the required traits
+/// Supports both fixed-size and variable-size responses using VariableSizeBytes trait
 pub fn process_command<InternalReq, InternalResp, ExternalReq, ExternalResp>(
     external_cmd_code: u32,
     payload: &[u8],
@@ -62,7 +91,7 @@ where
     InternalReq: IntoBytes + FromBytes + Immutable,
     InternalResp: IntoBytes + FromBytes + Immutable,
     ExternalReq: FromInternalRequest<InternalReq> + IntoBytes + FromBytes + Immutable,
-    ExternalResp: ToInternalResponse<InternalResp> + IntoBytes + FromBytes,
+    ExternalResp: ToInternalResponse<InternalResp> + VariableSizeBytes,
 {
     // Parse internal request from payload or create default
     let internal_req = if payload.is_empty() {
@@ -82,12 +111,13 @@ where
         .send_command(external_cmd_code, external_req.as_bytes())
         .map_err(crate::TransportError::from)?;
 
-    // Parse external response
-    if response.len() < core::mem::size_of::<ExternalResp>() {
+    // Parse external response using variable-size aware parsing
+    // Require at least 4 bytes for checksum
+    if response.len() < 4 {
         return Err(crate::TransportError::InvalidMessage);
     }
 
-    let external_resp = ExternalResp::read_from_bytes(response)
+    let external_resp = ExternalResp::from_bytes_variable(response)
         .map_err(|_| crate::TransportError::InvalidMessage)?;
 
     // Verify checksum in the response

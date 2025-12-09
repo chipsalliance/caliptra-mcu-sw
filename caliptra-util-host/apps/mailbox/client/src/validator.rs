@@ -26,6 +26,7 @@ pub struct Validator {
     verbose: bool,
     expected_device_id: Option<u16>,
     expected_vendor_id: Option<u16>,
+    config: Option<TestConfig>,
 }
 
 impl Validator {
@@ -36,6 +37,7 @@ impl Validator {
             verbose: false,
             expected_device_id: Some(DEFAULT_EXPECTED_DEVICE_ID),
             expected_vendor_id: Some(DEFAULT_EXPECTED_VENDOR_ID),
+            config: None,
         }
     }
 
@@ -52,6 +54,7 @@ impl Validator {
             verbose: config.validation.verbose_output,
             expected_device_id: Some(config.device.device_id),
             expected_vendor_id: Some(config.device.vendor_id),
+            config: Some(config.clone()),
         })
     }
 
@@ -72,6 +75,7 @@ impl Validator {
             verbose: false,
             expected_device_id,
             expected_vendor_id,
+            config: None,
         }
     }
 
@@ -102,7 +106,17 @@ impl Validator {
         let device_id_result = self.validate_get_device_id(&mut client);
         results.push(device_id_result);
 
-        // Future tests can be added here
+        // Run GetDeviceInfo validation
+        let device_info_result = self.validate_get_device_info(&mut client);
+        results.push(device_info_result);
+
+        // Run GetDeviceCapabilities validation
+        let capabilities_result = self.validate_get_device_capabilities(&mut client);
+        results.push(capabilities_result);
+
+        // Run GetFirmwareVersion validation
+        let fw_version_result = self.validate_get_firmware_version(&mut client);
+        results.push(fw_version_result);
 
         if self.verbose {
             self.print_summary(&results);
@@ -137,6 +151,187 @@ impl Validator {
                     passed: false,
                     error_message: Some(e.to_string()),
                 }
+            }
+        }
+    }
+
+    /// Validate GetDeviceInfo command
+    fn validate_get_device_info(&self, client: &mut MailboxClient) -> ValidationResult {
+        let test_name = "GetDeviceInfo".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating GetDeviceInfo Command ===");
+        }
+
+        match client.get_device_info() {
+            Ok(response) => {
+                // Validate against config if available
+                if let Some(ref config) = self.config {
+                    if let Some(ref info_config) = config.device_info {
+                        // Extract actual info from response (up to info_length bytes)
+                        let actual_length = std::cmp::min(response.info_length as usize, response.info_data.len());
+                        let actual_info = String::from_utf8_lossy(&response.info_data[..actual_length]);
+                        
+                        if actual_info.trim() != info_config.expected_info.trim() {
+                            let error_msg = format!(
+                                "Device info mismatch: expected '{}', got '{}'",
+                                info_config.expected_info, actual_info.trim()
+                            );
+                            eprintln!("✗ GetDeviceInfo validation FAILED: {}", error_msg);
+                            return ValidationResult {
+                                test_name,
+                                passed: false,
+                                error_message: Some(error_msg),
+                            };
+                        }
+                        
+                        if self.verbose {
+                            println!("  Device info: '{}' ✓", actual_info.trim());
+                            println!("  Info length: {} bytes ✓", response.info_length);
+                        }
+                    }
+                }
+
+                println!("✓ GetDeviceInfo validation PASSED");
+                ValidationResult {
+                    test_name,
+                    passed: true,
+                    error_message: None,
+                }
+            }
+            Err(e) => {
+                eprintln!("✗ GetDeviceInfo validation FAILED: {}", e);
+                ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(e.to_string()),
+                }
+            }
+        }
+    }
+
+    /// Validate GetDeviceCapabilities command
+    fn validate_get_device_capabilities(&self, client: &mut MailboxClient) -> ValidationResult {
+        let test_name = "GetDeviceCapabilities".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating GetDeviceCapabilities Command ===");
+        }
+
+        match client.get_device_capabilities() {
+            Ok(response) => {
+                // Get expected capabilities from config if available
+                if let Some(ref config) = self.config {
+                    if let Some(ref capabilities_config) = config.device_capabilities {
+                        // Validate the response matches expected values
+                        if response.capabilities != capabilities_config.capabilities {
+                            let error_msg = format!(
+                                "Capabilities mismatch: expected 0x{:08X}, got 0x{:08X}",
+                                capabilities_config.capabilities, response.capabilities
+                            );
+                            eprintln!("✗ GetDeviceCapabilities validation FAILED: {}", error_msg);
+                            return ValidationResult {
+                                test_name,
+                                passed: false,
+                                error_message: Some(error_msg),
+                            };
+                        }
+                        
+                        if self.verbose {
+                            println!("  Capabilities: 0x{:08X} ✓", response.capabilities);
+                        }
+                    }
+                }
+
+                println!("✓ GetDeviceCapabilities validation PASSED");
+                ValidationResult {
+                    test_name,
+                    passed: true,
+                    error_message: None,
+                }
+            }
+            Err(e) => {
+                eprintln!("✗ GetDeviceCapabilities validation FAILED: {}", e);
+                ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(e.to_string()),
+                }
+            }
+        }
+    }
+
+    /// Validate GetFirmwareVersion command
+    fn validate_get_firmware_version(&self, client: &mut MailboxClient) -> ValidationResult {
+        let test_name = "GetFirmwareVersion".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating GetFirmwareVersion Command ===");
+        }
+
+        // Test both ROM (0) and Runtime (1) firmware versions
+        let mut errors = Vec::new();
+        
+        for (fw_name, fw_id) in [("ROM", 0u32), ("Runtime", 1u32)] {
+            if self.verbose {
+                println!("Testing {} firmware version (id={})...", fw_name, fw_id);
+            }
+            
+            match client.get_firmware_version(fw_id) {
+                Ok(response) => {
+                    // Validate against config if available
+                    if let Some(ref config) = self.config {
+                        if let Some(ref fw_config) = config.firmware_version {
+                            let expected_version = if fw_id == 0 {
+                                &fw_config.rom_version
+                            } else {
+                                &fw_config.runtime_version
+                            };
+                            
+                            // Convert version array to string format: "major.minor.patch.build"
+                            let response_version = format!(
+                                "{}.{}.{}.{}",
+                                response.version[0], response.version[1], 
+                                response.version[2], response.version[3]
+                            );
+                            
+                            if response_version != *expected_version {
+                                let error_msg = format!(
+                                    "{} version mismatch: expected '{}', got '{}'",
+                                    fw_name, expected_version, response_version
+                                );
+                                eprintln!("✗ {}", error_msg);
+                                errors.push(error_msg);
+                                continue;
+                            }
+                            
+                            if self.verbose {
+                                println!("  {} version: '{}' ✓", fw_name, response_version);
+                            }
+                        }
+                    }
+                    
+                    println!("✓ {} firmware version validation PASSED", fw_name);
+                }
+                Err(e) => {
+                    let error_msg = format!("{} firmware version failed: {}", fw_name, e);
+                    eprintln!("✗ {}", error_msg);
+                    errors.push(error_msg);
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            ValidationResult {
+                test_name,
+                passed: true,
+                error_message: None,
+            }
+        } else {
+            ValidationResult {
+                test_name,
+                passed: false,
+                error_message: Some(errors.join("; ")),
             }
         }
     }
