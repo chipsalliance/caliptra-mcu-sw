@@ -464,6 +464,43 @@ impl Soc {
                 .set(mcu_sram_addr as u32);
         }
 
+        // We use non secret production fuses to have caliptra tests pass some initial fuse values
+        if cfg!(feature = "core_test") {
+            // UDS Seed from vendor_non_secret_prod_partition (first 64 bytes)
+            romtime::println!("[mcu-fuse-write] Writing UDS seed");
+            if size_of_val(&fuses.vendor_non_secret_prod_partition[0..64])
+                != size_of_val(&self.registers.fuse_uds_seed)
+            {
+                fatal_error(McuError::ROM_SOC_UDS_SEED_LEN_MISMATCH);
+            }
+            for i in 0..self.registers.fuse_uds_seed.len() {
+                let word = u32::from_le_bytes(
+                    fuses.vendor_non_secret_prod_partition[i * 4..i * 4 + 4]
+                        .try_into()
+                        .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_UDS_SEED_LEN_MISMATCH)),
+                );
+                self.registers.fuse_uds_seed[i].set(word);
+            }
+
+            // Field Entropy from vendor_non_secret_prod_partition (32 bytes after UDS)
+            romtime::println!("[mcu-fuse-write] Writing field entropy");
+            if size_of_val(&fuses.vendor_non_secret_prod_partition[64..96])
+                != size_of_val(&self.registers.fuse_field_entropy)
+            {
+                fatal_error(McuError::ROM_SOC_FIELD_ENTROPY_LEN_MISMATCH);
+            }
+            for i in 0..self.registers.fuse_field_entropy.len() {
+                let word = u32::from_le_bytes(
+                    fuses.vendor_non_secret_prod_partition[64 + i * 4..64 + i * 4 + 4]
+                        .try_into()
+                        .unwrap_or_else(|_| {
+                            fatal_error(McuError::ROM_SOC_FIELD_ENTROPY_LEN_MISMATCH)
+                        }),
+                );
+                self.registers.fuse_field_entropy[i].set(word);
+            }
+        }
+
         romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
         romtime::println!("");
     }

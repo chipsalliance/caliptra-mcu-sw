@@ -287,6 +287,16 @@ impl McuError {
             0x5_000D,
             "SOC tried to lock an Mbox user out of range"
         ),
+        (
+            ROM_SOC_UDS_SEED_LEN_MISMATCH,
+            0x5_000E,
+            "SOC UDS seed length mismatch"
+        ),
+        (
+            ROM_SOC_FIELD_ENTROPY_LEN_MISMATCH,
+            0x5_000F,
+            "SOC field entropy length mismatch"
+        ),
     ];
 }
 
