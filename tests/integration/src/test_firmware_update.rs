@@ -11,12 +11,12 @@ mod test {
         PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
     };
     use mcu_config_emulator::EMULATOR_MEMORY_MAP;
+    use mcu_testing_common::ManufacturingMode;
     use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     };
     use pldm_fw_pkg::FirmwareManifest;
-    use mcu_testing_common::ManufacturingMode;
     use std::env;
     use std::path::PathBuf;
 

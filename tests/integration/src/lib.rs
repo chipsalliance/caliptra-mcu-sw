@@ -506,7 +506,7 @@ mod test {
             ROM.to_path_buf(),
             test_runtime,
             i3c_port,
-            true,  // active mode is always true
+            true,                          // active mode is always true
             ManufacturingMode::Production, // set this to ManufacturingMode::Manufacturing if you want to run in manufacturing mode
             None,
             None,
