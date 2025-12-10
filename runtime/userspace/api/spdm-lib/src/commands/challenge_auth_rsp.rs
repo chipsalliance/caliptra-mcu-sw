@@ -60,14 +60,10 @@ async fn process_challenge<'a>(
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<(u8, u8, Option<RequesterContext>)> {
     // Validate the version
-    let connection_version = ctx.state.connection_info.version_number();
-    if spdm_hdr.version().ok() != Some(connection_version) {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
-    }
+    let connection_version = ctx.validate_spdm_version(&spdm_hdr, req_payload)?;
 
     // Make sure the selected hash algorithm is SHA384
-    ctx.verify_negotiated_hash_algo()
-        .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
+    ctx.validate_negotiated_hash_algo(req_payload)?;
 
     // Decode the CHALLENGE request payload
     let challenge_req = ChallengeReqBase::decode(req_payload).map_err(|_| {
@@ -249,9 +245,7 @@ async fn generate_challenge_auth_response<'a>(
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Get the selected asymmetric algorithm
-    let asym_algo = ctx
-        .negotiated_base_asym_algo()
-        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
+    let asym_algo = ctx.validate_negotiated_base_asym_algo(rsp)?;
 
     // Prepare the response buffer
     // Spdm Header first

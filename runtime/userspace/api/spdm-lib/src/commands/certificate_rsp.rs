@@ -124,6 +124,20 @@ async fn encode_certchain_metadata(
     Ok(write_len)
 }
 
+fn support_explicit_chunking(ctx: &SpdmContext<'_>) -> bool {
+    // Chunking is only supported from SPDM v1.2 onwards
+    // and both the Responder and the Requester must support chunking.
+    ctx.state.connection_info.version_number() >= SpdmVersion::V12
+        && ctx.local_capabilities.flags.chunk_cap() == 1
+        && ctx
+            .state
+            .connection_info
+            .peer_capabilities()
+            .flags
+            .chunk_cap()
+            == 1
+}
+
 async fn generate_certificate_response<'a>(
     ctx: &mut SpdmContext<'a>,
     slot_id: u8,
@@ -132,11 +146,8 @@ async fn generate_certificate_response<'a>(
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Ensure the selected hash algorithm is SHA384 and retrieve the asymmetric algorithm (currently only ECC-P384 is supported)
-    ctx.verify_negotiated_hash_algo()
-        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
-    let asym_algo = ctx
-        .negotiated_base_asym_algo()
-        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
+    ctx.validate_negotiated_hash_algo(rsp)?;
+    let asym_algo = ctx.validate_negotiated_base_asym_algo(rsp)?;
 
     let connection_version = ctx.state.connection_info.version_number();
 
@@ -170,9 +181,9 @@ async fn generate_certificate_response<'a>(
 
     let mut remainder_len = total_cert_chain_len.saturating_sub(offset);
 
-    let portion_len = if length > SPDM_MAX_CERT_CHAIN_PORTION_LEN
-    // && ctx.local_capabilities.flags.chunk_cap() == 1
-    {
+    let support_chunking = support_explicit_chunking(ctx);
+
+    let portion_len = if length > SPDM_MAX_CERT_CHAIN_PORTION_LEN && !support_chunking {
         SPDM_MAX_CERT_CHAIN_PORTION_LEN.min(remainder_len)
     } else {
         length.min(remainder_len)
@@ -242,10 +253,7 @@ async fn process_get_certificate<'a>(
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<(u8, u16, u16)> {
     // Validate the version
-    let connection_version = ctx.state.connection_info.version_number();
-    if spdm_hdr.version().ok() != Some(connection_version) {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
-    }
+    let connection_version = ctx.validate_spdm_version(&spdm_hdr, req_payload)?;
 
     // Decode the GET_CERTIFICATE request payload
     let req = GetCertificateReq::decode(req_payload).map_err(|_| {

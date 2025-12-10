@@ -58,12 +58,9 @@ async fn generate_digests_response<'a>(
     ctx: &mut SpdmContext<'a>,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    // Ensure the selected hash algorithm is SHA384 and retrieve the asymmetric algorithm (currently only ECC-P384 is supported)
-    ctx.verify_negotiated_hash_algo()
-        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
-    let asym_algo = ctx
-        .negotiated_base_asym_algo()
-        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
+    ctx.validate_negotiated_hash_algo(rsp)?;
+
+    let asym_algo = ctx.validate_negotiated_base_asym_algo(rsp)?;
 
     // Get the supported and provisioned slot masks.
     let (supported_slot_mask, provisioned_slot_mask) = cert_slot_mask(ctx.device_certs_store).await;

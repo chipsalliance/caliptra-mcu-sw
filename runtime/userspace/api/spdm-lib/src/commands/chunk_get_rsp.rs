@@ -87,11 +87,8 @@ fn process_chunk_get<'a>(
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<(u8, u16)> {
     // Check that the spdm version valid and is >= SPDM_VERSION_1_2
-    // Validate the version
-    let connection_version = ctx.state.connection_info.version_number();
-    if spdm_hdr.version().ok() != Some(connection_version) {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
-    }
+    let connection_version = ctx.validate_spdm_version(&spdm_hdr, req_payload)?;
+
     if connection_version < SpdmVersion::V12 {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnsupportedRequest, 0, None))?;
     }

@@ -188,10 +188,8 @@ async fn process_vendor_defined_request<'a>(
     [u8; MAX_VENDOR_DEFINED_REQ_SIZE],
     usize,
 )> {
-    let connection_version = ctx.state.connection_info.version_number();
-    if spdm_hdr.version().ok() != Some(connection_version) {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
-    }
+    // Validate the SPDM version
+    let _ = ctx.validate_spdm_version(&spdm_hdr, req_payload)?;
 
     let req_hdr =
         VendorDefReqHdr::decode(req_payload).map_err(|e| (false, CommandError::Codec(e)))?;
@@ -335,6 +333,8 @@ pub(crate) async fn handle_vendor_defined_request<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
+    // Based on the current support, if vendor defined requests are received within a session,
+    // they must be in received in application phase of the session.
     let session_id = ctx.session_mgr.active_session_id();
     if let Some(session_id) = session_id {
         let session_info = ctx.session_mgr.session_info(session_id).map_err(|_| {
