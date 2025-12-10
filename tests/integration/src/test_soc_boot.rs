@@ -5,11 +5,11 @@ mod test {
     use crate::test::{compile_runtime, get_rom_with_feature, run_runtime, TEST_LOCK};
     use chrono::{TimeZone, Utc};
     use mcu_builder::{CaliptraBuilder, ImageCfg};
-    use mcu_testing_common::ManufacturingMode;
     use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
+    use mcu_testing_common::ManufacturingMode;
     use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
@@ -196,7 +196,8 @@ mod test {
             opts.runtime.clone(),
             opts.i3c_port.to_string(),
             true,
-            opts.manufacturing_mode.unwrap_or(ManufacturingMode::Production),
+            opts.manufacturing_mode
+                .unwrap_or(ManufacturingMode::Production),
             Some(opts.soc_images.clone()),
             opts.pldm_fw_pkg_path.clone(),
             opts.primary_flash_image_path.clone(),

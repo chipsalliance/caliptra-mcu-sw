@@ -40,7 +40,9 @@ use mcu_testing_common::i3c_socket;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use mcu_testing_common::mctp_transport::MctpTransport;
 use mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
-use mcu_testing_common::{ManufacturingMode, MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND};
+use mcu_testing_common::{
+    ManufacturingMode, MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND,
+};
 use pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::daemon::PldmDaemon;
 use pldm_ua::transport::{EndpointId, PldmTransport};
@@ -318,11 +320,12 @@ impl Emulator {
             ManufacturingMode::Unprovisioned => Some("unprovisioned".into()),
         };
 
-        let req_idevid_csr: Option<bool> = if cli.manufacturing_mode == ManufacturingMode::Manufacturing {
-            Some(true)
-        } else {
-            None
-        };
+        let req_idevid_csr: Option<bool> =
+            if cli.manufacturing_mode == ManufacturingMode::Manufacturing {
+                Some(true)
+            } else {
+                None
+            };
 
         let use_mcu_recovery_interface = is_flash_based_boot;
 

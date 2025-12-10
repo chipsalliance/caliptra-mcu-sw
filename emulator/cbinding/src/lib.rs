@@ -146,12 +146,12 @@ pub struct CEmulatorConfig {
     pub i3c_port: c_uint,                        // 0 means no I3C socket
     pub trace_instr: c_uchar,                    // 0 = false, 1 = true
     pub stdin_uart: c_uchar,                     // 0 = false, 1 = true
-    pub manufacturing_mode: c_uchar,             // 0 = Production, 1 = Manufacturing, 2 = Unprovisioned
-    pub capture_uart_output: c_uchar,            // 0 = false, 1 = true
-    pub vendor_pk_hash: *const c_char,           // Optional, can be null
-    pub vendor_pqc_type: c_uchar,                // 1 = LMS, 3 = MLDSA
-    pub owner_pk_hash: *const c_char,            // Optional, can be null
-    pub streaming_boot_path: *const c_char,      // Optional, can be null
+    pub manufacturing_mode: c_uchar, // 0 = Production, 1 = Manufacturing, 2 = Unprovisioned
+    pub capture_uart_output: c_uchar, // 0 = false, 1 = true
+    pub vendor_pk_hash: *const c_char, // Optional, can be null
+    pub vendor_pqc_type: c_uchar,    // 1 = LMS, 3 = MLDSA
+    pub owner_pk_hash: *const c_char, // Optional, can be null
+    pub streaming_boot_path: *const c_char, // Optional, can be null
     pub primary_flash_image_path: *const c_char, // Optional, can be null
     pub secondary_flash_image_path: *const c_char, // Optional, can be null
     pub hw_revision_major: c_uint,

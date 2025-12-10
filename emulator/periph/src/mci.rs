@@ -191,9 +191,7 @@ impl MciPeripheral for Mci {
         self.reset_reason.set(val.reg.get());
     }
 
-    fn read_mci_reg_security_state(
-        &mut self,
-    ) -> ReadWriteRegister<u32, SecurityState::Register> {
+    fn read_mci_reg_security_state(&mut self) -> ReadWriteRegister<u32, SecurityState::Register> {
         ReadWriteRegister::new(self.ext_mci_regs.regs.borrow().security_state)
     }
 
