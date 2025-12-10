@@ -64,9 +64,11 @@ mod test {
         let label = [0u8; 32];
         req.info[..23].copy_from_slice(b"Caliptra DOT stable key");
         let req = req.as_mut_bytes();
+        println!("calc_checksum");
         calc_checksum(CommandId::CM_DERIVE_STABLE_KEY.into(), req);
 
         let mut resp = CmDeriveStableKeyResp::default();
+        println!("mailbox_exec");
         hw.caliptra_soc_manager()
             .mailbox_exec(
                 CommandId::CM_DERIVE_STABLE_KEY.into(),
