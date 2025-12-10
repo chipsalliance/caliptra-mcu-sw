@@ -136,6 +136,9 @@ pub struct EmulatorArgs {
     pub manufacturing_mode: bool,
 
     #[arg(long)]
+    pub unprovisioned_security_state: bool,
+
+    #[arg(long)]
     pub vendor_pk_hash: Option<String>,
 
     #[arg(long)]

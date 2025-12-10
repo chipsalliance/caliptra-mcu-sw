@@ -147,6 +147,7 @@ pub struct CEmulatorConfig {
     pub trace_instr: c_uchar,                    // 0 = false, 1 = true
     pub stdin_uart: c_uchar,                     // 0 = false, 1 = true
     pub manufacturing_mode: c_uchar,             // 0 = false, 1 = true
+    pub unprovisioned_security_state: c_uchar,   // 0 = false, 1 = true
     pub capture_uart_output: c_uchar,            // 0 = false, 1 = true
     pub vendor_pk_hash: *const c_char,           // Optional, can be null
     pub vendor_pqc_type: c_uchar,                // 1 = LMS, 3 = MLDSA
@@ -291,6 +292,7 @@ pub unsafe extern "C" fn emulator_init(
             Some(config.i3c_port as u16)
         },
         manufacturing_mode: config.manufacturing_mode != 0,
+        unprovisioned_security_state: config.unprovisioned_security_state != 0,
         vendor_pk_hash: convert_optional_c_string(config.vendor_pk_hash),
         vendor_pqc_type: caliptra_image_types::FwVerificationPqcKeyType::from_u8(
             config.vendor_pqc_type,
