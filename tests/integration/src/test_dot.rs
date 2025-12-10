@@ -66,11 +66,15 @@ mod test {
         let req = req.as_mut_bytes();
         calc_checksum(CommandId::CM_DERIVE_STABLE_KEY.into(), req);
 
-        let result = hw
-            .mailbox_execute(CommandId::CM_DERIVE_STABLE_KEY.into(), req)
+        let mut resp = CmDeriveStableKeyResp::default();
+        hw.caliptra_soc_manager()
+            .mailbox_exec(
+                CommandId::CM_DERIVE_STABLE_KEY.into(),
+                req,
+                resp.as_mut_bytes(),
+            )
             .unwrap()
             .unwrap();
-        let resp = CmDeriveStableKeyResp::read_from_bytes(&result).unwrap();
         let cmk = resp.cmk;
 
         println!("hmac computation");
@@ -85,11 +89,11 @@ mod test {
         let req = req.as_mut_bytes();
         calc_checksum(CommandId::CM_HMAC.into(), req);
 
-        let result = hw
-            .mailbox_execute(CommandId::CM_HMAC.into(), req)
+        let mut resp = CmHmacResp::default();
+        hw.caliptra_soc_manager()
+            .mailbox_exec(CommandId::CM_HMAC.into(), req, resp.as_mut_bytes())
             .unwrap()
             .unwrap();
-        let resp = CmHmacResp::read_from_bytes(&result).unwrap();
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
