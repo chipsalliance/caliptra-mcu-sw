@@ -10,9 +10,20 @@ pub mod mctp_transport;
 #[macro_use]
 pub mod mctp_util;
 
+#[cfg(feature = "clap")]
+use clap::ValueEnum;
+
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::time::Duration;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "clap", derive(ValueEnum))]
+pub enum ManufacturingMode {
+    Production = 0,
+    Manufacturing = 1,
+    Unprovisioned = 2,
+}
 
 pub static MCU_RUNTIME_STARTED: AtomicBool = AtomicBool::new(false);
 pub static MCU_RUNNING: AtomicBool = AtomicBool::new(true);

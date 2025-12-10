@@ -140,7 +140,7 @@ struct CEmulatorConfig config = {
     .i3c_port = 0,                    // 0 = no I3C, >0 = I3C port
     .trace_instr = 0,                 // 0 = no trace, 1 = trace instructions
     .stdin_uart = 1,                  // 1 = enable console input to UART
-    .manufacturing_mode = 0,          // 0 = normal, 1 = manufacturing mode
+    .manufacturing_mode = 0,          // 0 = Production, 1 = Manufacturing, 2 = Unprovisioned
     .capture_uart_output = 1,         // 1 = capture UART output
     
     // Hardware version

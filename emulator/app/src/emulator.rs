@@ -40,7 +40,7 @@ use mcu_testing_common::i3c_socket;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use mcu_testing_common::mctp_transport::MctpTransport;
 use mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
-use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND};
+use mcu_testing_common::{ManufacturingMode, MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND};
 use pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::daemon::PldmDaemon;
 use pldm_ua::transport::{EndpointId, PldmTransport};
@@ -132,11 +132,8 @@ pub struct EmulatorArgs {
     pub i3c_port: Option<u16>,
 
     /// This is only needed if the IDevID CSR needed to be generated in the Caliptra Core.
-    #[arg(long)]
-    pub manufacturing_mode: bool,
-
-    #[arg(long)]
-    pub unprovisioned_security_state: bool,
+    #[arg(long, value_enum, default_value_t = ManufacturingMode::Production)]
+    pub manufacturing_mode: ManufacturingMode,
 
     #[arg(long)]
     pub vendor_pk_hash: Option<String>,
@@ -315,13 +312,13 @@ impl Emulator {
             exit(-1);
         }
 
-        let device_lifecycle: Option<String> = if cli.manufacturing_mode {
-            Some("manufacturing".into())
-        } else {
-            Some("production".into())
+        let device_lifecycle: Option<String> = match cli.manufacturing_mode {
+            ManufacturingMode::Manufacturing => Some("manufacturing".into()),
+            ManufacturingMode::Production => Some("production".into()),
+            ManufacturingMode::Unprovisioned => Some("unprovisioned".into()),
         };
 
-        let req_idevid_csr: Option<bool> = if cli.manufacturing_mode {
+        let req_idevid_csr: Option<bool> = if cli.manufacturing_mode == ManufacturingMode::Manufacturing {
             Some(true)
         } else {
             None

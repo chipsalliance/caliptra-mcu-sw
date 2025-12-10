@@ -146,8 +146,7 @@ pub struct CEmulatorConfig {
     pub i3c_port: c_uint,                        // 0 means no I3C socket
     pub trace_instr: c_uchar,                    // 0 = false, 1 = true
     pub stdin_uart: c_uchar,                     // 0 = false, 1 = true
-    pub manufacturing_mode: c_uchar,             // 0 = false, 1 = true
-    pub unprovisioned_security_state: c_uchar,   // 0 = false, 1 = true
+    pub manufacturing_mode: c_uchar,             // 0 = Production, 1 = Manufacturing, 2 = Unprovisioned
     pub capture_uart_output: c_uchar,            // 0 = false, 1 = true
     pub vendor_pk_hash: *const c_char,           // Optional, can be null
     pub vendor_pqc_type: c_uchar,                // 1 = LMS, 3 = MLDSA
@@ -291,8 +290,11 @@ pub unsafe extern "C" fn emulator_init(
         } else {
             Some(config.i3c_port as u16)
         },
-        manufacturing_mode: config.manufacturing_mode != 0,
-        unprovisioned_security_state: config.unprovisioned_security_state != 0,
+        manufacturing_mode: match config.manufacturing_mode {
+            1 => mcu_testing_common::ManufacturingMode::Manufacturing,
+            2 => mcu_testing_common::ManufacturingMode::Unprovisioned,
+            _ => mcu_testing_common::ManufacturingMode::Production,
+        },
         vendor_pk_hash: convert_optional_c_string(config.vendor_pk_hash),
         vendor_pqc_type: caliptra_image_types::FwVerificationPqcKeyType::from_u8(
             config.vendor_pqc_type,

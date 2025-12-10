@@ -5,6 +5,7 @@ mod test {
     use crate::test::{compile_runtime, get_rom_with_feature, run_runtime, TEST_LOCK};
     use chrono::{TimeZone, Utc};
     use mcu_builder::{CaliptraBuilder, ImageCfg};
+    use mcu_testing_common::ManufacturingMode;
     use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
@@ -38,7 +39,7 @@ mod test {
         flash_offset: usize,
         fuse_soc_manifest_svn: Option<u8>,
         fuse_soc_manifest_max_svn: Option<u8>,
-        manufacturing_mode: Option<bool>,
+        manufacturing_mode: Option<ManufacturingMode>,
     }
 
     macro_rules! run_test {
@@ -195,7 +196,7 @@ mod test {
             opts.runtime.clone(),
             opts.i3c_port.to_string(),
             true,
-            opts.manufacturing_mode.unwrap_or(false),
+            opts.manufacturing_mode.unwrap_or(ManufacturingMode::Production),
             Some(opts.soc_images.clone()),
             opts.pldm_fw_pkg_path.clone(),
             opts.primary_flash_image_path.clone(),
@@ -224,7 +225,7 @@ mod test {
             .unwrap();
         new_options.fuse_soc_manifest_svn = Some(12);
         new_options.fuse_soc_manifest_max_svn = Some(13);
-        new_options.manufacturing_mode = Some(true);
+        new_options.manufacturing_mode = Some(ManufacturingMode::Manufacturing);
         let test = run_runtime_with_options(&new_options);
         assert_ne!(0, test);
     }
@@ -239,7 +240,7 @@ mod test {
             .unwrap();
         new_options.fuse_soc_manifest_svn = Some(12);
         new_options.fuse_soc_manifest_max_svn = Some(13);
-        new_options.manufacturing_mode = Some(true);
+        new_options.manufacturing_mode = Some(ManufacturingMode::Manufacturing);
         let test = run_runtime_with_options(&new_options);
         assert_ne!(0, test);
     }
@@ -254,7 +255,7 @@ mod test {
             .unwrap();
         new_options.fuse_soc_manifest_svn = Some(9);
         new_options.fuse_soc_manifest_max_svn = Some(13);
-        new_options.manufacturing_mode = Some(true);
+        new_options.manufacturing_mode = Some(ManufacturingMode::Manufacturing);
 
         // Replace the SoC Manifest in the PLDM package
         let flash_offset = opts

@@ -171,8 +171,16 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     if trace {
         cargo_run_args.extend(["-t", "-l", PROJECT_ROOT.to_str().unwrap()]);
     }
-    if manufacturing_mode {
-        cargo_run_args.extend(["--manufacturing-mode"]);
+    match manufacturing_mode {
+        mcu_testing_common::ManufacturingMode::Manufacturing => {
+            cargo_run_args.extend(["--manufacturing-mode", "manufacturing"]);
+        }
+        mcu_testing_common::ManufacturingMode::Unprovisioned => {
+            cargo_run_args.extend(["--manufacturing-mode", "unprovisioned"]);
+        }
+        mcu_testing_common::ManufacturingMode::Production => {
+            cargo_run_args.extend(["--manufacturing-mode", "production"]);
+        }
     }
     if streaming_boot.as_ref().is_some() {
         cargo_run_args.extend([

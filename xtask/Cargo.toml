@@ -28,6 +28,7 @@ mcu-builder.workspace = true
 mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true
 mcu-rom-common.workspace = true
+mcu-testing-common = { workspace = true, features = ["clap"] }
 mcu-hw-model = { workspace = true, optional = true }
 mcu-fuses-generator.workspace = true
 pldm-fw-pkg.workspace = true

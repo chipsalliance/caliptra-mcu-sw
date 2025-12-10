@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
 use core::panic;
 use mcu_builder::ImageCfg;
+use mcu_testing_common::ManufacturingMode;
 use std::path::PathBuf;
 
 mod auth_manifest;
@@ -65,8 +66,8 @@ enum Commands {
         #[arg(long)]
         caliptra_firmware: Option<PathBuf>,
 
-        #[clap(long, default_value_t = false)]
-        manufacturing_mode: bool,
+        #[clap(long, value_enum, default_value_t = ManufacturingMode::Production)]
+        manufacturing_mode: ManufacturingMode,
 
         #[arg(long)]
         soc_manifest: Option<PathBuf>,
