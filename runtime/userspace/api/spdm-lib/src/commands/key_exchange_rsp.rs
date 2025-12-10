@@ -124,10 +124,7 @@ async fn process_key_exchange<'a>(
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<KeyExchRspContext> {
     // Validate the version
-    let connection_version = ctx.state.connection_info.version_number();
-    if spdm_hdr.version().ok() != Some(connection_version) {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
-    }
+    let connection_version = ctx.validate_spdm_version(&spdm_hdr, req_payload)?;
 
     // Decode the KEY_EXCHANGE request payload
     let exch_req = KeyExchangeEcdhReqBase::decode(req_payload).map_err(|_| {
@@ -443,17 +440,10 @@ pub(crate) async fn handle_key_exchange<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None))?;
     }
 
-    // Check negotiated algorithms are valid and generate error response once
-    let asym_algo = ctx
-        .negotiated_base_asym_algo()
-        .and_then(|algo| {
-            // Check hash algorithm
-            ctx.verify_negotiated_hash_algo()?;
-            // Check DHE group
-            ctx.verify_negotiated_dhe_group()?;
-            Ok(algo)
-        })
-        .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
+    // Check negotiated algorithms are valid
+    ctx.validate_negotiated_hash_algo(req_payload)?;
+    ctx.validate_negotiated_dhe_group(req_payload)?;
+    let asym_algo = ctx.validate_negotiated_base_asym_algo(req_payload)?;
 
     // Process KEY_EXCHANGE request
     let key_exch_rsp_ctx = match process_key_exchange(ctx, asym_algo, spdm_hdr, req_payload).await {
