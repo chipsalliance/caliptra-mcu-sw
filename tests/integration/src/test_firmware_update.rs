@@ -16,6 +16,7 @@ mod test {
         PackageHeaderInformation, StringType,
     };
     use pldm_fw_pkg::FirmwareManifest;
+    use mcu_testing_common::ManufacturingMode;
     use std::env;
     use std::path::PathBuf;
 
@@ -203,7 +204,7 @@ mod test {
             opts.runtime.clone(),
             opts.i3c_port.to_string(),
             true,
-            false,
+            ManufacturingMode::Production,
             Some(opts.soc_images.clone()),
             opts.pldm_fw_pkg_path.clone(),
             opts.primary_flash_image_path.clone(),

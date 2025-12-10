@@ -507,7 +507,7 @@ mod test {
             test_runtime,
             i3c_port,
             true,  // active mode is always true
-            false, //set this to true if you want to run in manufacturing mode
+            ManufacturingMode::Production, // set this to ManufacturingMode::Manufacturing if you want to run in manufacturing mode
             None,
             None,
             None,
@@ -616,7 +616,7 @@ mod test {
             test_runtime,
             i3c_port,
             true,
-            false,
+            ManufacturingMode::Production,
             None,
             None,
             None,
@@ -648,7 +648,7 @@ mod test {
             test_runtime,
             i3c_port,
             true,
-            false,
+            ManufacturingMode::Production,
             None,
             None,
             None,
@@ -717,7 +717,7 @@ mod test {
             test_runtime,
             i3c_port,
             true,
-            false,
+            ManufacturingMode::Production,
             None,
             None,
             None,
