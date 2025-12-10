@@ -7,7 +7,7 @@ use flash_image::{
     SOC_MANIFEST_IDENTIFIER,
 };
 use registers_generated::i3c;
-use registers_generated::i3c::bits::{RecIntfCfg, RecoveryCtrl};
+use registers_generated::i3c::bits::{RecIntfCfg, RecIntfRegW1cAccess, RecoveryCtrl};
 use romtime::StaticRef;
 use smlang::statemachine;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -16,6 +16,7 @@ use zerocopy::FromBytes;
 const ACTIVATE_RECOVERY_IMAGE_CMD: u32 = 0xF;
 const BYPASS_CFG_USE_I3C: u32 = 0x0;
 const BYPASS_CFG_AXI_DIRECT: u32 = 0x1;
+const INDIRECT_FIFO_STATUS_0_FULL_MASK: u32 = 0x1;
 
 statemachine! {
     derive_states: [Clone, Copy, Debug],
@@ -308,6 +309,10 @@ pub fn load_flash_image_to_recovery(
                         "[mcu-rom] Starting recovery with image index {}",
                         state_machine.context().recovery_image_index
                     );
+                    // Clear REC_INTF_CFG.REC_PAYLOAD_DONE bit to indicate image is not available
+                    i3c_periph
+                        .soc_mgmt_if_rec_intf_cfg
+                        .modify(RecIntfCfg::RecPayloadDone.val(0));
                     let image_info = get_flash_image_info(
                         recovery_img_index_to_image_id(
                             state_machine.context().recovery_image_index as u32,
@@ -340,20 +345,30 @@ pub fn load_flash_image_to_recovery(
                 }
 
                 if state_machine.context().transfer_offset >= state_machine.context().image_size {
+                    // Set REC_INTF_CFG.REC_PAYLOAD_DONE bit to indicate transfer complete
+                    i3c_periph
+                        .soc_mgmt_if_rec_intf_cfg
+                        .modify(RecIntfCfg::RecPayloadDone.val(1));
+
                     // If the transfer is complete, we can move to the next state
                     let _ = state_machine.process_event(Events::TransferComplete);
                 } else {
-                    let mut data = [0u8; 4];
-                    flash_driver
-                        .read(
-                            (state_machine.context().flash_offset
-                                + state_machine.context().transfer_offset)
-                                as usize,
-                            &mut data,
-                        )
-                        .map_err(|_| ())?;
-                    i3c_periph.tti_tx_data_port.set(u32::from_le_bytes(data));
-                    state_machine.context_mut().transfer_offset += 4; // Simulate writing 4 bytes
+                    // Check if the Indirect FIFO is ready for more data
+                    let fifo_status = i3c_periph.sec_fw_recovery_if_indirect_fifo_status_0.get();
+                    if fifo_status & INDIRECT_FIFO_STATUS_0_FULL_MASK == 0 {
+                        // Indirect FIFO is not full, we can write more data
+                        let mut data = [0u8; 4];
+                        flash_driver
+                            .read(
+                                (state_machine.context().flash_offset
+                                    + state_machine.context().transfer_offset)
+                                    as usize,
+                                &mut data,
+                            )
+                            .map_err(|_| ())?;
+                        i3c_periph.tti_tx_data_port.set(u32::from_le_bytes(data));
+                        state_machine.context_mut().transfer_offset += 4; // Simulate writing 4 bytes
+                    }
                 }
             }
 
@@ -364,6 +379,10 @@ pub fn load_flash_image_to_recovery(
             }
 
             States::Activate => {
+                // Set the RECOVERY_CTRL_ACTIVATE_REC_IMG bit to allow access to RecoveryCtrl
+                i3c_periph
+                    .soc_mgmt_if_rec_intf_reg_w1_c_access
+                    .modify(RecIntfRegW1cAccess::RecoveryCtrlActivateRecImg.val(0xff));
                 // Activate the recovery image
                 i3c_periph
                     .sec_fw_recovery_if_recovery_ctrl
