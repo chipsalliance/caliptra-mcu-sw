@@ -180,6 +180,10 @@ enum Commands {
         /// Path to the PLDM manifest TOML file
         #[arg(short, long, value_name = "MANIFEST", required = false)]
         pldm_manifest: Option<String>,
+
+        /// Whether to include the example application in the runtime build
+        #[arg(long, default_value_t = false)]
+        include_example_app: bool,
     },
     /// Commands related to flash images
     FlashImage {
@@ -394,6 +398,7 @@ fn main() {
             soc_images,
             mcu_cfg,
             pldm_manifest,
+            include_example_app,
         } => mcu_builder::all_build(mcu_builder::AllBuildArgs {
             output: output.as_deref(),
             platform: platform.as_deref(),
@@ -406,6 +411,7 @@ fn main() {
             soc_images: soc_images.clone(),
             mcu_cfg: mcu_cfg.clone(),
             pldm_manifest: pldm_manifest.as_deref(),
+            include_example_app: *include_example_app,
         }),
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),
         Commands::RuntimeBuild {

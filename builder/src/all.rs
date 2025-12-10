@@ -179,6 +179,7 @@ pub struct AllBuildArgs<'a> {
     pub soc_images: Option<Vec<ImageCfg>>,
     pub mcu_cfg: Option<ImageCfg>,
     pub pldm_manifest: Option<&'a str>,
+    pub include_example_app: bool,
 }
 
 /// Build Caliptra ROM and firmware bundle, MCU ROM and runtime, and SoC manifest, and package them all together in a ZIP file.
@@ -195,6 +196,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         soc_images,
         mcu_cfg,
         pldm_manifest,
+        include_example_app,
     } = args;
 
     // TODO: use temp files
@@ -330,7 +332,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         crate::runtime_build_with_apps(
             &[feature],
             Some(feature_runtime_path),
-            false,
+            include_example_app,
             Some(platform),
             Some(memory_map),
             use_dccm_for_stack,

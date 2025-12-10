@@ -4,5 +4,4 @@
 #![forbid(unsafe_code)]
 
 pub mod dma;
-pub mod flash_partition;
 pub mod logging;

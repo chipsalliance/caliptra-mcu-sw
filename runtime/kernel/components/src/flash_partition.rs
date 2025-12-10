@@ -2,7 +2,7 @@
 
 // Component for flash partition driver.
 
-use capsules_emulator::flash_partition::FlashPartition;
+use capsules_runtime::flash_partition::FlashPartition;
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
@@ -15,30 +15,25 @@ macro_rules! instantiate_flash_partitions {
         $partition_list_macro:tt,
         $flash_partitions:ident,
         $kernel:expr,
-        $mux:expr
+        $mux:expr,
+        $flash_ctrl_ty:ty
     ) => {{
         macro_rules! assign_partition {
             ($index:tt, $var:ident, $partition:ident) => {
-                let image_par_fl_user = components::flash::FlashUserComponent::new($mux).finalize(
-                    components::flash_user_component_static!(
-                        flash_driver::flash_ctrl::EmulatedFlashCtrl
-                    ),
-                );
+                let image_par_fl_user = components::flash::FlashUserComponent::new($mux)
+                    .finalize(components::flash_user_component_static!($flash_ctrl_ty));
 
                 $flash_partitions[$index] = Some(
-                    runtime_components::flash_partition::FlashPartitionComponent::new(
+                    mcu_components::flash_partition::FlashPartitionComponent::new(
                         $kernel,
-                        mcu_config_emulator::flash::$partition.driver_num as usize,
+                        $partition.driver_num as usize,
                         image_par_fl_user,
-                        mcu_config_emulator::flash::$partition.offset,
-                        mcu_config_emulator::flash::$partition.size,
+                        $partition.offset,
+                        $partition.size,
                     )
-                    .finalize(crate::flash_partition_component_static!(
-                        virtual_flash::FlashUser<
-                            'static,
-                            flash_driver::flash_ctrl::EmulatedFlashCtrl,
-                        >,
-                        capsules_emulator::flash_partition::BUF_LEN
+                    .finalize(flash_partition_component_static!(
+                        virtual_flash::FlashUser<'static, $flash_ctrl_ty>,
+                        capsules_runtime::flash_partition::BUF_LEN
                     )),
                 );
             };
@@ -55,7 +50,7 @@ macro_rules! flash_partition_component_static {
         let fs_to_pages = kernel::static_buf!(
             flash_driver::flash_storage_to_pages::FlashStorageToPages<'static, $F>
         );
-        let fs = kernel::static_buf!(capsules_emulator::flash_partition::FlashPartition<'static>);
+        let fs = kernel::static_buf!(capsules_runtime::flash_partition::FlashPartition<'static>);
         let buffer = kernel::static_buf!([u8; $buf_len]);
 
         (page, fs_to_pages, fs, buffer)
@@ -118,7 +113,7 @@ impl<
             flash_driver::flash_storage_to_pages::FlashStorageToPages<'static, F>,
         >,
         &'static mut MaybeUninit<FlashPartition<'static>>,
-        &'static mut MaybeUninit<[u8; capsules_emulator::flash_partition::BUF_LEN]>,
+        &'static mut MaybeUninit<[u8; capsules_runtime::flash_partition::BUF_LEN]>,
     );
 
     type Output = &'static FlashPartition<'static>;
@@ -128,7 +123,7 @@ impl<
 
         let buffer = static_buffer
             .3
-            .write([0; capsules_emulator::flash_partition::BUF_LEN]);
+            .write([0; capsules_runtime::flash_partition::BUF_LEN]);
 
         let flash_pagebuffer = static_buffer
             .0
@@ -145,7 +140,7 @@ impl<
         let flash_partition =
             static_buffer
                 .2
-                .write(capsules_emulator::flash_partition::FlashPartition::new(
+                .write(capsules_runtime::flash_partition::FlashPartition::new(
                     fs_to_pages,
                     self.driver_num,
                     self.board_kernel.create_grant(self.driver_num, &grant_cap),
