@@ -182,6 +182,14 @@ SECTIONS
         PROVIDE(STACK_START = . );
     } > RAM
 
+    .estack (NOLOAD):
+    {
+        . = ALIGN(4);
+        . = . + ESTACK_SIZE;
+        . = ALIGN(4);
+        PROVIDE(ESTACK_START = . );
+    }
+
     _end = . ;
 }
 
@@ -193,6 +201,7 @@ ROM_DATA_START = LOADADDR(.data);
 STACK_SIZE = $ROM_STACK_SIZE;
 STACK_TOP = ORIGIN(RAM) + LENGTH(RAM);
 STACK_ORIGIN = STACK_TOP - STACK_SIZE;
+ESTACK_SIZE = $ROM_ESTACK_SIZE;
 MRAC_VALUE = $MRAC_VALUE;
 
 "#;
