@@ -4,18 +4,52 @@ use anyhow::{bail, Result};
 use cargo_metadata::MetadataCommand;
 
 use std::{
+    collections::HashMap,
     path::PathBuf,
     process::{Command, Stdio},
+    sync::LazyLock,
 };
 
 use mcu_builder::PROJECT_ROOT;
+
+/// Store environment varibles and default values that can be replaced in command strings.
+pub struct EnvironmentReplacer {
+    replacements: HashMap<&'static str, &'static str>,
+}
+
+impl EnvironmentReplacer {
+    /// Create a new `EnvironmentReplacer`.
+    pub fn new<const N: usize>(values: [(&'static str, &'static str); N]) -> Self {
+        EnvironmentReplacer {
+            replacements: HashMap::from(values),
+        }
+    }
+
+    /// Replace occurances of `${envvar}` in `s` with values from the environment or the
+    /// default value.
+    pub fn replace(&self, s: &str) -> String {
+        let mut s = s.to_string();
+        for (&envvar, &defval) in self.replacements.iter() {
+            let var = std::env::var(envvar).unwrap_or_else(|_| defval.into());
+            s = s.replace(&format!("${{{envvar}}}"), &var);
+        }
+        s
+    }
+}
+
+const ENVIRONMENT: LazyLock<EnvironmentReplacer> = LazyLock::new(|| {
+    EnvironmentReplacer::new([
+        // If `docker` is not permitted in your environment, `podman` is a good replacement.
+        ("DOCKER", "docker"),
+    ])
+});
 
 /// Check that host system has all the tools that the xtask FPGA flows depends on.
 pub fn check_host_dependencies() -> Result<()> {
     let tools = [
         (
-            "docker --version",
-            "'docker' not found on PATH. Please install docker.",
+            "${DOCKER} --version",
+            "'docker' not found on PATH. Please install docker or set DOCKER.",
         ),
         (
             "rsync --version",
@@ -46,9 +80,10 @@ pub fn check_fpga_dependencies(target_host: Option<&str>) -> Result<()> {
 
 fn check_dependencies(target_host: Option<&str>, tools: &[(&str, &str)]) -> Result<()> {
     for (command, error_msg) in tools {
+        let command = ENVIRONMENT.replace(command);
         if run_command_extended(RunCommandArgs {
             target_host,
-            command,
+            command: &command,
             output: Output::Silence,
             ..Default::default()
         })
@@ -182,7 +217,8 @@ pub fn build_base_docker_command() -> Result<Command> {
     let project_root = project_root.display();
 
     // TODO(clundin): Clean this docker command up.
-    let mut cmd = Command::new("docker");
+    let docker = ENVIRONMENT.replace("${DOCKER}");
+    let mut cmd = Command::new(docker);
     cmd.current_dir(&*PROJECT_ROOT).args([
         "run",
         "--rm",
