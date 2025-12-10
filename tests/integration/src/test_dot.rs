@@ -45,14 +45,16 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
-            rom_only: true,
+            feature: Some("test-do-nothing"),
             ..Default::default()
         });
 
+        println!("Waiting for caliptra ready for mailbox");
         hw.step_until(|m| {
             (m.mci_flow_status() & 0xffff) as u16
                 >= McuRomBootStatus::CaliptraReadyForMailbox.into()
         });
+        println!("deriving stable key");
 
         // TODO: derive stable key
         let mut req = CmDeriveStableKeyReq {
@@ -71,6 +73,7 @@ mod test {
         let resp = CmDeriveStableKeyResp::read_from_bytes(&result).unwrap();
         let cmk = resp.cmk;
 
+        println!("hmac computation");
         let mut req = CmHmacReq {
             cmk,
             hash_algorithm: CmHashAlgorithm::Sha512.into(),
