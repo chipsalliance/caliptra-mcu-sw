@@ -16,7 +16,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         caliptra_rom,
         caliptra_firmware,
         soc_manifest,
-        manufacturing_mode,
+        device_security_state,
         vendor_pk_hash,
         streaming_boot,
         soc_images,
@@ -171,15 +171,15 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     if trace {
         cargo_run_args.extend(["-t", "-l", PROJECT_ROOT.to_str().unwrap()]);
     }
-    match manufacturing_mode {
-        mcu_testing_common::ManufacturingMode::Manufacturing => {
-            cargo_run_args.extend(["--manufacturing-mode", "manufacturing"]);
+    match device_security_state {
+        mcu_testing_common::DeviceSecurityState::Manufacturing => {
+            cargo_run_args.extend(["--device-security-state", "manufacturing"]);
         }
-        mcu_testing_common::ManufacturingMode::Unprovisioned => {
-            cargo_run_args.extend(["--manufacturing-mode", "unprovisioned"]);
+        mcu_testing_common::DeviceSecurityState::Unprovisioned => {
+            cargo_run_args.extend(["--device-security-state", "unprovisioned"]);
         }
-        mcu_testing_common::ManufacturingMode::Production => {
-            cargo_run_args.extend(["--manufacturing-mode", "production"]);
+        mcu_testing_common::DeviceSecurityState::Production => {
+            cargo_run_args.extend(["--device-security-state", "production"]);
         }
     }
     if streaming_boot.as_ref().is_some() {

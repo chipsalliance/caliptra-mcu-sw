@@ -28,7 +28,7 @@ mod test {
     use mcu_config::McuMemoryMap;
     use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
     use mcu_image_header::McuImageHeader;
-    use mcu_testing_common::{ManufacturingMode, MCU_RUNNING};
+    use mcu_testing_common::{DeviceSecurityState, MCU_RUNNING};
     use random_port::PortPicker;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Mutex;
@@ -287,7 +287,7 @@ mod test {
         runtime_path: PathBuf,
         i3c_port: String,
         active_mode: bool,
-        manufacturing_mode: ManufacturingMode,
+        device_security_state: DeviceSecurityState,
         soc_images: Option<Vec<ImageCfg>>,
         streaming_boot_package_path: Option<PathBuf>,
         primary_flash_image_path: Option<PathBuf>,
@@ -407,15 +407,15 @@ mod test {
         }
 
         if active_mode {
-            match manufacturing_mode {
-                ManufacturingMode::Manufacturing => {
-                    cargo_run_args.extend(["--manufacturing-mode", "manufacturing"]);
+            match device_security_state {
+                DeviceSecurityState::Manufacturing => {
+                    cargo_run_args.extend(["--device-security-state", "manufacturing"]);
                 }
-                ManufacturingMode::Unprovisioned => {
-                    cargo_run_args.extend(["--manufacturing-mode", "unprovisioned"]);
+                DeviceSecurityState::Unprovisioned => {
+                    cargo_run_args.extend(["--device-security-state", "unprovisioned"]);
                 }
-                ManufacturingMode::Production => {
-                    cargo_run_args.extend(["--manufacturing-mode", "production"]);
+                DeviceSecurityState::Production => {
+                    cargo_run_args.extend(["--device-security-state", "production"]);
                 }
             }
             let caliptra_rom = caliptra_builder
@@ -506,8 +506,8 @@ mod test {
             ROM.to_path_buf(),
             test_runtime,
             i3c_port,
-            true,                          // active mode is always true
-            ManufacturingMode::Production, // set this to ManufacturingMode::Manufacturing if you want to run in manufacturing mode
+            true,                            // active mode is always true
+            DeviceSecurityState::Production, // set this to DeviceSecurityState::Manufacturing if you want to run in manufacturing mode
             None,
             None,
             None,
@@ -616,7 +616,7 @@ mod test {
             test_runtime,
             i3c_port,
             true,
-            ManufacturingMode::Production,
+            DeviceSecurityState::Production,
             None,
             None,
             None,
@@ -648,7 +648,7 @@ mod test {
             test_runtime,
             i3c_port,
             true,
-            ManufacturingMode::Production,
+            DeviceSecurityState::Production,
             None,
             None,
             None,
@@ -717,7 +717,7 @@ mod test {
             test_runtime,
             i3c_port,
             true,
-            ManufacturingMode::Production,
+            DeviceSecurityState::Production,
             None,
             None,
             None,

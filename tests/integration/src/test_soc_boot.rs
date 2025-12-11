@@ -9,7 +9,7 @@ mod test {
     use mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
-    use mcu_testing_common::ManufacturingMode;
+    use mcu_testing_common::DeviceSecurityState;
     use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
@@ -39,7 +39,7 @@ mod test {
         flash_offset: usize,
         fuse_soc_manifest_svn: Option<u8>,
         fuse_soc_manifest_max_svn: Option<u8>,
-        manufacturing_mode: Option<ManufacturingMode>,
+        device_security_state: Option<DeviceSecurityState>,
     }
 
     macro_rules! run_test {
@@ -196,8 +196,8 @@ mod test {
             opts.runtime.clone(),
             opts.i3c_port.to_string(),
             true,
-            opts.manufacturing_mode
-                .unwrap_or(ManufacturingMode::Production),
+            opts.device_security_state
+                .unwrap_or(DeviceSecurityState::Production),
             Some(opts.soc_images.clone()),
             opts.pldm_fw_pkg_path.clone(),
             opts.primary_flash_image_path.clone(),
@@ -226,7 +226,7 @@ mod test {
             .unwrap();
         new_options.fuse_soc_manifest_svn = Some(12);
         new_options.fuse_soc_manifest_max_svn = Some(13);
-        new_options.manufacturing_mode = Some(ManufacturingMode::Manufacturing);
+        new_options.device_security_state = Some(DeviceSecurityState::Manufacturing);
         let test = run_runtime_with_options(&new_options);
         assert_ne!(0, test);
     }
@@ -241,7 +241,7 @@ mod test {
             .unwrap();
         new_options.fuse_soc_manifest_svn = Some(12);
         new_options.fuse_soc_manifest_max_svn = Some(13);
-        new_options.manufacturing_mode = Some(ManufacturingMode::Manufacturing);
+        new_options.device_security_state = Some(DeviceSecurityState::Manufacturing);
         let test = run_runtime_with_options(&new_options);
         assert_ne!(0, test);
     }
@@ -256,7 +256,7 @@ mod test {
             .unwrap();
         new_options.fuse_soc_manifest_svn = Some(9);
         new_options.fuse_soc_manifest_max_svn = Some(13);
-        new_options.manufacturing_mode = Some(ManufacturingMode::Manufacturing);
+        new_options.device_security_state = Some(DeviceSecurityState::Manufacturing);
 
         // Replace the SoC Manifest in the PLDM package
         let flash_offset = opts
@@ -751,7 +751,7 @@ mod test {
             flash_offset,
             fuse_soc_manifest_svn: None,
             fuse_soc_manifest_max_svn: None,
-            manufacturing_mode: None,
+            device_security_state: None,
         };
 
         if !is_flash_based_boot {

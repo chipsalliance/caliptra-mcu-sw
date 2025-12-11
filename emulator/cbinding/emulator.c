@@ -531,7 +531,7 @@ int main(int argc, char *argv[]) {
         .i3c_port = 0,
         .trace_instr = 0,
         .stdin_uart = 1,  // Default to true
-        .manufacturing_mode = 0,
+        .device_security_state = 0,
         .capture_uart_output = 1,  // Default to capturing UART output
         .vendor_pk_hash = NULL,
         .owner_pk_hash = NULL,
@@ -667,7 +667,7 @@ int main(int argc, char *argv[]) {
                 config.i3c_port = atoi(optarg);
                 break;
             case 133: // --manufacturing-mode
-                config.manufacturing_mode = 1;
+                config.device_security_state = 1;
                 break;
             case 134: // --vendor-pk-hash
                 config.vendor_pk_hash = optarg;

@@ -19,7 +19,7 @@ use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "clap", derive(ValueEnum))]
-pub enum ManufacturingMode {
+pub enum DeviceSecurityState {
     Production = 0,
     Manufacturing = 1,
     Unprovisioned = 2,

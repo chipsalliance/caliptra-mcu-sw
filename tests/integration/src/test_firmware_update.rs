@@ -11,7 +11,7 @@ mod test {
         PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
     };
     use mcu_config_emulator::EMULATOR_MEMORY_MAP;
-    use mcu_testing_common::ManufacturingMode;
+    use mcu_testing_common::DeviceSecurityState;
     use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
@@ -204,7 +204,7 @@ mod test {
             opts.runtime.clone(),
             opts.i3c_port.to_string(),
             true,
-            ManufacturingMode::Production,
+            DeviceSecurityState::Production,
             Some(opts.soc_images.clone()),
             opts.pldm_fw_pkg_path.clone(),
             opts.primary_flash_image_path.clone(),
