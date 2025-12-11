@@ -248,8 +248,8 @@ impl Default for InitParams<'_> {
             log_writer: Box::new(stdout()),
             dbg_manuf_service: Default::default(),
             uds_granularity_32: false, // 64-bit granularity
-            otp_dai_idle_bit_offset: 22,
-            otp_direct_access_cmd_reg_offset: 0x60,
+            otp_dai_idle_bit_offset: 30,
+            otp_direct_access_cmd_reg_offset: 0x80,
             bootfsm_break: false,
             uds_program_req: false,
             active_mode: false,
