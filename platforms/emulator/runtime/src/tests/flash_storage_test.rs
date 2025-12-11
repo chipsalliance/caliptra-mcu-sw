@@ -5,7 +5,7 @@
 use core::cell::RefCell;
 use core::cmp;
 use core::fmt::Write;
-use flash_driver::{flash_ctrl, flash_storage_to_pages::FlashStorageToPages, hil::FlashStorage};
+use flash_driver::{flash_storage_to_pages::FlashStorageToPages, hil::FlashStorage};
 use kernel::hil::flash::HasClient;
 use kernel::utilities::cells::TakeCell;
 use kernel::{static_buf, static_init};
@@ -78,12 +78,12 @@ impl flash_driver::hil::FlashStorageClient for FlashStorageTestCallBack {
 macro_rules! static_init_fs_test {
     ($flash_ctrl:expr, $buf_len:expr) => {{
         let fs_drv = static_init!(
-            FlashStorageToPages<flash_ctrl::EmulatedFlashCtrl>,
+            FlashStorageToPages<flash_ctrl_emulator::EmulatedFlashCtrl>,
             FlashStorageToPages::new(
                 $flash_ctrl,
                 static_init!(
-                    flash_ctrl::EmulatedFlashPage,
-                    flash_ctrl::EmulatedFlashPage::default()
+                    flash_ctrl_emulator::EmulatedFlashPage,
+                    flash_ctrl_emulator::EmulatedFlashPage::default()
                 )
             )
         );
@@ -107,7 +107,7 @@ macro_rules! static_init_fs_test {
 }
 
 fn test_single_flash_storage_erase(
-    flash_storage_drv: &'static FlashStorageToPages<flash_ctrl::EmulatedFlashCtrl>,
+    flash_storage_drv: &'static FlashStorageToPages<flash_ctrl_emulator::EmulatedFlashCtrl>,
     test_cb: &'static FlashStorageTestCallBack,
 ) {
     flash_storage_drv.set_client(test_cb);
@@ -198,7 +198,7 @@ pub fn test_flash_storage_erase() -> Option<u32> {
 }
 
 fn test_single_flash_storage_read_write(
-    flash_storage_drv: &'static FlashStorageToPages<flash_ctrl::EmulatedFlashCtrl>,
+    flash_storage_drv: &'static FlashStorageToPages<flash_ctrl_emulator::EmulatedFlashCtrl>,
     test_cb: &'static FlashStorageTestCallBack,
 ) {
     flash_storage_drv.set_client(test_cb);

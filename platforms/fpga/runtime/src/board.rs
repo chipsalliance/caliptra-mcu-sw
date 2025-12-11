@@ -4,6 +4,8 @@ use crate::interrupts::FpgaPeripherals;
 use crate::MCU_MEMORY_MAP;
 use arrayvec::ArrayVec;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use capsules_core::virtualizers::virtual_flash;
+use capsules_runtime::flash_partition::FlashPartition;
 use capsules_runtime::mctp::base_protocol::MessageType;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
@@ -22,6 +24,9 @@ use kernel::{create_capability, debug, static_init};
 use mcu_components::mbox_sram_component_static;
 use mcu_components::mctp_driver_component_static;
 use mcu_components::mctp_mux_component_static;
+use mcu_components::{flash_partition_component_static, instantiate_flash_partitions};
+use mcu_config_fpga::flash::STAGING_PARTITION;
+use mcu_config_fpga::flash_partition_list_imaginary_flash;
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
@@ -135,6 +140,7 @@ struct VeeR {
     mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     // active_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
     // recovery_image_par: &'static capsules_runtime::flash_partition::FlashPartition<'static>,
+    staging_partition: [Option<&'static FlashPartition<'static>>; 1],
     mailbox: &'static capsules_runtime::mailbox::Mailbox<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
@@ -170,6 +176,16 @@ impl SyscallDriverLookup for VeeR {
             // capsules_runtime::flash_partition::RECOVERY_IMAGE_PAR_DRIVER_NUM => {
             //     f(Some(self.recovery_image_par))
             // }
+            mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL => {
+                if let Some(partition) = self.staging_partition[0] {
+                    if partition.get_driver_num() == driver_num {
+                        return f(Some(partition));
+                    } else {
+                        return f(None);
+                    }
+                }
+                return f(None);
+            }
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
             capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
@@ -445,11 +461,13 @@ pub unsafe fn main() {
     mailbox.alarm.set_alarm_client(mailbox);
     romtime::println!("[mcu-runtime] Mailbox initialized");
 
-    let fpga_peripherals = static_init!(FpgaPeripherals, FpgaPeripherals::new(mux_alarm));
+    let mci_regs =
+        unsafe { romtime::StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
+    let fpga_peripherals = static_init!(FpgaPeripherals, FpgaPeripherals::new(mux_alarm, mci_regs));
     fpga_peripherals.init();
     let peripherals = static_init!(
         VeeRDefaultPeripherals,
-        VeeRDefaultPeripherals::new(fpga_peripherals, mux_alarm, &MCU_MEMORY_MAP)
+        VeeRDefaultPeripherals::new(fpga_peripherals, mux_alarm, &MCU_MEMORY_MAP, mci_regs)
     );
     romtime::println!("[mcu-runtime] Peripherals created");
 
@@ -559,6 +577,20 @@ pub unsafe fn main() {
     .finalize(mbox_sram_component_static!(InternalTimers<'static>));
     romtime::println!("[mcu-runtime] MCU Mbox1 SRAM component initialized");
 
+    let mux_mcu_mbox_flash =
+        components::flash::FlashMuxComponent::new(&fpga_peripherals.flash_ctrl).finalize(
+            components::flash_mux_component_static!(flash_ctrl_fpga::EmulatedFlashCtrl),
+        );
+    let mut staging_partition: [Option<&'static FlashPartition<'static>>; 1] = [None; 1];
+    instantiate_flash_partitions!(
+        flash_partition_list_imaginary_flash,
+        staging_partition,
+        board_kernel,
+        mux_mcu_mbox_flash,
+        flash_ctrl_fpga::EmulatedFlashCtrl
+    );
+    romtime::println!("[mcu-runtime] Flash partition component initialized");
+
     #[allow(static_mut_refs)]
     let system = mcu_components::system::SystemComponent::new(unsafe { &mut FPGA_EXITER })
         .finalize(kernel::static_buf!(
@@ -614,6 +646,7 @@ pub unsafe fn main() {
             mctp_caliptra,
             //active_image_par,
             //recovery_image_par,
+            staging_partition,
             mailbox,
             mci,
             mcu_mbox1_staging_sram,

@@ -46,6 +46,7 @@ p384.workspace = true
 poll-common.workspace = true
 rand.workspace = true
 registers-generated.workspace = true
+romtime.workspace = true
 semver.workspace = true
 sha2.workspace = true
 sha3.workspace = true

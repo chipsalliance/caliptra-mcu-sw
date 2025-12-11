@@ -26,7 +26,16 @@ use crate::PROJECT_ROOT;
 use crate::TARGET;
 use crate::{firmware, ImageCfg};
 
+use std::collections::HashSet;
+use std::sync::LazyLock;
 use std::{env::var, sync::OnceLock};
+
+static FEATURES_WITH_EXAMPLE_APP: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    HashSet::from([
+        "test-fpga-flash-ctrl",
+        // Add more features as needed
+    ])
+});
 
 #[derive(Default)]
 pub struct FirmwareBinaries {
@@ -326,11 +335,12 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     for feature in separate_features.iter() {
         let feature_runtime_file = tempfile::NamedTempFile::new().unwrap();
         let feature_runtime_path = feature_runtime_file.path().to_str().unwrap().to_string();
+        let include_example_app = FEATURES_WITH_EXAMPLE_APP.contains(feature);
 
         crate::runtime_build_with_apps(
             &[feature],
             Some(feature_runtime_path),
-            false,
+            include_example_app,
             Some(platform),
             Some(memory_map),
             use_dccm_for_stack,
