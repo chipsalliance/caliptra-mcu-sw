@@ -7,19 +7,36 @@
 
 use anyhow::{Context, Result};
 use caliptra_mailbox_server::{MailboxServer, ServerConfig};
+use caliptra_util_host_mailbox_test_config::TestConfig;
+use clap::Parser;
 use std::net::SocketAddr;
 
-fn main() -> Result<()> {
-    let args: Vec<String> = std::env::args().collect();
+#[derive(Parser)]
+#[command(name = "caliptra-mailbox-server")]
+#[command(about = "A mailbox server that emulates Caliptra device responses")]
+struct Args {
+    /// Server socket address (host:port)
+    #[arg(short, long, default_value = "127.0.0.1:62222")]
+    server: String,
 
-    // Parse command line arguments
-    let bind_addr = if args.len() > 1 {
-        args[1]
-            .parse::<SocketAddr>()
-            .context("Invalid socket address")?
+    /// Path to TOML configuration file with device parameters
+    #[arg(short, long)]
+    config: Option<String>,
+}
+
+fn main() -> Result<()> {
+    let args = Args::parse();
+
+    // Load configuration if provided, otherwise try to load default
+    let test_config = if let Some(config_path) = &args.config {
+        Some(TestConfig::from_file(config_path)?)
     } else {
-        "127.0.0.1:8080".parse().unwrap()
+        // Try to load default config, fall back to None if not found
+        TestConfig::load_default().ok()
     };
+
+    // Parse server address
+    let bind_addr: SocketAddr = args.server.parse().context("Invalid socket address")?;
 
     let config = ServerConfig {
         bind_addr,
@@ -67,10 +84,19 @@ fn main() -> Result<()> {
 
                     // First build the data part without checksum
                     let fips_status = 0u32; // Success/FIPS approved
-                    let vendor_id = 0x5678u16; // Expected vendor ID for validation
-                    let device_id = 0x1234u16; // Expected device ID for validation
-                    let subsystem_vendor_id = 0x0000u16; // Mock subsystem vendor ID
-                    let subsystem_id = 0x0000u16; // Mock subsystem ID
+
+                    // Use config values if available, otherwise fallback defaults
+                    let (vendor_id, device_id, subsystem_vendor_id, subsystem_id) =
+                        if let Some(ref config) = test_config {
+                            (
+                                config.device.vendor_id,
+                                config.device.device_id,
+                                config.device.subsystem_vendor_id,
+                                config.device.subsystem_id,
+                            )
+                        } else {
+                            (0x5678u16, 0x1234u16, 0x0000u16, 0x0000u16) // Fallback values
+                        };
 
                     // Fill response data (excluding checksum at start)
                     response[4..8].copy_from_slice(&fips_status.to_le_bytes());

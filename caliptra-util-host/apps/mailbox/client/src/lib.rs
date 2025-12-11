@@ -12,6 +12,9 @@ pub mod validator;
 pub use network_driver::UdpTransportDriver;
 pub use validator::{run_basic_validation, run_verbose_validation, ValidationResult, Validator};
 
+// Re-export config from the shared library
+pub use caliptra_util_host_mailbox_test_config::*;
+
 use anyhow::Result;
 use caliptra_util_host_command_types::GetDeviceIdResponse;
 use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_id;

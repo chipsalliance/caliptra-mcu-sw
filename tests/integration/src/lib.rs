@@ -587,7 +587,7 @@ mod test {
     run_test!(test_caliptra_certs, example_app);
     run_test!(test_caliptra_crypto, example_app);
     run_test!(test_caliptra_mailbox, example_app);
-    run_test!(test_caliptra_util_host_validator);
+    run_test!(test_caliptra_util_host_validator, nightly);
     run_test!(test_dma, example_app);
     run_test!(test_doe_transport_loopback, example_app);
     run_test!(test_doe_user_loopback, example_app);
