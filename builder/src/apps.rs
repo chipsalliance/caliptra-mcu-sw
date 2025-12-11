@@ -10,34 +10,34 @@ use std::process::Command;
 pub const EMULATOR_APPS: &[App] = &[
     App {
         // Make sure this is the first app in the list
-        name: "example-app",
-        permissions: vec![],
-        minimum_ram: 48 * 1024,
+        name: example_app::NAME,
+        permissions: example_app::PERMISSIONS,
+        minimum_ram: example_app::MINIMUM_RAM,
     },
     App {
-        name: "user-app",
-        permissions: vec![],
-        minimum_ram: 116 * 1024,
+        name: user_app::NAME,
+        permissions: user_app::PERMISSIONS,
+        minimum_ram: user_app::MINIMUM_RAM,
     },
 ];
 
 pub const FPGA_APPS: &[App] = &[
     App {
         // Make sure this is the first app in the list
-        name: "example-app",
-        permissions: vec![],
-        minimum_ram: 48 * 1024,
+        name: example_app::NAME,
+        permissions: example_app::PERMISSIONS,
+        minimum_ram: example_app::MINIMUM_RAM,
     },
     App {
-        name: "user-app",
-        permissions: vec![],
-        minimum_ram: 116 * 1024,
+        name: user_app::NAME,
+        permissions: user_app::PERMISSIONS,
+        minimum_ram: user_app::MINIMUM_RAM,
     },
 ];
 
 pub struct App {
     pub name: &'static str,
-    pub permissions: Vec<(u32, u32)>, // pairs of (driver, command). All console and alarm commands are allowed by default.
+    pub permissions: &'static [(u32, u32)], // pairs of (driver, command). All console and alarm commands are allowed by default.
     pub minimum_ram: u32,
 }
 
@@ -121,7 +121,7 @@ fn app_build_tbf(
     // start the TBF header
     let mut tbf = TbfHeader::new();
     let mut permissions = BASE_PERMISSIONS.to_vec();
-    permissions.extend_from_slice(&app.permissions);
+    permissions.extend_from_slice(app.permissions);
     tbf.create(
         app.minimum_ram,
         0,
@@ -228,6 +228,8 @@ INCLUDE platforms/emulator/runtime/userspace/apps/app_layout.ld",
         .current_dir(&*PROJECT_ROOT)
         .args([
             "rustc",
+            "--bin",
+            app_name,
             "-p",
             app_name,
             "--release",
