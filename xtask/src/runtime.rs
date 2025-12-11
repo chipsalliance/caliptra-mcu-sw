@@ -1,7 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use crate::Commands;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use caliptra_api_types::DeviceLifecycle;
 use mcu_builder::{rom_build, runtime_build_with_apps, CaliptraBuilder, PROJECT_ROOT};
 use std::{path::PathBuf, process::Command};
 
@@ -171,17 +172,11 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     if trace {
         cargo_run_args.extend(["-t", "-l", PROJECT_ROOT.to_str().unwrap()]);
     }
-    match device_security_state {
-        mcu_testing_common::DeviceSecurityState::Manufacturing => {
-            cargo_run_args.extend(["--device-security-state", "manufacturing"]);
-        }
-        mcu_testing_common::DeviceSecurityState::Unprovisioned => {
-            cargo_run_args.extend(["--device-security-state", "unprovisioned"]);
-        }
-        mcu_testing_common::DeviceSecurityState::Production => {
-            cargo_run_args.extend(["--device-security-state", "production"]);
-        }
-    }
+
+    let device_lifecycle = DeviceLifecycle::try_from(device_security_state)
+        .map_err(|_| anyhow!("Invalid device lifecycle {device_security_state}"))?;
+    let lifecycle_arg = format!("{}", device_lifecycle as u32);
+    cargo_run_args.extend(["--device-security-state", &lifecycle_arg]);
     if streaming_boot.as_ref().is_some() {
         cargo_run_args.extend([
             "--streaming-boot",

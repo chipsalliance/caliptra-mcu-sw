@@ -40,9 +40,7 @@ use mcu_testing_common::i3c_socket;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use mcu_testing_common::mctp_transport::MctpTransport;
 use mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
-use mcu_testing_common::{
-    DeviceSecurityState, MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND,
-};
+use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND};
 use pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::daemon::PldmDaemon;
 use pldm_ua::transport::{EndpointId, PldmTransport};
@@ -133,9 +131,9 @@ pub struct EmulatorArgs {
     #[arg(long)]
     pub i3c_port: Option<u16>,
 
-    /// This is only needed if the IDevID CSR needed to be generated in the Caliptra Core.
-    #[arg(long, value_enum, default_value_t = DeviceSecurityState::Production)]
-    pub device_security_state: DeviceSecurityState,
+    /// Device lifecycle value (0=Unprovisioned, 1=Manufacturing, 2=Reserved, 3=Production).
+    #[arg(long, value_parser = maybe_hex::<u32>, default_value_t = DeviceLifecycle::Production as u32)]
+    pub device_security_state: u32,
 
     #[arg(long)]
     pub vendor_pk_hash: Option<String>,
@@ -314,24 +312,39 @@ impl Emulator {
             exit(-1);
         }
 
-        let device_lifecycle: Option<String> = match cli.device_security_state {
-            DeviceSecurityState::Manufacturing => Some("manufacturing".into()),
-            DeviceSecurityState::Production => Some("production".into()),
-            DeviceSecurityState::Unprovisioned => Some("unprovisioned".into()),
+        let device_lifecycle = DeviceLifecycle::try_from(cli.device_security_state).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "Invalid device lifecycle {} (expected 0=Unprovisioned, 1=Manufacturing, 2=Reserved, 3=Production)",
+                    cli.device_security_state
+                ),
+            )
+        })?;
+
+        let device_lifecycle_str: Option<String> = match device_lifecycle {
+            DeviceLifecycle::Manufacturing => Some("manufacturing".into()),
+            DeviceLifecycle::Production => Some("production".into()),
+            DeviceLifecycle::Unprovisioned => Some("unprovisioned".into()),
+            DeviceLifecycle::Reserved2 => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Reserved device lifecycle value (2) is not supported by the emulator",
+                ))
+            }
         };
 
-        let req_idevid_csr: Option<bool> =
-            if cli.device_security_state == DeviceSecurityState::Manufacturing {
-                Some(true)
-            } else {
-                None
-            };
+        let req_idevid_csr: Option<bool> = if device_lifecycle == DeviceLifecycle::Manufacturing {
+            Some(true)
+        } else {
+            None
+        };
 
         let use_mcu_recovery_interface = is_flash_based_boot;
 
         let (mut caliptra_cpu, soc_to_caliptra, ext_mci) = start_caliptra(&StartCaliptraArgs {
             rom: BytesOrPath::Path(cli.caliptra_rom),
-            device_lifecycle,
+            device_lifecycle: device_lifecycle_str,
             req_idevid_csr,
             use_mcu_recovery_interface,
         })

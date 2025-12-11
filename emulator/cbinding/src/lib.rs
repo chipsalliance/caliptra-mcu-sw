@@ -11,6 +11,7 @@ Abstract:
     C bindings for the Caliptra MCU Emulator.
 
 --*/
+use caliptra_api_types::DeviceLifecycle;
 use caliptra_emu_bus::Bus;
 use caliptra_emu_cpu::xreg_file::XReg;
 use caliptra_emu_cpu::StepAction;
@@ -146,7 +147,7 @@ pub struct CEmulatorConfig {
     pub i3c_port: c_uint,                        // 0 means no I3C socket
     pub trace_instr: c_uchar,                    // 0 = false, 1 = true
     pub stdin_uart: c_uchar,                     // 0 = false, 1 = true
-    pub device_security_state: c_uchar, // 0 = Production, 1 = Manufacturing, 2 = Unprovisioned
+    pub device_security_state: c_uchar, // 0 = Unprovisioned, 1 = Manufacturing, 2 = Reserved, 3 = Production
     pub capture_uart_output: c_uchar,   // 0 = false, 1 = true
     pub vendor_pk_hash: *const c_char,  // Optional, can be null
     pub vendor_pqc_type: c_uchar,       // 1 = LMS, 3 = MLDSA
@@ -290,11 +291,8 @@ pub unsafe extern "C" fn emulator_init(
         } else {
             Some(config.i3c_port as u16)
         },
-        device_security_state: match config.device_security_state {
-            1 => mcu_testing_common::DeviceSecurityState::Manufacturing,
-            2 => mcu_testing_common::DeviceSecurityState::Unprovisioned,
-            _ => mcu_testing_common::DeviceSecurityState::Production,
-        },
+        device_security_state: DeviceLifecycle::try_from(config.device_security_state as u32)
+            .unwrap_or(DeviceLifecycle::Production) as u32,
         vendor_pk_hash: convert_optional_c_string(config.vendor_pk_hash),
         vendor_pqc_type: caliptra_image_types::FwVerificationPqcKeyType::from_u8(
             config.vendor_pqc_type,

@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_api_types::DeviceLifecycle;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
 use core::panic;
 use mcu_builder::ImageCfg;
-use mcu_testing_common::DeviceSecurityState;
 use std::path::PathBuf;
 
 mod auth_manifest;
@@ -66,8 +66,12 @@ enum Commands {
         #[arg(long)]
         caliptra_firmware: Option<PathBuf>,
 
-        #[clap(long, value_enum, default_value_t = DeviceSecurityState::Production)]
-        device_security_state: DeviceSecurityState,
+        #[arg(
+            long,
+            value_parser = maybe_hex::<u32>,
+            default_value_t = DeviceLifecycle::Production as u32
+        )]
+        device_security_state: u32,
 
         #[arg(long)]
         soc_manifest: Option<PathBuf>,

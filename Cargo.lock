@@ -1667,6 +1667,7 @@ name = "emulator"
 version = "0.1.0"
 dependencies = [
  "bitfield",
+ "caliptra-api-types",
  "caliptra-emu-bus",
  "caliptra-emu-cpu",
  "caliptra-emu-periph",
@@ -1749,6 +1750,7 @@ dependencies = [
 name = "emulator-cbinding"
 version = "0.1.0"
 dependencies = [
+ "caliptra-api-types",
  "caliptra-emu-bus",
  "caliptra-emu-cpu",
  "caliptra-emu-types",
@@ -3191,6 +3193,7 @@ name = "mcu-testing-common"
 version = "0.1.0"
 dependencies = [
  "bitfield",
+ "caliptra-api-types",
  "clap 4.5.51",
  "crc",
  "hex",
