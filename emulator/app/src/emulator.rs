@@ -17,6 +17,7 @@ use crate::doe_mbox_fsm;
 use crate::elf;
 use crate::tests;
 use crate::tests::spdm_responder_validator::SpdmTestType;
+use caliptra_api_types::DeviceLifecycle;
 use caliptra_emu_bus::{Bus, Clock, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
