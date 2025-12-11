@@ -13,15 +13,43 @@ pub(crate) fn test() -> Result<()> {
 }
 
 fn cargo_test() -> Result<()> {
-    println!("Running: cargo test");
-    let status = Command::new("cargo")
+    // Run all tests with nextest for proper sequencing, excluding ROM packages that don't have tests
+    println!("Running: cargo nextest run");
+    let nextest_status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .args(["test", "--workspace"])
+        .args([
+            "nextest",
+            "run",
+            "--workspace",
+            "--exclude",
+            "mcu-rom-emulator",
+            "--exclude",
+            "mcu-rom-fpga",
+            "--exclude",
+            "mcu-runtime-emulator",
+            "--exclude",
+            "mcu-runtime-fpga",
+            "--exclude",
+            "emulator",
+            "--exclude",
+            "test-hello",
+            "--exclude",
+            "user-app",
+            "--exclude",
+            "example-app",
+            "--exclude",
+            "libtock_unittest",
+            "--exclude",
+            "syscalls_tests",
+            "--test-threads=1",
+            "--profile=nightly-emulator",
+        ])
         .status()?;
 
-    if !status.success() {
-        bail!("cargo test failed");
+    if !nextest_status.success() {
+        bail!("Tests with nextest failed");
     }
+
     Ok(())
 }
 
