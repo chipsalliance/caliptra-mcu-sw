@@ -172,9 +172,9 @@ pub fn start_caliptra(
 
     {
         let lifecycle_val = match args_device_lifecycle.to_ascii_lowercase().as_str() {
+            "unprovisioned" | "" => 0,
             "manufacturing" => 1,
             "production" => 3,
-            "unprovisioned" | "" => 0,
             _ => 0,
         };
         ext_mci.regs.borrow_mut().security_state = lifecycle_val;

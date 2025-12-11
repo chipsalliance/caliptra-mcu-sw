@@ -13,10 +13,6 @@ crc.workspace = true
 pldm-common.workspace = true
 pldm-ua.workspace = true
 zerocopy.workspace = true
-clap = { workspace = true, optional = true, features = ["derive"] }
-
-[features]
-clap = ["dep:clap"]
 
 [dev-dependencies]
 hex.workspace = true

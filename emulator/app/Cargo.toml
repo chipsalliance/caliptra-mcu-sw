@@ -37,7 +37,7 @@ hex.workspace = true
 log.workspace = true
 lazy_static.workspace = true
 mcu-mbox-common.workspace = true
-mcu-testing-common = { workspace = true, features = ["clap"] }
+mcu-testing-common.workspace = true
 p384.workspace = true
 pldm-common.workspace = true
 pldm-fw-pkg.workspace = true

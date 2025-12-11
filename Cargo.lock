@@ -3194,7 +3194,6 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "caliptra-api-types",
- "clap 4.5.51",
  "crc",
  "hex",
  "pldm-common",
@@ -5615,7 +5614,6 @@ dependencies = [
  "mcu-fuses-generator",
  "mcu-hw-model",
  "mcu-rom-common",
- "mcu-testing-common",
  "pldm-fw-pkg",
  "proc-macro2",
  "quote",
