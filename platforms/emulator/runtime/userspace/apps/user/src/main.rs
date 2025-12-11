@@ -56,6 +56,9 @@ pub(crate) fn kernel() -> libtock_unittest::fake::Kernel {
 
 #[cfg(not(target_arch = "riscv32"))]
 fn main() {
+    if cfg!(feature = "test-do-nothing") {
+        loop {}
+    }
     // build a fake kernel so that the app will at least start without Tock
     let _kernel = kernel();
     // call the main function

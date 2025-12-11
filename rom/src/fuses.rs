@@ -10,10 +10,10 @@ use mcu_error::{McuError, McuResult};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 /// Owner public key hash structure.
-#[derive(Clone, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[derive(Clone, Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct OwnerPkHash(pub [u32; 12]);
 /// Vendor public key hash structure.
-#[derive(Clone, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[derive(Clone, Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct VendorPkHash(pub [u32; 12]);
 
 /// MCU fuses implemented on top of a view of raw fuses.
