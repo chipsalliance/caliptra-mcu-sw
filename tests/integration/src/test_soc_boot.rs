@@ -649,6 +649,7 @@ mod test {
                 path: soc_images_paths[0].clone(),
                 load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
                 image_id: 4096,
+                exec_bit: 5,
                 ..Default::default()
             },
             ImageCfg {
@@ -657,6 +658,7 @@ mod test {
                     + MCU_MBOX_SRAM1_OFFSET
                     + soc_image_fw_1.len() as u64,
                 image_id: 4097,
+                exec_bit: 6,
                 ..Default::default()
             },
         ];
