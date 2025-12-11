@@ -11,6 +11,7 @@ Abstract:
     C bindings for the Caliptra MCU Emulator.
 
 --*/
+use caliptra_api_types::DeviceLifecycle;
 use caliptra_emu_bus::Bus;
 use caliptra_emu_cpu::xreg_file::XReg;
 use caliptra_emu_cpu::StepAction;
@@ -146,12 +147,12 @@ pub struct CEmulatorConfig {
     pub i3c_port: c_uint,                        // 0 means no I3C socket
     pub trace_instr: c_uchar,                    // 0 = false, 1 = true
     pub stdin_uart: c_uchar,                     // 0 = false, 1 = true
-    pub manufacturing_mode: c_uchar,             // 0 = false, 1 = true
-    pub capture_uart_output: c_uchar,            // 0 = false, 1 = true
-    pub vendor_pk_hash: *const c_char,           // Optional, can be null
-    pub vendor_pqc_type: c_uchar,                // 1 = LMS, 3 = MLDSA
-    pub owner_pk_hash: *const c_char,            // Optional, can be null
-    pub streaming_boot_path: *const c_char,      // Optional, can be null
+    pub device_security_state: c_uint, // 0 = Unprovisioned, 1 = Manufacturing, 2 = Reserved, 3 = Production
+    pub capture_uart_output: c_uchar,  // 0 = false, 1 = true
+    pub vendor_pk_hash: *const c_char, // Optional, can be null
+    pub vendor_pqc_type: c_uchar,      // 1 = LMS, 3 = MLDSA
+    pub owner_pk_hash: *const c_char,  // Optional, can be null
+    pub streaming_boot_path: *const c_char, // Optional, can be null
     pub primary_flash_image_path: *const c_char, // Optional, can be null
     pub secondary_flash_image_path: *const c_char, // Optional, can be null
     pub hw_revision_major: c_uint,
@@ -289,7 +290,8 @@ pub unsafe extern "C" fn emulator_init(
         } else {
             Some(config.i3c_port as u16)
         },
-        manufacturing_mode: config.manufacturing_mode != 0,
+        device_security_state: DeviceLifecycle::try_from(config.device_security_state)
+            .unwrap_or(DeviceLifecycle::Production) as u32,
         vendor_pk_hash: convert_optional_c_string(config.vendor_pk_hash),
         vendor_pqc_type: caliptra_image_types::FwVerificationPqcKeyType::from_u8(
             config.vendor_pqc_type,

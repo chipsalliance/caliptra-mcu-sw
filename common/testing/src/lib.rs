@@ -10,6 +10,7 @@ pub mod mctp_transport;
 #[macro_use]
 pub mod mctp_util;
 
+pub use caliptra_api_types::DeviceLifecycle;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::time::Duration;

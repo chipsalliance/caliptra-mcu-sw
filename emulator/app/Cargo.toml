@@ -13,6 +13,7 @@ caliptra-emu-bus.workspace = true
 caliptra-emu-cpu.workspace = true
 caliptra-emu-periph.workspace = true
 caliptra-emu-types.workspace = true
+caliptra-api-types.workspace = true
 caliptra-image-types.workspace = true
 chrono.workspace = true
 clap.workspace = true

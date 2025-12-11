@@ -7,8 +7,8 @@ use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
 use emulator_registers_generated::mci::{MciGenerated, MciPeripheral};
 use registers_generated::mci::bits::{
-    Error0IntrT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest, WdtStatus, WdtTimer1Ctrl,
-    WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
+    Error0IntrT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest, SecurityState, WdtStatus,
+    WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
 };
 use std::{cell::RefCell, rc::Rc};
 use tock_registers::interfaces::{ReadWriteable, Readable};
@@ -189,6 +189,10 @@ impl MciPeripheral for Mci {
 
     fn write_mci_reg_reset_reason(&mut self, val: ReadWriteRegister<u32, ResetReason::Register>) {
         self.reset_reason.set(val.reg.get());
+    }
+
+    fn read_mci_reg_security_state(&mut self) -> ReadWriteRegister<u32, SecurityState::Register> {
+        ReadWriteRegister::new(self.ext_mci_regs.regs.borrow().security_state)
     }
 
     fn read_mci_reg_reset_request(&mut self) -> ReadWriteRegister<u32, ResetRequest::Register> {

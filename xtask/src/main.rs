@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_api_types::DeviceLifecycle;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
 use core::panic;
@@ -65,8 +66,12 @@ enum Commands {
         #[arg(long)]
         caliptra_firmware: Option<PathBuf>,
 
-        #[clap(long, default_value_t = false)]
-        manufacturing_mode: bool,
+        #[arg(
+            long,
+            value_parser = maybe_hex::<u32>,
+            default_value_t = DeviceLifecycle::Production as u32
+        )]
+        device_security_state: u32,
 
         #[arg(long)]
         soc_manifest: Option<PathBuf>,

@@ -316,6 +316,7 @@ impl McuHwModel for ModelEmulated {
 
         let device_lifecycle: Option<String> = match params.lifecycle_controller_state {
             Some(LifecycleControllerState::Dev) => Some("manufacturing".into()),
+            Some(LifecycleControllerState::Raw) => Some("unprovisioned".into()),
             _ => Some("production".into()),
         };
 
