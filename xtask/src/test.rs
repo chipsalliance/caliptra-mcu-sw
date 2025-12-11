@@ -42,7 +42,7 @@ fn cargo_test() -> Result<()> {
             "--exclude",
             "syscalls_tests",
             "--test-threads=1",
-            "--profile=nightly",
+            "--profile=nightly-emulator",
         ])
         .status()?;
 
