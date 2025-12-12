@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::cert_store::{cert_slot_mask, compute_cert_chain_hash, SpdmCertStore};
+use crate::cert_store::{cert_slot_mask, spdm_cert_chain_hash, SpdmCertStore};
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
@@ -44,7 +44,7 @@ async fn encode_cert_chain_digest(
         .data_mut(SHA384_HASH_SIZE)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
-    compute_cert_chain_hash(cert_store, slot_id, asym_algo, cert_chain_digest_buf)
+    spdm_cert_chain_hash(cert_store, slot_id, asym_algo, cert_chain_digest_buf)
         .await
         .map_err(|e| (false, CommandError::CertStore(e)))?;
 

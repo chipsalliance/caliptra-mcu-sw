@@ -12,8 +12,6 @@ use libapi_caliptra::error::CaliptraApiError;
 use zerocopy::IntoBytes;
 
 pub const MAX_CERT_SLOTS_SUPPORTED: u8 = 2;
-pub const SPDM_CERT_CHAIN_METADATA_LEN: u16 =
-    size_of::<SpdmCertChainHeader>() as u16 + SHA384_HASH_SIZE as u16;
 
 #[derive(Debug, PartialEq)]
 pub enum CertStoreError {
@@ -182,7 +180,7 @@ pub(crate) async fn cert_slot_mask(cert_store: &dyn SpdmCertStore) -> (u8, u8) {
 ///
 /// # Returns
 /// * `hash` - The hash of the certificate chain.
-pub(crate) async fn compute_cert_chain_hash(
+pub(crate) async fn spdm_cert_chain_hash(
     cert_store: &dyn SpdmCertStore,
     slot_id: u8,
     asym_algo: AsymAlgo,
@@ -192,30 +190,13 @@ pub(crate) async fn compute_cert_chain_hash(
         Err(CertStoreError::BufferTooSmall)?;
     }
 
-    let crt_chain_len = cert_store.cert_chain_len(asym_algo, slot_id).await?;
-    let cert_chain_format_len = crt_chain_len + SPDM_CERT_CHAIN_METADATA_LEN as usize;
-
-    let header = SpdmCertChainHeader {
-        length: cert_chain_format_len as u16,
-        reserved: 0,
-    };
+    let header = spdm_cert_chain_hdr(cert_store, slot_id, asym_algo).await?;
 
     // Length and reserved fields
     let header_bytes = header.as_bytes();
     let mut hash_ctx = HashContext::new();
     hash_ctx
         .init(HashAlgoType::SHA384, Some(header_bytes))
-        .await
-        .map_err(CertStoreError::CaliptraApi)?;
-
-    // Root certificate hash
-    let mut root_hash = [0u8; SHA384_HASH_SIZE];
-
-    cert_store
-        .root_cert_hash(slot_id, asym_algo, &mut root_hash)
-        .await?;
-    hash_ctx
-        .update(&root_hash)
         .await
         .map_err(CertStoreError::CaliptraApi)?;
 
@@ -244,4 +225,81 @@ pub(crate) async fn compute_cert_chain_hash(
         .finalize(hash)
         .await
         .map_err(CertStoreError::CaliptraApi)
+}
+
+pub(crate) async fn spdm_cert_chain_len(
+    cert_store: &dyn SpdmCertStore,
+    slot_id: u8,
+    asym_algo: AsymAlgo,
+) -> CertStoreResult<usize> {
+    let cert_chain_len = cert_store.cert_chain_len(asym_algo, slot_id).await?;
+    Ok(cert_chain_len + SPDM_CERT_CHAIN_METADATA_LEN)
+}
+
+async fn spdm_cert_chain_hdr(
+    cert_store: &dyn SpdmCertStore,
+    slot_id: u8,
+    asym_algo: AsymAlgo,
+) -> CertStoreResult<SpdmCertChainHeader> {
+    let cert_chain_len = spdm_cert_chain_len(cert_store, slot_id, asym_algo).await?;
+
+    let mut header = SpdmCertChainHeader {
+        length: cert_chain_len as u16,
+        reserved: 0,
+        root_hash: [0u8; SHA384_HASH_SIZE],
+    };
+
+    // Get the root certificate hash
+    cert_store
+        .root_cert_hash(slot_id, asym_algo, &mut header.root_hash)
+        .await?;
+
+    Ok(header)
+}
+
+pub(crate) async fn spdm_read_cert_chain(
+    cert_store: &dyn SpdmCertStore,
+    slot_id: u8,
+    asym_algo: AsymAlgo,
+    offset: usize,
+    cert_chain: &mut [u8],
+) -> CertStoreResult<usize> {
+    let spdm_cert_chain_len = spdm_cert_chain_len(cert_store, slot_id, asym_algo).await?;
+
+    let mut rem_len = spdm_cert_chain_len
+        .saturating_sub(offset)
+        .min(cert_chain.len());
+    let certchain_offset: usize;
+    let mut data_len = 0;
+
+    // If the offset is within the metadata length, we need to read the metadata first
+    if offset < SPDM_CERT_CHAIN_METADATA_LEN {
+        let header = spdm_cert_chain_hdr(cert_store, slot_id, asym_algo).await?;
+
+        let header_bytes = header.as_bytes();
+        let header_len = header_bytes.len();
+
+        // Determine how many bytes to copy from the header
+        let copy_len = header_len.saturating_sub(offset).min(rem_len);
+        cert_chain[..copy_len].copy_from_slice(&header_bytes[offset..offset + copy_len]);
+
+        rem_len = rem_len.saturating_sub(copy_len);
+        data_len += copy_len;
+        certchain_offset = 0;
+    } else {
+        certchain_offset = offset - SPDM_CERT_CHAIN_METADATA_LEN;
+    }
+
+    if rem_len > 0 {
+        // Move the offset forward and adjust the cert_chain buffer
+        let rem_buffer = &mut cert_chain[data_len..];
+
+        // Read the certificate chain portion
+        let bytes_read = cert_store
+            .get_cert_chain(slot_id, asym_algo, certchain_offset, rem_buffer)
+            .await?;
+
+        data_len += bytes_read;
+    }
+    Ok(data_len)
 }
