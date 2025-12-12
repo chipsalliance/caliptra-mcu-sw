@@ -5242,6 +5242,7 @@ version = "0.1.0"
 dependencies = [
  "arrayvec",
  "async-trait",
+ "caliptra-api",
  "critical-section",
  "embassy-executor",
  "embassy-sync",
