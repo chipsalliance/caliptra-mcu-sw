@@ -11,6 +11,12 @@ pub struct TestConfig {
     pub network: NetworkConfig,
     pub validation: ValidationConfig,
     pub server: ServerConfig,
+    #[serde(default)]
+    pub device_capabilities: Option<DeviceCapabilitiesConfig>,
+    #[serde(default)]
+    pub firmware_version: Option<FirmwareVersionConfig>,
+    #[serde(default)]
+    pub device_info: Option<DeviceInfoConfig>,
 }
 
 /// Device identification configuration
@@ -41,6 +47,36 @@ pub struct ValidationConfig {
 pub struct ServerConfig {
     pub bind_address: String,
     pub max_connections: u32,
+}
+
+/// Device capabilities configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceCapabilitiesConfig {
+    pub capabilities: u32,
+    pub max_cert_size: u32,
+    pub max_csr_size: u32,
+    pub device_lifecycle: u32,
+    pub fips_status: u32,
+}
+
+/// Firmware version configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FirmwareVersionConfig {
+    pub rom_version: String,
+    pub runtime_version: String,
+    pub fips_status: u32,
+    pub rom_firmware_id: u32,
+    pub runtime_firmware_id: u32,
+}
+
+/// Device info configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceInfoConfig {
+    pub info_index: u32,
+    pub expected_info: String,
+    pub min_info_length: u32,
+    pub max_info_length: u32,
+    pub fips_status: u32,
 }
 
 impl TestConfig {
@@ -138,6 +174,27 @@ impl Default for TestConfig {
                 bind_address: "127.0.0.1:62222".to_string(),
                 max_connections: 10,
             },
+            device_capabilities: Some(DeviceCapabilitiesConfig {
+                capabilities: 0x000001F3,
+                max_cert_size: 4096,
+                max_csr_size: 2048,
+                device_lifecycle: 1,
+                fips_status: 0x00000001,
+            }),
+            firmware_version: Some(FirmwareVersionConfig {
+                rom_version: "1.2.3.4567-mock_commit_hash".to_string(),
+                runtime_version: "1.2.3.4567-mock_commit_hash".to_string(),
+                fips_status: 0x00000001,
+                rom_firmware_id: 0,
+                runtime_firmware_id: 1,
+            }),
+            device_info: Some(DeviceInfoConfig {
+                info_index: 0,
+                expected_info: "Caliptra Test Device v1.0".to_string(),
+                min_info_length: 16,
+                max_info_length: 64,
+                fips_status: 0,
+            }),
         }
     }
 }

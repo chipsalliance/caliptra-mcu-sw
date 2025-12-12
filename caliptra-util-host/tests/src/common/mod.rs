@@ -8,6 +8,11 @@
 use caliptra_util_host_transport::{MailboxDriver, MailboxError};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
+// Buffer length constants
+const RESPONSE_BUFFER_SIZE: usize = 128;
+const CAPABILITIES_ARRAY_SIZE: usize = 32;
+const DEVICE_INFO_DATA_SIZE: usize = 64;
+
 /// Calculate checksum for external mailbox commands
 /// Formula: 0 - (SUM(command code bytes) + SUM(response bytes))
 fn calc_checksum(cmd: u32, data: &[u8]) -> u32 {
@@ -47,7 +52,7 @@ pub struct MockMailbox {
     vendor_id: u16,
     subsystem_vendor_id: u16,
     subsystem_id: u16,
-    response_buffer: [u8; 32], // Buffer to store response data
+    response_buffer: [u8; RESPONSE_BUFFER_SIZE], // Buffer to store response data
 }
 
 impl MockMailbox {
@@ -60,7 +65,7 @@ impl MockMailbox {
             vendor_id: 0x1234, // Default vendor ID
             subsystem_vendor_id: 0x5678,
             subsystem_id: 0x9ABC,
-            response_buffer: [0; 32],
+            response_buffer: [0; RESPONSE_BUFFER_SIZE],
         }
     }
 
@@ -118,16 +123,77 @@ impl MockMailbox {
             }
             0x4D43_4150 => {
                 // MC_DEVICE_CAPABILITIES ("MCAP")
-                // Mock capabilities response - little endian 0xFFFF0001
-                self.response_buffer[0..4].copy_from_slice(&[0x01, 0x00, 0xFF, 0xFF]);
-                Ok(&self.response_buffer[0..4])
+                // Mock capabilities response with proper external structure (32-byte caps array)
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
+                
+                // Build capabilities array
+                let mut caps = [0u8; CAPABILITIES_ARRAY_SIZE];
+                // capabilities (bytes 0-3)
+                caps[0..4].copy_from_slice(&0x000001F3u32.to_le_bytes());
+                // max_cert_size (bytes 4-7)  
+                caps[4..8].copy_from_slice(&4096u32.to_le_bytes());
+                // max_csr_size (bytes 8-11)
+                caps[8..12].copy_from_slice(&2048u32.to_le_bytes());
+                // device_lifecycle (bytes 12-15)
+                caps[12..16].copy_from_slice(&1u32.to_le_bytes());
+                // Remaining bytes stay 0
+                
+                payload.extend_from_slice(&caps);
+
+                let chksum = calc_checksum(0, &payload);
+                // Complete response with checksum
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
             }
             0x4D44_494E => {
                 // MC_DEVICE_INFO ("MDIN")
-                // Mock device info response
-                self.response_buffer[0..8]
-                    .copy_from_slice(&[0x01, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00]);
-                Ok(&self.response_buffer[0..8])
+                // Mock device info response with proper external structure
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
+                payload.extend_from_slice(&16u32.to_le_bytes());          // data_size
+                
+                // Device info data field
+                let mut data = [0u8; DEVICE_INFO_DATA_SIZE];
+                data[0..16].copy_from_slice(b"Mock Device Info");
+                payload.extend_from_slice(&data);
+
+                let chksum = calc_checksum(0, &payload);
+                // Complete response with checksum
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
+            0x4D46_5756 => {
+                // MC_FIRMWARE_VERSION ("MFWV")
+                // Mock firmware version response with proper external structure  
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
+                
+                // Version string in ASCII format
+                let version_str = b"1.2.3.4-mock_git_commit_sha";
+                let data_len = version_str.len() as u32;
+                payload.extend_from_slice(&data_len.to_le_bytes()); // data_len
+                payload.extend_from_slice(version_str); // version data
+                
+                let chksum = calc_checksum(0, &payload);
+                // Complete response with checksum
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
             }
             _ => Err(MailboxError::InvalidCommand),
         }

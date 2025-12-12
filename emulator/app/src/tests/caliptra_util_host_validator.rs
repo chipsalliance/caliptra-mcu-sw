@@ -7,7 +7,8 @@ use std::thread::{self, sleep};
 
 use caliptra_mailbox_server::ServerConfig;
 use caliptra_util_host_mailbox_test_config::{
-    DeviceConfig, NetworkConfig, ServerConfig as ConfigServerConfig, TestConfig, ValidationConfig,
+    DeviceCapabilitiesConfig, DeviceConfig, DeviceInfoConfig, FirmwareVersionConfig, NetworkConfig,
+    ServerConfig as ConfigServerConfig, TestConfig, ValidationConfig,
 };
 use emulator_mcu_mbox::mcu_mailbox_transport::{McuMailboxError, McuMailboxTransport};
 use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
@@ -48,6 +49,31 @@ pub fn run_caliptra_util_host_validator() {
                 bind_address: format!("{}:{}", addr.ip(), addr.port()),
                 max_connections: 10,
             },
+            device_capabilities: Some(DeviceCapabilitiesConfig {
+                capabilities: 0x04030201,
+                max_cert_size: 134678021,
+                max_csr_size: 202050057,
+                device_lifecycle: 269422093,
+                fips_status: 0x00000000,
+            }),
+            firmware_version: Some(FirmwareVersionConfig {
+                rom_version: "0.0.0.0".to_string(),
+                runtime_version: "0.0.0.0".to_string(),
+                fips_status: 0x00000000,
+                rom_firmware_id: 0,
+                runtime_firmware_id: 1,
+            }),
+            device_info: Some(DeviceInfoConfig {
+                info_index: 0,
+                expected_info: String::from_utf8_lossy(&[
+                    0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC,
+                    0xDD, 0xEE, 0xFF,
+                ])
+                .to_string(),
+                min_info_length: 10,
+                max_info_length: 64,
+                fips_status: 0x00000000,
+            }),
         };
 
         let temp_file = NamedTempFile::new().expect("Failed to create temporary file");

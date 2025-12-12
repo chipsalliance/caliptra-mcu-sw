@@ -16,8 +16,14 @@ pub use validator::{run_basic_validation, run_verbose_validation, ValidationResu
 pub use caliptra_util_host_mailbox_test_config::*;
 
 use anyhow::Result;
-use caliptra_util_host_command_types::GetDeviceIdResponse;
-use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_id;
+use caliptra_util_host_command_types::{
+    GetDeviceIdResponse, GetDeviceInfoResponse, GetDeviceCapabilitiesResponse,
+    GetFirmwareVersionResponse,
+};
+use caliptra_util_host_commands::api::device_info::{
+    caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
+    caliptra_cmd_get_device_capabilities, caliptra_cmd_get_firmware_version,
+};
 use caliptra_util_host_session::CaliptraSession;
 use caliptra_util_host_transport::Mailbox;
 
@@ -108,5 +114,98 @@ impl<'a> MailboxClient<'a> {
         }
 
         Ok(())
+    }
+
+    /// Execute the GetDeviceInfo command and return the response
+    pub fn get_device_info(&mut self) -> Result<GetDeviceInfoResponse> {
+        println!("Executing GetDeviceInfo command...");
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_get_device_info(&mut session, 0) {
+            Ok(response) => {
+                println!("✓ GetDeviceInfo succeeded!");
+                println!("  Info length: {} bytes", response.info_length);
+                println!("  FIPS status: {}", response.common.fips_status);
+                if response.info_length > 0 {
+                    let info_str = std::str::from_utf8(&response.info_data[..response.info_length as usize])
+                        .unwrap_or("<binary data>");
+                    println!("  Info data: {}", info_str);
+                }
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ GetDeviceInfo failed: {:?}", e);
+                Err(anyhow::anyhow!("GetDeviceInfo command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Execute the GetDeviceCapabilities command and return the response
+    pub fn get_device_capabilities(&mut self) -> Result<GetDeviceCapabilitiesResponse> {
+        println!("Executing GetDeviceCapabilities command...");
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_get_device_capabilities(&mut session) {
+            Ok(response) => {
+                println!("✓ GetDeviceCapabilities succeeded!");
+                println!("  Capabilities: 0x{:08X}", response.capabilities);
+                println!("  Max certificate size: {} bytes", response.max_cert_size);
+                println!("  Max CSR size: {} bytes", response.max_csr_size);
+                println!("  Device lifecycle: {}", response.device_lifecycle);
+                println!("  FIPS status: {}", response.common.fips_status);
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ GetDeviceCapabilities failed: {:?}", e);
+                Err(anyhow::anyhow!("GetDeviceCapabilities command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Execute the GetFirmwareVersion command and return the response
+    pub fn get_firmware_version(&mut self, fw_id: u32) -> Result<GetFirmwareVersionResponse> {
+        println!("Executing GetFirmwareVersion command (fw_id={})...", fw_id);
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_get_firmware_version(&mut session, fw_id) {
+            Ok(response) => {
+                println!("✓ GetFirmwareVersion succeeded!");
+                println!("  Version: {}.{}.{}.{}", response.version[0], response.version[1], response.version[2], response.version[3]);
+                println!("  Git commit hash: {:02X?}", &response.commit_id[..8]);
+                println!("  FIPS status: {}", response.common.fips_status);
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ GetFirmwareVersion failed: {:?}", e);
+                Err(anyhow::anyhow!("GetFirmwareVersion command failed: {:?}", e))
+            }
+        }
     }
 }

@@ -17,7 +17,7 @@ pub use transport::{Mailbox, MailboxDriver, MailboxError};
 // Re-export command traits and utilities for use by other command modules
 pub use command_traits::{
     process_command, process_command_with_metadata, ExternalCommandHandler,
-    ExternalCommandMetadata, FromInternalRequest, ToInternalResponse,
+    ExternalCommandMetadata, FromInternalRequest, ToInternalResponse, VariableSizeBytes,
 };
 
 // Re-export external command types for testing

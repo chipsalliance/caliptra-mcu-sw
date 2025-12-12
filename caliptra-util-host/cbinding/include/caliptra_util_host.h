@@ -63,6 +63,42 @@ typedef struct GetDeviceIdResponse {
 } GetDeviceIdResponse;
 
 /**
+ * Common response header for all commands
+ */
+typedef struct CommonResponse {
+  uint32_t fips_status;
+} CommonResponse;
+
+/**
+ * Device info response
+ */
+typedef struct GetDeviceInfoResponse {
+  struct CommonResponse common;
+  uint32_t info_length;
+  uint8_t info_data[64];
+} GetDeviceInfoResponse;
+
+/**
+ * Device capabilities response
+ */
+typedef struct GetDeviceCapabilitiesResponse {
+  struct CommonResponse common;
+  uint32_t capabilities;
+  uint32_t max_cert_size;
+  uint32_t max_csr_size;
+  uint32_t device_lifecycle;
+} GetDeviceCapabilitiesResponse;
+
+/**
+ * Firmware version response
+ */
+typedef struct GetFirmwareVersionResponse {
+  struct CommonResponse common;
+  uint32_t version[4];
+  uint8_t commit_id[20];
+} GetFirmwareVersionResponse;
+
+/**
  * Opaque transport handle (from design document)
  */
 typedef struct CaliptraTransport {
@@ -160,6 +196,79 @@ enum CaliptraError caliptra_cmd_get_device_id(struct CaliptraSession *session,
  */
 enum CaliptraError caliptra_cmd_get_device_id_c_impl(struct CaliptraSession *session_ptr,
                                                      struct GetDeviceIdResponse *device_id);
+
+/**
+ * Get device information (C-exportable version)
+ *
+ * This function can be called from C code and takes a direct session pointer.
+ *
+ * # Parameters
+ *
+ * - `session_ptr`: Direct pointer to CaliptraSession
+ * - `info_type`: Type of information to retrieve
+ * - `device_info`: Pointer to store the device info response
+ *
+ * # Returns
+ *
+ * - `CaliptraError::Success` on success
+ * - Error code on failure
+ *
+ * # Safety
+ *
+ * This function is unsafe because it works with raw pointers.
+ * The caller must ensure both pointers are valid.
+ */
+enum CaliptraError caliptra_cmd_get_device_info_c_impl(struct CaliptraSession *session_ptr,
+                                                       uint32_t info_type,
+                                                       struct GetDeviceInfoResponse *device_info);
+
+/**
+ * Get device capabilities (C-exportable version)
+ *
+ * This function can be called from C code and takes a direct session pointer.
+ *
+ * # Parameters
+ *
+ * - `session_ptr`: Direct pointer to CaliptraSession
+ * - `capabilities`: Pointer to store the capabilities response
+ *
+ * # Returns
+ *
+ * - `CaliptraError::Success` on success
+ * - Error code on failure
+ *
+ * # Safety
+ *
+ * This function is unsafe because it works with raw pointers.
+ * The caller must ensure both pointers are valid.
+ */
+enum CaliptraError caliptra_cmd_get_device_capabilities_c_impl(struct CaliptraSession *session_ptr,
+                                                               struct GetDeviceCapabilitiesResponse *capabilities);
+
+/**
+ * Get firmware version (C-exportable version)
+ *
+ * This function can be called from C code and takes a direct session pointer.
+ *
+ * # Parameters
+ *
+ * - `session_ptr`: Direct pointer to CaliptraSession
+ * - `index`: Firmware index (0 = ROM, 1 = Runtime)
+ * - `firmware_version`: Pointer to store the firmware version response
+ *
+ * # Returns
+ *
+ * - `CaliptraError::Success` on success
+ * - Error code on failure
+ *
+ * # Safety
+ *
+ * This function is unsafe because it works with raw pointers.
+ * The caller must ensure both pointers are valid.
+ */
+enum CaliptraError caliptra_cmd_get_firmware_version_c_impl(struct CaliptraSession *session_ptr,
+                                                            uint32_t index,
+                                                            struct GetFirmwareVersionResponse *firmware_version);
 
 /**
  * Create a new Caliptra session with transport
