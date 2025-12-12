@@ -299,3 +299,27 @@ pub fn download_bitstream_pdi<P: AsRef<Path>>(
     )?;
     Ok(())
 }
+
+pub fn build_caliptra_firmware(caliptra_workspace: &PathBuf, fw_id: Option<&str>) -> Result<()> {
+    let fw_dir = PathBuf::from("/tmp/caliptra-test-firmware");
+    run_command(
+        None,
+        "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
+    )?;
+    let binaries = match fw_id {
+        None => caliptra_builder::firmware::REGISTERED_FW.to_vec(),
+        Some(fw_id) => caliptra_builder::firmware::REGISTERED_FW
+            .iter()
+            .cloned()
+            .filter(|&fw| fw.bin_name == fw_id)
+            .collect(),
+    };
+
+    for (fwid, elf_bytes) in
+        caliptra_builder::build_firmware_elfs_uncached(Some(caliptra_workspace), &binaries).unwrap()
+    {
+        let elf_filename = fwid.elf_filename();
+        std::fs::write(fw_dir.join(elf_filename), elf_bytes).unwrap();
+    }
+    Ok(())
+}

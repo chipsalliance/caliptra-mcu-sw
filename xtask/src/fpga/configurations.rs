@@ -7,8 +7,8 @@ use mcu_builder::{AllBuildArgs, PROJECT_ROOT};
 use super::{
     run_command, run_command_with_output,
     utils::{
-        build_base_docker_command, caliptra_sw_workspace_root, download_bitstream_pdi, rsync_file,
-        run_test_suite,
+        build_base_docker_command, build_caliptra_firmware, caliptra_sw_workspace_root,
+        download_bitstream_pdi, rsync_file, run_test_suite,
     },
     ActionHandler, BuildArgs, BuildTestArgs, TestArgs,
 };
@@ -262,19 +262,11 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         Ok(())
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
-        run_command(
-            None,
-            "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
-        )?;
         let caliptra_sw = caliptra_sw_workspace_root();
-        // Skip building Caliptra binaries when the MCU flag is set.
-        if !args.mcu {
-            run_command(
-                        None,
-                        &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display()),
-                    )?;
-        }
         let rom_path = mcu_builder::rom_build(Some("fpga"), "core_test")?;
+        if !args.mcu {
+            build_caliptra_firmware(&caliptra_sw, args.fw_id.as_deref())?;
+        }
         if let Some(target_host) = &self.target_host {
             rsync_file(
                 target_host,
@@ -365,16 +357,11 @@ impl<'a> ActionHandler<'a> for Core {
         download_bitstream_pdi(self.target_host.as_deref(), &core_bitstream)?;
         Ok(())
     }
-    fn build(&self, _args: &'a BuildArgs<'a>) -> Result<()> {
-        run_command(
-            None,
-            "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
-        )?;
+    fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
         let caliptra_sw = caliptra_sw_workspace_root();
-        run_command(
-                        None,
-                        &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display()),
-                    )?;
+        if !args.mcu {
+            build_caliptra_firmware(&caliptra_sw, args.fw_id.as_deref())?;
+        }
         if let Some(target_host) = &self.target_host {
             rsync_file(
                 target_host,
