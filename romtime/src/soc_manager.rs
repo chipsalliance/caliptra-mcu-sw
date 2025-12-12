@@ -2,9 +2,14 @@
 
 use core::mem;
 
-use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError, SocManager};
+use caliptra_api::mailbox::Request;
+use caliptra_api::{
+    mailbox::{ExternalMailboxCmdReq, MailboxReq, MailboxRespHeader},
+    CaliptraApiError, SocManager,
+};
 use registers_generated::{mbox, soc};
 use ureg::RealMmioMut;
+use zerocopy::{transmute, IntoBytes};
 
 const MAILBOX_SIZE: usize = 256 * 1024;
 pub struct CaliptraSoC {
@@ -119,6 +124,7 @@ impl CaliptraSoC {
         &mut self,
         cmd: u32,
         len_bytes: usize,
+        axi_addr: u64,
     ) -> core::result::Result<(), CaliptraApiError> {
         if len_bytes > MAILBOX_SIZE {
             return Err(CaliptraApiError::BufferTooLargeForMailbox);
@@ -126,9 +132,25 @@ impl CaliptraSoC {
 
         self.lock_mailbox()?;
 
-        self.set_command(cmd, len_bytes)?;
+        self.set_command(
+            ExternalMailboxCmdReq::ID.into(),
+            core::mem::size_of::<ExternalMailboxCmdReq>(),
+        );
 
-        Ok(())
+        let mut req = ExternalMailboxCmdReq {
+            command_id: cmd,
+            command_size: len_bytes as u32,
+            axi_address_start_low: axi_addr as u32,
+            axi_address_start_high: (axi_addr >> 32) as u32,
+            ..Default::default()
+        };
+        let chksum = caliptra_api::calc_checksum(ExternalMailboxCmdReq::ID.into(), req.as_bytes());
+        req.hdr.chksum = chksum;
+        let words: [u32; core::mem::size_of::<ExternalMailboxCmdReq>() / 4] = transmute!(req);
+        for word in words {
+            self.write_data(word)?;
+        }
+        self.execute_command()
     }
 
     pub fn lock_mailbox(&mut self) -> core::result::Result<(), CaliptraApiError> {

@@ -216,6 +216,25 @@ fn handle_exception(exception: mcause::Exception) {
         | mcause::Exception::LoadPageFault
         | mcause::Exception::StorePageFault
         | mcause::Exception::Unknown => {
+            debug!("Fatal exception details:");
+            debug!("  Exception: {:?}", exception);
+            debug!("  Fault address (mtval): {:#x}", CSR.mtval.get());
+            debug!("  Program counter (mepc): {:#x}", CSR.mepc.get());
+            debug!("  Instruction: {:#010x}", unsafe { 
+                core::ptr::read_volatile(CSR.mepc.get() as *const u32) 
+            });
+            
+            // Additional context for memory access faults
+            match exception {
+                mcause::Exception::LoadMisaligned | mcause::Exception::StoreMisaligned => {
+                    let addr = CSR.mtval.get();
+                    debug!("  Misaligned access to: {:#x}", addr);
+                    debug!("  Alignment: address is {} bytes off alignment", addr & 0x3);
+                    debug!("  Address range: MCI=0x21000000-0x21E00000, SRAM=0x40000000-0x40080000");
+                }
+                _ => {}
+            }
+            
             panic!("fatal exception: {:?}: {:#x}", exception, CSR.mtval.get());
         }
     }

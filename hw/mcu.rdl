@@ -2,6 +2,7 @@
 `include "el2_pic_ctrl.rdl"
 `include "flash_ctrl.rdl"
 `include "doe_mbox.rdl"
+`include "test_sram.rdl"
 
 addrmap mcu {
     el2_pic_ctrl el2_pic_ctrl @ 0x6000_0000;
@@ -9,4 +10,5 @@ addrmap mcu {
     flash_ctrl secondary_flash_ctrl @ 0x2000_8800;
     axicdma axicdma @ 0xa408_1000;
     doe_mbox doe_mbox @ 0x2F00_0000;
+    test_sram test_sram @ 0xB00C_0000;
 };

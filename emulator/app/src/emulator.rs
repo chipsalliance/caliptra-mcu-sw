@@ -32,7 +32,7 @@ use emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
 use emulator_periph::MciMailboxRequester;
 use emulator_periph::{
     CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
-    McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp, OtpArgs,
+    McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp, OtpArgs, TestSram,
 };
 use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
@@ -698,11 +698,13 @@ impl Emulator {
             None,
         );
 
+        let external_test_sram_clone = root_bus.external_test_sram.clone();
+        let external_test_sram_clone2 = root_bus.external_test_sram.clone();
         let mut dma_ctrl = emulator_periph::AxiCDMA::new(
             &clock.clone(),
             pic.register_irq(McuRootBus::DMA_ERROR_IRQ),
             pic.register_irq(McuRootBus::DMA_EVENT_IRQ),
-            Some(root_bus.external_test_sram.clone()),
+            Some(external_test_sram_clone),
             Some(root_bus.mcu_mailbox0.clone()),
             Some(root_bus.mcu_mailbox1.clone()),
         )
@@ -761,6 +763,8 @@ impl Emulator {
             Some(mcu_mailbox1),
         );
 
+        let test_sram_periph = TestSram::new();
+
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
             Some(auto_root_bus_offsets),
@@ -776,6 +780,7 @@ impl Emulator {
             None,
             None,
             Some(Box::new(dma_ctrl)),
+            Some(Box::new(test_sram_periph)),
         );
 
         // Set the DMA RAM for Primary Flash Controller
@@ -809,6 +814,8 @@ impl Emulator {
             .unwrap()
             .periph
             .set_dma_rom_sram(dma_rom_sram.clone());
+
+        auto_root_bus.test_sram_periph.as_mut().unwrap().periph.set_dma_ram(external_test_sram_clone2);
 
         let cpu_args = DEFAULT_CPU_ARGS;
 

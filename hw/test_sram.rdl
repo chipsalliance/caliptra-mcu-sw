@@ -1,0 +1,9 @@
+addrmap test_sram {
+    mem { 
+        name = "TEST_SRAM";
+        desc = "External SRAM Test SRAM. Accessible by either SoC or MCU depending on security configuration.";
+        memwidth = 32;
+        mementries = 262144; // 1MB / 4 bytes per entry = 262144 entries
+        sw = rw;
+    } external sram @ 0x0;
+};

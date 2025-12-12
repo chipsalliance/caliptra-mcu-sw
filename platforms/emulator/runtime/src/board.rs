@@ -102,6 +102,8 @@ static mut MAIN_CAP: Option<&dyn kernel::capabilities::MainLoopCapability> = Non
 const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
     capsules_system::process_policies::PanicFaultPolicy {};
 
+const EXTERNAL_TEST_SRAM_ADDR : u32 = 0xb00c_0000;
+
 /// Dummy buffer that causes the linker to reserve enough space for the stack.
 #[no_mangle]
 #[link_section = ".stack_buffer"]
@@ -456,6 +458,14 @@ pub unsafe fn main() {
     );
     hil::time::Alarm::set_alarm_client(virtual_alarm_user, alarm);
 
+    // TODO: put the staging SRAM in the memory map
+    let staging_sram = unsafe {
+        core::mem::transmute(core::slice::from_raw_parts_mut(
+            (EXTERNAL_TEST_SRAM_ADDR) as *mut u8,
+            4 * 1024,
+        ))
+    };
+
     let mailbox = mcu_components::mailbox::MailboxComponent::new(
         board_kernel,
         capsules_runtime::mailbox::DRIVER_NUM,
@@ -465,7 +475,9 @@ pub unsafe fn main() {
         InternalTimers<'static>,
         Some(MCU_MEMORY_MAP.soc_offset),
         Some(MCU_MEMORY_MAP.soc_offset),
-        Some(MCU_MEMORY_MAP.mbox_offset)
+        Some(MCU_MEMORY_MAP.mbox_offset),
+        staging_sram,
+        (EXTERNAL_TEST_SRAM_ADDR) as u64
     ));
     mailbox.alarm.set_alarm_client(mailbox);
 

@@ -26,6 +26,7 @@ mod otp;
 mod otp_digest;
 mod reset_reason;
 mod root_bus;
+mod test_sram;
 mod uart;
 
 pub use axicdma::AxiCDMA;
@@ -42,4 +43,5 @@ pub use otp::{Otp, OtpArgs};
 pub use otp_digest::{otp_digest, otp_scramble, otp_unscramble};
 pub use reset_reason::ResetReasonEmulator;
 pub use root_bus::{McuRootBus, McuRootBusArgs, McuRootBusOffsets};
+pub use test_sram::TestSram;
 pub use uart::Uart;

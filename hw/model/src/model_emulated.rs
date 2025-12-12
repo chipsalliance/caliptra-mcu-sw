@@ -364,6 +364,7 @@ impl McuHwModel for ModelEmulated {
             None,
             None,
             Some(Box::new(dma_ctrl)),
+            None,
         );
 
         let args = CpuArgs {

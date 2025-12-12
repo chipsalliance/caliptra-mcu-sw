@@ -468,6 +468,7 @@ mod test {
             None,
             None,
             Some(dma_controller),
+            None,
         )
     }
 
