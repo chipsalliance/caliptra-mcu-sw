@@ -8,6 +8,11 @@
 use caliptra_util_host_transport::{MailboxDriver, MailboxError};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
+// Buffer length constants
+const RESPONSE_BUFFER_SIZE: usize = 128;
+const CAPABILITIES_ARRAY_SIZE: usize = 32;
+const DEVICE_INFO_DATA_SIZE: usize = 64;
+
 /// Calculate checksum for external mailbox commands
 /// Formula: 0 - (SUM(command code bytes) + SUM(response bytes))
 fn calc_checksum(cmd: u32, data: &[u8]) -> u32 {
@@ -47,7 +52,7 @@ pub struct MockMailbox {
     vendor_id: u16,
     subsystem_vendor_id: u16,
     subsystem_id: u16,
-    response_buffer: [u8; 128], // Buffer to store response data
+    response_buffer: [u8; RESPONSE_BUFFER_SIZE], // Buffer to store response data
 }
 
 impl MockMailbox {
@@ -60,7 +65,7 @@ impl MockMailbox {
             vendor_id: 0x1234, // Default vendor ID
             subsystem_vendor_id: 0x5678,
             subsystem_id: 0x9ABC,
-            response_buffer: [0; 128],
+            response_buffer: [0; RESPONSE_BUFFER_SIZE],
         }
     }
 
@@ -122,8 +127,8 @@ impl MockMailbox {
                 let mut payload = Vec::new();
                 payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
                 
-                // Build 32-byte caps array
-                let mut caps = [0u8; 32];
+                // Build capabilities array
+                let mut caps = [0u8; CAPABILITIES_ARRAY_SIZE];
                 // capabilities (bytes 0-3)
                 caps[0..4].copy_from_slice(&0x000001F3u32.to_le_bytes());
                 // max_cert_size (bytes 4-7)  
@@ -153,8 +158,8 @@ impl MockMailbox {
                 payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
                 payload.extend_from_slice(&16u32.to_le_bytes());          // data_size
                 
-                // 64-byte data field
-                let mut data = [0u8; 64];
+                // Device info data field
+                let mut data = [0u8; DEVICE_INFO_DATA_SIZE];
                 data[0..16].copy_from_slice(b"Mock Device Info");
                 payload.extend_from_slice(&data);
 
