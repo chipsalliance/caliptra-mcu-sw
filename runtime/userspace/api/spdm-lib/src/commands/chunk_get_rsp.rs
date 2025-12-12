@@ -159,6 +159,19 @@ async fn encode_chunk_data(
 
     if let Some(response) = ctx.large_resp_context.response() {
         match response {
+            LargeResponse::Certificate(cert_rsp) => {
+                // Get the chunk data from the certificate response
+                cert_rsp
+                    .get_chunk(
+                        &mut ctx.shared_transcript,
+                        ctx.device_certs_store,
+                        offset,
+                        chunk_buf,
+                    )
+                    .await?;
+                rsp.pull_data(chunk_size)
+                    .map_err(|e| (false, CommandError::Codec(e)))?;
+            }
             LargeResponse::Measurements(meas_rsp) => {
                 // Get the chunk data from the measurements response
                 meas_rsp

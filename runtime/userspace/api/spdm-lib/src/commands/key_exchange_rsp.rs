@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use crate::cert_store::{compute_cert_chain_hash, MAX_CERT_SLOTS_SUPPORTED};
+use crate::cert_store::{spdm_cert_chain_hash, MAX_CERT_SLOTS_SUPPORTED};
 use crate::codec::{encode_u8_slice, Codec, CommonCodec, MessageBuf};
 use crate::commands::algorithms_rsp::selected_measurement_specification;
 use crate::commands::challenge_auth_rsp::encode_measurement_summary_hash;
@@ -219,7 +219,7 @@ async fn process_key_exchange<'a>(
 
     let mut cert_chain_hash = [0u8; SHA384_HASH_SIZE];
 
-    compute_cert_chain_hash(
+    spdm_cert_chain_hash(
         ctx.device_certs_store,
         exch_req.slot_id,
         asym_algo,

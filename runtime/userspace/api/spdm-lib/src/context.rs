@@ -219,16 +219,6 @@ impl<'a> SpdmContext<'a> {
         Ok(())
     }
 
-    /// Returns the minimum data transfer size based on local and peer capabilities.
-    pub(crate) fn min_data_transfer_size(&self) -> usize {
-        self.local_capabilities.data_transfer_size.min(
-            self.state
-                .connection_info
-                .peer_capabilities()
-                .data_transfer_size,
-        ) as usize
-    }
-
     pub(crate) fn generate_error_response(
         &self,
         msg_buf: &mut MessageBuf,
@@ -242,6 +232,30 @@ impl<'a> SpdmContext<'a> {
         let spdm_version = self.state.connection_info.version_number();
 
         encode_error_response(msg_buf, spdm_version, error_code, error_data, extended_data)
+    }
+
+    /// Returns the minimum data transfer size based on local and peer capabilities.
+    pub(crate) fn min_data_transfer_size(&self) -> usize {
+        self.local_capabilities.data_transfer_size.min(
+            self.state
+                .connection_info
+                .peer_capabilities()
+                .data_transfer_size,
+        ) as usize
+    }
+
+    pub(crate) fn support_large_msg_chunking(&self) -> bool {
+        // Chunking is only supported from SPDM v1.2 onwards
+        // and both the Responder and the Requester must support chunking.
+        self.state.connection_info.version_number() >= SpdmVersion::V12
+            && self.local_capabilities.flags.chunk_cap() == 1
+            && self
+                .state
+                .connection_info
+                .peer_capabilities()
+                .flags
+                .chunk_cap()
+                == 1
     }
 
     pub(crate) fn reset_transcript_via_req_code(&mut self, req_code: ReqRespCode) {

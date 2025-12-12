@@ -1,5 +1,5 @@
 // Licensed under the Apache-2.0 license
-use crate::cert_store::{compute_cert_chain_hash, MAX_CERT_SLOTS_SUPPORTED};
+use crate::cert_store::{spdm_cert_chain_hash, MAX_CERT_SLOTS_SUPPORTED};
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::algorithms_rsp::selected_measurement_specification;
 use crate::commands::error_rsp::ErrorCode;
@@ -193,7 +193,7 @@ async fn encode_challenge_auth_rsp_base<'a>(
     let mut challenge_auth_rsp = ChallengeAuthRspBase::new(slot_id);
 
     // Get the certificate chain hash
-    compute_cert_chain_hash(
+    spdm_cert_chain_hash(
         ctx.device_certs_store,
         slot_id,
         asym_algo,

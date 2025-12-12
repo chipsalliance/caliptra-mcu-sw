@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::commands::certificate_rsp::CertificateResponse;
 use crate::commands::measurements_rsp::MeasurementsResponse;
 use crate::commands::vendor_defined_rsp::VendorLargeResponse;
 
@@ -48,6 +49,7 @@ pub type ChunkResult<T> = Result<T, ChunkError>;
 
 /// Represents a large message response type that can be split into chunks
 pub(crate) enum LargeResponse {
+    Certificate(CertificateResponse),
     Measurements(MeasurementsResponse),
     Vdm(VendorLargeResponse),
 }
