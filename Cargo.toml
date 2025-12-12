@@ -221,6 +221,8 @@ spdm-lib = { path = "runtime/userspace/api/spdm-lib", default-features = false }
 libsyscall-caliptra = { path = "runtime/userspace/syscall" }
 libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }
 libapi-emulated-caliptra = { path = "platforms/emulator/runtime/userspace/api/caliptra-api" }
+example-app = { path = "platforms/emulator/runtime/userspace/apps/example" }
+user-app = { path = "platforms/emulator/runtime/userspace/apps/user" }
 
 # libtock dependencies
 libtock = { path = "runtime/userspace/libtock" }
