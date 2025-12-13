@@ -13,6 +13,7 @@ fpga_realtime = [
     "caliptra-hw-model/fpga_subsystem",
 ]
 itrng = []
+ocp-lock = []
 
 [dependencies]
 anyhow.workspace = true

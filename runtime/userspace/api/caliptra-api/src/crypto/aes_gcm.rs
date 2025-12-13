@@ -14,8 +14,8 @@ use caliptra_api::mailbox::{
 use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
 
-pub type Aes256GcmIv = [u8; 12];
-pub type Aes256GcmTag = [u8; 16];
+pub type Aes256GcmIv = [u32; 3];
+pub type Aes256GcmTag = [u32; 4];
 
 pub struct AesGcm {
     context: Option<[u8; CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE]>,

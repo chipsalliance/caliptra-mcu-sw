@@ -290,7 +290,7 @@ impl McuHwModel for ModelFpgaRealtime {
             security_state,
             dbg_manuf_service: params.dbg_manuf_service,
             subsystem_mode: true,
-            uds_granularity_64: !params.uds_granularity_32,
+            uds_fuse_row_granularity_64: !params.uds_granularity_32,
             otp_dai_idle_bit_offset: params.otp_dai_idle_bit_offset,
             otp_direct_access_cmd_reg_offset: params.otp_direct_access_cmd_reg_offset,
             prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs,
@@ -306,6 +306,8 @@ impl McuHwModel for ModelFpgaRealtime {
             stack_info: params.stack_info,
             soc_user: MailboxRequester::SocUser(DEFAULT_AXI_PAUSER),
             test_sram: None,
+            ocp_lock_en: params.ocp_lock_en,
+            rom_callback: params.rom_callback,
             ss_init_params: SubsystemInitParams {
                 mcu_rom: Some(params.mcu_rom),
                 enable_mcu_uart_log: params.enable_mcu_uart_log,
