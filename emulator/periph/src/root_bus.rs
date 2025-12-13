@@ -55,7 +55,7 @@ impl Default for McuRootBusOffsets {
     fn default() -> Self {
         Self {
             rom_offset: 0,
-            rom_size: 0xc000,
+            rom_size: 64 * 1024,
             uart_offset: 0x1000_1000,
             uart_size: 0x100,
             ctrl_offset: 0x1000_2000,
