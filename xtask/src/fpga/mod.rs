@@ -9,7 +9,6 @@ use configurations::Configuration;
 use mcu_builder::FirmwareBinaries;
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
 use mcu_rom_common::LifecycleControllerState;
-use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use utils::{
@@ -20,11 +19,9 @@ mod configurations;
 
 mod utils;
 
-#[derive(Default)]
 struct BuildArgs<'a> {
     mcu: bool,
-    // Marker type to preserve lifetime until arguments get re-introduced.
-    _marker: PhantomData<&'a Path>,
+    fw_id: &'a Option<String>,
 }
 
 struct BuildTestArgs<'a> {
@@ -99,6 +96,11 @@ pub(crate) enum Fpga {
         /// Only Build MCU binaries
         #[arg(long, default_value_t = false)]
         mcu: bool,
+
+        /// Only build the specified Caliptra Firmware
+        /// By default all Caliptra firmware binaries are built
+        #[arg(long)]
+        fw_id: Option<String>,
     },
     /// Build FPGA test binaries
     BuildTest {
@@ -191,7 +193,11 @@ fn is_module_loaded(module: &str, target_host: Option<&str>) -> Result<bool> {
 pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
     check_host_dependencies()?;
     match args {
-        Fpga::Build { target_host, mcu } => {
+        Fpga::Build {
+            target_host,
+            mcu,
+            fw_id: calitpra_fw_id,
+        } => {
             println!("Building FPGA firmware");
             let config = Configuration::from_cmd(target_host.as_deref())?;
             config
@@ -199,7 +205,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                 .set_target_host(target_host.as_deref())
                 .build(&BuildArgs {
                     mcu: *mcu,
-                    ..Default::default()
+                    fw_id: calitpra_fw_id,
                 })?;
         }
         Fpga::BuildTest {

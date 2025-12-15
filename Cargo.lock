@@ -5591,6 +5591,7 @@ dependencies = [
  "anyhow",
  "caliptra-api-types",
  "caliptra-bitstream-downloader",
+ "caliptra-builder",
  "caliptra-hw-model",
  "caliptra-image-gen",
  "caliptra-image-types",
