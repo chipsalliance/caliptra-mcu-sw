@@ -119,6 +119,16 @@ impl McuError {
             "Invalid reset reason"
         ),
         (
+            ROM_COLD_BOOT_DOT_ERROR,
+            0x1_000e,
+            "Device Ownership Transfer generic error"
+        ),
+        (
+            ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR,
+            0x1_000f,
+            "Device Ownership Transfer corrupt blob"
+        ),
+        (
             ROM_LC_TRANSITION_ERROR,
             0x2_0000,
             "Lifecycle transition error"
@@ -176,6 +186,26 @@ impl McuError {
             ROM_OTP_FINALIZE_DIGEST_ERROR,
             0x3_0006,
             "Failed to finalize digest"
+        ),
+        (
+            ROM_UNSUPPORTED_FUSE_LAYOUT,
+            0x3_0007,
+            "Unsupported layout for fuse extraction"
+        ),
+        (
+            ROM_FUSE_LAYOUT_TOO_LARGE,
+            0x3_0008,
+            "Fuse layout too large for data"
+        ),
+        (
+            ROM_FUSE_LAYOUT_ONE_HOT_RESULT_SHOULD_BE_SINGLE_U32,
+            0x3_0009,
+            "One-hot encoded output should be single u32"
+        ),
+        (
+            ROM_FUSE_VALUE_TOO_LARGE,
+            0x3_000a,
+            "Fuse value too large for layout"
         ),
         (
             ROM_I3C_CONFIG_RING_HEADER_ERROR,
@@ -256,6 +286,11 @@ impl McuError {
             ROM_SOC_MBOX_USER_LOCK_OUT_OF_RANGE,
             0x5_000D,
             "SOC tried to lock an Mbox user out of range"
+        ),
+        (
+            GENERIC_EXCEPTION,
+            0xF_0000,
+            "Machine level exception was encountered during ROM execution"
         ),
     ];
 }

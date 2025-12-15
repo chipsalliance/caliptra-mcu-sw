@@ -1,8 +1,7 @@
 // Licensed under the Apache-2.0 license.
 
 use core::fmt::Write;
-
-use mcu_rom_common::FatalErrorHandler;
+use mcu_rom_common::{FatalErrorHandler, RomEnv};
 use romtime::{Exit, HexWord};
 
 pub(crate) struct EmulatorWriter {}
@@ -29,6 +28,7 @@ pub(crate) static mut FATAL_ERROR_HANDLER: EmulatorFatalErrorHandler = EmulatorF
 impl FatalErrorHandler for EmulatorFatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> ! {
         let _ = writeln!(EmulatorWriter {}, "MCU fatal error: {}", HexWord(code));
+        RomEnv::new().mci.set_fw_fatal_error(code);
         exit_emulator(code);
     }
 }

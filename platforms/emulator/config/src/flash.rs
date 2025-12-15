@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
+
 use core::mem::offset_of;
 use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
+use mcu_config::flash::FlashPartition;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const FLASH_PARTITIONS_COUNT: usize = 4; // Number of flash partitions
@@ -53,19 +55,6 @@ macro_rules! flash_partition_list_secondary {
         $macro!(2, image_b, IMAGE_B_PARTITION);
         $macro!(3, staging, STAGING_PARTITION);
     }};
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FlashDeviceConfig {
-    pub partitions: &'static [&'static FlashPartition], // partitions on the flash device
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
-pub struct FlashPartition {
-    pub name: &'static str, // name of the partition
-    pub offset: usize,      // flash partition offset in bytes
-    pub size: usize,        // size in bytes
-    pub driver_num: u32,    // driver number for the partition
 }
 
 #[derive(Debug, Clone, FromBytes, IntoBytes, Immutable, PartialEq, Default)]

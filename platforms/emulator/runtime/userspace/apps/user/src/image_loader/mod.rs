@@ -9,12 +9,16 @@ mod pldm_fdops_mock;
 
 mod config;
 
+use caliptra_api::mailbox::{
+    ActivateFirmwareReq, ActivateFirmwareResp, CommandId, MailboxReqHeader,
+};
 use core::fmt::Write;
 #[allow(unused)]
 use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
 use libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
 #[allow(unused)]
 use libsyscall_caliptra::flash::SpiFlash;
+use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
 #[allow(unused)]
 use libsyscall_caliptra::system::System;
@@ -126,7 +130,14 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
         pldm_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2)
             .await?;
+        // Close the PLDM session
         pldm_image_loader.finalize().await?;
+        // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
+        activate_soc_images(&[
+            config::streaming_boot_consts::IMAGE_ID1,
+            config::streaming_boot_consts::IMAGE_ID2,
+        ])
+        .await?;
     }
     #[cfg(any(
         feature = "test-flash-based-boot",
@@ -187,6 +198,11 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
             .set_active_partition(load_partition.0)
             .await
             .map_err(|_| ErrorCode::Fail)?;
+        activate_soc_images(&[
+            config::streaming_boot_consts::IMAGE_ID1,
+            config::streaming_boot_consts::IMAGE_ID2,
+        ])
+        .await?
     }
 
     #[cfg(any(
@@ -213,6 +229,41 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
         pldm_fdops_mock::FdOpsObject::wait_for_pldm_done().await;
     }
     Ok(())
+}
+
+#[allow(dead_code)]
+async fn activate_soc_images(fw_id_list: &[u32]) -> Result<(), ErrorCode> {
+    let fw_ids = {
+        let mut ids = [0u32; ActivateFirmwareReq::MAX_FW_ID_COUNT];
+        for (i, fw_id) in fw_id_list.iter().enumerate() {
+            ids[i] = *fw_id;
+        }
+        ids
+    };
+    let mut req = ActivateFirmwareReq {
+        hdr: MailboxReqHeader { chksum: 0 },
+        fw_id_count: fw_id_list.len() as u32,
+        fw_ids,
+        mcu_fw_image_size: 0, // MCU image is not activated here
+    };
+
+    let req = req.as_mut_bytes();
+    let mailbox = Mailbox::<DefaultSyscalls>::new();
+
+    mailbox
+        .populate_checksum(CommandId::ACTIVATE_FIRMWARE.into(), req)
+        .unwrap();
+    let response_buffer = &mut [0u8; core::mem::size_of::<ActivateFirmwareResp>()];
+    loop {
+        let result = mailbox
+            .execute(CommandId::ACTIVATE_FIRMWARE.into(), req, response_buffer)
+            .await;
+        match result {
+            Ok(_) => return Ok(()),
+            Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
+            Err(_) => return Err(ErrorCode::Fail),
+        }
+    }
 }
 
 pub struct EmulatedDMAMap {}

@@ -90,10 +90,7 @@ async fn process_finish<'a>(
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Validate the version
-    let connection_version = ctx.state.connection_info.version_number();
-    if spdm_hdr.version().ok() != Some(connection_version) {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
-    }
+    let _ = ctx.validate_spdm_version(&spdm_hdr, req_payload)?;
 
     // Decode the FINISH request payload (currently no Session-based mutual authentication is supported)
     let _finish_req_base =
@@ -240,17 +237,8 @@ pub(crate) async fn handle_finish<'a>(
     }
     .ok_or_else(|| ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None))?;
 
-    let session_info = ctx.session_mgr.session_info(session_id).map_err(|_| {
-        ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None)
-    })?;
-
-    if session_info.session_state != SessionState::HandshakeInProgress {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
-    }
-
     // Verify the negotiated Hash algorithm is SHA384
-    ctx.verify_negotiated_hash_algo()
-        .map_err(|_| ctx.generate_error_response(req_payload, ErrorCode::Unspecified, 0, None))?;
+    ctx.validate_negotiated_hash_algo(req_payload)?;
 
     // Process FINISH request
     process_finish(ctx, session_id, spdm_hdr, req_payload).await?;

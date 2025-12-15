@@ -6,7 +6,7 @@ use crate::codec::{encode_u8_slice, Codec, MessageBuf};
 use crate::commands::error_rsp::{encode_error_response, ErrorCode};
 use crate::commands::{
     algorithms_rsp, capabilities_rsp, certificate_rsp, challenge_auth_rsp, chunk_get_rsp,
-    digests_rsp, end_session_rsp, finish_rsp, key_exchange_rsp, measurements_rsp,
+    digests_rsp, end_session_ack_rsp, finish_rsp, key_exchange_rsp, measurements_rsp,
     vendor_defined_rsp, version_rsp,
 };
 use crate::error::*;
@@ -15,7 +15,7 @@ use crate::protocol::algorithms::*;
 use crate::protocol::common::{ReqRespCode, SpdmMsgHdr};
 use crate::protocol::version::*;
 use crate::protocol::DeviceCapabilities;
-use crate::session::SessionManager;
+use crate::session::{SessionManager, SessionState};
 use crate::state::{ConnectionState, State};
 use crate::transcript::{Transcript, TranscriptContext};
 use crate::transport::common::SpdmTransport;
@@ -24,7 +24,11 @@ use libapi_caliptra::crypto::asym::*;
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 
 // Maximum SPDM responder buffer size
+#[cfg(feature = "large-buffer")]
 pub const MAX_SPDM_RESPONDER_BUF_SIZE: usize = 2048;
+
+#[cfg(not(feature = "large-buffer"))]
+pub const MAX_SPDM_RESPONDER_BUF_SIZE: usize = 1024;
 
 pub struct SpdmContext<'a> {
     transport: &'a mut dyn SpdmTransport,
@@ -133,19 +137,8 @@ impl<'a> SpdmContext<'a> {
             self.large_resp_context.reset();
         }
 
-        // The following requests are prohibited within session
-        if self.session_mgr.active_session_id().is_some() {
-            match req_code {
-                ReqRespCode::GetVersion
-                | ReqRespCode::GetCapabilities
-                | ReqRespCode::NegotiateAlgorithms
-                | ReqRespCode::Challenge
-                | ReqRespCode::KeyExchange => {
-                    Err(self.generate_error_response(req, ErrorCode::UnexpectedRequest, 0, None))?;
-                }
-                _ => {}
-            }
-        }
+        // Check for requests prohibited within session
+        self.validate_request_in_session_context(req_code, req)?;
 
         match req_code {
             ReqRespCode::GetVersion => {
@@ -177,7 +170,7 @@ impl<'a> SpdmContext<'a> {
             }
             ReqRespCode::Finish => finish_rsp::handle_finish(self, req_msg_header, req).await?,
             ReqRespCode::EndSession => {
-                end_session_rsp::handle_end_session(self, req_msg_header, req).await?
+                end_session_ack_rsp::handle_end_session(self, req_msg_header, req).await?
             }
             ReqRespCode::VendorDefinedRequest => {
                 vendor_defined_rsp::handle_vendor_defined_request(self, req_msg_header, req).await?
@@ -226,74 +219,6 @@ impl<'a> SpdmContext<'a> {
         Ok(())
     }
 
-    /// Returns the minimum data transfer size based on local and peer capabilities.
-    pub(crate) fn min_data_transfer_size(&self) -> usize {
-        self.local_capabilities.data_transfer_size.min(
-            self.state
-                .connection_info
-                .peer_capabilities()
-                .data_transfer_size,
-        ) as usize
-    }
-
-    pub(crate) fn verify_negotiated_hash_algo(&mut self) -> SpdmResult<()> {
-        let peer_algorithms = self.state.connection_info.peer_algorithms();
-        let local_algorithms = &self.local_algorithms.device_algorithms;
-        let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
-
-        let base_hash_sel = local_algorithms.base_hash_algo.prioritize(
-            &peer_algorithms.base_hash_algo,
-            algorithm_priority_table.base_hash_algo,
-        );
-
-        // Ensure BaseHashSel has exactly one bit set
-        if base_hash_sel.0.count_ones() != 1 {
-            return Err(SpdmError::InvalidParam);
-        }
-
-        if base_hash_sel.tpm_alg_sha_384() != 1 {
-            return Err(SpdmError::InvalidParam);
-        }
-
-        Ok(())
-    }
-
-    pub(crate) fn negotiated_base_asym_algo(&self) -> SpdmResult<AsymAlgo> {
-        let peer_algorithms = self.state.connection_info.peer_algorithms();
-        let local_algorithms = &self.local_algorithms.device_algorithms;
-        let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
-
-        let base_asym_sel = BaseAsymAlgo(local_algorithms.base_asym_algo.0.prioritize(
-            &peer_algorithms.base_asym_algo.0,
-            algorithm_priority_table.base_asym_algo,
-        ));
-
-        // Ensure AsymAlgoSel has exactly one bit set
-        if base_asym_sel.0.count_ones() != 1 || base_asym_sel.tpm_alg_ecdsa_ecc_nist_p384() != 1 {
-            return Err(SpdmError::InvalidParam);
-        }
-
-        Ok(AsymAlgo::EccP384)
-    }
-
-    pub(crate) fn verify_negotiated_dhe_group(&self) -> SpdmResult<()> {
-        let peer_algorithms = self.state.connection_info.peer_algorithms();
-        let local_algorithms = &self.local_algorithms.device_algorithms;
-        let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
-
-        let dhe_group_sel = DheNamedGroup(local_algorithms.dhe_group.0.prioritize(
-            &peer_algorithms.dhe_group.0,
-            algorithm_priority_table.dhe_group,
-        ));
-
-        // Ensure DheGroupSel has exactly one bit set and it is SECP384R1
-        if dhe_group_sel.0.count_ones() != 1 || dhe_group_sel.secp384r1() != 1 {
-            return Err(SpdmError::InvalidParam);
-        }
-
-        Ok(())
-    }
-
     pub(crate) fn generate_error_response(
         &self,
         msg_buf: &mut MessageBuf,
@@ -307,6 +232,30 @@ impl<'a> SpdmContext<'a> {
         let spdm_version = self.state.connection_info.version_number();
 
         encode_error_response(msg_buf, spdm_version, error_code, error_data, extended_data)
+    }
+
+    /// Returns the minimum data transfer size based on local and peer capabilities.
+    pub(crate) fn min_data_transfer_size(&self) -> usize {
+        self.local_capabilities.data_transfer_size.min(
+            self.state
+                .connection_info
+                .peer_capabilities()
+                .data_transfer_size,
+        ) as usize
+    }
+
+    pub(crate) fn support_large_msg_chunking(&self) -> bool {
+        // Chunking is only supported from SPDM v1.2 onwards
+        // and both the Responder and the Requester must support chunking.
+        self.state.connection_info.version_number() >= SpdmVersion::V12
+            && self.local_capabilities.flags.chunk_cap() == 1
+            && self
+                .state
+                .connection_info
+                .peer_capabilities()
+                .flags
+                .chunk_cap()
+                == 1
     }
 
     pub(crate) fn reset_transcript_via_req_code(&mut self, req_code: ReqRespCode) {
@@ -399,5 +348,138 @@ impl<'a> SpdmContext<'a> {
             .map_err(|e| (false, CommandError::Transcript(e)))?;
 
         Ok(transcript_hash)
+    }
+
+    /// Validates that the SPDM header version matches the negotiated connection version
+    /// Returns the validated connection version on success
+    pub(crate) fn validate_spdm_version(
+        &self,
+        spdm_hdr: &SpdmMsgHdr,
+        req_payload: &mut MessageBuf,
+    ) -> CommandResult<SpdmVersion> {
+        let connection_version = self.state.connection_info.version_number();
+        match spdm_hdr.version() {
+            Ok(version) if version == connection_version => Ok(connection_version),
+            _ => {
+                Err(self.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))
+            }
+        }
+    }
+
+    pub(crate) fn validate_negotiated_hash_algo(
+        &mut self,
+        rsp: &mut MessageBuf,
+    ) -> CommandResult<()> {
+        let peer_algorithms = self.state.connection_info.peer_algorithms();
+        let local_algorithms = &self.local_algorithms.device_algorithms;
+        let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
+
+        let base_hash_sel = local_algorithms.base_hash_algo.prioritize(
+            &peer_algorithms.base_hash_algo,
+            algorithm_priority_table.base_hash_algo,
+        );
+
+        // Ensure BaseHashSel has exactly one bit set and it is SHA-384
+        if base_hash_sel.0.count_ones() != 1 || base_hash_sel.tpm_alg_sha_384() != 1 {
+            return Err(self.generate_error_response(rsp, ErrorCode::Unspecified, 0, None));
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn validate_negotiated_base_asym_algo(
+        &self,
+        req_payload: &mut MessageBuf,
+    ) -> CommandResult<AsymAlgo> {
+        let peer_algorithms = self.state.connection_info.peer_algorithms();
+        let local_algorithms = &self.local_algorithms.device_algorithms;
+        let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
+
+        let base_asym_sel = BaseAsymAlgo(local_algorithms.base_asym_algo.0.prioritize(
+            &peer_algorithms.base_asym_algo.0,
+            algorithm_priority_table.base_asym_algo,
+        ));
+
+        // Ensure AsymAlgoSel has exactly one bit set and it is ECC P-384
+        if base_asym_sel.0.count_ones() != 1 || base_asym_sel.tpm_alg_ecdsa_ecc_nist_p384() != 1 {
+            return Err(self.generate_error_response(
+                req_payload,
+                ErrorCode::InvalidRequest,
+                0,
+                None,
+            ));
+        }
+
+        Ok(AsymAlgo::EccP384)
+    }
+
+    pub(crate) fn validate_negotiated_dhe_group(&self, rsp: &mut MessageBuf) -> CommandResult<()> {
+        let peer_algorithms = self.state.connection_info.peer_algorithms();
+        let local_algorithms = &self.local_algorithms.device_algorithms;
+        let algorithm_priority_table = &self.local_algorithms.algorithm_priority_table;
+
+        let dhe_group_sel = DheNamedGroup(local_algorithms.dhe_group.0.prioritize(
+            &peer_algorithms.dhe_group.0,
+            algorithm_priority_table.dhe_group,
+        ));
+
+        // Ensure DheGroupSel has exactly one bit set and it is SECP384R1
+        if dhe_group_sel.0.count_ones() != 1 || dhe_group_sel.secp384r1() != 1 {
+            return Err(self.generate_error_response(rsp, ErrorCode::Unspecified, 0, None));
+        }
+
+        Ok(())
+    }
+
+    /// Validates that the request is allowed in the current session context.
+    /// Certain requests are prohibited when an active session exists.
+    fn validate_request_in_session_context(
+        &self,
+        req_code: ReqRespCode,
+        req: &mut MessageBuf<'a>,
+    ) -> CommandResult<()> {
+        let Some(session_id) = self.session_mgr.active_session_id() else {
+            return Ok(());
+        };
+
+        let session_info = self
+            .session_mgr
+            .session_info(session_id)
+            .map_err(|_| self.generate_error_response(req, ErrorCode::SessionRequired, 0, None))?;
+
+        match req_code {
+            // These requests are completely prohibited within any session
+            ReqRespCode::GetVersion
+            | ReqRespCode::GetCapabilities
+            | ReqRespCode::NegotiateAlgorithms
+            | ReqRespCode::Challenge
+            | ReqRespCode::KeyExchange => {
+                Err(self.generate_error_response(req, ErrorCode::UnexpectedRequest, 0, None))
+            }
+
+            // These requests require established session state (Application phase)
+            ReqRespCode::GetDigests
+            | ReqRespCode::GetCertificate
+            | ReqRespCode::GetMeasurements
+            | ReqRespCode::EndSession => {
+                if session_info.session_state == SessionState::Established {
+                    Ok(())
+                } else {
+                    Err(self.generate_error_response(req, ErrorCode::UnexpectedRequest, 0, None))
+                }
+            }
+
+            // FINISH requires handshake in progress state (Session Handshake phase)
+            ReqRespCode::Finish => {
+                if session_info.session_state == SessionState::HandshakeInProgress {
+                    Ok(())
+                } else {
+                    Err(self.generate_error_response(req, ErrorCode::UnexpectedRequest, 0, None))
+                }
+            }
+
+            // All other requests are allowed in any session state
+            _ => Ok(()),
+        }
     }
 }

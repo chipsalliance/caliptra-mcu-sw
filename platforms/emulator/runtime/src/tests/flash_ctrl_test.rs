@@ -3,7 +3,6 @@
 // Test flash controller driver read, write, erage page
 
 use core::cell::RefCell;
-use flash_driver::flash_ctrl;
 use kernel::hil;
 use kernel::hil::flash::{Flash, HasClient};
 use kernel::static_init;
@@ -36,16 +35,16 @@ pub struct IoState {
 // Create flash callback struct for testing
 struct FlashCtrlTestCallBack {
     io_state: RefCell<IoState>,
-    read_in_page: TakeCell<'static, flash_ctrl::EmulatedFlashPage>,
-    write_in_page: TakeCell<'static, flash_ctrl::EmulatedFlashPage>,
+    read_in_page: TakeCell<'static, flash_ctrl_emulator::EmulatedFlashPage>,
+    write_in_page: TakeCell<'static, flash_ctrl_emulator::EmulatedFlashPage>,
     read_out_buf: TakeCell<'static, [u8]>,
     write_out_buf: TakeCell<'static, [u8]>,
 }
 
 impl<'a> FlashCtrlTestCallBack {
     pub fn new(
-        read_in_page: &'static mut flash_ctrl::EmulatedFlashPage,
-        write_in_page: &'static mut flash_ctrl::EmulatedFlashPage,
+        read_in_page: &'static mut flash_ctrl_emulator::EmulatedFlashPage,
+        write_in_page: &'static mut flash_ctrl_emulator::EmulatedFlashPage,
     ) -> Self {
         Self {
             io_state: RefCell::new(IoState {
@@ -107,15 +106,15 @@ impl<'a, F: hil::flash::Flash> hil::flash::Client<F> for FlashCtrlTestCallBack {
 macro_rules! static_init_test {
     () => {{
         let r_in_page = static_init!(
-            flash_ctrl::EmulatedFlashPage,
-            flash_ctrl::EmulatedFlashPage::default()
+            flash_ctrl_emulator::EmulatedFlashPage,
+            flash_ctrl_emulator::EmulatedFlashPage::default()
         );
         let w_in_page = static_init!(
-            flash_ctrl::EmulatedFlashPage,
-            flash_ctrl::EmulatedFlashPage::default()
+            flash_ctrl_emulator::EmulatedFlashPage,
+            flash_ctrl_emulator::EmulatedFlashPage::default()
         );
         let mut val: u8 = 0;
-        for i in 0..flash_ctrl::PAGE_SIZE {
+        for i in 0..flash_ctrl_emulator::PAGE_SIZE {
             val = val.wrapping_add(0x10);
             r_in_page[i] = 0x00;
             // Fill the write buffer with arbitrary data
@@ -129,7 +128,7 @@ macro_rules! static_init_test {
 }
 
 fn test_single_flash_ctrl_erase_page(
-    flash_ctrl: &'static flash_ctrl::EmulatedFlashCtrl,
+    flash_ctrl: &'static flash_ctrl_emulator::EmulatedFlashCtrl,
     test_cb: &'static FlashCtrlTestCallBack,
 ) {
     flash_ctrl.set_client(test_cb);
@@ -177,7 +176,7 @@ pub fn test_flash_ctrl_erase_page() -> Option<u32> {
 }
 
 fn test_single_flash_ctrl_read_write_page(
-    flash_ctrl: &'static flash_ctrl::EmulatedFlashCtrl,
+    flash_ctrl: &'static flash_ctrl_emulator::EmulatedFlashCtrl,
     test_cb: &'static FlashCtrlTestCallBack,
 ) {
     flash_ctrl.set_client(test_cb);

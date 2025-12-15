@@ -1,8 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use crate::Commands;
-use anyhow::Result;
-use mcu_builder::{rom_build, runtime_build_with_apps_cached, CaliptraBuilder, PROJECT_ROOT};
+use anyhow::{anyhow, Result};
+use caliptra_api_types::DeviceLifecycle;
+use mcu_builder::{rom_build, runtime_build_with_apps, CaliptraBuilder, PROJECT_ROOT};
 use std::{path::PathBuf, process::Command};
 
 /// Run the Runtime Tock kernel image for RISC-V in the emulator.
@@ -16,7 +17,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         caliptra_rom,
         caliptra_firmware,
         soc_manifest,
-        manufacturing_mode,
+        device_security_state,
         vendor_pk_hash,
         streaming_boot,
         soc_images,
@@ -36,7 +37,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     // include debug features since this is interactive
     features.push("debug");
     let rom_binary: PathBuf = rom_build(None, "")?.into();
-    let tock_binary: PathBuf = runtime_build_with_apps_cached(
+    let tock_binary: PathBuf = runtime_build_with_apps(
         &features,
         None,
         false,
@@ -171,9 +172,11 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     if trace {
         cargo_run_args.extend(["-t", "-l", PROJECT_ROOT.to_str().unwrap()]);
     }
-    if manufacturing_mode {
-        cargo_run_args.extend(["--manufacturing-mode"]);
-    }
+
+    let device_lifecycle = DeviceLifecycle::try_from(device_security_state)
+        .map_err(|_| anyhow!("Invalid device lifecycle {device_security_state}"))?;
+    let lifecycle_arg = format!("{}", device_lifecycle as u32);
+    cargo_run_args.extend(["--device-security-state", &lifecycle_arg]);
     if streaming_boot.as_ref().is_some() {
         cargo_run_args.extend([
             "--streaming-boot",

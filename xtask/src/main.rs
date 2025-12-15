@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_api_types::DeviceLifecycle;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
 use core::panic;
@@ -15,6 +16,7 @@ mod emulator_cbinding;
 mod format;
 #[cfg(feature = "fpga_realtime")]
 mod fpga;
+mod fuses;
 mod header;
 mod pldm_fw_pkg;
 mod precheckin;
@@ -64,8 +66,12 @@ enum Commands {
         #[arg(long)]
         caliptra_firmware: Option<PathBuf>,
 
-        #[clap(long, default_value_t = false)]
-        manufacturing_mode: bool,
+        #[arg(
+            long,
+            value_parser = maybe_hex::<u32>,
+            default_value_t = DeviceLifecycle::Production as u32
+        )]
+        device_security_state: u32,
 
         #[arg(long)]
         soc_manifest: Option<PathBuf>,
@@ -215,6 +221,14 @@ enum Commands {
         /// Must be in the format of "type@addr"
         #[arg(short, long)]
         addrmap: Vec<String>,
+
+        /// Path to fuses.hjson file. Default: hw/fuses.hjson
+        #[arg(long)]
+        fuses_hjson: Option<PathBuf>,
+
+        /// Path to otp_ctrl_mmap.hjson file. Default: hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson
+        #[arg(long)]
+        otp_mmap_hjson: Option<PathBuf>,
     },
     /// Check dependencies
     Deps,
@@ -408,9 +422,9 @@ fn main() {
             dccm_size,
         } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            mcu_builder::runtime_build_with_apps_cached(
+            mcu_builder::runtime_build_with_apps(
                 &features,
-                output.as_deref(),
+                output.clone(),
                 false,
                 platform.as_deref(),
                 match platform.as_deref() {
@@ -468,7 +482,15 @@ fn main() {
             check,
             files,
             addrmap,
-        } => registers::autogen(*check, files, addrmap),
+            fuses_hjson,
+            otp_mmap_hjson,
+        } => registers::autogen(
+            *check,
+            files,
+            addrmap,
+            fuses_hjson.as_deref(),
+            otp_mmap_hjson.as_deref(),
+        ),
         Commands::Deps => deps::check(),
         #[cfg(feature = "fpga_realtime")]
         Commands::Fpga { subcommand } => fpga::fpga_entry(subcommand),

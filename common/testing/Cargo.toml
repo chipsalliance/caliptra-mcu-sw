@@ -7,6 +7,7 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
+caliptra-api-types.workspace = true
 bitfield.workspace = true
 crc.workspace = true
 pldm-common.workspace = true

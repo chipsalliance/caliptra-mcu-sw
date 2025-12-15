@@ -16,6 +16,7 @@ Abstract:
 
 use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
+use crate::hil::FlashStorage;
 use crate::ColdBoot;
 use crate::FwBoot;
 use crate::FwHitlessUpdate;
@@ -26,6 +27,7 @@ use crate::LifecycleToken;
 use crate::McuBootMilestones;
 use crate::RomEnv;
 use crate::WarmBoot;
+use caliptra_api::mailbox::CmStableKeyType;
 use core::fmt::Write;
 use mcu_config::McuStraps;
 use mcu_error::McuError;
@@ -307,6 +309,7 @@ impl Soc {
             {
                 fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
             }
+
             for i in 0..self.registers.cptra_owner_pk_hash.len() {
                 let word = u32::from_le_bytes(
                     fuses.cptra_ss_owner_pk_hash()[i * 4..i * 4 + 4]
@@ -496,6 +499,10 @@ pub struct RomParameters<'a> {
     pub program_field_entropy: [bool; 4],
     pub mcu_image_header_size: usize,
     pub mcu_image_verifier: Option<&'a dyn ImageVerifier>,
+    /// The stable key type to use for DOT operations (IDevID or LDevID; IDevID is the default if not specified).
+    pub dot_stable_key_type: Option<CmStableKeyType>,
+    /// Flash storage interface for DOT blob.
+    pub dot_flash: Option<&'a dyn FlashStorage>,
 }
 
 pub fn rom_start(params: RomParameters) {

@@ -16,12 +16,20 @@ Abstract:
 
 pub mod boot_status;
 pub use boot_status::*;
+mod device_ownership_transfer;
+pub use device_ownership_transfer::*;
 pub mod flash;
 pub use flash::*;
+mod fuse_layout;
+pub use fuse_layout::*;
 mod fuses;
 pub use fuses::*;
 pub mod image_verifier;
 pub use image_verifier::ImageVerifier;
+mod lifecycle;
+pub use lifecycle::*;
+mod otp;
+pub use otp::*;
 mod rom;
 pub use rom::*;
 mod rom_env;
@@ -57,6 +65,36 @@ pub fn set_fatal_error_handler(handler: &'static mut dyn FatalErrorHandler) {
     }
 }
 
+/// A handler which outputs useful debug information if an exception is encountered during ROM
+/// execution.  The vendor is responsible for configuring the `mtvec` register during their start
+/// sequence to invoke a wrapper for this function which utilizes a discrete stack, and populates
+/// the mscratch register with the previously extant `sp`.  They are also responsible for ensuring
+/// the `mcause`, `mepc` and `ra` csrs/registers are not overwritten between the trap occurring and
+/// execution of this function.
+#[no_mangle]
+#[cfg(target_arch = "riscv32")]
+fn exception_handler() -> ! {
+    let mut mcause: usize;
+    let mut mepc: usize;
+    let mut sp: usize;
+    let mut ra: usize;
+    unsafe {
+        core::arch::asm!(
+            "csrr {mcause}, mcause",
+            "csrr {mepc}, mepc",
+            "csrr {sp}, mscratch",
+            "addi {ra}, ra, 0",
+            mcause = out(reg) mcause,
+            mepc = out(reg) mepc,
+            sp = out(reg) sp,
+            ra = out(reg) ra
+        )
+    };
+
+    romtime::println!("EXCEPTION mcause={mcause:#08X} mepc={mepc:#08X} sp={sp:#08X} ra={ra:#08X}");
+    fatal_error(mcu_error::McuError::GENERIC_EXCEPTION)
+}
+
 #[no_mangle]
 #[inline(never)]
 #[cfg(target_arch = "riscv32")]
@@ -82,7 +120,8 @@ fn fatal_error_raw(code: u32) -> ! {
     if let Some(handler) = unsafe { FATAL_ERROR_HANDLER.as_mut() } {
         handler.fatal_error(code);
     } else {
-        // If no handler is set, just loop forever
+        // If no handler is set, just set the MCI fatal error code and loop forever
+        RomEnv::new().mci.set_fw_fatal_error(code);
         loop {}
     }
 }

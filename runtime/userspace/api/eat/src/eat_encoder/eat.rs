@@ -16,7 +16,6 @@ pub enum EatError {
 }
 
 // Constants for claim keys (as per OCP Profile spec)
-pub const CLAIM_KEY_ISSUER: i32 = 1;
 pub const CLAIM_KEY_CTI: i32 = 7;
 pub const CLAIM_KEY_NONCE: i32 = 10;
 pub const CLAIM_KEY_DBGSTAT: i32 = 263;
@@ -24,7 +23,9 @@ pub const CLAIM_KEY_EAT_PROFILE: i32 = 265;
 pub const CLAIM_KEY_MEASUREMENTS: i32 = 273;
 
 // Optional claim keys
+pub const CLAIM_KEY_ISSUER: i32 = 1;
 pub const CLAIM_KEY_UEID: i32 = 256;
+pub const CLAIM_KEY_SUEID: i32 = 257;
 pub const CLAIM_KEY_OEMID: i32 = 258;
 pub const CLAIM_KEY_HWMODEL: i32 = 259;
 pub const CLAIM_KEY_UPTIME: i32 = 261;
@@ -69,15 +70,16 @@ pub struct PrivateClaim<'a> {
 #[derive(Debug, Clone, Copy)]
 pub struct OcpEatClaims<'a> {
     // Mandatory claims
-    pub issuer: &'a str,                           // iss claim (key 1)
-    pub cti: &'a [u8],                             // CTI claim for token uniqueness (key 7)
     pub nonce: &'a [u8],                           // Nonce for freshness (key 10)
     pub dbgstat: DebugStatus,                      // Debug status (key 263)
     pub eat_profile: &'a str,                      // EAT Profile OID (key 265)
     pub measurements: &'a [MeasurementFormat<'a>], // Concise evidence (key 273)
 
     // Optional claims
+    pub issuer: Option<&'a str>,           // iss claim (key 1)
+    pub cti: Option<&'a [u8]>,             // CTI claim for token uniqueness (key 7)
     pub ueid: Option<&'a [u8]>,            // Unique Entity ID (key 256)
+    pub sueid: Option<&'a [u8]>,           // Secure Unique Entity ID (key 257)
     pub oemid: Option<&'a [u8]>,           // OEM ID (key 258)
     pub hwmodel: Option<&'a [u8]>,         // Hardware model (key 259)
     pub uptime: Option<u64>,               // Uptime in seconds (key 261)
@@ -222,13 +224,6 @@ impl CborEncoder<'_> {
         self.encode_map_header(claim_count)?;
 
         // Encode mandatory claims in deterministic order (by claim key)
-        // Key 1: issuer
-        self.encode_int(CLAIM_KEY_ISSUER as i64)?;
-        self.encode_text(claims.issuer)?;
-
-        // Key 7: cti
-        self.encode_int(CLAIM_KEY_CTI as i64)?;
-        self.encode_bytes(claims.cti)?;
 
         // Key 10: nonce
         self.encode_int(CLAIM_KEY_NONCE as i64)?;
@@ -252,9 +247,26 @@ impl CborEncoder<'_> {
         }
 
         // Encode optional claims in deterministic order
+        // Key 1: issuer
+        if let Some(issuer) = claims.issuer {
+            self.encode_int(CLAIM_KEY_ISSUER as i64)?;
+            self.encode_text(issuer)?;
+        }
+
+        // Key 7: cti
+        if let Some(cti) = claims.cti {
+            self.encode_int(CLAIM_KEY_CTI as i64)?;
+            self.encode_bytes(cti)?;
+        }
+
         if let Some(ueid) = claims.ueid {
             self.encode_int(CLAIM_KEY_UEID as i64)?;
             self.encode_bytes(ueid)?;
+        }
+
+        if let Some(sueid) = claims.sueid {
+            self.encode_int(CLAIM_KEY_SUEID as i64)?;
+            self.encode_bytes(sueid)?;
         }
 
         if let Some(oemid) = claims.oemid {
@@ -409,14 +421,6 @@ impl EatEncoder {
     #[allow(dead_code)]
     pub fn validate_claims(claims: &OcpEatClaims) -> Result<(), EatError> {
         // Check mandatory fields
-        if claims.issuer.is_empty() {
-            return Err(EatError::MissingMandatoryClaim);
-        }
-
-        if claims.cti.len() < 8 || claims.cti.len() > 64 {
-            return Err(EatError::InvalidClaimSize);
-        }
-
         if claims.nonce.len() < 8 || claims.nonce.len() > 64 {
             return Err(EatError::InvalidClaimSize);
         }
@@ -430,6 +434,18 @@ impl EatEncoder {
         }
 
         // Validate optional claims size constraints
+        if let Some(issuer) = claims.issuer {
+            if issuer.is_empty() || issuer.len() > 100 {
+                return Err(EatError::InvalidClaimSize);
+            }
+        }
+
+        if let Some(cti) = claims.cti {
+            if cti.len() < 8 || cti.len() > 64 {
+                return Err(EatError::InvalidClaimSize);
+            }
+        }
+
         if let Some(ueid) = claims.ueid {
             if ueid.len() < 7 || ueid.len() > 33 {
                 return Err(EatError::InvalidClaimSize);
@@ -473,8 +489,6 @@ impl EatEncoder {
         size = size.saturating_add(100); // Tags, headers, map structures
 
         // Mandatory claims
-        size = size.saturating_add(claims.issuer.len()).saturating_add(10);
-        size = size.saturating_add(claims.cti.len()).saturating_add(10);
         size = size.saturating_add(claims.nonce.len()).saturating_add(10);
         size = size
             .saturating_add(claims.eat_profile.len())
@@ -487,8 +501,17 @@ impl EatEncoder {
         }
 
         // Optional claims
+        if let Some(issuer) = claims.issuer {
+            size = size.saturating_add(issuer.len()).saturating_add(20);
+        }
+        if let Some(cti) = claims.cti {
+            size = size.saturating_add(cti.len()).saturating_add(10);
+        }
         if let Some(ueid) = claims.ueid {
             size = size.saturating_add(ueid.len()).saturating_add(10);
+        }
+        if let Some(sueid) = claims.sueid {
+            size = size.saturating_add(sueid.len()).saturating_add(10);
         }
         if let Some(oemid) = claims.oemid {
             size = size.saturating_add(oemid.len()).saturating_add(10);
@@ -532,21 +555,20 @@ impl EatEncoder {
 impl<'a> OcpEatClaims<'a> {
     /// Create a new OcpEatClaims with mandatory fields
     pub fn new(
-        issuer: &'a str,
-        cti: &'a [u8],
         nonce: &'a [u8],
         dbgstat: DebugStatus,
         eat_profile: &'a str,
         measurements: &'a [MeasurementFormat<'a>],
     ) -> Self {
         Self {
-            issuer,
-            cti,
             nonce,
             dbgstat,
             eat_profile,
             measurements,
+            issuer: None,
+            cti: None,
             ueid: None,
+            sueid: None,
             oemid: None,
             hwmodel: None,
             uptime: None,

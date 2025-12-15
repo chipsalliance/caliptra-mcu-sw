@@ -140,7 +140,7 @@ SECTIONS {
         KEEP(*(.stack_buffer))
         . = ALIGN(16);
         _stack_top = .;  /* Used in rt_header */
-    } > RAM AT > FLASH
+    } > RAM
 
     /* Read-write data section. This is deployed as part of FLASH but is copied
      * into RAM at runtime.

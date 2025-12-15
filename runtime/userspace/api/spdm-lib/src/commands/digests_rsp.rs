@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::cert_store::{cert_slot_mask, compute_cert_chain_hash, SpdmCertStore};
+use crate::cert_store::{cert_slot_mask, spdm_cert_chain_hash, SpdmCertStore};
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
@@ -44,7 +44,7 @@ async fn encode_cert_chain_digest(
         .data_mut(SHA384_HASH_SIZE)
         .map_err(|_| (false, CommandError::BufferTooSmall))?;
 
-    compute_cert_chain_hash(cert_store, slot_id, asym_algo, cert_chain_digest_buf)
+    spdm_cert_chain_hash(cert_store, slot_id, asym_algo, cert_chain_digest_buf)
         .await
         .map_err(|e| (false, CommandError::CertStore(e)))?;
 
@@ -58,12 +58,9 @@ async fn generate_digests_response<'a>(
     ctx: &mut SpdmContext<'a>,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    // Ensure the selected hash algorithm is SHA384 and retrieve the asymmetric algorithm (currently only ECC-P384 is supported)
-    ctx.verify_negotiated_hash_algo()
-        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
-    let asym_algo = ctx
-        .negotiated_base_asym_algo()
-        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
+    ctx.validate_negotiated_hash_algo(rsp)?;
+
+    let asym_algo = ctx.validate_negotiated_base_asym_algo(rsp)?;
 
     // Get the supported and provisioned slot masks.
     let (supported_slot_mask, provisioned_slot_mask) = cert_slot_mask(ctx.device_certs_store).await;

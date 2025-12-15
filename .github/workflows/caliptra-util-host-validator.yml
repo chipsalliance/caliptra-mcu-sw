@@ -1,0 +1,96 @@
+# Licensed under the Apache-2.0 license
+
+name: Caliptra Util Host Validator Tests
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  caliptra_util_host_validator_tests:
+    runs-on: ubuntu-24.04
+
+    env:
+      CARGO_INCREMENTAL: 0
+      SCCACHE_VERSION: 0.8.2
+      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
+      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
+      # CPTRA_COVERAGE_PATH: /tmp
+
+      # Change this to a new random value if you suspect the cache is corrupted
+      SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b42a6e70ec4
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Test commit name
+        run: |
+          echo "Build-Test: release_ref=$(git rev-parse HEAD)"
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Restore sccache binary
+        uses: actions/cache/restore@v3
+        id: sccache_bin_restore
+        with:
+          path: ~/.cargo/bin/sccache
+          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
+
+      - name: Install sccache
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        run: |
+          cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
+
+      # Save the sccache binary immediately so we can reuse it in future runs
+      # even if the rest of the current run fails.
+      - name: Save sccache binary
+        uses: actions/cache/save@v3
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        with:
+          path: ~/.cargo/bin/sccache
+          key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
+
+      - name: Configure sccache
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Build caliptra-util-host
+        run: |
+          pushd caliptra-util-host
+          cargo xtask build
+          popd
+
+      - name: Run Caliptra Util Host tests
+        run: |
+          pushd caliptra-util-host
+          cargo xtask test
+          popd
+
+      - name: Run Caliptra Util Host validator tests
+        run: |
+          cargo xtask all-build
+          cargo test --package tests-integration --lib -- test::test_caliptra_util_host_validator --nocapture --include-ignored
+          sccache --show-stats
+
+      - name: Upload test results and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: caliptra-util-host-validator-test-results
+          path: |
+            target/*/debug/*.log
+            target/*/debug/*.txt
+            target/*/debug/*.pcap

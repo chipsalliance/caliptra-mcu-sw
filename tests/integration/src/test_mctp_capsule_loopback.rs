@@ -4,11 +4,12 @@
 
 #[cfg(test)]
 mod test {
-    use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TEST_LOCK};
+    use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use mcu_hw_model::McuHwModel;
     use mcu_testing_common::i3c_socket::{self, BufferedStream, MctpTestState, MctpTransportTest};
     use mcu_testing_common::mctp_util::common::MctpUtil;
     use mcu_testing_common::MCU_RUNNING;
+    use random_port::PortPicker;
     use std::sync::atomic::Ordering;
 
     #[test]
@@ -18,7 +19,11 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let feature = feature.replace("_", "-");
-        let mut hw = start_runtime_hw_model(Some(&feature), Some(65534));
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some(&feature),
+            i3c_port: Some(PortPicker::new().pick().unwrap()),
+            ..Default::default()
+        });
 
         hw.start_i3c_controller();
 

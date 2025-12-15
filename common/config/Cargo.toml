@@ -7,3 +7,4 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+registers-generated.workspace = true

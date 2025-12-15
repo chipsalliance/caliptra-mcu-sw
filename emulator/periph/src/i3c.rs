@@ -686,10 +686,9 @@ impl I3cPeripheral for I3c {
             registers_generated::i3c::bits::ProtCap2::Register,
         >,
     ) {
-        // convert the value in the other endianess
-        let x = u32::from_be_bytes(val.reg.get().to_le_bytes());
-
-        self.i3c_ec_sec_fw_recovery_if_prot_cap_2.reg.set(x);
+        self.i3c_ec_sec_fw_recovery_if_prot_cap_2
+            .reg
+            .set(val.reg.get());
     }
 
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_2(
@@ -845,7 +844,7 @@ impl I3cPeripheral for I3c {
             .reg
             .set(read_index + 1);
 
-        u32::from_be_bytes(data.try_into().unwrap())
+        u32::from_le_bytes(data.try_into().unwrap())
     }
 
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0(

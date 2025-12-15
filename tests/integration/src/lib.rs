@@ -5,7 +5,10 @@ mod i3c_socket;
 mod jtag;
 #[cfg(test)]
 mod rom;
+mod test_dot;
+mod test_exception_handler;
 mod test_firmware_update;
+mod test_fpga_flash_ctrl;
 mod test_mctp_capsule_loopback;
 mod test_pldm_fw_update;
 mod test_soc_boot;
@@ -26,7 +29,9 @@ mod test {
     use mcu_config::McuMemoryMap;
     use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
     use mcu_image_header::McuImageHeader;
-    use std::sync::atomic::AtomicU32;
+    use mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
+    use random_port::PortPicker;
+    use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Mutex;
     use std::{
         path::{Path, PathBuf},
@@ -34,6 +39,14 @@ mod test {
         sync::LazyLock,
     };
     use zerocopy::IntoBytes;
+
+    #[derive(Default)]
+    pub struct TestParams<'a> {
+        pub feature: Option<&'a str>,
+        pub i3c_port: Option<u16>,
+        pub dot_flash_initial_contents: Option<Vec<u8>>,
+        pub rom_only: bool,
+    }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
         Path::new(&env!("CARGO_MANIFEST_DIR"))
@@ -95,9 +108,9 @@ mod test {
         let feature = feature.map(|f| format!("-{f}")).unwrap_or_default();
         let output = target_binary(&format!("runtime{}-{}.bin", feature, platform()));
         let output_name = format!("{}", output.display());
-        mcu_builder::runtime_build_with_apps_cached(
+        mcu_builder::runtime_build_with_apps(
             &features,
-            Some(&output_name),
+            Some(output_name),
             example_app,
             Some(platform()),
             Some(memory_map()),
@@ -200,7 +213,10 @@ mod test {
         }
     }
 
-    pub fn start_runtime_hw_model(feature: Option<&str>, i3c_port: Option<u16>) -> DefaultHwModel {
+    pub fn start_runtime_hw_model(params: TestParams) -> DefaultHwModel {
+        // reset to known good state for beginning of test so that I3C socket will start correctly
+        MCU_RUNNING.store(true, Ordering::Relaxed);
+
         let TestBinaries {
             vendor_pk_hash_u8,
             caliptra_rom,
@@ -209,10 +225,10 @@ mod test {
             soc_manifest,
             mcu_runtime,
         } = match FirmwareBinaries::from_env() {
-            Ok(binaries) => prebuilt_binaries(feature, binaries),
+            Ok(binaries) => prebuilt_binaries(params.feature, binaries),
             _ => {
                 println!("Could not find prebuilt firmware binaries, building firmware...");
-                build_test_binaries(feature)
+                build_test_binaries(params.feature)
             }
         };
 
@@ -239,8 +255,10 @@ mod test {
                 vendor_pk_hash: Some(vendor_pk_hash_u8.try_into().unwrap()),
                 active_mode: true,
                 vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
-                i3c_port,
+                i3c_port: params.i3c_port,
                 enable_mcu_uart_log: true,
+                dot_flash_initial_contents: params.dot_flash_initial_contents,
+                check_booted_to_runtime: !params.rom_only,
                 ..Default::default()
             },
             BootParams {
@@ -270,7 +288,7 @@ mod test {
         runtime_path: PathBuf,
         i3c_port: String,
         active_mode: bool,
-        manufacturing_mode: bool,
+        device_security_state: DeviceLifecycle,
         soc_images: Option<Vec<ImageCfg>>,
         streaming_boot_package_path: Option<PathBuf>,
         primary_flash_image_path: Option<PathBuf>,
@@ -390,9 +408,8 @@ mod test {
         }
 
         if active_mode {
-            if manufacturing_mode {
-                cargo_run_args.push("--manufacturing-mode");
-            }
+            let lifecycle_arg = format!("{}", device_security_state as u32);
+            cargo_run_args.extend(["--device-security-state", lifecycle_arg.as_str()]);
             let caliptra_rom = caliptra_builder
                 .get_caliptra_rom()
                 .expect("Failed to build Caliptra ROM");
@@ -475,14 +492,14 @@ mod test {
         println!("Compiling test firmware {}", feature);
         let feature = feature.replace("_", "-");
         let test_runtime = compile_runtime(Some(&feature), example_app);
-        let i3c_port = "65534".to_string();
+        let i3c_port = PortPicker::new().pick().unwrap().to_string();
         let test = run_runtime(
             &feature,
             ROM.to_path_buf(),
             test_runtime,
             i3c_port,
-            true,  // active mode is always true
-            false, //set this to true if you want to run in manufacturing mode
+            true,                        // active mode is always true
+            DeviceLifecycle::Production, // set this to DeviceLifecycle::Manufacturing if you want to run in manufacturing mode
             None,
             None,
             None,
@@ -541,7 +558,7 @@ mod test {
     run_test!(test_caliptra_certs, example_app);
     run_test!(test_caliptra_crypto, example_app);
     run_test!(test_caliptra_mailbox, example_app);
-    run_test!(test_caliptra_util_host_validator);
+    run_test!(test_caliptra_util_host_validator, nightly);
     run_test!(test_dma, example_app);
     run_test!(test_doe_transport_loopback, example_app);
     run_test!(test_doe_user_loopback, example_app);
@@ -584,14 +601,14 @@ mod test {
         let feature = "test-exit-immediately".to_string();
         println!("Compiling test firmware {}", &feature);
         let test_runtime = compile_runtime(Some(&feature), false);
-        let i3c_port = "65534".to_string();
+        let i3c_port = PortPicker::new().pick().unwrap().to_string();
         let test = run_runtime(
             &feature,
             ROM.to_path_buf(),
             test_runtime,
             i3c_port,
             true,
-            false,
+            DeviceLifecycle::Production,
             None,
             None,
             None,
@@ -616,14 +633,14 @@ mod test {
         let feature = "test-mcu-rom-flash-access".to_string();
         println!("Compiling test firmware {}", &feature);
         let test_runtime = compile_runtime(Some(&feature), false);
-        let i3c_port = "65534".to_string();
+        let i3c_port = PortPicker::new().pick().unwrap().to_string();
         let test = run_runtime(
             &feature,
             get_rom_with_feature(&feature),
             test_runtime,
             i3c_port,
             true,
-            false,
+            DeviceLifecycle::Production,
             None,
             None,
             None,
@@ -651,9 +668,9 @@ mod test {
 
         let test_runtime = target_binary(&format!("runtime-{}.bin", feature));
         let output_name = format!("{}", test_runtime.display());
-        mcu_builder::runtime_build_with_apps_cached(
+        mcu_builder::runtime_build_with_apps(
             &[feature],
-            Some(&output_name),
+            Some(output_name),
             true,
             None,
             None,
@@ -685,14 +702,14 @@ mod test {
             val.to_le_bytes()
         };
 
-        let i3c_port = "65534".to_string();
+        let i3c_port = PortPicker::new().pick().unwrap().to_string();
         Some(run_runtime(
             feature,
             get_rom_with_feature(feature),
             test_runtime,
             i3c_port,
             true,
-            false,
+            DeviceLifecycle::Production,
             None,
             None,
             None,

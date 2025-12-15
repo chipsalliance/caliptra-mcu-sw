@@ -86,7 +86,8 @@ pub fn prod_debug_unlock_get_challenge(
             .expect("Failed to read response value.");
         rsp_bytes[i * 4..i * 4 + 4].copy_from_slice(word.as_bytes());
     }
-    let du_challenge = ProductionAuthDebugUnlockChallenge::read_from(rsp_bytes.as_slice())
+    let du_challenge = ProductionAuthDebugUnlockChallenge::read_from_bytes(rsp_bytes.as_slice())
+        .ok()
         .context("Failed to read challenge from bytes")?;
     // Write 0 to execute to indicate done receiving.
     tap.write_reg(&CaliptraCoreReg::MboxExecute, 0x0)

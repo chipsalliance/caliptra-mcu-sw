@@ -129,6 +129,20 @@ jobs:
           pip list | grep -E "(cryptography|asn1crypto|cbor2)"
           python3 decode_json.py 0
 
+      - name: Upload logs and traces for MCTP transport
+        if: always()
+        uses: actions/upload-artifact@v4
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+        with:
+          name: spdm-mctp-validator-test-results
+          path: |
+            ${{ env.SPDM_VALIDATOR_DIR }}/test.log
+            ${{ env.SPDM_VALIDATOR_DIR }}/caliptra_spdm_validator.pcap
+            ${{ env.SPDM_VALIDATOR_DIR }}/spdm_device_validator_output.txt
+            ${{ env.SPDM_VALIDATOR_DIR }}/measurement_block_fd.bin
+            ${{ env.SPDM_VALIDATOR_DIR }}/certificate_chain_slot_00.der
+
       - name: Display SPDM Validator test results on MCTP transport
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
@@ -205,7 +219,7 @@ jobs:
         run: |
           git submodule update --init --recursive
           sh_script/pre-build.sh
-          cargo build
+          cargo build --no-default-features --features="spdm-ring,hashed-transcript-data,async-executor,chunk-cap"
           cp -r test_key target/debug/
           ls -l target/debug/test_key/ecp384/
 

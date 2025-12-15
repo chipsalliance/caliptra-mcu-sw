@@ -6,6 +6,7 @@
 //! and passes them to a handler function for processing.
 
 use anyhow::{Context, Result};
+use caliptra_util_host_mailbox_test_config::TestConfig;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
 
@@ -24,6 +25,23 @@ impl Default for ServerConfig {
             timeout: Some(Duration::from_secs(30)),
             buffer_size: 4096,
         }
+    }
+}
+
+impl ServerConfig {
+    /// Create ServerConfig from shared TestConfig
+    pub fn from_test_config(config: &TestConfig) -> Result<Self> {
+        let bind_addr: SocketAddr = config
+            .server
+            .bind_address
+            .parse()
+            .with_context(|| "Invalid bind address in config")?;
+
+        Ok(Self {
+            bind_addr,
+            timeout: Some(Duration::from_secs(config.validation.timeout_seconds)),
+            buffer_size: 4096,
+        })
     }
 }
 

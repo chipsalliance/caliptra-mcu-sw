@@ -40,27 +40,14 @@ impl CommonCodec for EndSessionAck {}
 
 fn process_end_session(
     ctx: &mut SpdmContext<'_>,
-    session_id: u32,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'_>,
 ) -> CommandResult<()> {
     // Validate the version
-    let connection_version = ctx.state.connection_info.version_number();
-    if spdm_hdr.version().ok() != Some(connection_version) {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
-    }
+    let _ = ctx.validate_spdm_version(&spdm_hdr, req_payload)?;
 
     let _end_session_req =
         EndSessionReq::decode(req_payload).map_err(|e| (false, CommandError::Codec(e)))?;
-
-    let session_info = ctx
-        .session_mgr
-        .session_info_mut(session_id)
-        .map_err(|e| (false, CommandError::Session(e)))?;
-
-    if session_info.session_state != SessionState::Established {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
-    }
 
     ctx.reset_transcript_via_req_code(ReqRespCode::EndSession);
 
@@ -108,7 +95,7 @@ pub(crate) async fn handle_end_session<'a>(
         .ok_or(ctx.generate_error_response(req_payload, ErrorCode::SessionRequired, 0, None))?;
 
     // Process END_SESSION request
-    process_end_session(ctx, session_id, spdm_hdr, req_payload)?;
+    process_end_session(ctx, spdm_hdr, req_payload)?;
 
     // Generate END_SESSION_ACK response
     ctx.prepare_response_buffer(req_payload)?;

@@ -15,8 +15,11 @@ Abstract:
 #![allow(clippy::empty_loop)]
 
 use crate::boot_status::McuRomBootStatus;
-use crate::{fatal_error, BootFlow, McuBootMilestones, RomEnv, RomParameters, MCU_MEMORY_MAP};
-use caliptra_api::mailbox::{CommandId, FeProgReq, MailboxReqHeader};
+use crate::{
+    device_ownership_transfer, fatal_error, BootFlow, DotBlob, DotFuses, McuBootMilestones, RomEnv,
+    RomParameters, MCU_MEMORY_MAP,
+};
+use caliptra_api::mailbox::{CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader};
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use caliptra_drivers::okref;
@@ -262,6 +265,42 @@ impl BootFlow for ColdBoot {
         romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraReadyForMailbox.into());
 
+        // TODO: get this from fuses
+        let dot_fuses = DotFuses::default();
+
+        if let Some(dot_flash) = params.dot_flash {
+            romtime::println!("[mcu-rom] Reading DOT blob");
+            let mut dot_blob = [0u8; core::mem::size_of::<DotBlob>()];
+            if let Err(err) = dot_flash.read(&mut dot_blob, 0) {
+                romtime::println!(
+                    "[mcu-rom] Fatal error reading DOT blob from flash: {}",
+                    HexWord(usize::from(err) as u32)
+                );
+                fatal_error(McuError::ROM_COLD_BOOT_DOT_ERROR);
+            }
+            mci.set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferFlashRead.into());
+
+            if dot_blob.iter().all(|&b| b == 0) || dot_blob.iter().all(|&b| b == 0xFF) {
+                romtime::println!("[mcu-rom] DOT blob is empty; skipping DOT flow");
+            } else {
+                let dot_blob: DotBlob = transmute!(dot_blob);
+                if let Err(err) = device_ownership_transfer::dot_flow(
+                    fuses,
+                    &dot_fuses,
+                    &dot_blob,
+                    params
+                        .dot_stable_key_type
+                        .unwrap_or(CmStableKeyType::IDevId),
+                ) {
+                    romtime::println!(
+                        "[mcu-rom] Fatal error performing Device Ownership Transfer: {}",
+                        HexWord(err.into())
+                    );
+                    fatal_error(err);
+                }
+            }
+        }
+
         // tell Caliptra to download firmware from the recovery interface
         romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command",);
         if let Err(err) =
@@ -368,7 +407,7 @@ impl BootFlow for ColdBoot {
             mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingComplete.into());
         }
 
-        i3c.disable_recovery();
+        env.i3c.disable_recovery();
 
         // Reset so FirmwareBootReset can jump to firmware
         romtime::println!("[mcu-rom] Resetting to boot firmware");
