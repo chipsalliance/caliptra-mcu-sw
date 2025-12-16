@@ -1,0 +1,12 @@
+# Licensed under the Apache-2.0 license
+
+[workspace]
+members = [
+    "ocptoken-rs",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Caliptra contributors"]
