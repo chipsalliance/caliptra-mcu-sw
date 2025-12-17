@@ -243,13 +243,15 @@ mod test {
                 ..Default::default()
             },
         ];
-        let update_runtime_firmware = compile_runtime(Some("test-flash-based-boot"), false);
+        let feature = "test-flash-based-boot";
+        let update_runtime_firmware = compile_runtime(Some(feature), false);
         let mcu_cfg = ImageCfg {
             path: update_runtime_firmware.clone(),
             load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
             staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
             image_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
+            feature: feature.to_string(),
         };
 
         let mut update_builder = CaliptraBuilder::new(
@@ -557,6 +559,7 @@ mod test {
             staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
             image_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
+            feature: feature.to_string(),
         };
 
         // Build the Runtime image

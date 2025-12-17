@@ -202,7 +202,7 @@ pub struct AllBuildArgs<'a> {
     pub runtime_features: Option<&'a str>,
     pub separate_runtimes: bool,
     pub soc_images: Option<Vec<ImageCfg>>,
-    pub mcu_cfg: Option<ImageCfg>,
+    pub mcu_cfgs: Option<Vec<ImageCfg>>,
     pub pldm_manifest: Option<&'a str>,
 }
 
@@ -218,7 +218,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         runtime_features,
         separate_runtimes,
         soc_images,
-        mcu_cfg,
+        mcu_cfgs,
         pldm_manifest,
     } = args;
 
@@ -295,6 +295,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     )?;
 
     let fpga = platform == "fpga";
+    let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none");
     let mut caliptra_builder = crate::CaliptraBuilder::new(
         fpga,
         None,
@@ -303,7 +304,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         None,
         Some(mcu_runtime.into()),
         soc_images.clone(),
-        mcu_cfg.clone(),
+        mcu_image_cfg,
         None,
         None,
         None,
@@ -366,6 +367,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             None,
         )?;
 
+        let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature);
+
         let mut caliptra_builder = crate::CaliptraBuilder::new(
             fpga,
             Some(caliptra_rom.clone()),
@@ -374,7 +377,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             Some(vendor_pk_hash.clone()),
             Some(feature_runtime_file.path().to_path_buf()),
             soc_images.clone(),
-            mcu_cfg.clone(),
+            mcu_image_cfg.clone(),
             None,
             None,
             None,
@@ -534,6 +537,15 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     zip.finish()?;
 
     Ok(())
+}
+
+fn get_image_cfg_feature(image_cfg: &[ImageCfg], feature: &str) -> Option<ImageCfg> {
+    for img in image_cfg {
+        if img.feature == feature {
+            return Some(img.clone());
+        }
+    }
+    None
 }
 
 fn add_to_zip(
