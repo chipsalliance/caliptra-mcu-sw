@@ -655,11 +655,30 @@ mod test {
         test_firmware_update_common(true);
     }
 
+    #[cfg(feature = "fpga_realtime")]
     #[test]
     fn test_firmware_update_streaming() {
         if env::var("PLDM_FW_PKG").is_err() {
-            println!("Skipping test_firmware_update_streaming as PLDM_FW_PKG is not set");
-            return;
+            if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+                // If PLDM_FW_PKG is not specified, we will use the PLDM firmware package
+                // for test-fpga-flash-ctrl that was built during the FPGA build.
+                // We choose this package since it is small enough to fit in the
+                // FPGA staging memory.
+                let test_pldm_pkg_data = binaries.test_pldm_fw_pkg("test-fpga-flash-ctrl").unwrap();
+                let test_pldm_pkg_path = tempfile::NamedTempFile::new()
+                    .expect("Failed to create temp file")
+                    .path()
+                    .to_path_buf();
+                std::fs::write(&test_pldm_pkg_path, test_pldm_pkg_data)
+                    .expect("Failed to write PLDM FW PKG temp file");
+                env::set_var(
+                    "PLDM_FW_PKG",
+                    test_pldm_pkg_path.to_string_lossy().to_string(),
+                );
+            } else {
+                println!("Skipping test_firmware_update_streaming as PLDM_FW_PKG is not set");
+                return;
+            }
         }
         crate::test_pldm_fw_update::test::start_pldm_test(
             "test_firmware_update_streaming",

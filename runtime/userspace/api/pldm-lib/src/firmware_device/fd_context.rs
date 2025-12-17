@@ -409,9 +409,12 @@ impl<'a> FirmwareDeviceContext<'a> {
                     self.internal
                         .set_fd_state(FirmwareDeviceState::Activate)
                         .await;
-                    self.internal
-                        .set_fd_idle(GetStatusReasonCode::ActivateFw)
-                        .await;
+                    if self_contained == 0 {
+                        // If activation is not self-contained, then consider the FW already activated
+                        self.internal
+                            .set_fd_idle(GetStatusReasonCode::ActivateFw)
+                            .await;
+                    }
                 }
                 Ok(bytes)
             }
@@ -677,13 +680,15 @@ impl<'a> FirmwareDeviceContext<'a> {
             _ => Err(MsgHandlerError::FdInitiatorModeError),
         }?;
 
+        let now = self.ops.now().await;
+        let ts = self.internal.get_fd_t1_update_ts().await;
+        let elapsed = now.saturating_sub(ts);
         // If a response is not received within T1 in FD-driven states, cancel the update and transition to idle state.
         if (fd_state == FirmwareDeviceState::Download
             || fd_state == FirmwareDeviceState::Verify
             || fd_state == FirmwareDeviceState::Apply)
             && self.internal.get_fd_req_state().await == FdReqState::Sent
-            && self.ops.now().await - self.internal.get_fd_t1_update_ts().await
-                > self.internal.get_fd_t1_timeout().await
+            && elapsed > self.internal.get_fd_t1_timeout().await
         {
             self.ops
                 .cancel_update_component(&self.internal.get_component().await)

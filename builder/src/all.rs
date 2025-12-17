@@ -48,6 +48,7 @@ pub struct FirmwareBinaries {
     pub caliptra_test_roms: Vec<(String, Vec<u8>)>,
     pub test_soc_manifests: Vec<(String, Vec<u8>)>,
     pub test_runtimes: Vec<(String, Vec<u8>)>,
+    pub test_pldm_fw_pkgs: Vec<(String, Vec<u8>)>,
 }
 
 impl FirmwareBinaries {
@@ -106,6 +107,9 @@ impl FirmwareBinaries {
                 }
                 name if name.contains("cptra-test-rom") => {
                     binaries.caliptra_test_roms.push((name.to_string(), data));
+                }
+                name if name.contains("mcu-test-pldm-fw-pkg") => {
+                    binaries.test_pldm_fw_pkgs.push((name.to_string(), data));
                 }
                 _ => continue,
             }
@@ -171,6 +175,18 @@ impl FirmwareBinaries {
         }
         Err(anyhow::anyhow!(
             "Runtime not found. File name: {expected_name}, feature: {feature}"
+        ))
+    }
+
+    pub fn test_pldm_fw_pkg(&self, feature: &str) -> Result<Vec<u8>> {
+        let expected_name = format!("mcu-test-pldm-fw-pkg-{}.bin", feature);
+        for (name, data) in self.test_pldm_fw_pkgs.iter() {
+            if &expected_name == name {
+                return Ok(data.clone());
+            }
+        }
+        Err(anyhow::anyhow!(
+            "PLDM FW Package not found. File name: {expected_name}, feature: {feature}"
         ))
     }
 }
