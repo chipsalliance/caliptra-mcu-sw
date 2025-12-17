@@ -9,6 +9,8 @@ use core::mem::size_of;
 use libapi_caliptra::crypto::aes_gcm::Aes256GcmTag;
 use libapi_caliptra::error::CaliptraApiError;
 
+use zerocopy::{FromBytes, IntoBytes};
+
 pub mod info;
 pub mod key_schedule;
 
@@ -210,7 +212,8 @@ impl SessionManager {
         secure_message_len += encode_u8_slice(&encrypted_data[..encrypted_size], secure_message)
             .map_err(SessionError::Codec)?;
 
-        secure_message_len += encode_u8_slice(&tag, secure_message).map_err(SessionError::Codec)?;
+        secure_message_len +=
+            encode_u8_slice(tag.as_bytes(), secure_message).map_err(SessionError::Codec)?;
 
         if session_info.session_state == SessionState::Establishing {
             // If this is the response message for the FINISH request, set the session state to Established.
@@ -275,8 +278,7 @@ impl SessionManager {
 
         let encrypted_data = &secure_msg_payload[..encrypted_data_len];
         let tag_slice = &secure_msg_payload[encrypted_data_len..encrypted_data_len + tag_len];
-        let tag: Aes256GcmTag = tag_slice
-            .try_into()
+        let tag: Aes256GcmTag = <Aes256GcmTag>::read_from_bytes(tag_slice)
             .map_err(|_| SessionError::DecodeAeadError)?;
 
         let decrypted_size = session_info

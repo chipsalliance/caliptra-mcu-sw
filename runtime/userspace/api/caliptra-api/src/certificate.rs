@@ -17,12 +17,12 @@ use dpe::context::ContextHandle;
 use dpe::response::SignResp;
 use dpe::DPE_PROFILE;
 use libsyscall_caliptra::mailbox::Mailbox;
-use zerocopy::{FromBytes, FromZeros, IntoBytes};
+use zerocopy::{FromZeros, IntoBytes, TryFromBytes};
 
 pub const IDEV_ECC_CSR_MAX_SIZE: usize = GetIdevCsrResp::DATA_MAX_SIZE;
 pub const MAX_ECC_CERT_SIZE: usize = GetLdevCertResp::DATA_MAX_SIZE;
 pub const MAX_CERT_CHUNK_SIZE: usize = 1024;
-pub const KEY_LABEL_SIZE: usize = DPE_PROFILE.get_hash_size();
+pub const KEY_LABEL_SIZE: usize = DPE_PROFILE.hash_size();
 
 pub enum CertType {
     Ecc,
@@ -62,7 +62,7 @@ impl CertContext {
 
         execute_mailbox_cmd(&self.mbox, GetIdevCsrReq::ID.0, req_bytes, resp_bytes).await?;
 
-        let resp = GetIdevCsrResp::ref_from_bytes(resp_bytes)
+        let resp = GetIdevCsrResp::try_ref_from_bytes(resp_bytes)
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
         if resp.data_size == u32::MAX {
             Err(CaliptraApiError::UnprovisionedCsr)?;
@@ -139,12 +139,12 @@ impl CertContext {
         derived_pubkey_y: Option<&mut [u8]>,
     ) -> CaliptraApiResult<usize> {
         if let Some(ref x) = derived_pubkey_x {
-            if x.len() != DPE_PROFILE.get_tci_size() {
+            if x.len() != DPE_PROFILE.tci_size() {
                 Err(CaliptraApiError::InvalidArgument("Invalid pubkey size"))?;
             }
         }
         if let Some(ref y) = derived_pubkey_y {
-            if y.len() != DPE_PROFILE.get_tci_size() {
+            if y.len() != DPE_PROFILE.tci_size() {
                 Err(CaliptraApiError::InvalidArgument("Invalid pubkey size"))?;
             }
         }
@@ -190,11 +190,11 @@ impl CertContext {
         digest: &[u8],
         signature: &mut [u8],
     ) -> CaliptraApiResult<usize> {
-        if digest.len() != DPE_PROFILE.get_hash_size() {
+        if digest.len() != DPE_PROFILE.hash_size() {
             return Err(CaliptraApiError::InvalidArgument("Invalid digest size"));
         }
 
-        if signature.len() < DPE_PROFILE.get_tci_size() {
+        if signature.len() < DPE_PROFILE.tci_size() {
             return Err(CaliptraApiError::InvalidArgument("Invalid signature size"));
         }
 
@@ -202,7 +202,7 @@ impl CertContext {
             handle: ContextHandle::default(),
             label: [0; KEY_LABEL_SIZE],
             flags: SignFlags::empty(),
-            digest: [0; DPE_PROFILE.get_hash_size()],
+            digest: [0; DPE_PROFILE.hash_size()],
         };
         dpe_cmd.digest[..digest.len()].copy_from_slice(digest);
         if let Some(label) = key_label {
@@ -284,7 +284,7 @@ impl CertContext {
         let mut cmd_data: [u8; InvokeDpeReq::DATA_MAX_SIZE] = [0; InvokeDpeReq::DATA_MAX_SIZE];
         let dpe_cmd_id: u32 = Self::dpe_cmd_id(dpe_cmd);
 
-        let cmd_hdr = CommandHdr::new_for_test(dpe_cmd_id);
+        let cmd_hdr = CommandHdr::new(DPE_PROFILE, dpe_cmd_id);
 
         let cmd_hdr_bytes = cmd_hdr.as_bytes();
         cmd_data[..cmd_hdr_bytes.len()].copy_from_slice(cmd_hdr_bytes);
@@ -352,16 +352,18 @@ impl CertContext {
 
         match cmd {
             Command::CertifyKey(_) => Ok(DpeResponse::CertifyKey(
-                CertifyEcKeyResp::read_from_bytes(&data[..size_of::<CertifyEcKeyResp>()])
+                CertifyEcKeyResp::try_read_from_bytes(&data[..size_of::<CertifyEcKeyResp>()])
                     .map_err(|_| CaliptraApiError::InvalidResponse)?,
             )),
             Command::Sign(_) => Ok(DpeResponse::Sign(
-                SignResp::read_from_bytes(&data[..size_of::<SignResp>()])
+                SignResp::try_read_from_bytes(&data[..size_of::<SignResp>()])
                     .map_err(|_| CaliptraApiError::InvalidResponse)?,
             )),
             Command::GetCertificateChain(_) => Ok(DpeResponse::GetCertificateChain(
-                CertificateChainResp::read_from_bytes(&data[..size_of::<CertificateChainResp>()])
-                    .map_err(|_| CaliptraApiError::InvalidResponse)?,
+                CertificateChainResp::try_read_from_bytes(
+                    &data[..size_of::<CertificateChainResp>()],
+                )
+                .map_err(|_| CaliptraApiError::InvalidResponse)?,
             )),
             _ => Err(CaliptraApiError::InvalidResponse),
         }

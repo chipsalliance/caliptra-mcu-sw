@@ -12,7 +12,7 @@ pub const EMULATOR_APPS: &[App] = &[
         // Make sure this is the first app in the list
         name: "example-app",
         permissions: vec![],
-        minimum_ram: 48 * 1024,
+        minimum_ram: 64 * 1024,
     },
     App {
         name: "user-app",
@@ -26,7 +26,7 @@ pub const FPGA_APPS: &[App] = &[
         // Make sure this is the first app in the list
         name: "example-app",
         permissions: vec![],
-        minimum_ram: 48 * 1024,
+        minimum_ram: 64 * 1024,
     },
     App {
         name: "user-app",
