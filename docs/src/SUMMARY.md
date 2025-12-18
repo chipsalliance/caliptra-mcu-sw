@@ -13,6 +13,7 @@
         - [PCI DOE](./doe.md)
         - [IDE Key Management](./ide_km.md)
         - [TDISP](./tdisp.md)
+        - [Certificate Slot Management](./cert_slot_mgmt.md)
     - [PLDM](./pldm.md)
     - [Firmware Update](./firmware_update.md)
     - [External Mailbox Commands](./external_mailbox_cmds.md)
