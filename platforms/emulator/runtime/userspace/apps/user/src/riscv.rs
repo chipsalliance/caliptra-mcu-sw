@@ -7,12 +7,11 @@ use core::fmt::Write;
 use core::mem::MaybeUninit;
 use embedded_alloc::Heap;
 use libtock::console::Console;
-use libtock::runtime::{set_main, stack_size};
+use libtock::runtime::set_main;
 const HEAP_SIZE: usize = 0x4000;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-stack_size! {0xae00}
 set_main! {main}
 
 fn main() {

@@ -137,7 +137,7 @@ SECTIONS {
 	 * https://github.com/tock/elf2tab/blob/master/src/main.rs#L301
 	 */
         _sram_origin = .;
-        KEEP(*(.stack_buffer))
+        . = . + STACK_SIZE;
         . = ALIGN(16);
         _stack_top = .;  /* Used in rt_header */
     } > RAM
