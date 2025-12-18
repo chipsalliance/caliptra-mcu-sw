@@ -55,11 +55,11 @@ sequenceDiagram
 ```mermaid
 classDiagram
     direction RL
-    MCTP Transport <|--|> SPDMResponder: processRequest() / sendResponse()
-    SecureSessionMgr <|-- SPDMResponder: processSecureMessage()
-    TranscriptMgr <|-- SPDMResponder
+    MCTP Transport <|--|> SpdmContext: processRequest() / sendResponse()
+    SecureSessionMgr <|-- SpdmContext: processSecureMessage()
+    TranscriptMgr <|-- SpdmContext
     TranscriptMgr <|-- SecureSessionMgr
-    class SPDMResponder{
+    class SpdmContext{
       - transcriptMgr
       - sessionMgr
       + processRequest()
@@ -96,16 +96,16 @@ The SPDM Responder supports the following messages:
 
 ### Responder Interface
 ```Rust
-pub struct SpdmResponder<T: MctpTransport, U: SpdmTranscriptManager, V: SpdmSecureSessionManager> {
+pub struct SpdmContext<T: MctpTransport, U: SpdmTranscriptManager, V: SpdmSecureSessionManager> {
     transport: T,
     transcript_manager: U,
     session_manager: V,
     data_buffer: [u8; MAX_SPDM_MESSAGE_SIZE],
 }
 
-impl<T: MctpTransport, U: SpdmTranscriptManager, V: SpdmSecureSessionManager> SpdmResponder<T, U, V> {
+impl<T: MctpTransport, U: SpdmTranscriptManager, V: SpdmSecureSessionManager> SpdmContext<T, U, V> {
     pub fn new(transport: T, transcript_manager: U, session_manager: V) -> Self {
-        SpdmResponder {
+        SpdmContext {
             transport,
             transcript_manager,
             session_manager,
@@ -315,4 +315,247 @@ pub trait SpdmSecureSessionManager {
     /// - `Result<(), SpdmError>`: Returns `Ok(())` if the secure message is encoded successfully, or an error code.
     async fn encode_secure_message(&self, response: &mut [u8]) -> Result<(), SpdmError>;
 }
+```
+
+## Certificate Slot Management Structures
+
+TBD
+
+```rust
+struct BankElement {
+    asym_algo: AsymAlgo, //Either ECCP384 or ML-DSA-87
+    bank_id: u8, //Bank ID. Default 0 for ECCP384, 1 for ML-DSA-87
+    supported_slot_mask: u8, // SPDM slot mask for Vendor(0), Owner and Tenant entities 
+    mutable_slot_elements: [Option<MutSlotElement>; MAX_SLOTS_PER_BANK], // Min of 2 mutable slots, max of 8 slots. Some if provisioned, None if not.
+}
+
+struct MutSlotElement {
+    slot_id: u8, // Slot ID.
+    slot_attr: SlotAttr, // Slot attributes.
+    key_pair_id: u8, // Key pair ID. Anchored key pair ID for slot after provisioning. 
+    certificate_info: CertificateInfo, // Certificate model used for this slot.
+    key_usage: KeyUsage, // Key usage for this slot.
+    slot_size: u32, // Number of bytes available for cert chain storage in this slot. (min 1 cert size)
+    cert_chain: CertChain, // Certificate chain for this slot.
+}
+
+bitfield! {
+    pub struct SlotAttr(u8);
+    impl Debug;
+    u8;
+    pub provisioned, set_provisioned: 0, 0; // Bit[0]:Provisioned  // Slot 0 is always provisioned
+    pub write_protected, set_write_protected: 6, 6; // Bit[1]: Write Protected // Slot 0 is always write protected
+}
+
+/// Generic certificate chain that combines all certificate components
+pub struct CertChain {
+    endorsement_cert_chain: &'static mut dyn EndorsementCertChainTrait,
+    dpe_cert_chain: DpeCertChain,
+    leaf_cert: DpeLeafCert,
+}
+```
+
+## Integration guide
+The following sections provide guidance on integrating the SPDM Responder with integrator's specific configurations and implementations.
+
+### Certificate Store
+The integrator is responsible for implementing the certificate store. The certificate store provides persistent storage for the certificate chains associated with each certificate slot. To enable this functionality, the integrator shall implement the `SpdmCertStore` trait, which defines the required operations for reading, writing, and managing the SPDM certificate chains.
+
+```rust
+pub enum ProvisioningEntityType {
+    Vendor,
+    Owner,
+    Tenant,
+}
+
+pub struct SlotInfo {
+    pub slot_id: u8,
+    pub prov_entity_type: ProvisioningEntityType,
+    pub provisioned: bool,
+    pub session_needed: bool,
+    // Additional fields can be added as needed
+}
+
+pub struct DeviceKeyPairInfo {
+    pub key_pair_id: u8,
+    pub key_capabilities: KeyCapabilities,
+    pub key_usage: KeyUsageMask,
+}
+enum CsrType {
+    Csr,
+    EnvelopeSignedCsr,
+}
+
+
+pub trait SpdmCertStore {
+    /// Get supported certificate slot count
+    /// The supported slots are consecutive from 0 to slot_count - 1.
+    ///
+    /// # Returns
+    /// * `u8` - The number of supported certificate slots.
+    fn slot_count(&self) -> u8;
+
+    /// Check if the slot is provisioned.
+    ///
+    /// # Arguments
+    /// * `slot_id` - The slot ID of the certificate chain.
+    ///
+    /// # Returns
+    /// * `bool` - True if the slot is provisioned, false otherwise.
+    async fn is_provisioned(&self, slot_id: u8) -> bool;
+
+    /// Get the hash of the root certificate in the certificate chain.
+    /// The hash algorithm is always SHA-384. The type of the certificate chain is indicated by the asym_algo parameter.
+    ///
+    /// # Arguments
+    /// * `asym_algo` - The asymmetric algorithm to indicate the type of Certificate chain.
+    /// * `slot_id` - The slot ID of the certificate chain.
+    /// * `cert_hash` - The buffer to store the hash of the root certificate.
+    ///
+    /// # Returns
+    /// * `()` - Ok if successful, error otherwise.
+    async fn root_cert_hash<'a>(
+        &self,
+        asym_algo: AsymAlgo,
+        slot_id: u8,
+        cert_hash: &'a mut [u8; SHA384_HASH_SIZE],
+    ) -> CertStoreResult<()>;
+
+    /// Get the length of the certificate chain in bytes.
+    /// The certificate chain is in ASN.1 DER-encoded X.509 v3 format.
+    /// The type of the certificate chain is indicated by the asym_algo parameter.
+    ///
+    /// # Arguments
+    /// * `slot_id` - The slot ID of the certificate chain.
+    /// * `asym_algo` - The asymmetric algorithm to indicate the type of certificate chain.
+    ///
+    /// # Returns
+    /// * `usize` - The length of the certificate chain in bytes or error.
+    async fn cert_chain_len(&self, asym_algo: AsymAlgo, slot_id: u8) -> CertStoreResult<usize>;
+
+    /// Reads the certificate chain in portion. The certificate chain is in ASN.1 DER-encoded X.509 v3 format.
+    /// The type of the certificate chain is indicated by the asym_algo parameter.
+    ///
+    /// # Arguments
+    /// * `asym_algo` - The asymmetric algorithm to indicate the type of Certificate chain.
+    /// * `slot_id` - The slot ID of the certificate chain.
+    /// * `offset` - The offset in bytes to start reading from.
+    /// * `cert_portion` - The buffer to read the certificate chain into.
+    ///
+    /// # Returns
+    /// * `usize` - The number of bytes read or error.
+    /// If the cert portion size is smaller than the buffer size, the remaining bytes in the buffer will be filled with 0,
+    /// indicating the end of the cert chain.
+    async fn read_cert_chain<'a>(
+        &self,
+        asym_algo: AsymAlgo,
+        slot_id: u8,
+        offset: usize,
+        cert_portion: &'a mut [u8],
+    ) -> CertStoreResult<usize>;
+
+    /// Reads the CSR/envelope signed CSR in portion.
+    /// 
+    /// # Arguments
+    /// * `csr_type` - The type of CSR to be generated (CSR or Envelope Signed CSR).
+    /// * `asym_algo` - The asymmetric algorithm to indicate the type of CSR.
+    /// * `key_pair_id` - The key pair ID of the device key pair to
+    /// * `nonce` - The nonce used in the CSR generation.
+    /// * `csr_portion` - The buffer to read the CSR/envelope signed CSR into.
+    /// 
+    /// # Returns
+    /// * `usize` - The total size or number of bytes read or error.
+    /// When `csr_portion` is `None`, it returns the total size of the CSR/envelope signed CSR.
+    /// When `csr_portion` is `Some`, it fills the provided buffer with the CSR/envelope signed CSR data
+    /// If the CSR/envelope signed CSR size is smaller than the buffer size, the remaining bytes in the buffer will be filled with 0,
+    /// indicating the end of the CSR/envelope signed CSR.
+    async fn read_csr<'a>(&self, csr_type: CsrType, asym_algo: AsymAlgo, key_pair_id: u8, nonce: &[u8], csr_portion: Option<&'a mut [u8]>) -> CertStoreResult<usize>;
+
+    /// Starts to write the certificate chain in ASN.1 DER-encoded X.509 v3 format in portions.
+    /// 
+    /// # Arguments
+    /// * `asym_algo` - The asymmetric algorithm to indicate the type of Certificate chain.
+    /// * `slot_id` - The slot ID of the certificate chain.
+    /// * `total_len` - The total length of the certificate chain in bytes.
+    /// * `cert_portion` - Optional portion of the certificate chain at the beginning to write.
+    /// # Returns
+    /// * `()` - Ok if successful, error otherwise.
+    async fn write_cert_chain_start(&self, asym_algo: AsymAlgo, slot_id: u8, key_pair_id : u8, total_len: usize, cert_portion: Option<&[u8]>) -> CertStoreResult<()>;
+
+    /// Continues to write the certificate chain in ASN.1 DER-encoded X.509 v3 format in portions.
+    /// # Arguments
+    /// * `asym_algo` - The asymmetric algorithm to indicate the type of Certificate chain.
+    /// * `slot_id` - The slot ID of the certificate chain.
+    /// * `cert_portion` - The portion of the certificate chain to write.
+    /// # Returns
+    /// * `()` - Ok if successful, error otherwise.
+    async fn write_cert_chain_continue(&self, asym_algo: AsymAlgo, slot_id: u8, cert_portion: &[u8]) -> CertStoreResult<()>;
+
+    /// Finishes writing the certificate chain in ASN.1 DER-encoded X.509 v3 format.
+    /// # Arguments
+    /// * `asym_algo` - The asymmetric algorithm to indicate the type of Certificate chain
+    /// * `slot_id` - The slot ID of the certificate chain.
+    /// # Returns
+    /// * `()` - Ok if successful, error otherwise.
+    async fn write_cert_chain_finish(&self, asym_algo: AsymAlgo, slot_id: u8) -> CertStoreResult<()>;
+
+    /// Erase the certificate chain in the given slot.
+    /// 
+    /// # Arguments
+    /// * `asym_algo` - The asymmetric algorithm to indicate the type of Certificate chain.
+    /// * `slot_id` - The slot ID of the certificate chain.
+    /// # Returns
+    /// * `()` - Ok if successful, error otherwise.
+    async fn erase_cert_chain(&self, asym_algo: AsymAlgo, slot_id: u8) -> CertStoreResult<()>;
+
+    /// Sign hash with leaf certificate key
+    ///
+    /// # Arguments
+    /// * `asym_algo` - Asymmetric algorithm to sign with.
+    /// * `slot_id` - The slot ID of the certificate chain.
+    /// * `hash` - The hash to sign.
+    /// * `signature` - The output buffer to store the ECC384 signature.
+    ///
+    /// # Returns
+    /// * `()` - Ok if successful, error otherwise.
+    async fn sign_hash<'a>(
+        &self,
+        asym_algo: AsymAlgo,
+        slot_id: u8,
+        hash: &'a [u8; SHA384_HASH_SIZE],
+        signature: &'a mut [u8; ECC_P384_SIGNATURE_SIZE],
+    ) -> CertStoreResult<()>;
+
+    /// Get the KeyPairID associated with the certificate chain if SPDM responder supports
+    /// multiple assymmetric keys in connection.
+    ///
+    /// # Arguments
+    /// * `slot_id` - The slot ID of the certificate chain.
+    ///
+    /// # Returns
+    /// * u8 - The KeyPairID associated with the certificate chain or None if not supported or not found.
+    async fn key_pair_id(&self, slot_id: u8) -> Option<u8>;
+
+    /// Retrieve the `CertificateInfo` associated with the certificate chain for the given slot.
+    /// The `CertificateInfo` structure specifies the certificate model (such as DeviceID, Alias, or General),
+    /// and includes reserved bits for future extensions.
+    ///
+    /// # Arguments
+    /// * `slot_id` - The slot ID of the certificate chain.
+    ///
+    /// # Returns
+    /// * `CertificateInfo` - The CertificateInfo associated with the certificate chain or None if not supported or not found.
+    async fn cert_info(&self, slot_id: u8) -> Option<CertificateInfo>;
+
+    /// Get the KeyUsageMask associated with the certificate chain if SPDM responder supports
+    /// multiple asymmetric keys in connection.
+    ///
+    /// # Arguments
+    /// * `slot_id` - The slot ID of the certificate chain.
+    ///
+    /// # Returns
+    /// * `KeyUsageMask` - The KeyUsageMask associated with the certificate chain or None if not supported or not found.
+    async fn key_usage_mask(&self, slot_id: u8) -> Option<KeyUsageMask>;
+}
+
 ```
