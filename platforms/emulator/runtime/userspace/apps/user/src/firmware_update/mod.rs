@@ -41,8 +41,11 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
             descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
             fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
         };
+        let mut staging_memory = dummy_flash::ExternalFlash::new().await?;
+        let staging_memory: &'static dummy_flash::ExternalFlash =
+            unsafe { core::mem::transmute(&mut staging_memory) };
         let mut updater = FirmwareUpdater::new(
-            external_memory::STAGING_MEMORY.get(),
+            staging_memory,
             &fw_params,
             dma_mapping,
             EXECUTOR.get().spawner(),
@@ -151,6 +154,58 @@ mod external_memory {
     }
 
     impl Debug for ExternalRAM {
+        fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(feature = "test-firmware-update-streaming")]
+mod dummy_flash {
+    extern crate alloc;
+    use alloc::boxed::Box;
+    use async_trait::async_trait;
+    use core::fmt::Debug;
+    use libapi_caliptra::firmware_update::StagingMemory;
+    use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash as FlashSyscall};
+    use libtock_platform::ErrorCode;
+    use mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL;
+
+    pub struct ExternalFlash {
+        flash_syscall: FlashSyscall,
+    }
+
+    impl ExternalFlash {
+        pub async fn new() -> Result<Self, ErrorCode> {
+            Ok(ExternalFlash {
+                flash_syscall: FlashSyscall::new(DRIVER_NUM_EMULATED_FLASH_CTRL as u32),
+            })
+        }
+    }
+
+    #[async_trait]
+    impl StagingMemory for ExternalFlash {
+        async fn write(&self, offset: usize, data: &[u8]) -> Result<(), ErrorCode> {
+            self.flash_syscall.write(offset, data.len(), data).await
+        }
+
+        async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode> {
+            self.flash_syscall.read(offset, data.len(), data).await
+        }
+
+        async fn image_valid(&self, _img_sz: usize) -> Result<(), ErrorCode> {
+            Ok(())
+        }
+
+        fn size(&self) -> usize {
+            self.flash_syscall
+                .get_capacity()
+                .unwrap_or(FlashCapacity(0))
+                .0 as usize
+        }
+    }
+
+    impl Debug for ExternalFlash {
         fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
             Ok(())
         }

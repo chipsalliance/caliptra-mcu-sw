@@ -564,6 +564,10 @@ pub trait StateMachineActions {
                     &response.parms.comp_param_table[i as usize],
                 ) {
                     debug!("Component id: {} will be updated,", component.identifier);
+                    info!(
+                        "Component id: {} requested_activation_method {:b}",
+                        component.identifier, component.requested_activation_method
+                    );
                     ctx.components.push(component.clone());
                 }
             }
@@ -760,14 +764,24 @@ pub trait StateMachineActions {
         &mut self,
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
-        if ctx.activation_time.is_some() && (Instant::now() < ctx.activation_time.unwrap()) {
-            // If the activation time is not yet reached, continue scheduling another get status request, this will be automatically cancelled
-            // when the expected status is received or a activation timeout occurs
-            ctx.timer.schedule(
-                GET_STATUS_ACTIVATION_POLL_INTERVAL,
-                ctx.event_queue.clone(),
-                |event_queue| Self::poll_activation_status(event_queue),
-            );
+        if ctx.activation_time.is_some() {
+            if Instant::now() < ctx.activation_time.unwrap() {
+                // If the activation time is not yet reached, continue scheduling another get status request, this will be automatically cancelled
+                // when the expected status is received or a activation timeout occurs
+                ctx.timer.schedule(
+                    GET_STATUS_ACTIVATION_POLL_INTERVAL,
+                    ctx.event_queue.clone(),
+                    |event_queue| Self::poll_activation_status(event_queue),
+                );
+            } else {
+                // Activation timeout
+                error!("Activation timer timed out");
+                ctx.event_queue
+                    .send(PldmEvents::Update(Events::StopUpdate))
+                    .map_err(|_| ())?;
+                ctx.timer.cancel();
+                return Ok(());
+            }
         }
 
         // Send get status request
@@ -789,7 +803,7 @@ pub trait StateMachineActions {
                 // Currently waiting for activation
                 if response.current_state == FirmwareDeviceState::Idle as u8 {
                     // Activation is done
-                    info!("Activation is done");
+                    info!("Activation is done response {}", response.current_state);
                     ctx.activation_time = None;
                     ctx.timer.cancel();
                     ctx.event_queue

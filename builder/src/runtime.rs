@@ -25,8 +25,15 @@ use std::process::Command;
 
 const DEFAULT_PLATFORM: &str = "emulator";
 const INTERRUPT_TABLE_SIZE: usize = 128;
-// amount to reserve for data RAM at the end of RAM
-const DATA_RAM_SIZE: usize = 152 * 1024;
+
+// Returns the amount to reserve for data RAM at the end of RAM, platform-specific.
+pub(crate) fn data_ram_size(platform: &str) -> Result<usize> {
+    match platform {
+        "emulator" => Ok(152 * 1024),
+        "fpga" => Ok(160 * 1024),
+        _ => bail!("Unknown platform: {}", platform),
+    }
+}
 
 fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize> {
     let elf_bytes = std::fs::read(&elf_file)?;
@@ -82,16 +89,17 @@ pub fn runtime_build_no_apps(
     let dccm_offset = dccm_offset.unwrap_or(memory_map.dccm_offset) as usize;
     let dccm_size = dccm_size.unwrap_or(memory_map.dccm_size) as usize;
 
+    let data_ram_size = data_ram_size(platform)?;
     let (ram_start, ram_size) = if use_dccm_for_stack {
         let ram_size = dccm_size - INTERRUPT_TABLE_SIZE;
         assert!(
-            DATA_RAM_SIZE <= ram_size,
+            data_ram_size <= ram_size,
             "DCCM size is not large enough for data RAM"
         );
         (dccm_offset, ram_size)
     } else {
         let ram_start =
-            memory_map.sram_offset as usize + memory_map.sram_size as usize - DATA_RAM_SIZE;
+            memory_map.sram_offset as usize + memory_map.sram_size as usize - data_ram_size;
         assert!(
             ram_start >= apps_offset + apps_size,
             "RAM must be after apps ram_start {:x} apps_offset {:x} apps_size {:x}",
@@ -99,7 +107,7 @@ pub fn runtime_build_no_apps(
             apps_offset,
             apps_size
         );
-        (ram_start, DATA_RAM_SIZE)
+        (ram_start, data_ram_size)
     };
     let mcu_image_header_size = mcu_image_header.map_or(0, |h| h.len());
 

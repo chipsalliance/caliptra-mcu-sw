@@ -33,12 +33,25 @@ pub mod test {
         hw.start_i3c_controller();
 
         let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
+        run_imaginary_flash_controller_service(mci_ptr);
+
+        let test = finish_runtime_hw_model(&mut hw);
+
+        MCU_RUNNING.store(false, Ordering::Relaxed);
+
+        assert_eq!(0, test);
+
+        // force the compiler to keep the lock
+        lock.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn run_imaginary_flash_controller_service(mci_base: u64) {
         thread::spawn(move || {
             wait_for_runtime_start();
             if !MCU_RUNNING.load(Ordering::Relaxed) {
                 exit(-1);
             }
-            let mci_base = unsafe { StaticRef::new(mci_ptr as *const mci::regs::Mci) };
+            let mci_base = unsafe { StaticRef::new(mci_base as *const mci::regs::Mci) };
 
             let flash_controller = ImaginaryFlashController::new(
                 mci_base,
@@ -53,16 +66,6 @@ pub mod test {
                 flash_controller.process_flash_ios();
                 thread::sleep(Duration::from_millis(1));
             }
-            exit(0);
         });
-
-        let test = finish_runtime_hw_model(&mut hw);
-
-        MCU_RUNNING.store(false, Ordering::Relaxed);
-
-        assert_eq!(0, test);
-
-        // force the compiler to keep the lock
-        lock.fetch_add(1, Ordering::Relaxed);
     }
 }

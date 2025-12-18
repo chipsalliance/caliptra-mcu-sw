@@ -5260,6 +5260,7 @@ dependencies = [
  "libtockasync",
  "mcu-config",
  "mcu-config-emulator",
+ "mcu-config-fpga",
  "mcu-mbox-common",
  "mcu-mbox-lib",
  "ocp-eat",
