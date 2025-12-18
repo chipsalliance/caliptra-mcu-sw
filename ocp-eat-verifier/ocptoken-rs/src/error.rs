@@ -1,26 +1,14 @@
 // Licensed under the Apache-2.0 license
 
-// error.rs
-
 use thiserror::Error;
+
 /// Errors that can occur when working with OCP EAT tokens
 #[derive(Error, Debug)]
 pub enum OcpEatError {
     /// COSE parsing or validation error
     #[error("COSE error: {0:?}")]
     CoseSign1(coset::CoseError),
-
-    /// Certificate parsing error
-    #[error("Certificate error: {0}")]
-    Certificate(String),
-
-    /// Signature verification failure
-    #[error("Signature verification failed")]
-    SignatureVerification,
-
-    /// Crypto backend error
-    #[error("Crypto error: {0}")]
-    Crypto(String),
+    // Other error variants can be added here as needed
 }
 
 impl From<coset::CoseError> for OcpEatError {
