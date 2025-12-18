@@ -325,6 +325,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
             caliptra_test_roms: vec![],
             test_runtimes: vec![],
             test_soc_manifests: vec![],
+            test_pldm_fw_pkgs: vec![],
         }
     };
     let otp_memory = if otp_file.is_some() && otp_file.unwrap().exists() {

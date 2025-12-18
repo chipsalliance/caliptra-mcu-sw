@@ -172,15 +172,15 @@ enum Commands {
         soc_images: Option<Vec<ImageCfg>>,
 
         // MCU configuration to include in the SoC manifest
-        // format: mcu,<load_addr>,<staging_addr>,<image_id>,<exec_bit>
-        // Example: --mcu_cfg mcu,0x10000000,0x10000000,1,1
+        // format: mcu,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<feature>
+        // Example: --mcu_cfg mcu,0x10000000,0x10000000,1,1,test-dma
         #[arg(
             long = "mcu_cfg",
             value_name = "MCU_CFG",
-            num_args = 1,
+            num_args = 1..,
             required = false
         )]
-        mcu_cfg: Option<ImageCfg>,
+        mcu_cfgs: Option<Vec<ImageCfg>>,
 
         /// Path to the PLDM manifest TOML file
         #[arg(short, long, value_name = "MANIFEST", required = false)]
@@ -397,7 +397,7 @@ fn main() {
             runtime_features,
             separate_runtimes,
             soc_images,
-            mcu_cfg,
+            mcu_cfgs,
             pldm_manifest,
         } => mcu_builder::all_build(mcu_builder::AllBuildArgs {
             output: output.as_deref(),
@@ -409,7 +409,7 @@ fn main() {
             runtime_features: runtime_features.as_deref(),
             separate_runtimes: *separate_runtimes,
             soc_images: soc_images.clone(),
-            mcu_cfg: mcu_cfg.clone(),
+            mcu_cfgs: mcu_cfgs.clone(),
             pldm_manifest: pldm_manifest.as_deref(),
         }),
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),

@@ -510,6 +510,7 @@ pub struct ImageCfg {
     pub staging_addr: u64,
     pub image_id: u32,
     pub exec_bit: u32,
+    pub feature: String,
 }
 impl Default for ImageCfg {
     fn default() -> Self {
@@ -519,6 +520,7 @@ impl Default for ImageCfg {
             staging_addr: 0,
             image_id: 0,
             exec_bit: 0,
+            feature: String::new(),
         }
     }
 }
@@ -528,9 +530,9 @@ impl FromStr for ImageCfg {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split(',').collect();
-        if parts.len() != 5 {
+        if parts.len() != 6 {
             return Err(
-                "Expected format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>".into(),
+                "Expected format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<feature>".into(),
             );
         }
 
@@ -541,6 +543,7 @@ impl FromStr for ImageCfg {
             .map_err(|e: ParseIntError| e.to_string())?;
         let image_id = parts[3].parse::<u32>().map_err(|e| e.to_string())?;
         let exec_bit = parts[4].parse::<u32>().map_err(|e| e.to_string())?;
+        let feature = parts[5].to_string();
 
         Ok(ImageCfg {
             path,
@@ -548,6 +551,7 @@ impl FromStr for ImageCfg {
             staging_addr,
             image_id,
             exec_bit,
+            feature,
         })
     }
 }
