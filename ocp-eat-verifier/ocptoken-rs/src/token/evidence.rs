@@ -1,15 +1,24 @@
 // Licensed under the Apache-2.0 license
 
-use coset::{cbor::value::Value, CborSerializable, CoseSign1, Header};
-use openssl::{hash::MessageDigest, pkey::PKey, sign::Verifier, x509::X509};
+use coset::{
+    cbor::value::Value,
+    iana::{Algorithm, CoapContentFormat},
+    sig_structure_data, CborSerializable, CoseSign1, Header, RegisteredLabel,
+};
+use openssl::{
+    bn::{BigNum, BigNumContext},
+    ec::{EcGroup, EcKey, EcPoint},
+    nid::Nid,
+    x509::X509,
+};
 
 use crate::error::{OcpEatError, OcpEatResult};
-use openssl::bn::BigNum;
-use openssl::ecdsa::EcdsaSig;
 
+/// Parsed and verified EAT evidence
 pub struct Evidence {
     pub signed_eat: Option<CoseSign1>,
 }
+
 impl Default for Evidence {
     fn default() -> Self {
         Evidence { signed_eat: None }
@@ -23,30 +32,45 @@ impl Evidence {
         }
     }
 
-    /// Decode a CBOR-encoded COSE_Sign1, extract the signing certificate
-    /// from unprotected header (label 33), and verify the  signature.
-
+    /// Decode and verify a COSE_Sign1
     pub fn decode(slice: &[u8]) -> OcpEatResult<Self> {
-        // 1. Decode COSE_Sign1
+        // 1. Parse COSE_Sign1
         let cose = CoseSign1::from_slice(slice)?;
 
-        //  Payload
-        cose.payload.as_deref().ok_or_else(|| {
+        // 2. Verify protected header (ES384 + EatCwt)
+
+        verify_protected_header(&cose.protected.header)?;
+
+        // 3. Extract payload
+
+        let payload = cose.payload.as_deref().ok_or_else(|| {
             OcpEatError::CoseSign1(coset::CoseError::UnexpectedItem("nil", "bstr payload"))
         })?;
 
-        // 2. Extract certificate
-        let cert_der = extract_cert(&cose.unprotected)?;
+        // 4. Extract leaf cert DER from x5chain
 
-        //  Extract public key
-        let pubkey = extract_pubkey_from_cert(cert_der)?;
+        // 5. Extract raw EC public key (x, y)
 
-        // 3. Verify signature via COSE API
-        cose.verify_signature(&[], |sig_structure, signature| {
-            verify_ecdsa_p384(&pubkey, sig_structure, signature).map_err(|_| {
-                coset::CoseError::UnexpectedItem("invalid signature", "valid COSE_Sign1 signature")
-            })
-        })?;
+        let cert_der = extract_leaf_cert_der(&cose.unprotected)?;
+        println!("extract_pubkey_xy");
+
+        dump_cert_der(&cert_der);
+
+        let (pubkey_x, pubkey_y) = extract_pubkey_xy(&cert_der)?;
+
+        // 6. Reconstruct COSE Sig_structure
+        let message = sig_structure_data(
+            coset::SignatureContext::CoseSign1,
+            cose.protected.clone(),
+            None,
+            &[],
+            payload,
+        );
+
+        println!("verify_signature_es384");
+
+        // 7. Verify ES384 signature
+        verify_signature_es384(&cose.signature, pubkey_x, pubkey_y, &message)?;
 
         Ok(Evidence {
             signed_eat: Some(cose),
@@ -54,61 +78,163 @@ impl Evidence {
     }
 }
 
-/// Extract DER-encoded certificate from  COSE x5chain header (label 33)
-fn extract_cert(unprotected: &Header) -> OcpEatResult<&[u8]> {
-    unprotected
+/* -------------------------------------------------------------------------- */
+/*                               Helper functions                              */
+/* -------------------------------------------------------------------------- */
+
+use std::fs::File;
+use std::io::Write;
+
+fn dump_cert_der(cert_der: &[u8]) {
+    let mut f = File::create("x5chain_cert.der").expect("failed to create x5chain_cert.der");
+    f.write_all(cert_der).expect("failed to write cert DER");
+    println!(
+        "Wrote x5chain cert to x5chain_cert.der ({} bytes)",
+        cert_der.len()
+    );
+}
+
+fn verify_protected_header(protected: &Header) -> OcpEatResult<()> {
+    if protected.alg
+        != Some(coset::RegisteredLabelWithPrivate::Assigned(
+            Algorithm::ES384,
+        ))
+    {
+        println!("alg is not ES384");
+        return Err(OcpEatError::CoseSign1(coset::CoseError::UnexpectedItem(
+            "alg", "ES384",
+        )));
+    }
+
+    Ok(())
+}
+
+/// Extract leaf certificate DER from x5chain (label 33)
+fn extract_leaf_cert_der(unprotected: &Header) -> OcpEatResult<Vec<u8>> {
+    let value = unprotected
         .rest
         .iter()
         .find_map(|(label, value)| {
             if *label == coset::Label::Int(33) {
-                match value {
-                    Value::Bytes(bytes) => Some(bytes.as_slice()),
-                    _ => None,
-                }
+                Some(value)
             } else {
                 None
             }
         })
         .ok_or_else(|| {
-            OcpEatError::CoseSign1(coset::CoseError::UnexpectedItem(
-                "x5chain missing",
-                "x5chain (label 33) in unprotected header",
-            ))
-        })
+            OcpEatError::CoseSign1(coset::CoseError::UnexpectedItem("x5chain", "present"))
+        })?;
+
+    match value {
+        Value::Array(arr) => arr.first(),
+        Value::Bytes(_) => Some(value),
+        _ => None,
+    }
+    .and_then(|v| match v {
+        Value::Bytes(bytes) => Some(bytes.clone()), // 👈 CLONE
+        _ => None,
+    })
+    .ok_or_else(|| {
+        OcpEatError::CoseSign1(coset::CoseError::UnexpectedItem(
+            "x5chain",
+            "DER cert bytes",
+        ))
+    })
 }
 
-/// Parse X.509 cert and extract public key
-fn extract_pubkey_from_cert(cert_der: &[u8]) -> OcpEatResult<PKey<openssl::pkey::Public>> {
-    let cert = X509::from_der(cert_der).map_err(|e| OcpEatError::Certificate(e.to_string()))?;
+use x509_parser::prelude::*;
 
-    cert.public_key()
-        .map_err(|e| OcpEatError::Certificate(e.to_string()))
+/// Extract raw P-384 public key coordinates (x, y) from DER X.509 cert
+fn extract_pubkey_xy(cert_der: &[u8]) -> OcpEatResult<([u8; 48], [u8; 48])> {
+    // Parse X.509 certificate (pure Rust, lenient)
+    let cert = match X509Certificate::from_der(cert_der) {
+        Ok((rem, cert)) => {
+            println!("X509Certificate::from_der OK");
+            println!("Remaining bytes after parse: {}", rem.len());
+            cert
+        }
+        Err(e) => {
+            println!("X509Certificate::from_der FAILED");
+            println!("Error: {:?}", e);
+
+            return Err(OcpEatError::Certificate(format!(
+                "X509 parse error: {:?}",
+                e
+            )));
+        }
+    };
+
+    println!(" X509Certificate::from_der");
+
+    let spki = &cert.tbs_certificate.subject_pki;
+
+    // subject_public_key is a BIT STRING
+    let pubkey_bytes = spki.subject_public_key.data.as_ref();
+
+    // Expect uncompressed EC point: 04 || X || Y (P-384)
+    if pubkey_bytes.len() != 1 + 48 + 48 {
+        return Err(OcpEatError::Certificate(format!(
+            "unexpected EC public key length: {}",
+            pubkey_bytes.len()
+        )));
+    }
+
+    if pubkey_bytes[0] != 0x04 {
+        return Err(OcpEatError::Certificate(
+            "EC public key is not uncompressed".into(),
+        ));
+    }
+
+    let mut x = [0u8; 48];
+    let mut y = [0u8; 48];
+
+    x.copy_from_slice(&pubkey_bytes[1..49]);
+    y.copy_from_slice(&pubkey_bytes[49..97]);
+
+    println!("extract_pubkey_xy: success");
+
+    Ok((x, y))
 }
 
-/// OpenSSL-backed ECDSA-P384 verification
-fn verify_ecdsa_p384(
-    pubkey: &PKey<openssl::pkey::Public>,
-    sig_structure: &[u8],
+/// Verify ES384 COSE signature using raw EC public key
+fn verify_signature_es384(
     signature: &[u8],
+    pubkey_x: [u8; 48],
+    pubkey_y: [u8; 48],
+    message: &[u8],
 ) -> OcpEatResult<()> {
     if signature.len() != 96 {
         return Err(OcpEatError::SignatureVerification);
     }
 
-    let r = BigNum::from_slice(&signature[..48]).unwrap();
-    let s = BigNum::from_slice(&signature[48..]).unwrap();
-    let sig = EcdsaSig::from_private_components(r, s).unwrap();
-    let der_sig = sig.to_der().unwrap();
+    let r = BigNum::from_slice(&signature[..48]).map_err(|_| OcpEatError::SignatureVerification)?;
+    let s = BigNum::from_slice(&signature[48..]).map_err(|_| OcpEatError::SignatureVerification)?;
 
-    let mut verifier = Verifier::new(MessageDigest::sha384(), pubkey)
+    let sig = openssl::ecdsa::EcdsaSig::from_private_components(r, s)
+        .map_err(|_| OcpEatError::SignatureVerification)?;
+
+    let group =
+        EcGroup::from_curve_name(Nid::SECP384R1).map_err(|e| OcpEatError::Crypto(e.to_string()))?;
+
+    let mut ctx = BigNumContext::new().map_err(|e| OcpEatError::Crypto(e.to_string()))?;
+
+    let px = BigNum::from_slice(&pubkey_x).unwrap();
+    let py = BigNum::from_slice(&pubkey_y).unwrap();
+
+    let mut point = EcPoint::new(&group).map_err(|e| OcpEatError::Crypto(e.to_string()))?;
+
+    point
+        .set_affine_coordinates_gfp(&group, &px, &py, &mut ctx)
         .map_err(|e| OcpEatError::Crypto(e.to_string()))?;
 
-    verifier
-        .update(sig_structure)
+    let ec_key =
+        EcKey::from_public_key(&group, &point).map_err(|e| OcpEatError::Crypto(e.to_string()))?;
+
+    let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha384(), message)
         .map_err(|e| OcpEatError::Crypto(e.to_string()))?;
 
-    let verified = verifier
-        .verify(&der_sig)
+    let verified = sig
+        .verify(&digest, &ec_key)
         .map_err(|e| OcpEatError::Crypto(e.to_string()))?;
 
     if verified {
