@@ -10,3 +10,5 @@ authors.workspace = true
 coset = "0.4.0"
 thiserror = "2.0.17"
 openssl = { version = "0.10", features = ["vendored"] }
+x509-parser = "0.16"
+
