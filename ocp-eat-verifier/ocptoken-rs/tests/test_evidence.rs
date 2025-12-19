@@ -69,7 +69,7 @@ fn decode_and_verify_cose_sign1() {
     // 5️ Encode to CBOR
     let encoded = cose.to_vec().unwrap();
 
-    // 6️cl Decode + verify
+    // 6️ Decode + verify
     let evidence = Evidence::decode(&encoded);
 
     assert!(
