@@ -25,15 +25,40 @@ fn decode_and_verify_cose_sign1() {
     let pkey = PKey::from_ec_key(ec_key).unwrap();
 
     // 2️ Create X.509 certificate from public key
+    use openssl::asn1::Asn1Time;
+    use openssl::bn::BigNum;
+
+    // 2️⃣ Create X.509 certificate from public key
     let mut name = X509NameBuilder::new().unwrap();
     name.append_entry_by_text("CN", "test-cert").unwrap();
     let name = name.build();
 
     let mut cert_builder = X509::builder().unwrap();
+
     cert_builder.set_version(2).unwrap();
+
+    // REQUIRED: serial number
+    let mut serial = BigNum::new().unwrap();
+    serial
+        .rand(64, openssl::bn::MsbOption::MAYBE_ZERO, false)
+        .unwrap();
+    let serial = serial.to_asn1_integer().unwrap();
+    cert_builder.set_serial_number(&serial).unwrap();
+
+    // Subject / issuer
     cert_builder.set_subject_name(&name).unwrap();
     cert_builder.set_issuer_name(&name).unwrap();
+
+    // REQUIRED: validity
+    let not_before = Asn1Time::days_from_now(0).unwrap();
+    let not_after = Asn1Time::days_from_now(365).unwrap();
+    cert_builder.set_not_before(&not_before).unwrap();
+    cert_builder.set_not_after(&not_after).unwrap();
+
+    // Public key
     cert_builder.set_pubkey(&pkey).unwrap();
+
+    // Sign certificate
     cert_builder.sign(&pkey, MessageDigest::sha384()).unwrap();
 
     let cert = cert_builder.build();

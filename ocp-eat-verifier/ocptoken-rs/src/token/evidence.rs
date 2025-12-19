@@ -1,15 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use coset::{
-    cbor::value::Value,
-    iana::{Algorithm, CoapContentFormat},
-    sig_structure_data, CborSerializable, CoseSign1, Header, RegisteredLabel,
+    cbor::value::Value, iana::Algorithm, sig_structure_data, CborSerializable, CoseSign1, Header,
 };
 use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint},
     nid::Nid,
-    x509::X509,
 };
 
 use crate::error::{OcpEatError, OcpEatResult};
