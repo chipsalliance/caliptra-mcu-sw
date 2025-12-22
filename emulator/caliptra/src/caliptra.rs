@@ -65,6 +65,7 @@ pub struct StartCaliptraArgs {
     pub req_idevid_csr: Option<bool>,
     pub device_lifecycle: Option<String>,
     pub use_mcu_recovery_interface: bool,
+    pub extra_soc_bus: Option<u32>,
 }
 
 register_bitfields! [
@@ -83,7 +84,12 @@ register_bitfields! [
 /// Creates and returns an initialized a Caliptra emulator CPU.
 pub fn start_caliptra(
     args: &StartCaliptraArgs,
-) -> io::Result<(Cpu<CaliptraRootBus>, SocToCaliptraBus, Mci)> {
+) -> io::Result<(
+    Cpu<CaliptraRootBus>,
+    SocToCaliptraBus,
+    Option<SocToCaliptraBus>,
+    Mci,
+)> {
     let tmp = PathBuf::from("/tmp");
     let args_log_dir = &tmp;
     let args_idevid_key_id_algo = "sha1";
@@ -213,10 +219,14 @@ pub fn start_caliptra(
     }
 
     let ext_soc_ifc = root_bus.soc_to_caliptra_bus(MAILBOX_USER);
+    let extra_soc_ifc = args
+        .extra_soc_bus
+        .map(|user| root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(user)));
 
     Ok((
         Cpu::new(root_bus, clock.clone(), pic.clone(), CpuArgs::default()),
         ext_soc_ifc,
+        extra_soc_ifc,
         ext_mci,
     ))
 }
