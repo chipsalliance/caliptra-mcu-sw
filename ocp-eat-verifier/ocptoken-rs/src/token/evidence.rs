@@ -34,6 +34,16 @@ impl Evidence {
         // 1. Parse COSE_Sign1
         let cose = CoseSign1::from_slice(slice)?;
 
+        /* use coset::cbor::value::Value;
+        use coset::CborSerializable;
+
+        let value = Value::from_slice(slice).map_err(|e| OcpEatError::CoseSign1(e))?;
+
+        let cose = match value {
+            Value::Tag(_, boxed) => CoseSign1::from_slice(&boxed.to_vec()?)?,
+            _ => CoseSign1::from_slice(slice)?,
+        };*/
+
         // 2. Verify protected header (ES384 + EatCwt)
 
         verify_protected_header(&cose.protected.header)?;
