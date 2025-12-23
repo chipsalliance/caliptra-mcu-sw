@@ -7,7 +7,10 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
-coset = "0.4.0"
+# coset = "0.4.0"
+coset = { git = "https://github.com/google/coset", branch = "main" }
+hex = "0.4"
+
 thiserror = "2.0.17"
 openssl = { version = "0.10", features = ["vendored"] }
 x509-parser = "0.16"
