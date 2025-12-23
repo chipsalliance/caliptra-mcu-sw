@@ -181,7 +181,8 @@ impl<'a> CmdInterface<'a> {
                 )
                 .await
             }
-            ocp_lock_cmd @ CommandId::MC_PROVISION_HEK => {
+            ocp_lock_cmd @ CommandId::MC_PROVISION_HEK
+            | ocp_lock_cmd @ CommandId::MC_ZEROIZE_HEK => {
                 crate::ocp_lock::OcpLock::command_handler(msg_buf, ocp_lock_cmd, req_len).await
             }
             // TODO: add more command handlers.

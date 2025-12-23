@@ -89,6 +89,7 @@ impl CommandId {
 
     // OCP LOCK Commands
     pub const MC_PROVISION_HEK: Self = Self(0x4D43_5048); // "MCPH"
+    pub const MC_ZEROIZE_HEK: Self = Self(0x4D43_5A48); // "MCZH"
 }
 
 impl From<u32> for CommandId {
@@ -131,6 +132,7 @@ pub enum McuMailboxReq {
     RandomStir(McuRandomStirReq),
     RandomGenerate(McuRandomGenerateReq),
     ProvisionHek(McuProvisionHek),
+    ZeroizeHek(McuZeroizeHek),
 }
 
 impl McuMailboxReq {
@@ -161,6 +163,7 @@ impl McuMailboxReq {
             McuMailboxReq::RandomStir(req) => req.as_bytes_partial(),
             McuMailboxReq::RandomGenerate(req) => Ok(req.as_bytes()),
             McuMailboxReq::ProvisionHek(req) => Ok(req.as_bytes()),
+            McuMailboxReq::ZeroizeHek(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -191,6 +194,7 @@ impl McuMailboxReq {
             McuMailboxReq::RandomStir(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::RandomGenerate(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ProvisionHek(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::ZeroizeHek(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -221,6 +225,7 @@ impl McuMailboxReq {
             McuMailboxReq::RandomStir(_) => CommandId::MC_RANDOM_STIR,
             McuMailboxReq::RandomGenerate(_) => CommandId::MC_RANDOM_GENERATE,
             McuMailboxReq::ProvisionHek(_) => CommandId::MC_PROVISION_HEK,
+            McuMailboxReq::ZeroizeHek(_) => CommandId::MC_ZEROIZE_HEK,
         }
     }
 
@@ -274,6 +279,7 @@ pub enum McuMailboxResp {
     RandomStir(McuRandomStirResp),
     RandomGenerate(McuRandomGenerateResp),
     ProvisionHek(McuProvisionHekResp),
+    ZeroizeHek(McuZeroizeHekResp),
 }
 
 /// A trait for responses with variable size data.
@@ -365,6 +371,7 @@ impl McuMailboxResp {
             McuMailboxResp::RandomStir(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::RandomGenerate(resp) => resp.as_bytes_partial(),
             McuMailboxResp::ProvisionHek(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::ZeroizeHek(resp) => Ok(resp.as_bytes()),
         }
     }
 
@@ -396,6 +403,7 @@ impl McuMailboxResp {
             McuMailboxResp::RandomStir(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::RandomGenerate(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::ProvisionHek(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::ZeroizeHek(resp) => Ok(resp.as_mut_bytes()),
         }
     }
 
@@ -853,3 +861,24 @@ pub struct McuProvisionHekResp {
     pub hdr: MailboxRespHeader,
 }
 impl Response for McuProvisionHekResp {}
+
+// TODO: turn this into some type of authorized command
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuZeroizeHek {
+    pub hdr: MailboxReqHeader,
+    /// Index to zeroize. Must be provisioned and previous indeces must previously be zeroized.
+    pub slot: u32,
+}
+
+impl Request for McuZeroizeHek {
+    const ID: CommandId = CommandId::MC_ZEROIZE_HEK;
+    type Resp = McuZeroizeHekResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuZeroizeHekResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for McuZeroizeHekResp {}

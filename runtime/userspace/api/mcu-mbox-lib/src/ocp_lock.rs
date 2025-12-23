@@ -6,7 +6,10 @@ use libapi_caliptra::crypto::{
     rng::Rng,
 };
 use libsyscall_caliptra::{mcu_mbox::MbxCmdStatus, otp, DefaultSyscalls};
-use mcu_mbox_common::messages::{CommandId, McuMailboxResp, McuProvisionHek, McuProvisionHekResp};
+use mcu_mbox_common::messages::{
+    CommandId, McuMailboxResp, McuProvisionHek, McuProvisionHekResp, McuZeroizeHek,
+    McuZeroizeHekResp,
+};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub struct OcpLock;
@@ -26,6 +29,7 @@ impl OcpLock {
     ) -> Result<(usize, MbxCmdStatus), MsgHandlerError> {
         match cmd {
             CommandId::MC_PROVISION_HEK => Self::handle_provision_hek(msg_buf, req_len).await,
+            CommandId::MC_ZEROIZE_HEK => Self::handle_zeroize_hek(msg_buf, req_len).await,
             _ => Err(MsgHandlerError::UnsupportedCommand),
         }
     }
@@ -61,6 +65,23 @@ impl OcpLock {
         Err(MsgHandlerError::NoMemory)
     }
 
+    /// Get the HEK syscall slot ID of the next zeroizable HEK partition.
+    ///
+    /// It may be provisioned or corrupted
+    async fn next_zeroizable() -> Result<u32, MsgHandlerError> {
+        for slot in Self::hek_slots()? {
+            let hek_info = HekInfo::from_otp(*slot)?;
+            match hek_info.state().await? {
+                HekOtpState::Provisioned | HekOtpState::Corrupted => {
+                    return Ok(*slot);
+                }
+                HekOtpState::Zeroized => (),
+                HekOtpState::Unprovisioned => Err(MsgHandlerError::Busy)?,
+            }
+        }
+        Err(MsgHandlerError::NoMemory)
+    }
+
     async fn handle_provision_hek(
         msg_buf: &mut [u8],
         req_len: usize,
@@ -90,6 +111,50 @@ impl OcpLock {
 
         let mbox_cmd_status = MbxCmdStatus::Complete;
         let mut resp = McuMailboxResp::ProvisionHek(McuProvisionHekResp::default());
+
+        // Populate the checksum for response
+        resp.populate_chksum()
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        // Encode the response and copy to msg_buf.
+        let resp_bytes = resp
+            .as_bytes()
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        msg_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
+
+        Ok((resp_bytes.len(), mbox_cmd_status))
+    }
+
+    async fn handle_zeroize_hek(
+        msg_buf: &mut [u8],
+        req_len: usize,
+    ) -> Result<(usize, MbxCmdStatus), MsgHandlerError> {
+        // Decode the request
+        let req: &McuZeroizeHek = McuZeroizeHek::ref_from_bytes(&msg_buf[..req_len])
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        // TODO: add support for authorized commands and verify it here
+        if false {
+            return Err(MsgHandlerError::PermissionDenied);
+        }
+
+        if req.slot >= OcpLock::total_heks()? {
+            return Err(MsgHandlerError::InvalidParams);
+        }
+
+        // Make sure the requested slot is also the next zeroizable slot
+        let slot = OcpLock::next_zeroizable().await?;
+        if slot != req.slot {
+            return Err(MsgHandlerError::InvalidParams);
+        }
+
+        // Zeroize the HEK in OTP
+        let hek = HekInfo::zeroized();
+        hek.write_to_otp(slot)?;
+
+        let mbox_cmd_status = MbxCmdStatus::Complete;
+        let mut resp = McuMailboxResp::ZeroizeHek(McuZeroizeHekResp::default());
 
         // Populate the checksum for response
         resp.populate_chksum()
