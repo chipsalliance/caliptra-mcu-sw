@@ -147,7 +147,7 @@ fn app_build_tbf(
     )?;
     let objcopy = objcopy()?;
 
-    let app_bin = target_binary(&format!("{}.bin", app.name));
+    let app_bin = target_binary(&format!("{}-{}.bin", app.name, platform));
 
     let mut app_cmd = Command::new(&objcopy);
     let app_cmd = app_cmd
@@ -192,13 +192,23 @@ fn app_build(
     features: &[&str],
 ) -> Result<()> {
     let app_ld_filename = format!("{}-layout.ld", app_name);
-    let layout_ld = &PROJECT_ROOT
-        .join("platforms")
-        .join("emulator") // TODO: build platform-specific
-        .join("runtime")
-        .join("userspace")
-        .join("apps")
-        .join(app_ld_filename);
+    let layout_ld = match platform {
+        "emulator" => &PROJECT_ROOT
+            .join("platforms")
+            .join(platform)
+            .join("runtime")
+            .join("userspace")
+            .join("apps")
+            .join(&app_ld_filename),
+        "fpga" => &PROJECT_ROOT
+            .join("platforms")
+            .join(platform)
+            .join("runtime")
+            .join(&app_ld_filename),
+        _ => {
+            bail!("Unknown platform: {}", platform);
+        }
+    };
 
     // TODO: do we need to fix the RAM start and length?
     std::fs::write(

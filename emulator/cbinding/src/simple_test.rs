@@ -14,6 +14,7 @@ Abstract:
 
 use caliptra_image_types::FwVerificationPqcKeyType;
 use emulator::{Emulator, EmulatorArgs};
+use mcu_testing_common::DeviceLifecycle;
 
 #[test]
 fn test_can_import_emulator() {
@@ -46,7 +47,7 @@ fn test_emulator_args_creation() {
         _no_stdin_uart: false,
         flash_based_boot: false,
         i3c_port: None,
-        manufacturing_mode: false,
+        device_security_state: DeviceLifecycle::Production as u32,
         vendor_pk_hash: None,
         vendor_pqc_type: FwVerificationPqcKeyType::LMS,
         owner_pk_hash: None,

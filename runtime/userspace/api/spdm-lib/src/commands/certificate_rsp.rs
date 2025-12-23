@@ -1,17 +1,22 @@
 // Licensed under the Apache-2.0 license
 
-use crate::cert_store::{cert_slot_mask, SpdmCertStore, MAX_CERT_SLOTS_SUPPORTED};
+use crate::cert_store::{
+    cert_slot_mask, spdm_cert_chain_len, spdm_read_cert_chain, SpdmCertStore,
+    MAX_CERT_SLOTS_SUPPORTED,
+};
+use crate::chunk_ctx::LargeResponse;
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
 use crate::protocol::*;
 use crate::state::ConnectionState;
-use crate::transcript::TranscriptContext;
+use crate::transcript::{Transcript, TranscriptContext};
 use bitfield::bitfield;
 use libapi_caliptra::crypto::asym::AsymAlgo;
-use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+const CERTIFICATE_RESP_HEADER_SIZE: usize = size_of::<CertificateRespHdr>();
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
@@ -46,30 +51,15 @@ impl CommonCodec for GetCertificateReq {}
 
 #[derive(IntoBytes, FromBytes, Immutable)]
 #[repr(C, packed)]
-pub struct CertificateRespCommon {
-    pub slot_id: SlotId,
-    pub param2: CertificateRespAttributes,
-    pub portion_length: u16,
-    pub remainder_length: u16,
+pub struct CertificateRespHdr {
+    spdm_version: SpdmMsgHdr,
+    slot_id: SlotId,
+    param2: CertificateRespAttributes,
+    portion_length: u16,
+    remainder_length: u16,
 }
 
-impl CommonCodec for CertificateRespCommon {}
-
-impl CertificateRespCommon {
-    pub fn new(
-        slot_id: SlotId,
-        param2: CertificateRespAttributes,
-        portion_length: u16,
-        remainder_length: u16,
-    ) -> Self {
-        Self {
-            slot_id,
-            param2,
-            portion_length,
-            remainder_length,
-        }
-    }
-}
+impl CommonCodec for CertificateRespHdr {}
 
 bitfield! {
     #[derive(FromBytes, IntoBytes, Immutable, Default)]
@@ -81,150 +71,152 @@ bitfield! {
     reserved, _: 7,3;
 }
 
-async fn encode_certchain_metadata(
-    cert_store: &dyn SpdmCertStore,
-    total_certchain_len: u16,
+#[derive(Debug, Clone)]
+pub(crate) struct CertificateResponse {
+    spdm_version: SpdmVersion,
     slot_id: u8,
     asym_algo: AsymAlgo,
-    offset: usize,
-    length: usize,
-    rsp: &mut MessageBuf<'_>,
-) -> CommandResult<usize> {
-    let mut certchain_metadata = [0u8; SPDM_CERT_CHAIN_METADATA_LEN as usize];
+    offset: u16,
+    portion_len: u16,
+    remainder_len: u16,
+    total_cert_chain_len: u16,
+    cert_info: Option<CertificateInfo>,
+}
 
-    // Read the cert chain header first
-    let cert_chain_hdr = SpdmCertChainHeader {
-        length: total_certchain_len,
-        reserved: 0,
-    };
-    let cert_chain_hdr_bytes = cert_chain_hdr.as_bytes();
-    certchain_metadata[..cert_chain_hdr_bytes.len()].copy_from_slice(cert_chain_hdr_bytes);
+impl CertificateResponse {
+    async fn resp_hdr(&self) -> CommandResult<[u8; CERTIFICATE_RESP_HEADER_SIZE]> {
+        let mut buf = [0u8; CERTIFICATE_RESP_HEADER_SIZE];
+        let mut msg_buf = MessageBuf::new(&mut buf);
 
-    // Read the root cert hash next
-    let mut root_hash_buf = [0u8; SHA384_HASH_SIZE];
-    cert_store
-        .root_cert_hash(slot_id, asym_algo, &mut root_hash_buf)
-        .await
-        .map_err(|e| (false, CommandError::CertStore(e)))?;
-    certchain_metadata[cert_chain_hdr_bytes.len()..].copy_from_slice(&root_hash_buf[..]);
+        let slot_id_struct = SlotId(self.slot_id);
+        let mut resp_attr = CertificateRespAttributes::default();
+        if let Some(cert_info) = self.cert_info {
+            resp_attr.set_certificate_info(cert_info.cert_model());
+        }
 
-    let write_len = (SPDM_CERT_CHAIN_METADATA_LEN - offset as u16).min(length as u16) as usize;
+        let certificate_rsp_common = CertificateRespHdr {
+            spdm_version: SpdmMsgHdr::new(self.spdm_version, ReqRespCode::Certificate),
+            slot_id: slot_id_struct,
+            param2: resp_attr,
+            portion_length: self.portion_len,
+            remainder_length: self.remainder_len,
+        };
+        certificate_rsp_common
+            .encode(&mut msg_buf)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    rsp.put_data(write_len)
-        .map_err(|e| (false, CommandError::Codec(e)))?;
+        Ok(buf)
+    }
 
-    let cert_portion = rsp
-        .data_mut(write_len)
-        .map_err(|e| (false, CommandError::Codec(e)))?;
+    pub async fn encode_rsp_hdr(&self, rsp: &mut MessageBuf<'_>) -> CommandResult<usize> {
+        let rsp_hdr_bytes = self.resp_hdr().await?;
+        rsp.put_data(rsp_hdr_bytes.len())
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+        let rsp_hdr_buf = rsp
+            .data_mut(rsp_hdr_bytes.len())
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+        rsp_hdr_buf.copy_from_slice(&rsp_hdr_bytes);
+        rsp.pull_data(rsp_hdr_bytes.len())
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+        Ok(rsp_hdr_bytes.len())
+    }
 
-    cert_portion[..write_len].copy_from_slice(&certchain_metadata[offset..offset + write_len]);
-    rsp.pull_data(write_len)
-        .map_err(|e| (false, CommandError::Codec(e)))?;
+    pub async fn get_chunk(
+        &self,
+        shared_transcript: &mut Transcript,
+        cert_store: &dyn SpdmCertStore,
+        cert_rsp_offset: usize,
+        chunk: &mut [u8],
+    ) -> CommandResult<usize> {
+        let certchain_offset: usize;
+        let mut chunk_data_len = 0;
+        let mut rem_len = chunk
+            .len()
+            .min((self.portion_len - cert_rsp_offset as u16) as usize);
+        if cert_rsp_offset < CERTIFICATE_RESP_HEADER_SIZE {
+            // Read from the response header
+            let header_bytes = self.resp_hdr().await?;
+            let header_offset = cert_rsp_offset;
+            let header_rem_len = CERTIFICATE_RESP_HEADER_SIZE - header_offset;
+            let copy_len = header_rem_len.min(chunk.len());
+            chunk[..copy_len]
+                .copy_from_slice(&header_bytes[header_offset..header_offset + copy_len]);
+            rem_len = rem_len.saturating_sub(copy_len);
+            certchain_offset = self.offset as usize;
+            chunk_data_len = copy_len;
+        } else {
+            certchain_offset =
+                self.offset as usize + cert_rsp_offset.saturating_sub(CERTIFICATE_RESP_HEADER_SIZE);
+        }
 
-    Ok(write_len)
+        if rem_len > 0 {
+            let rem_chunk = &mut chunk[chunk_data_len..];
+            let read_len = spdm_read_cert_chain(
+                cert_store,
+                self.slot_id,
+                self.asym_algo,
+                certchain_offset,
+                rem_chunk,
+            )
+            .await
+            .map_err(|e| (false, CommandError::CertStore(e)))?;
+            chunk_data_len += read_len;
+        }
+
+        shared_transcript
+            .append(TranscriptContext::M1, None, &chunk[..chunk_data_len])
+            .await
+            .map_err(|e| (false, CommandError::Transcript(e)))?;
+        Ok(chunk_data_len)
+    }
 }
 
 async fn generate_certificate_response<'a>(
     ctx: &mut SpdmContext<'a>,
-    slot_id: u8,
-    offset: u16,
-    length: u16,
+    rsp_ctx: CertificateResponse,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Ensure the selected hash algorithm is SHA384 and retrieve the asymmetric algorithm (currently only ECC-P384 is supported)
-    ctx.verify_negotiated_hash_algo()
-        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
-    let asym_algo = ctx
-        .negotiated_base_asym_algo()
-        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::Unspecified, 0, None))?;
+    ctx.validate_negotiated_hash_algo(rsp)?;
+    let asym_algo = rsp_ctx.asym_algo;
+    let total_cert_chain_len = rsp_ctx.total_cert_chain_len;
+    let slot_id = rsp_ctx.slot_id;
+    let portion_len: u16 = rsp_ctx.portion_len;
+    let offset: u16 = rsp_ctx.offset;
 
-    let connection_version = ctx.state.connection_info.version_number();
-
-    // Start filling the response payload
-    let spdm_hdr = SpdmMsgHdr::new(connection_version, ReqRespCode::Certificate);
-    let mut payload_len = spdm_hdr
-        .encode(rsp)
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-
-    let mut resp_attr = CertificateRespAttributes::default();
-    if connection_version >= SpdmVersion::V13 && ctx.state.connection_info.multi_key_conn_rsp() {
-        let cert_info = ctx
-            .device_certs_store
-            .cert_info(slot_id)
-            .await
-            .unwrap_or_default();
-        resp_attr.set_certificate_info(cert_info.cert_model());
+    if portion_len > SPDM_MAX_CERT_CHAIN_PORTION_LEN {
+        let large_rsp_len = CERTIFICATE_RESP_HEADER_SIZE + portion_len as usize;
+        let large_rsp = LargeResponse::Certificate(rsp_ctx.clone());
+        let handle = ctx.large_resp_context.init(large_rsp, large_rsp_len);
+        Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, 0, Some(&[handle])))?;
     }
-
-    // Get total cert chain length in SPDM cert chain format
-    let cert_chain_len = ctx
-        .device_certs_store
-        .cert_chain_len(asym_algo, slot_id)
-        .await
-        .map_err(|_| ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?;
-    let total_cert_chain_len = cert_chain_len as u16 + SPDM_CERT_CHAIN_METADATA_LEN;
 
     if offset >= total_cert_chain_len {
         return Err(ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None));
     }
 
-    let mut remainder_len = total_cert_chain_len.saturating_sub(offset);
-
-    let portion_len = if length > SPDM_MAX_CERT_CHAIN_PORTION_LEN
-    // && ctx.local_capabilities.flags.chunk_cap() == 1
-    {
-        SPDM_MAX_CERT_CHAIN_PORTION_LEN.min(remainder_len)
-    } else {
-        length.min(remainder_len)
-    };
-
-    remainder_len = remainder_len.saturating_sub(portion_len);
-    let slot_id_struct = SlotId(slot_id);
-    let certificate_rsp_common =
-        CertificateRespCommon::new(slot_id_struct, resp_attr, portion_len, remainder_len);
-    payload_len += certificate_rsp_common
-        .encode(rsp)
-        .map_err(|e| (false, CommandError::Codec(e)))?;
-
-    let mut rem_len = portion_len;
-    let cert_offset: usize;
+    // Start filling the response payload
+    let mut payload_len = rsp_ctx.encode_rsp_hdr(rsp).await?;
 
     if portion_len > 0 {
-        // Encode the certificate chain metadata first if it the beginning of the certificate chain
-        if offset < SPDM_CERT_CHAIN_METADATA_LEN {
-            let read_len = encode_certchain_metadata(
-                ctx.device_certs_store,
-                total_cert_chain_len,
-                slot_id,
-                asym_algo,
-                offset as usize,
-                portion_len as usize,
-                rsp,
-            )
-            .await?;
-            payload_len += read_len;
-            rem_len = portion_len.saturating_sub(read_len as u16);
-            cert_offset = 0;
-        } else {
-            cert_offset = (offset - SPDM_CERT_CHAIN_METADATA_LEN) as usize;
-        }
+        rsp.put_data(portion_len as usize)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+        let cert_chain_buf = rsp
+            .data_mut(portion_len as usize)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+        let read_len = spdm_read_cert_chain(
+            ctx.device_certs_store,
+            slot_id,
+            asym_algo,
+            offset as usize,
+            cert_chain_buf,
+        )
+        .await
+        .map_err(|e| (false, CommandError::CertStore(e)))?;
 
-        // Read the certificate chain portion if there is remaining length
-        if rem_len > 0 {
-            rsp.put_data(rem_len as usize)
-                .map_err(|e| (false, CommandError::Codec(e)))?;
-            let cert_chain_buf = rsp
-                .data_mut(rem_len as usize)
-                .map_err(|e| (false, CommandError::Codec(e)))?;
-            let read_len = ctx
-                .device_certs_store
-                .get_cert_chain(slot_id, asym_algo, cert_offset, cert_chain_buf)
-                .await
-                .map_err(|e| (false, CommandError::CertStore(e)))?;
-            payload_len += read_len;
-            rsp.pull_data(read_len)
-                .map_err(|e| (false, CommandError::Codec(e)))?;
-        }
+        rsp.pull_data(read_len)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
+        payload_len += read_len;
     }
 
     // Append the response message to the M1 transcript
@@ -240,12 +232,9 @@ async fn process_get_certificate<'a>(
     ctx: &mut SpdmContext<'a>,
     spdm_hdr: SpdmMsgHdr,
     req_payload: &mut MessageBuf<'a>,
-) -> CommandResult<(u8, u16, u16)> {
+) -> CommandResult<CertificateResponse> {
     // Validate the version
-    let connection_version = ctx.state.connection_info.version_number();
-    if spdm_hdr.version().ok() != Some(connection_version) {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
-    }
+    let connection_version = ctx.validate_spdm_version(&spdm_hdr, req_payload)?;
 
     // Decode the GET_CERTIFICATE request payload
     let req = GetCertificateReq::decode(req_payload).map_err(|_| {
@@ -282,7 +271,44 @@ async fn process_get_certificate<'a>(
     ctx.append_message_to_transcript(req_payload, TranscriptContext::M1, None)
         .await?;
 
-    Ok((slot_id, offset, length))
+    // Prepare the response context
+    let asym_algo = ctx.validate_negotiated_base_asym_algo(req_payload)?;
+    let certchain_len = spdm_cert_chain_len(ctx.device_certs_store, slot_id, asym_algo)
+        .await
+        .map_err(|_| {
+            ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
+        })?;
+    let cert_info = if connection_version >= SpdmVersion::V13
+        && ctx.state.connection_info.multi_key_conn_rsp()
+    {
+        ctx.device_certs_store.cert_info(slot_id).await
+    } else {
+        None
+    };
+    let mut remainder_len: u16 = certchain_len.saturating_sub(offset as usize) as u16;
+    let portion_len = if ctx.support_large_msg_chunking() {
+        // When chunking is supported, use the full requested length
+        length.min(remainder_len as u16)
+    } else {
+        // When chunking is not supported, limit to max portion length
+        length
+            .min(SPDM_MAX_CERT_CHAIN_PORTION_LEN)
+            .min(remainder_len as u16)
+    };
+    remainder_len = remainder_len.saturating_sub(portion_len);
+
+    let cert_resp_context = CertificateResponse {
+        spdm_version: connection_version,
+        slot_id,
+        asym_algo,
+        offset,
+        portion_len,
+        remainder_len,
+        total_cert_chain_len: certchain_len as u16,
+        cert_info,
+    };
+
+    Ok(cert_resp_context)
 }
 
 pub(crate) async fn handle_get_certificate<'a>(
@@ -301,19 +327,11 @@ pub(crate) async fn handle_get_certificate<'a>(
     }
 
     // Process the GET_CERTIFICATE request
-    let (slot_id, offset, length) = process_get_certificate(ctx, spdm_hdr, req_payload).await?;
+    let rsp_ctx = process_get_certificate(ctx, spdm_hdr, req_payload).await?;
 
     // Generate the CERTIFICATE response
     ctx.prepare_response_buffer(req_payload)?;
-    generate_certificate_response(
-        ctx,
-        // connection_version,
-        slot_id,
-        offset,
-        length,
-        req_payload,
-    )
-    .await?;
+    generate_certificate_response(ctx, rsp_ctx, req_payload).await?;
 
     // Set the connection state to AfterCertificate
     if ctx.state.connection_info.state() < ConnectionState::AfterCertificate {

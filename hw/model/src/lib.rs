@@ -29,6 +29,8 @@ pub use vmem::read_otp_vmem_data;
 mod bus_logger;
 #[cfg(feature = "fpga_realtime")]
 pub mod debug_unlock;
+#[cfg(feature = "fpga_realtime")]
+pub mod flash_ctrl;
 mod fpga_regs;
 #[cfg(feature = "fpga_realtime")]
 pub mod jtag;

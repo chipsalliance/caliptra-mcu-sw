@@ -375,7 +375,7 @@ void print_usage(const char* program_name) {
     printf("  -t, --trace-instr                    Trace instructions\n");
     printf("      --no-stdin-uart                  Don't pass stdin to the MCU UART Rx\n");
     printf("      --i3c-port <I3C_PORT>            I3C socket port\n");
-    printf("      --manufacturing-mode             Enable manufacturing mode\n");
+    printf("      --device-security-state <value>     Device lifecycle: 0=Unprovisioned, 1=Manufacturing, 2=Reserved, 3=Production\n");
     printf("      --vendor-pk-hash <VENDOR_PK_HASH>\n");
     printf("                                       Vendor public key hash\n");
     printf("      --owner-pk-hash <OWNER_PK_HASH> Owner public key hash\n");
@@ -531,7 +531,7 @@ int main(int argc, char *argv[]) {
         .i3c_port = 0,
         .trace_instr = 0,
         .stdin_uart = 1,  // Default to true
-        .manufacturing_mode = 0,
+        .device_security_state = 3, // Default to Production lifecycle
         .capture_uart_output = 1,  // Default to capturing UART output
         .vendor_pk_hash = NULL,
         .owner_pk_hash = NULL,
@@ -591,7 +591,7 @@ int main(int argc, char *argv[]) {
         {"caliptra-firmware", required_argument, 0, 130},
         {"soc-manifest", required_argument, 0, 131},
         {"i3c-port", required_argument, 0, 132},
-        {"manufacturing-mode", no_argument, 0, 133},
+        {"device-security-state", required_argument, 0, 133},
         {"vendor-pk-hash", required_argument, 0, 134},
         {"owner-pk-hash", required_argument, 0, 135},
         {"streaming-boot", required_argument, 0, 136},
@@ -666,8 +666,8 @@ int main(int argc, char *argv[]) {
             case 132: // --i3c-port
                 config.i3c_port = atoi(optarg);
                 break;
-            case 133: // --manufacturing-mode
-                config.manufacturing_mode = 1;
+            case 133: // --device-security-state
+                config.device_security_state = parse_hex_or_decimal(optarg);
                 break;
             case 134: // --vendor-pk-hash
                 config.vendor_pk_hash = optarg;

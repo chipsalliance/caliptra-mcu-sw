@@ -17,6 +17,7 @@ use crate::doe_mbox_fsm;
 use crate::elf;
 use crate::tests;
 use crate::tests::spdm_responder_validator::SpdmTestType;
+use caliptra_api_types::DeviceLifecycle;
 use caliptra_emu_bus::{Bus, Clock, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
@@ -131,9 +132,9 @@ pub struct EmulatorArgs {
     #[arg(long)]
     pub i3c_port: Option<u16>,
 
-    /// This is only needed if the IDevID CSR needed to be generated in the Caliptra Core.
-    #[arg(long)]
-    pub manufacturing_mode: bool,
+    /// Device lifecycle value (0=Unprovisioned, 1=Manufacturing, 2=Reserved, 3=Production).
+    #[arg(long, value_parser = maybe_hex::<u32>, default_value_t = DeviceLifecycle::Production as u32)]
+    pub device_security_state: u32,
 
     #[arg(long)]
     pub vendor_pk_hash: Option<String>,
@@ -310,13 +311,29 @@ impl Emulator {
             exit(-1);
         }
 
-        let device_lifecycle: Option<String> = if cli.manufacturing_mode {
-            Some("manufacturing".into())
-        } else {
-            Some("production".into())
+        let device_lifecycle = DeviceLifecycle::try_from(cli.device_security_state).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "Invalid device lifecycle {} (expected 0=Unprovisioned, 1=Manufacturing, 2=Reserved, 3=Production)",
+                    cli.device_security_state
+                ),
+            )
+        })?;
+
+        let device_lifecycle_str: Option<String> = match device_lifecycle {
+            DeviceLifecycle::Manufacturing => Some("manufacturing".into()),
+            DeviceLifecycle::Production => Some("production".into()),
+            DeviceLifecycle::Unprovisioned => Some("unprovisioned".into()),
+            DeviceLifecycle::Reserved2 => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Reserved device lifecycle value (2) is not supported by the emulator",
+                ))
+            }
         };
 
-        let req_idevid_csr: Option<bool> = if cli.manufacturing_mode {
+        let req_idevid_csr: Option<bool> = if device_lifecycle == DeviceLifecycle::Manufacturing {
             Some(true)
         } else {
             None
@@ -326,7 +343,7 @@ impl Emulator {
 
         let (mut caliptra_cpu, soc_to_caliptra, ext_mci) = start_caliptra(&StartCaliptraArgs {
             rom: BytesOrPath::Path(cli.caliptra_rom),
-            device_lifecycle,
+            device_lifecycle: device_lifecycle_str,
             req_idevid_csr,
             use_mcu_recovery_interface,
         })
@@ -810,7 +827,10 @@ impl Emulator {
             .periph
             .set_dma_rom_sram(dma_rom_sram.clone());
 
-        let cpu_args = DEFAULT_CPU_ARGS;
+        let mut cpu_args = DEFAULT_CPU_ARGS;
+        // Ensure CPU reset vector tracks the configured ROM base so resets return to ROM entry
+        cpu_args.org.reset_vector = mcu_root_bus_offsets.rom_offset;
+        cpu_args.org.rom = mcu_root_bus_offsets.rom_offset;
 
         let mut cpu = Cpu::new(auto_root_bus, clock.clone(), pic.clone(), cpu_args);
         cpu.write_pc(mcu_root_bus_offsets.rom_offset);

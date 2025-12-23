@@ -183,7 +183,7 @@ jobs:
         run: |
           git submodule update --init --recursive
           sh_script/pre-build.sh
-          cargo build
+          cargo build --no-default-features --features="spdm-ring,hashed-transcript-data,async-executor,chunk-cap"
           cp -r test_key target/debug/
           ls -l target/debug/test_key/ecp384/
 

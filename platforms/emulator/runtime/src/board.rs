@@ -7,6 +7,7 @@ use arrayvec::ArrayVec;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use capsules_runtime::doe::driver::DoeDriver;
+use capsules_runtime::flash_partition::FlashPartition;
 use capsules_runtime::mctp::base_protocol::MessageType;
 use capsules_runtime::mcu_mbox::McuMboxDriver;
 use core::ptr::{addr_of, addr_of_mut};
@@ -27,9 +28,14 @@ use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
 use mcu_components::mctp_mux_component_static;
 use mcu_components::{
-    doe_component_static, mailbox_component_static, mbox_sram_component_static,
-    mctp_driver_component_static, mcu_mbox_component_static,
+    doe_component_static, flash_partition_component_static, instantiate_flash_partitions,
+    mailbox_component_static, mbox_sram_component_static, mctp_driver_component_static,
+    mcu_mbox_component_static,
 };
+use mcu_config_emulator::flash::{
+    IMAGE_A_PARTITION, IMAGE_B_PARTITION, PARTITION_TABLE, STAGING_PARTITION,
+};
+use mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
@@ -39,9 +45,6 @@ use registers_generated::mci;
 use romtime::CaliptraSoC;
 use romtime::StaticRef;
 use rv32i::csr;
-
-use crate::instantiate_flash_partitions;
-use mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
 
 // These symbols are defined in the linker script.
 extern "C" {
@@ -136,7 +139,7 @@ struct VeeR {
         'static,
         EmulatedDoeTransport<'static, InternalTimers<'static>>,
     >,
-    flash_partitions: [Option<&'static capsules_emulator::flash_partition::FlashPartition<'static>>;
+    flash_partitions: [Option<&'static FlashPartition<'static>>;
         mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT],
     mailbox: &'static capsules_runtime::mailbox::Mailbox<
         'static,
@@ -469,14 +472,16 @@ pub unsafe fn main() {
     ));
     mailbox.alarm.set_alarm_client(mailbox);
 
+    let mci_regs =
+        unsafe { romtime::StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
     let emulator_peripherals =
-        static_init!(EmulatorPeripherals, EmulatorPeripherals::new(mux_alarm),);
+        static_init!(EmulatorPeripherals, EmulatorPeripherals::new(mux_alarm));
     emulator_peripherals.init();
     EMULATOR_PERIPHERALS = Some(emulator_peripherals);
 
     let peripherals = static_init!(
         VeeRDefaultPeripherals,
-        VeeRDefaultPeripherals::new(emulator_peripherals, mux_alarm, &MCU_MEMORY_MAP)
+        VeeRDefaultPeripherals::new(emulator_peripherals, mux_alarm, &MCU_MEMORY_MAP, mci_regs)
     );
 
     let mci = mcu_components::mci::MciComponent::new(
@@ -597,38 +602,39 @@ pub unsafe fn main() {
     let mux_primary_flash =
         components::flash::FlashMuxComponent::new(&emulator_peripherals.primary_flash_ctrl)
             .finalize(components::flash_mux_component_static!(
-                flash_driver::flash_ctrl::EmulatedFlashCtrl
+                flash_ctrl_emulator::EmulatedFlashCtrl
             ));
 
-    let mut flash_partitions: [Option<
-        &'static capsules_emulator::flash_partition::FlashPartition<'static>,
-    >; mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT] =
+    let mut flash_partitions: [Option<&'static FlashPartition<'static>>;
+        mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT] =
         [None; mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT];
 
     instantiate_flash_partitions!(
         flash_partition_list_primary,
         flash_partitions,
         board_kernel,
-        mux_primary_flash
+        mux_primary_flash,
+        flash_ctrl_emulator::EmulatedFlashCtrl
     );
 
     // Create a mux for the recovery flash controller
     let mux_secondary_flash =
         components::flash::FlashMuxComponent::new(&emulator_peripherals.secondary_flash_ctrl)
             .finalize(components::flash_mux_component_static!(
-                flash_driver::flash_ctrl::EmulatedFlashCtrl
+                flash_ctrl_emulator::EmulatedFlashCtrl
             ));
 
     instantiate_flash_partitions!(
         flash_partition_list_secondary,
         flash_partitions,
         board_kernel,
-        mux_secondary_flash
+        mux_secondary_flash,
+        flash_ctrl_emulator::EmulatedFlashCtrl
     );
 
     // Create flash user for logging capsule that is connected to the primary flash
     let logging_fl_user = components::flash::FlashUserComponent::new(mux_primary_flash).finalize(
-        components::flash_user_component_static!(flash_driver::flash_ctrl::EmulatedFlashCtrl),
+        components::flash_user_component_static!(flash_ctrl_emulator::EmulatedFlashCtrl),
     );
 
     // Logging capsule
@@ -640,7 +646,7 @@ pub unsafe fn main() {
         true,
     )
     .finalize(crate::logging_flash_component_static!(
-        virtual_flash::FlashUser<'static, flash_driver::flash_ctrl::EmulatedFlashCtrl>,
+        virtual_flash::FlashUser<'static, flash_ctrl_emulator::EmulatedFlashCtrl>,
         capsules_emulator::logging::driver::BUF_LEN
     ));
 
@@ -735,16 +741,7 @@ pub unsafe fn main() {
         debug!("{:?}", err);
     });
 
-    #[cfg(any(
-        feature = "test-flash-ctrl-read-write-page",
-        feature = "test-flash-ctrl-erase-page",
-        feature = "test-flash-storage-read-write",
-        feature = "test-flash-storage-erase",
-        feature = "test-log-flash-linear",
-        feature = "test-log-flash-circular",
-        feature = "test-mcu-mbox",
-        feature = "test-mcu-mbox-soc-requester-loopback",
-    ))]
+    // Used by flash driver integration tests.
     {
         PLATFORM = Some(veer);
         MAIN_CAP = Some(&create_capability!(capabilities::MainLoopCapability));

@@ -231,8 +231,8 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             let hostname = run_command_with_output(target_host, "hostname")?;
 
             // skip this step for CI images. Kernel modules are already installed.
-            let caliptra_fpga = hostname.trim_end() != "caliptra-fpga";
-            if caliptra_fpga {
+            let caliptra_fpga = hostname.trim_end() == "caliptra-fpga";
+            if !caliptra_fpga {
                 fpga_install_kernel_modules(target_host)?;
             }
 
@@ -338,6 +338,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
             caliptra_test_roms: vec![],
             test_runtimes: vec![],
             test_soc_manifests: vec![],
+            test_pldm_fw_pkgs: vec![],
         }
     };
     let otp_memory = if otp_file.is_some() && otp_file.unwrap().exists() {

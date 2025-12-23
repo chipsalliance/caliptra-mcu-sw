@@ -24,10 +24,16 @@ use std::path::PathBuf;
 use std::process::Command;
 
 const DEFAULT_PLATFORM: &str = "emulator";
-const DEFAULT_RUNTIME_NAME: &str = "runtime.bin";
 const INTERRUPT_TABLE_SIZE: usize = 128;
-// amount to reserve for data RAM at the end of RAM
-const DATA_RAM_SIZE: usize = 152 * 1024;
+
+// Returns the amount to reserve for data RAM at the end of RAM, platform-specific.
+pub(crate) fn data_ram_size(platform: &str) -> Result<usize> {
+    match platform {
+        "emulator" => Ok(152 * 1024),
+        "fpga" => Ok(160 * 1024),
+        _ => bail!("Unknown platform: {}", platform),
+    }
+}
 
 fn get_apps_memory_offset(elf_file: PathBuf) -> Result<usize> {
     let elf_bytes = std::fs::read(&elf_file)?;
@@ -59,7 +65,7 @@ pub(crate) fn bit_flags(platform: &str) -> &str {
 ///
 /// Returns the kernel size and the apps memory offset.
 #[allow(clippy::too_many_arguments)]
-pub fn runtime_build_no_apps_uncached(
+pub fn runtime_build_no_apps(
     kernel_size: usize,
     apps_offset: usize,
     apps_size: usize,
@@ -83,16 +89,17 @@ pub fn runtime_build_no_apps_uncached(
     let dccm_offset = dccm_offset.unwrap_or(memory_map.dccm_offset) as usize;
     let dccm_size = dccm_size.unwrap_or(memory_map.dccm_size) as usize;
 
+    let data_ram_size = data_ram_size(platform)?;
     let (ram_start, ram_size) = if use_dccm_for_stack {
         let ram_size = dccm_size - INTERRUPT_TABLE_SIZE;
         assert!(
-            DATA_RAM_SIZE <= ram_size,
+            data_ram_size <= ram_size,
             "DCCM size is not large enough for data RAM"
         );
         (dccm_offset, ram_size)
     } else {
         let ram_start =
-            memory_map.sram_offset as usize + memory_map.sram_size as usize - DATA_RAM_SIZE;
+            memory_map.sram_offset as usize + memory_map.sram_size as usize - data_ram_size;
         assert!(
             ram_start >= apps_offset + apps_size,
             "RAM must be after apps ram_start {:x} apps_offset {:x} apps_size {:x}",
@@ -100,7 +107,7 @@ pub fn runtime_build_no_apps_uncached(
             apps_offset,
             apps_size
         );
-        (ram_start, DATA_RAM_SIZE)
+        (ram_start, data_ram_size)
     };
     let mcu_image_header_size = mcu_image_header.map_or(0, |h| h.len());
 
@@ -234,55 +241,33 @@ pub fn runtime_build_no_apps_uncached(
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct CachedValues {
+struct PlatformDefaults {
     kernel_size: usize,
     apps_offset: usize,
     apps_size: usize,
 }
 
-impl Default for CachedValues {
-    fn default() -> Self {
-        CachedValues {
-            kernel_size: 140 * 1024,
-            apps_offset: (mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset + 140 * 1024)
-                as usize,
+impl PlatformDefaults {
+    fn new(platform: &str) -> Self {
+        let kernel_size: usize = 140 * 1024;
+        let apps_offset = kernel_size
+            + match platform {
+                "fpga" => mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset,
+                _ => mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset,
+            } as usize;
+
+        Self {
+            kernel_size,
+            apps_offset,
             apps_size: 80 * 1024,
         }
     }
 }
 
-fn read_cached_values(platform: &str) -> CachedValues {
-    let cache_file = target_dir().join(format!("cached-values-{}.json", platform));
-    if let Ok(data) = std::fs::read_to_string(&cache_file) {
-        if let Ok(values) = serde_json::from_str::<CachedValues>(&data) {
-            return values;
-        }
-    }
-    CachedValues::default()
-}
-
-fn write_cached_values(platform: &str, values: &CachedValues) {
-    let cache_file = target_dir().join(format!("cached-values-{}.json", platform));
-    match serde_json::to_string(values) {
-        Ok(data) => {
-            if let Err(err) = std::fs::write(cache_file, data) {
-                println!(
-                    "Error writing cached values for platform {}; igoring: {}",
-                    platform, err
-                );
-            }
-        }
-        Err(err) => println!(
-            "Failed to write cached values for platform {}; ignoring: {}",
-            platform, err
-        ),
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
-pub fn runtime_build_with_apps_cached(
+pub fn runtime_build_with_apps(
     features: &[&str],
-    output_name: Option<&str>,
+    output_name: Option<String>,
     example_app: bool,
     platform: Option<&str>,
     memory_map: Option<&McuMemoryMap>,
@@ -294,14 +279,14 @@ pub fn runtime_build_with_apps_cached(
 ) -> Result<String> {
     let memory_map = memory_map.unwrap_or(&mcu_config_emulator::EMULATOR_MEMORY_MAP);
     let mut app_offset = memory_map.sram_offset as usize;
-    let output_name = output_name.unwrap_or(DEFAULT_RUNTIME_NAME);
-    let runtime_bin = target_binary(output_name);
-
     let platform = platform.unwrap_or(DEFAULT_PLATFORM);
-    let mut cached_values = read_cached_values(platform);
+    let platform_defaults = PlatformDefaults::new(platform);
+    let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform));
+    let runtime_bin = target_binary(&output_name);
+
     println!(
-        "Read cached values for platform {}: {:?}",
-        platform, cached_values
+        "Using defaults for platform {}: {:?}",
+        platform, platform_defaults
     );
 
     let log_flash_config = if platform == "emulator" {
@@ -311,12 +296,12 @@ pub fn runtime_build_with_apps_cached(
     };
 
     // build once to get the size of the runtime binary without apps
-    let (kernel_size, apps_memory_offset) = match runtime_build_no_apps_uncached(
-        cached_values.kernel_size,
-        cached_values.apps_offset,
-        cached_values.apps_size,
+    let (kernel_size, apps_memory_offset) = runtime_build_no_apps(
+        platform_defaults.kernel_size,
+        platform_defaults.apps_offset,
+        platform_defaults.apps_size,
         features,
-        output_name,
+        &output_name,
         platform,
         memory_map,
         use_dccm_for_stack,
@@ -324,32 +309,7 @@ pub fn runtime_build_with_apps_cached(
         dccm_size,
         log_flash_config,
         mcu_image_header,
-    ) {
-        Ok((kernel_size, apps_memory_offset)) => (kernel_size, apps_memory_offset),
-        Err(_) => {
-            // if it fails, bust the cache and rebuild with default values
-            cached_values = CachedValues::default();
-            println!(
-        "Build failed with cached values; busting the cache and using defaults for platform {}: {:?}",
-        platform, cached_values
-        );
-
-            runtime_build_no_apps_uncached(
-                cached_values.kernel_size,
-                cached_values.apps_offset,
-                cached_values.apps_size,
-                features,
-                output_name,
-                platform,
-                memory_map,
-                use_dccm_for_stack,
-                dccm_offset,
-                dccm_size,
-                log_flash_config,
-                mcu_image_header,
-            )?
-        }
-    };
+    )?;
 
     let mcu_header_size = mcu_image_header.map_or(0, |h| h.len());
     let runtime_bin_size = std::fs::metadata(&runtime_bin)?.len() as usize + mcu_header_size;
@@ -371,18 +331,18 @@ pub fn runtime_build_with_apps_cached(
     let apps_bin_len = apps_bin.len();
     println!("Apps built: {} bytes", apps_bin_len);
 
-    if kernel_size != cached_values.kernel_size
-        || apps_offset != cached_values.apps_offset
-        || apps_bin_len != cached_values.apps_size
+    if kernel_size != platform_defaults.kernel_size
+        || apps_offset != platform_defaults.apps_offset
+        || apps_bin_len != platform_defaults.apps_size
     {
         println!("Rebuilding kernel with correct offsets and sizes");
         // re-link and place the apps and data RAM after the runtime binary
-        let (kernel_size2, new_apps_memory_offset) = runtime_build_no_apps_uncached(
+        let (kernel_size2, new_apps_memory_offset) = runtime_build_no_apps(
             kernel_size,
             apps_offset,
             apps_bin_len,
             features,
-            output_name,
+            &output_name,
             platform,
             memory_map,
             use_dccm_for_stack,
@@ -402,7 +362,7 @@ pub fn runtime_build_with_apps_cached(
         );
     }
 
-    if apps_offset != cached_values.apps_offset {
+    if apps_offset != platform_defaults.apps_offset {
         println!("Rebuilding apps with correct offsets");
 
         // re-link the applications with the correct data memory offsets
@@ -445,18 +405,6 @@ pub fn runtime_build_with_apps_cached(
     println!("Kernel binary size: {} bytes", kernel_size);
     println!("Total runtime binary: {} bytes", bin.len());
     println!("Runtime binary is available at {:?}", &runtime_bin);
-
-    // update the cache
-    let cached_values = CachedValues {
-        kernel_size,
-        apps_offset,
-        apps_size: apps_bin_len,
-    };
-    println!(
-        "Updating cached values for platform {}: {:?}",
-        platform, cached_values
-    );
-    write_cached_values(platform, &cached_values);
 
     Ok(runtime_bin.to_string_lossy().to_string())
 }

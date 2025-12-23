@@ -3,7 +3,7 @@
 use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
-use crate::error::{CommandError, CommandResult, SpdmError};
+use crate::error::{CommandResult, SpdmError};
 use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
@@ -162,11 +162,7 @@ async fn process_negotiate_algorithms_request<'a>(
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
     // Validate the version
-    let connection_version = ctx.state.connection_info.version_number();
-    match spdm_hdr.version() {
-        Ok(version) if version == connection_version => {}
-        _ => Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?,
-    }
+    let connection_version = ctx.validate_spdm_version(&spdm_hdr, req_payload)?;
 
     let req_start_offset = req_payload.data_offset() - size_of::<SpdmMsgHdr>();
 
@@ -490,9 +486,8 @@ pub(crate) async fn handle_negotiate_algorithms<'a>(
     generate_algorithms_response(ctx, req_payload).await?;
 
     // Set the negotiated asymmetric algorithm in the measurements module
-    let asym_algo = ctx
-        .negotiated_base_asym_algo()
-        .map_err(|_| (false, CommandError::UnsupportedAsymAlgo))?;
+    let asym_algo = ctx.validate_negotiated_base_asym_algo(req_payload)?;
+
     ctx.measurements.set_asym_algo(asym_algo);
 
     // Set the connection state to AlgorithmsNegotiated
