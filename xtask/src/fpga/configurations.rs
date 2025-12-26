@@ -2,7 +2,7 @@
 
 use anyhow::{bail, Context, Result};
 use clap::ValueEnum;
-use mcu_builder::{AllBuildArgs, PROJECT_ROOT};
+use mcu_builder::{AllBuildArgs, ImageCfg, PROJECT_ROOT};
 
 use super::{
     run_command, run_command_with_output,
@@ -171,9 +171,20 @@ impl<'a> ActionHandler<'a> for Subsystem {
     fn build(&self, _: &'a BuildArgs<'a>) -> Result<()> {
         // TODO(clundin): Modify `mcu_builder::all_build` to return the zip instead of writing it?
         // TODO(clundin): Place FPGA xtask artifacts in a specific folder?
+        let mcu_cfgs = Some(vec![ImageCfg {
+            path: "mcu".into(),
+            load_addr: 0x0,
+            staging_addr: 0xB00C0000,
+            image_id: 2,
+            exec_bit: 2,
+            feature: "test-fpga-flash-ctrl".to_string(),
+        }]);
         let args = AllBuildArgs {
             output: Some("all-fw.zip"),
             platform: Some("fpga"),
+            runtime_features: Some("test-mctp-capsule-loopback,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming"),
+            mcu_cfgs: mcu_cfgs,
+            separate_runtimes: true,
             ..Default::default()
         };
         mcu_builder::all_build(args)?;
@@ -202,10 +213,23 @@ impl<'a> ActionHandler<'a> for Subsystem {
     }
 
     fn test(&self, args: &'a TestArgs) -> Result<()> {
-        let default_test_filter =
-            String::from("package(mcu-hw-model) and test(test_mailbox_execute)");
-        let test_filter = args.test_filter.as_ref().unwrap_or(&default_test_filter);
-
+        let default_test_filter_string = String::from(
+            "package(mcu-hw-model) and test(test_mailbox_execute),\
+            package(mcu-hw-model) and test(test_mailbox_execute),\
+            package(tests-integration) and test(test_jtag_taps),\
+            package(tests-integration) and test(test_lc_transitions),\
+            package(tests-integration) and test(test_manuf_debug_unlock),\
+            package(tests-integration) and test(test_prod_debug_unlock),\
+            package(tests-integration) and test(test_uds),\
+            package(tests-integration) and test(test_imaginary_flash_controller),\
+            package(tests-integration) and test(test_fw_update_e2e),\
+            package(tests-integration) and test(test_firmware_update_streaming)",
+        );
+        let test_filter_string = args
+            .test_filter
+            .as_ref()
+            .unwrap_or(&default_test_filter_string);
+        let test_filters: Vec<&str> = test_filter_string.split(',').collect();
         let to = if *args.test_output {
             "--no-capture"
         } else {
@@ -216,7 +240,7 @@ impl<'a> ActionHandler<'a> for Subsystem {
         run_test_suite(
             "caliptra-mcu-sw",
             prelude,
-            test_filter,
+            test_filters,
             to,
             self.target_host.as_deref(),
         )?;
@@ -301,7 +325,11 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
 
     fn test(&self, args: &'a TestArgs) -> Result<()> {
         let default_test_filter = String::from("package(caliptra-drivers)");
-        let test_filter = args.test_filter.as_ref().unwrap_or(&default_test_filter);
+        let test_filters = vec![args
+            .test_filter
+            .as_ref()
+            .unwrap_or(&default_test_filter)
+            .as_str()];
 
         let to = if *args.test_output {
             "--no-capture"
@@ -313,7 +341,7 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         run_test_suite(
             "caliptra-sw",
             prelude,
-            test_filter,
+            test_filters,
             to,
             self.target_host.as_deref(),
         )?;
@@ -396,7 +424,11 @@ impl<'a> ActionHandler<'a> for Core {
 
     fn test(&self, args: &'a TestArgs) -> Result<()> {
         let default_test_filter = String::from("package(caliptra-drivers)");
-        let test_filter = args.test_filter.as_ref().unwrap_or(&default_test_filter);
+        let test_filters = vec![args
+            .test_filter
+            .as_ref()
+            .unwrap_or(&default_test_filter)
+            .as_str()];
 
         let to = if *args.test_output {
             "--no-capture"
@@ -408,7 +440,7 @@ impl<'a> ActionHandler<'a> for Core {
         run_test_suite(
             "caliptra-sw",
             prelude,
-            test_filter,
+            test_filters,
             to,
             self.target_host.as_deref(),
         )?;
