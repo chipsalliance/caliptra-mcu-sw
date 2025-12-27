@@ -208,18 +208,21 @@ pub fn build_base_docker_command() -> Result<Command> {
 pub fn run_test_suite(
     test_dir: &str,
     prelude: &str,
-    test_filter: &str,
+    test_filters: Vec<&str>,
     test_output: &str,
     target_host: Option<&str>,
 ) -> Result<()> {
-    let test_command = format!(
+    let mut test_command = format!(
         "(cd {test_dir} && \
                 sudo {prelude} \
                 cargo-nextest nextest run \
                 --workspace-remap=. --archive-file $HOME/caliptra-test-binaries.tar.zst \
-                {test_output} --no-fail-fast --profile=nightly \
-                -E \"{test_filter}\")"
+                {test_output} --no-fail-fast --profile=nightly "
     );
+    for filter in test_filters {
+        test_command += format!("-E \"{filter}\" ").as_str();
+    }
+    test_command += ")";
     // Run test suite.
     // Ignore error so we still copy the logs.
     let _ = run_command(target_host, test_command.as_str());
