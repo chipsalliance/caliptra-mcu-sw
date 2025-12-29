@@ -44,49 +44,49 @@ flowchart LR
 
 ## Network Recovery Boot Flow
 
-The following diagram illustrates the high-level flow of the network recovery boot process from initialization to image availability:
+The following diagram illustrates the high-level flow using the `BootSourceProvider` interface, showing how `initialize()` drives DHCP and TOC fetch:
 
 ```mermaid
 sequenceDiagram
     participant CRIF as Caliptra Recovery I/F
     participant MCU as MCU ROM
-    participant NET as Network ROM
+    participant NET as Network ROM (BootSourceProvider)
     participant IMG as Image Server
 
-    MCU->>NET: Initiate network boot
+    MCU->>NET: initialize()
     NET->>IMG: DHCP Discovery
     IMG-->>NET: DHCP Offer
     NET->>IMG: TFTP GET config (TOC)
     IMG-->>NET: TOC
-    NET-->>MCU: Network boot available
+    NET-->>MCU: BootSourceStatus { ready=true, config_available=true }
 ```
 
 ### Image Transfer Sequence
 
-Once the network boot is available, the MCU ROM performs image transfers for each firmware component:
+Once the boot source is initialized, the MCU ROM uses the `BootSourceProvider` methods to fetch each firmware component:
 
 ```mermaid
 sequenceDiagram
     participant CRIF as Caliptra Recovery I/F
     participant MCU as MCU ROM
-    participant NET as Network ROM
+    participant NET as Network ROM (BootSourceProvider)
     participant IMG as Image Server
 
     loop For each image id (0,1,2)
         MCU->>CRIF: Poll recovery readiness
         CRIF-->>MCU: Awaiting recovery image id
 
-        MCU->>NET: Request image info (id)
-        NET-->>MCU: Image info (size, metadata)
+        MCU->>NET: get_image_info(id)
+        NET-->>MCU: ImageInfo { size, checksum, version }
 
         MCU->>CRIF: Set image size (INDIRECT_FIFO_CTRL.write)
 
-        MCU->>NET: Request image download (id)
+        MCU->>NET: download_image(id)
         NET->>IMG: TFTP GET mapped filename
 
         loop Image transfer by chunk
             IMG-->>NET: Image chunk
-            NET-->>MCU: Forward image chunk
+            NET-->>MCU: Forward image chunk (ImageStream::read_chunk)
             MCU->>CRIF: Write chunk
             MCU-->>NET: Chunk ACK
         end
