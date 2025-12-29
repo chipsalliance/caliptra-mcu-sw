@@ -20,7 +20,7 @@ The network boot coprocessor acts as an intermediary between remote image server
 - Secure image retrieval
 - Resilient fallback path
 
-### Potential Solution
+### Final Solution
 - Use a **dedicated co-processor** with a lightweight network stack
 - Automatically configure networking via **DHCP**
 - Securely download **Caliptra early firmware images** into the Caliptra subsystem
@@ -308,6 +308,23 @@ The boot source provider supports a minimal set of protocols optimized for the C
   - Small code footprint (~5-10KB implementation)
   - Standard protocol for network boot scenarios
 - **Implementation**: Client-side TFTP for firmware image download
+
+### IPv4 and IPv6 Support
+- **Dual-Stack**: Support both IPv4 and IPv6 throughout discovery and transfer
+- **UDPv4/UDPv6**: TFTP runs over UDP; ensure lwIP `IPv6` and `UDP` are enabled
+- **DHCPv4/DHCPv6**: Acquire network configuration via DHCP for both families
+- **Address Selection**: Prefer IPv6 when available; fall back to IPv4
+- **TOC URLs**: TOC entries may reference IPv4 or IPv6 hosts; support `tftp://[IPv6]` URLs
+
+### DHCP Options for TFTP
+- **DHCPv4 (RFC 2132)**
+    - Option 66: TFTP server name (hostname or IP address)
+    - Option 67: Bootfile name (path to TOC or image)
+    - Optional: Option 43 (Vendor-Specific) for custom parameters
+- **DHCPv6 (RFC 5970)**
+    - Option 59: Bootfile URL (e.g., `tftp://server/path/to/toc.json`)
+    - Option 60: Bootfile Parameters (optional, for additional metadata)
+    - Note: DHCPv6 does not define a separate TFTP server option; use Bootfile URL
 ## Boot Source Provider Interface Design
 
 The Boot Source Provider Interface defines a generic contract for boot image providers, enabling support for multiple boot sources (network boot coprocessor, flash device, or other custom implementations). The MCU ROM communicates with any boot source through this unified interface.
@@ -515,28 +532,11 @@ The network boot coprocessor downloads a configuration file (TOC) that maps firm
   }
 }
 ```
-
-## Implementation Timeline (lwIP, ~10 weeks)
-
-- **Weeks 1–2: Scope & Interfaces** — Finalize boot-source provider trait + C FFI surface; define lwIP raw API use (UDP, DHCP) and TFTP shim; choose buffer/allocator model; error mapping and protocol alignment.
-- **Weeks 3–4: Build & Platform Bring-up** — Cross-compile lwIP minimal config (UDP-only, DHCP, raw API); build scripts + bindgen; validate lwIP init + DHCP in emulator/target; stub TFTP hooks.
-- **Weeks 5–6: TFTP Client Path** — Implement/adapt minimal TFTP client on lwIP raw API; Rust wrapper for TFTP GET with chunk callbacks; end-to-end path in emu (DHCP → TOC TFTP GET → chunk delivery).
-- **Weeks 7–8: Boot Source Integration** — Implement `BootSourceProvider` (network) with TOC parsing, get_image_info, download_image streaming; wire chunk flow into recovery interface (INDIRECT_FIFO_CTRL writes, ACKs); retries/timeouts and error mapping.
-- **Week 9: Robustness & Footprint** — Trim lwIP config, buffer sizing, watchdog hooks; resume offsets, per-chunk CRC checks; memory audit for ROM limits.
-- **Week 10: Testing & Hardening** — Automated emu tests (DHCP fail, TFTP retry, checksum mismatch, timeout, negative parsing); throughput/latency tuning; finalize docs on FFI boundary, init order, buffers; integrate into ROM build/linker; hardware bring-up checklist.
-
-### Emulation & Image Server Tasks
-- Provide a reproducible Image Server (container) with DHCP + TFTP + TOC hosting; fixtures for FMC/RT, SoC manifest, MCU RT images.
-- Emulator harness to run full flow: boot → DHCP → TOC fetch → per-image TFTP GET → chunk ACKs → finalize.
-- Scenario tests: no-DHCP, DHCP with wrong options, missing TOC, missing image, checksum mismatch, chunk loss/retry, offset resume.
-- Latency/jitter profiles to tune timeouts and chunk sizes; MTU variation.
-- CI hook to spin the image-server container and run regression suites.
-
 ## Network Stack Implementation
 
-For the Network Boot Coprocessor implementation, we need a minimal network stack that supports DHCP and TFTP while meeting the constraints of a ROM environment.
+For the Network Boot Coprocessor implementation, we use **lwIP (Lightweight IP)** with Rust bindings/wrappers to support DHCP and TFTP while meeting ROM environment constraints.
 
-### Option 1: lwIP (Lightweight IP) with Rust Bindings
+### lwIP (Lightweight IP) with Rust Bindings
 
 **Repository**: https://git.savannah.nongnu.org/cgit/lwip.git (upstream C)  
 **Rust Bindings**: https://github.com/embassy-rs/lwip (Embassy lwIP bindings)  
@@ -547,58 +547,25 @@ For the Network Boot Coprocessor implementation, we need a minimal network stack
 - ✅ **Built-in DHCP and TFTP Support**: Native support for required protocols
 - ✅ **Mature and Battle-Tested**: Currently used by u-boot and other embedded systems
 - ✅ **Minimal Configuration**: Can be configured for UDP-only operation
-
-**Disadvantages**:
-- ❌ **C Language Security Risks**: Inherits buffer overflow and memory safety vulnerabilities from C
-- ❌ **FFI Complexity**: Rust-C interop adds complexity and potential for safety violations
+- ✅ **Proven in Production**: Field-tested in hyperscale deployments and firmware boot scenarios
 
 **Required Protocol Support**:
 - ✅ DHCP client
 - ✅ TFTP client
 - ✅ UDP sockets
 
-### Option 2: smoltcp + Custom TFTP
-
-**Core**: https://github.com/smoltcp-rs/smoltcp (0BSD License)  
-**TFTP**: Custom implementation on UDP
-
-**Description**: Pure Rust network stack with custom TFTP implementation for minimal footprint.
-
-**Advantages**:
-- ✅ **Memory Safety**: Pure Rust eliminates entire classes of security vulnerabilities
-- ✅ **ROM Optimized**: Minimal footprint with only required features included
-- ✅ **Modular Design**: Include only DHCP and TFTP to minimize code size
-- ✅ **No FFI Overhead**: Native Rust performance without C interop costs
-- ✅ **Strong Type Safety**: Compile-time prevention of many networking bugs
-- ✅ **Excellent Licensing**: 0BSD license is very permissive
-
-**Disadvantages**:
-- ❌ **Custom TFTP Implementation**: Must implement TFTP protocol from scratch
-- ❌ **Less Battle-Tested**: Newer ecosystem compared to lwIP
-
-**Required Protocol Support**:
-- ✅ UDP sockets (smoltcp)
-- ✅ DHCP client (smoltcp) 
-- ⚠️ TFTP (custom implementation required)
-
-### Recommended Approach
-
-**For Production Caliptra System**: **smoltcp + Custom TFTP**
-
-**Rationale**:
-- **Security First**: Memory safety is critical for Root of Trust systems
-- **ROM Constraints**: Minimal footprint with only DHCP and TFTP support
-- **Simplicity**: Reduced complexity with only essential protocols
-- **Control**: Custom TFTP implementation allows Caliptra-specific optimizations
+### Implementation Strategy with lwIP
 
 **Implementation Strategy**:
-1. **Phase 1**: Implement core UDP networking with smoltcp
+1. **Phase 1**: Cross-compile lwIP with minimal configuration (UDP-only, DHCP, TFTP)
 2. **Phase 2**: Add DHCP client functionality  
-3. **Phase 3**: Implement lightweight TFTP client for firmware downloads
+3. **Phase 3**: Implement Rust FFI wrappers and integrate with BootSourceProvider trait
 
-**Protocol Implementation Order**:
-1. **UDP Sockets**: Foundation for all network communication
-2. **DHCP Client**: Automatic network configuration
-3. **TFTP Client**: Firmware image download capability
+**Key Considerations**:
+- **ROM Footprint**: Minimal lwIP configuration with only required features (UDP, DHCP, TFTP); no TCP, no unnecessary protocols
+- **FFI Boundary**: Clear Rust wrappers around lwIP C API to provide BootSourceProvider interface; memory safety at boundaries
+- **Buffer Management**: Static buffers for ROM environment; careful pool sizing to meet memory constraints
+- **Error Handling**: Map lwIP/TFTP errors to protocol error codes for consistent interface
+- **Build Integration**: CMake or Make-based lwIP build integrated with Cargo; bindgen for header generation
 
 
