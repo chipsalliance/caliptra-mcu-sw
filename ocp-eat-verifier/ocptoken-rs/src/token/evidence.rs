@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
 
+use crate::error::{OcpEatError, OcpEatResult};
 use coset::{cbor::value::Value, sig_structure_data, CborSerializable, CoseSign1, Header};
+
 use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint},
     nid::Nid,
 };
-
-use crate::error::{OcpEatError, OcpEatResult};
 
 use x509_parser::prelude::*;
 
@@ -104,7 +104,7 @@ impl Evidence {
 use std::fs::File;
 use std::io::Write;
 
-fn debug_dump_cbor(slice: &[u8]) {
+pub fn debug_dump_cbor(slice: &[u8]) {
     match Value::from_slice(slice) {
         Ok(v) => {
             println!("Top-level CBOR value: {:?}", v);
