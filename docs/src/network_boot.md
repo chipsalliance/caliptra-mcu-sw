@@ -110,6 +110,187 @@ The network boot system uses a simple messaging protocol between the MCU ROM and
 ## Protocol Support
 
 The network boot coprocessor supports a minimal set of protocols optimized for the Caliptra ROM environment:
+## Messaging Protocol
+
+The boot source provider communication uses a simple request-response messaging protocol. The following section defines the message types, packet formats, and field definitions.
+
+### Message Types and Packet Formats
+
+#### 1. Network Boot Discovery Request
+Initiates the boot source discovery process.
+
+**Request Packet:**
+```
+Offset  Size  Field              Description
+------  ----  -----              -----------
+0       1     Message Type       0x01 - Network Boot Discovery
+1       3     Reserved           Must be 0
+4       4     Protocol Version   Version of the messaging protocol
+8       N     Source Specific    Source-specific initialization parameters
+```
+
+**Response Packet:**
+```
+Offset  Size  Field              Description
+------  ----  -----              -----------
+0       1     Message Type       0x81 - Discovery Response
+1       1     Status             0x00=Success, non-zero=Error
+2       2     Reserved           Must be 0
+4       4     Available Images   Bitmask of available firmware images
+8       4     Config Version     Version of the configuration/TOC
+12      4     Reserved           For future use
+16      N     Source Specific    Source-specific response data
+```
+
+#### 2. Image Info Request
+Queries metadata about a specific firmware image.
+
+**Request Packet:**
+```
+Offset  Size  Field              Description
+------  ----  -----              -----------
+0       1     Message Type       0x02 - Image Info Request
+1       1     Firmware ID        0=CaliptraFmcRt, 1=SocManifest, 2=McuRt
+2       2     Reserved           Must be 0
+4       4     Request Flags      Bit 0: Request checksum
+8       4     Reserved           For future use
+```
+
+**Response Packet:**
+```
+Offset  Size  Field              Description
+------  ----  -----              -----------
+0       1     Message Type       0x82 - Image Info Response
+1       1     Status             0x00=Success, non-zero=Error
+2       2     Reserved           Must be 0
+4       4     Image Size         Total size in bytes
+8       4     Checksum Type      0=None, 1=SHA256, 2=Other
+12      32    Checksum           Checksum/hash of the image
+44      4     Version            Image version number
+48      4     Flags              Bit 0: Compressed, Bit 1: Signed, etc.
+52      4     Reserved           For future use
+56      8     Metadata           Flexible metadata field for extensions
+```
+
+#### 3. Image Download Request
+Initiates download of a firmware image.
+
+**Request Packet:**
+```
+Offset  Size  Field              Description
+------  ----  -----              -----------
+0       1     Message Type       0x03 - Image Download Request
+1       1     Firmware ID        0=CaliptraFmcRt, 1=SocManifest, 2=McuRt
+2       2     Reserved           Must be 0
+4       4     Offset             Starting byte offset (for resumable transfers)
+8       4     Max Chunk Size     Maximum chunk size in bytes (0=default)
+12      4     Flags              Bit 0: Verify checksum, Bit 1: Compression
+16      4     Timeout            Transfer timeout in milliseconds
+```
+
+**Response Packet (per chunk):**
+```
+Offset  Size  Field              Description
+------  ----  -----              -----------
+0       1     Message Type       0x83 - Image Chunk
+1       1     Status             0x00=Success, non-zero=Error
+2       2     Sequence Number    For ordered delivery
+4       4     Offset             Current byte offset in image
+8       4     Chunk Size         Size of data in this chunk
+12      4     Total Size         Total image size (0 if unknown)
+16      4     Checksum           CRC32 of this chunk (optional)
+20      N     Image Data         Chunk payload (size = Chunk Size field)
+```
+
+#### 4. Chunk Acknowledgment
+Acknowledges receipt of an image chunk and provides flow control.
+
+**Request Packet:**
+```
+Offset  Size  Field              Description
+------  ----  -----              -----------
+0       1     Message Type       0x04 - Chunk ACK
+1       1     Firmware ID        Firmware being transferred
+2       2     Reserved           Must be 0
+4       4     Offset             Byte offset of last received chunk
+8       4     Flags              Bit 0: Ready for next, Bit 1: Error detected
+12      4     Reserved           For future use
+```
+
+**Response Packet:**
+```
+Offset  Size  Field              Description
+------  ----  -----              -----------
+0       1     Message Type       0x84 - ACK Response
+1       1     Status             0x00=Continue, 0x01=End of transfer, non-zero=Error
+2       2     Reserved           Must be 0
+4       4     Next Offset        Offset for next chunk (can resume)
+8       4     Reserved           For future use
+```
+
+#### 5. Boot Complete / Recovery Status
+Notifies the boot source of recovery completion or error.
+
+**Request Packet:**
+```
+Offset  Size  Field              Description
+------  ----  -----              -----------
+0       1     Message Type       0x05 - Recovery Complete
+1       1     Status             0x00=Success, non-zero=Error
+2       2     Error Code         Specific error code if Status != 0
+4       4     Images Processed   Bitmask of successfully received images
+8       4     Validation Result  0=Valid, non-zero=Invalid
+12      4     Reserved           For future use
+```
+
+**Response Packet:**
+```
+Offset  Size  Field              Description
+------  ----  -----              -----------
+0       1     Message Type       0x85 - Recovery ACK
+1       1     Status             0x00=Acknowledged, non-zero=Error
+2       2     Reserved           Must be 0
+4       4     Cleanup Flags      Bit 0: Clear TOC, Bit 1: Reset connection
+8       4     Reserved           For future use
+```
+
+### Message Summary Table
+
+| Message Type | Code | Direction | Purpose |
+|-------|------|-----------|---------|
+| Network Boot Discovery Request | 0x01 | MCU → Source | Initiate boot source discovery |
+| Network Boot Discovery Response | 0x81 | Source → MCU | Confirm discovery and image availability |
+| Image Info Request | 0x02 | MCU → Source | Query image metadata |
+| Image Info Response | 0x82 | Source → MCU | Return image metadata and checksums |
+| Image Download Request | 0x03 | MCU → Source | Start image transfer |
+| Image Chunk | 0x83 | Source → MCU | Send image data chunk |
+| Chunk ACK | 0x04 | MCU → Source | Acknowledge chunk and flow control |
+| Chunk ACK Response | 0x84 | Source → MCU | Ready for next chunk or end transfer |
+| Recovery Complete | 0x05 | MCU → Source | Notify recovery completion/error |
+| Recovery ACK | 0x85 | Source → MCU | Final acknowledgment |
+
+### Error Codes
+
+```
+Error Code  Description
+----------  -----------
+0x00        Success / No Error
+0x01        Invalid Message Type
+0x02        Invalid Firmware ID
+0x03        Image Not Found / Not Available
+0x04        Checksum Mismatch
+0x05        Transfer Timeout
+0x06        Source Not Ready
+0x07        Invalid Parameters
+0x08        Corrupted Data
+0x09        Insufficient Space
+0x0A        Checksum Verification Failed
+0xFF        Unknown / Unspecified Error
+```
+
+## Protocol Support
+
+The boot source provider supports a minimal set of protocols optimized for the Caliptra ROM environment:
 
 ### DHCP (Dynamic Host Configuration Protocol)
 - **Purpose**: Automatic network configuration
@@ -334,6 +515,22 @@ The network boot coprocessor downloads a configuration file (TOC) that maps firm
   }
 }
 ```
+
+## Implementation Timeline (lwIP, ~10 weeks)
+
+- **Weeks 1–2: Scope & Interfaces** — Finalize boot-source provider trait + C FFI surface; define lwIP raw API use (UDP, DHCP) and TFTP shim; choose buffer/allocator model; error mapping and protocol alignment.
+- **Weeks 3–4: Build & Platform Bring-up** — Cross-compile lwIP minimal config (UDP-only, DHCP, raw API); build scripts + bindgen; validate lwIP init + DHCP in emulator/target; stub TFTP hooks.
+- **Weeks 5–6: TFTP Client Path** — Implement/adapt minimal TFTP client on lwIP raw API; Rust wrapper for TFTP GET with chunk callbacks; end-to-end path in emu (DHCP → TOC TFTP GET → chunk delivery).
+- **Weeks 7–8: Boot Source Integration** — Implement `BootSourceProvider` (network) with TOC parsing, get_image_info, download_image streaming; wire chunk flow into recovery interface (INDIRECT_FIFO_CTRL writes, ACKs); retries/timeouts and error mapping.
+- **Week 9: Robustness & Footprint** — Trim lwIP config, buffer sizing, watchdog hooks; resume offsets, per-chunk CRC checks; memory audit for ROM limits.
+- **Week 10: Testing & Hardening** — Automated emu tests (DHCP fail, TFTP retry, checksum mismatch, timeout, negative parsing); throughput/latency tuning; finalize docs on FFI boundary, init order, buffers; integrate into ROM build/linker; hardware bring-up checklist.
+
+### Emulation & Image Server Tasks
+- Provide a reproducible Image Server (container) with DHCP + TFTP + TOC hosting; fixtures for FMC/RT, SoC manifest, MCU RT images.
+- Emulator harness to run full flow: boot → DHCP → TOC fetch → per-image TFTP GET → chunk ACKs → finalize.
+- Scenario tests: no-DHCP, DHCP with wrong options, missing TOC, missing image, checksum mismatch, chunk loss/retry, offset resume.
+- Latency/jitter profiles to tune timeouts and chunk sizes; MTU variation.
+- CI hook to spin the image-server container and run regression suites.
 
 ## Network Stack Implementation
 
