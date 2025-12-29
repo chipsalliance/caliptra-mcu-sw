@@ -127,46 +127,50 @@ The network boot coprocessor supports a minimal set of protocols optimized for t
   - Small code footprint (~5-10KB implementation)
   - Standard protocol for network boot scenarios
 - **Implementation**: Client-side TFTP for firmware image download
-## Network Boot Coprocessor Interface Design
+## Boot Source Provider Interface Design
 
-The Network Boot Coprocessor provides a simple interface for the Caliptra SS to request firmware images over the network.
+The Boot Source Provider Interface defines a generic contract for boot image providers, enabling support for multiple boot sources (network boot coprocessor, flash device, or other custom implementations). The MCU ROM communicates with any boot source through this unified interface.
 
-### Core Functions
+### Core Operations
 
-The Network Boot Coprocessor implements the following core functions:
+Boot source providers implement the following core operations:
 
-#### Network Discovery
-- **DHCP Configuration**: Automatically configure network interface using DHCP
-- **Server Discovery**: Identify TFTP server for firmware image downloads
-- **Configuration Download**: Download firmware ID to filename mapping configuration
-- **Mapping Storage**: Store firmware ID mappings for subsequent image requests
+#### Initialization
+- **Source Initialization**: Initialize the boot source and make it ready for image requests
+- **Status Discovery**: Determine availability and readiness of the boot source
+- **Configuration Discovery**: Discover firmware image metadata and availability
 
-#### Image Transfer
-- **Firmware ID Resolution**: Map firmware IDs to actual filenames using stored configuration
-- **TFTP Download**: Download firmware images from TFTP server using resolved filenames
-- **Data Streaming**: Stream image data directly to Caliptra SS
+#### Image Provisioning
+- **Image Metadata Query**: Query information about available firmware images (size, checksums, etc.)
+- **Image Download**: Download firmware images by firmware ID
+- **Data Streaming**: Stream image data to the MCU ROM for direct transfer to Caliptra SS
 
 #### Supported Firmware IDs
 - **ID 0**: Caliptra FMC+RT image
 - **ID 1**: SoC Manifest
 - **ID 2**: MCU RT image
 
-### Network Boot Coprocessor Interface
+### Boot Source Provider Interface
 
 ```rust
-/// Network Boot Coprocessor interface for Caliptra SS
-pub trait NetworkBootCoprocessor {
+/// Generic boot source provider interface for the MCU ROM
+/// This interface abstracts different boot sources (network, flash, etc.)
+pub trait BootSourceProvider {
     type Error;
     
-    /// Start network boot discovery process
-    /// This will perform DHCP, discover TFTP server, and download configuration
-    fn start_network_boot_discovery(&mut self) -> Result<NetworkBootStatus, Self::Error>;
+    /// Initialize the boot source
+    /// This performs source-specific initialization (e.g., DHCP for network, etc.)
+    fn initialize(&mut self) -> Result<BootSourceStatus, Self::Error>;
+    
+    /// Get information about a firmware image
+    fn get_image_info(&self, firmware_id: FirmwareId) -> Result<ImageInfo, Self::Error>;
     
     /// Download firmware image by ID
+    /// Returns a stream for reading image data in chunks
     fn download_image(&mut self, firmware_id: FirmwareId) -> Result<ImageStream, Self::Error>;
     
-    /// Get network status and configuration
-    fn get_network_status(&self) -> Result<NetworkStatus, Self::Error>;
+    /// Get boot source status and capabilities
+    fn get_boot_source_status(&self) -> Result<BootSourceStatus, Self::Error>;
 }
 
 /// Firmware ID enumeration
@@ -180,38 +184,22 @@ pub enum FirmwareId {
     McuRt = 2,
 }
 
-/// Network boot discovery status
+/// Boot source initialization and capability status
 #[derive(Debug)]
-pub struct NetworkBootStatus {
-    pub network_ready: bool,
-    pub tftp_server_discovered: bool,
-    pub config_downloaded: bool,
-    pub firmware_mappings: FirmwareMappings,
+pub struct BootSourceStatus {
+    pub ready: bool,
+    pub initialized: bool,
+    pub config_available: bool,
+    pub available_images: u32,
 }
 
-/// Firmware ID to filename mappings
+/// Metadata for a firmware image
 #[derive(Debug, Clone)]
-pub struct FirmwareMappings {
-    pub caliptra_fmc_rt: String,
-    pub soc_manifest: String,
-    pub mcu_rt: String,
-}
-
-/// Network configuration structure
-#[derive(Debug, Clone)]
-pub struct NetworkConfig {
-    pub ip_address: IpAddr,
-    pub netmask: IpAddr, 
-    pub gateway: Option<IpAddr>,
-    pub tftp_server: IpAddr,
-}
-
-/// Network status information
-#[derive(Debug)]
-pub struct NetworkStatus {
-    pub connected: bool,
-    pub config: Option<NetworkConfig>,
-    pub server_reachable: bool,
+pub struct ImageInfo {
+    pub firmware_id: FirmwareId,
+    pub size: u64,
+    pub checksum: Option<[u8; 32]>,
+    pub version: Option<String>,
 }
 
 /// Streaming interface for image data
@@ -227,42 +215,106 @@ pub trait ImageStream {
 }
 ```
 
+### Implementation Example: Network Boot Coprocessor
+
+For a network boot coprocessor implementation, the boot source provider would:
+
+1. **Initialize**: Perform DHCP discovery, locate TFTP server, download TOC
+2. **Get Image Info**: Query image metadata from downloaded TOC
+3. **Download Image**: Fetch image from TFTP server and stream to MCU ROM
+
+```rust
+/// Network-based boot source provider implementation
+pub struct NetworkBootSource {
+    dhcp_client: DhcpClient,
+    tftp_client: TftpClient,
+    toc: TableOfContents,
+}
+
+impl BootSourceProvider for NetworkBootSource {
+    type Error = NetworkBootError;
+    
+    fn initialize(&mut self) -> Result<BootSourceStatus, Self::Error> {
+        // 1. Perform DHCP discovery
+        self.dhcp_client.discover()?;
+        
+        // 2. Download TOC via TFTP
+        self.toc = self.tftp_client.download_config()?;
+        
+        Ok(BootSourceStatus {
+            ready: true,
+            initialized: true,
+            config_available: true,
+            available_images: self.toc.firmware_mappings.len() as u32,
+        })
+    }
+    
+    fn get_image_info(&self, firmware_id: FirmwareId) -> Result<ImageInfo, Self::Error> {
+        let mapping = self.toc.get_mapping(firmware_id)?;
+        Ok(ImageInfo {
+            firmware_id,
+            size: mapping.size,
+            checksum: mapping.checksum,
+            version: mapping.version.clone(),
+        })
+    }
+    
+    fn download_image(&mut self, firmware_id: FirmwareId) -> Result<ImageStream, Self::Error> {
+        let mapping = self.toc.get_mapping(firmware_id)?;
+        self.tftp_client.get_file(&mapping.filename)
+    }
+    
+    fn get_boot_source_status(&self) -> Result<BootSourceStatus, Self::Error> {
+        // Return current network and TFTP status
+        Ok(BootSourceStatus {
+            ready: self.tftp_client.is_reachable(),
+            initialized: true,
+            config_available: true,
+            available_images: self.toc.firmware_mappings.len() as u32,
+        })
+    }
+}
+```
+
 ### Usage Example
 
 ```rust
-// Example: Caliptra SS network boot process
-fn perform_network_boot(&mut self) -> Result<(), Error> {
-    // 1. Start network boot discovery
-    let boot_status = self.network_boot.start_network_boot_discovery()?;
+// Example: MCU ROM boot process using generic boot source
+fn perform_boot_from_source(mut boot_source: &mut dyn BootSourceProvider) -> Result<(), Error> {
+    // 1. Initialize boot source
+    let status = boot_source.initialize()?;
     
-    if !boot_status.network_ready || !boot_status.config_downloaded {
-        return Err(Error::NetworkBootNotAvailable);
+    if !status.ready || !status.initialized {
+        return Err(Error::BootSourceNotAvailable);
     }
     
-    // 2. Download Caliptra FMC+RT image
-    let mut caliptra_stream = self.network_boot.download_image(FirmwareId::CaliptraFmcRt)?;
-    self.load_image_stream(caliptra_stream, ImageDestination::CaliptraCore)?;
+    // 2. Download each firmware image
+    for firmware_id in [FirmwareId::CaliptraFmcRt, FirmwareId::SocManifest, FirmwareId::McuRt] {
+        // Get image metadata
+        let image_info = boot_source.get_image_info(firmware_id)?;
+        
+        // Set up recovery interface with image size
+        set_recovery_image_size(image_info.size)?;
+        
+        // Download image
+        let mut stream = boot_source.download_image(firmware_id)?;
+        
+        // Stream image chunks to recovery interface
+        load_image_stream(stream, ImageDestination::Recovery)?;
+    }
     
-    // 3. Download SoC Manifest
-    let mut manifest_stream = self.network_boot.download_image(FirmwareId::SocManifest)?;
-    self.load_image_stream(manifest_stream, ImageDestination::SocManifest)?;
-    
-    // 4. Download MCU RT image
-    let mut mcu_stream = self.network_boot.download_image(FirmwareId::McuRt)?;
-    self.load_image_stream(mcu_stream, ImageDestination::McuRuntime)?;
-    
-    // 5. Validate and boot all images
-    self.validate_and_boot_images()?;
+    // 3. Finalize recovery
+    finalize_recovery()?;
     
     Ok(())
 }
 
-fn load_image_stream(&mut self, mut stream: ImageStream, dest: ImageDestination) -> Result<(), Error> {
+fn load_image_stream(mut stream: ImageStream, dest: ImageDestination) -> Result<(), Error> {
     let mut buffer = [0u8; 4096];
     while !stream.is_complete() {
         let bytes_read = stream.read_chunk(&mut buffer)?;
         if bytes_read > 0 {
-            self.write_image_chunk(dest, &buffer[..bytes_read])?;
+            write_image_chunk(dest, &buffer[..bytes_read])?;
         }
     }
     Ok(())
