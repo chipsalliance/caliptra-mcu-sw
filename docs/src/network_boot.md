@@ -1,75 +1,111 @@
-# Caliptra Network Boot Utility - Design Document
+# BMC Network Recovery Boot - Design Document
 
 ## Overview
 
-This document outlines the design for a lightweight network boot utility for the Caliptra subsystem, similar to PXE boot functionality. The system enables the Caliptra SS to download firmware images over the network through a dedicated Network Boot Coprocessor within a ROM environment.
+This document outlines the design for a lightweight network recovery boot utility for the Caliptra subsystem. The system enables the Caliptra SS to download firmware images over the network through a dedicated Network Boot Coprocessor within a ROM environment, providing a resilient fallback path when flash memory is corrupted.
 
 The network boot coprocessor acts as an intermediary between remote image servers and the Caliptra SS, handling network communications including DHCP configuration, TFTP server discovery, and firmware image downloads. The system supports downloading multiple firmware components including Caliptra FMC+RT images, SoC manifests, and MCU runtime images through a firmware ID-based mapping system.
+
+## Motivation
+
+### Flash Dependency Risk
+- Boot failure if **both flashes are corrupted**
+
+### Recovery Challenge
+- Physical intervention is costly in **hyperscale environments**
+
+### Design Goals
+- Minimal **MCU ROM** footprint
+- Consistent with **OCP streaming boot model** for early firmware (Caliptra FMC + RT, SoC Manifest, MCU RT)
+- Secure image retrieval
+- Resilient fallback path
+
+### Potential Solution
+- Use a **dedicated co-processor** with a lightweight network stack
+- Automatically configure networking via **DHCP**
+- Securely download **Caliptra early firmware images** into the Caliptra subsystem
 
 ## System Architecture
 
 ```mermaid
 flowchart LR
-    A["Image Server<br/>───────────<br/>• Image Store<br/>• DHCP<br/>• TFTP server<br/>• Config File"]
-    B["Network Boot Coprocessor<br/>───────────────<br/>Network Stack<br/>• DHCP<br/>• TFTP client<br/>• FW ID Mapping"]
-    C["Caliptra SS<br/>─────────────<br/>• MCU<br/>• Caliptra Core"]
-    
-    A <--> B
-    B <--> C
+    subgraph Caliptra_Subsystem["Caliptra Subsystem"]
+        Caliptra["Caliptra"]
+        RecoveryIF["Recovery I/F"]
+        MCU_ROM["MCU ROM"]
+
+        Caliptra <--> RecoveryIF
+        RecoveryIF <--> MCU_ROM
+    end
+
+    MCU_ROM <--> Network_ROM["Network ROM<br/>- DHCP<br/>- TFTP Client<br/>- FW ID Mapping"]
+    Network_ROM <--> Image_Server["Image Server<br/>- Image Store<br/>- DHCP<br/>- TFTP Server<br/>- Config File"]
 ```
 
-## System Boot Process Flow
+## Network Recovery Boot Flow
 
-The following diagram illustrates the high-level flow of the network boot process from initialization to image delivery:
+The following diagram illustrates the high-level flow of the network recovery boot process from initialization to image availability:
 
 ```mermaid
 sequenceDiagram
-    participant IS as Image Server
-    participant NBC as Network Boot Coprocessor
-    participant CS as Caliptra SS
+    participant CRIF as Caliptra Recovery I/F
+    participant MCU as MCU ROM
+    participant NET as Network ROM
+    participant IMG as Image Server
 
-    Note over CS: System Initialization
-    CS->>NBC: Start network boot discovery
-    
-    Note over NBC: Network Discovery
-    NBC->>IS: DHCP Discovery
-    IS-->>NBC: DHCP Offer (IP + Boot Server)
-    NBC->>IS: TFTP server discovery
-    IS-->>NBC: TFTP server ready
-    NBC->>IS: TFTP GET config file
-    IS-->>NBC: Config file (FW ID mappings)
-    NBC->>NBC: Store FW ID to filename mappings
-    NBC-->>CS: Network boot available
-    
-    Note over CS: Firmware Download Requests
-    CS->>NBC: download_image(firmware_id=0) # Caliptra FMC+RT
-    NBC->>IS: TFTP GET mapped filename
-    loop Image Transfer - Caliptra FMC+RT
-        IS-->>NBC: Image chunk
-        NBC-->>CS: Forward image chunk
-        CS-->>NBC: Chunk ACK
-    end
-    
-    CS->>NBC: download_image(firmware_id=1) # SoC Manifest
-    NBC->>IS: TFTP GET mapped filename
-    loop Image Transfer - SoC Manifest
-        IS-->>NBC: Image chunk
-        NBC-->>CS: Forward image chunk
-        CS-->>NBC: Chunk ACK
-    end
-    
-    CS->>NBC: download_image(firmware_id=2) # MCU RT Image
-    NBC->>IS: TFTP GET mapped filename
-    loop Image Transfer - MCU RT
-        IS-->>NBC: Image chunk
-        NBC-->>CS: Forward image chunk
-        CS-->>NBC: Chunk ACK
-    end
-    
-    Note over CS: Image Processing & Boot
-    CS->>CS: Validate and load all images
-    CS->>CS: Boot system with downloaded images
+    MCU->>NET: Initiate network boot
+    NET->>IMG: DHCP Discovery
+    IMG-->>NET: DHCP Offer
+    NET->>IMG: TFTP GET config (TOC)
+    IMG-->>NET: TOC
+    NET-->>MCU: Network boot available
 ```
+
+### Image Transfer Sequence
+
+Once the network boot is available, the MCU ROM performs image transfers for each firmware component:
+
+```mermaid
+sequenceDiagram
+    participant CRIF as Caliptra Recovery I/F
+    participant MCU as MCU ROM
+    participant NET as Network ROM
+    participant IMG as Image Server
+
+    loop For each image id (0,1,2)
+        MCU->>CRIF: Poll recovery readiness
+        CRIF-->>MCU: Awaiting recovery image id
+
+        MCU->>NET: Request image info (id)
+        NET-->>MCU: Image info (size, metadata)
+
+        MCU->>CRIF: Set image size (INDIRECT_FIFO_CTRL.write)
+
+        MCU->>NET: Request image download (id)
+        NET->>IMG: TFTP GET mapped filename
+
+        loop Image transfer by chunk
+            IMG-->>NET: Image chunk
+            NET-->>MCU: Forward image chunk
+            MCU->>CRIF: Write chunk
+            MCU-->>NET: Chunk ACK
+        end
+    end
+
+    MCU->>CRIF: Finalize recovery
+```
+
+## Messaging Protocol
+
+The network boot system uses a simple messaging protocol between the MCU ROM and Network ROM:
+
+| Message | Direction | Fields | Purpose |
+|-------|----------|--------|----------|
+| Network Boot Discovery | MCU → Network ROM | — | Start network boot |
+| Image Info Request | MCU → Network ROM | firmware_id | Query image metadata |
+| Image Download Request | MCU → Network ROM | firmware_id | Start transfer |
+| Chunk ACK | MCU → Network ROM | firmware_id, offset | Flow control |
+| Boot Complete / Error | MCU → Network ROM | status, error_code | Completion |
 
 ## Protocol Support
 
@@ -233,17 +269,17 @@ fn load_image_stream(&mut self, mut stream: ImageStream, dest: ImageDestination)
 }
 ```
 
-### Configuration File Format
+### Configuration File Format (TOC - Table of Contents)
 
-The network boot coprocessor downloads a configuration file that maps firmware IDs to filenames:
+The network boot coprocessor downloads a configuration file (TOC) that maps firmware IDs to filenames and metadata:
 
 ```json
 {
-    "firmware_mappings": {
-        "0": "caliptra-fmc-rt-v1.2.3.bin",
-        "1": "soc-manifest-v2.1.0.bin", 
-        "2": "mcu-runtime-v3.0.1.bin"
-    }
+  "firmware_mappings": {
+    "0": { "filename": "caliptra-fmc-rt.bin", "size": 1048576 },
+    "1": { "filename": "soc-manifest.bin", "size": 65536 },
+    "2": { "filename": "mcu-runtime.bin", "size": 262144 }
+  }
 }
 ```
 
