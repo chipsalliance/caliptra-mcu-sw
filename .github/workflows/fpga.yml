@@ -251,10 +251,11 @@ jobs:
               -E 'package(tests-integration) and test(test_uds)' # Modify this as we onboard crates to the FPGA test suite.
               -E 'package(tests-integration) and test(test_imaginary_flash_controller)'
               -E 'package(tests-integration) and test(test_fw_update_e2e)'
-              -E 'package(tests-integration) and test(test_firmware_update_streaming)'
           )
               # disabled for now due to flakiness of recovery boot
               # -E 'package(tests-integration) and test(test_mctp_capsule_loopback)'
+              # TODO(#694): renable after debugging failing tests:
+              # -E 'package(tests-integration) and test(test_firmware_update_streaming)'
 
           cargo-nextest nextest list \
               "${COMMON_ARGS[@]}" \

@@ -558,7 +558,7 @@ mod test {
     run_test!(test_caliptra_certs, example_app);
     run_test!(test_caliptra_crypto, example_app);
     run_test!(test_caliptra_mailbox, example_app);
-    // TODO: re-enable
+    // TODO(#694): re-enable
     //run_test!(test_caliptra_util_host_validator);
     run_test!(test_dma, example_app);
     run_test!(test_doe_transport_loopback, example_app);
@@ -577,7 +577,7 @@ mod test {
     run_test!(test_log_flash_circular);
     run_test!(test_log_flash_usermode, example_app);
     run_test!(test_mctp_ctrl_cmds);
-    // TODO: re-enable
+    // TODO(#694): re-enable
     // run_test!(test_mctp_user_loopback, example_app);
     run_test!(test_pldm_discovery);
     run_test!(test_pldm_fw_update);

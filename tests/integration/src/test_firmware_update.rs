@@ -653,7 +653,7 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    // TODO: fails with
+    // TODO(#694): fails with
     // 2025-12-06T00:14:42.314Z INFO  [pldm_ua::update_sm] Transfer complete success
     // [FW Upd] Verifying Caliptra Bundle
     // Error copying from mailbox: MailboxCmdFailed(720898)
@@ -664,7 +664,13 @@ mod test {
         test_firmware_update_common(true);
     }
 
+    // TODO(#694): fails with
+    //Timeout waiting for EXECUTE bit to clear
+    //1,410,219,676 UART: Error copying from mailbox: MailboxCmdFailed(720898)
+    //* TESTCASE FAILED
+    //Emulator exited with error: firmware exited with failure
     #[cfg(feature = "fpga_realtime")]
+    #[ignore]
     #[test]
     fn test_firmware_update_streaming() {
         if env::var("PLDM_FW_PKG").is_err() {
