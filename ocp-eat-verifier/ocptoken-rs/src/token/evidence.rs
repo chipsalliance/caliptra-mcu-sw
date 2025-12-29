@@ -7,9 +7,9 @@ use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint},
     nid::Nid,
+    pkey::PKey,
+    x509::X509,
 };
-
-use x509_parser::prelude::*;
 
 /// Parsed and verified EAT evidence
 pub struct Evidence {
@@ -164,7 +164,6 @@ fn skip_cbor_tags(slice: &[u8]) -> OcpEatResult<Value> {
         }
     }
 
-    println!("done Unwrap CBOR tags / bstr (Python skip_cbor_tags)");
     Ok(value)
 }
 
@@ -212,50 +211,45 @@ fn extract_leaf_cert_der(unprotected: &Header) -> OcpEatResult<Vec<u8>> {
 
 /// Extract raw P-384 public key coordinates (x, y) from DER X.509 cert
 fn extract_pubkey_xy(cert_der: &[u8]) -> OcpEatResult<([u8; 48], [u8; 48])> {
-    // Parse X.509 certificate (pure Rust, lenient)
-    let cert = match X509Certificate::from_der(cert_der) {
-        Ok((rem, cert)) => {
-            println!("X509Certificate::from_der OK");
-            println!("Remaining bytes after parse: {}", rem.len());
-            cert
-        }
-        Err(e) => {
-            println!("X509Certificate::from_der FAILED");
-            println!("Error: {:?}", e);
+    // Parse X.509 certificate using OpenSSL
+    let cert = X509::from_der(cert_der)
+        .map_err(|e| OcpEatError::Certificate(format!("OpenSSL X509 parse failed: {}", e)))?;
 
-            return Err(OcpEatError::Certificate(format!(
-                "X509 parse error: {:?}",
-                e
-            )));
-        }
-    };
+    // Extract public key
+    let pubkey: PKey<openssl::pkey::Public> = cert
+        .public_key()
+        .map_err(|e| OcpEatError::Certificate(format!("Failed to extract public key: {}", e)))?;
 
-    println!(" X509Certificate::from_der");
+    // Ensure EC key
+    let ec_key = pubkey
+        .ec_key()
+        .map_err(|_| OcpEatError::Certificate("Public key is not an EC key".into()))?;
 
-    let spki = &cert.tbs_certificate.subject_pki;
+    let group = ec_key.group();
+    let point = ec_key.public_key();
 
-    // subject_public_key is a BIT STRING
-    let pubkey_bytes = spki.subject_public_key.data.as_ref();
+    let mut ctx = BigNumContext::new().map_err(|e| OcpEatError::Crypto(e.to_string()))?;
 
-    // Expect uncompressed EC point: 04 || X || Y (P-384)
-    if pubkey_bytes.len() != 1 + 48 + 48 {
-        return Err(OcpEatError::Certificate(format!(
-            "unexpected EC public key length: {}",
-            pubkey_bytes.len()
-        )));
-    }
+    let mut ctx_x = BigNum::new().map_err(|e| OcpEatError::Crypto(e.to_string()))?;
+    let mut ctx_y = BigNum::new().map_err(|e| OcpEatError::Crypto(e.to_string()))?;
 
-    if pubkey_bytes[0] != 0x04 {
-        return Err(OcpEatError::Certificate(
-            "EC public key is not uncompressed".into(),
-        ));
-    }
+    point
+        .affine_coordinates_gfp(group, &mut ctx_x, &mut ctx_y, &mut ctx)
+        .map_err(|e| OcpEatError::Crypto(e.to_string()))?;
+
+    let x_bytes = ctx_x
+        .to_vec_padded(48)
+        .map_err(|_| OcpEatError::Certificate("Failed to pad X coordinate".into()))?;
+
+    let y_bytes = ctx_y
+        .to_vec_padded(48)
+        .map_err(|_| OcpEatError::Certificate("Failed to pad Y coordinate".into()))?;
 
     let mut x = [0u8; 48];
     let mut y = [0u8; 48];
 
-    x.copy_from_slice(&pubkey_bytes[1..49]);
-    y.copy_from_slice(&pubkey_bytes[49..97]);
+    x.copy_from_slice(&x_bytes);
+    y.copy_from_slice(&y_bytes);
 
     println!("extract_pubkey_xy: success");
 

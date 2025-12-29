@@ -11,7 +11,6 @@ coset.workspace = true
 hex.workspace = true
 thiserror.workspace = true
 openssl.workspace = true
-x509-parser.workspace = true
 clap.workspace = true
 
 
