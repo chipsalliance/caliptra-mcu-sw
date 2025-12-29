@@ -17,6 +17,5 @@ authors = ["Caliptra contributors"]
 coset = { git = "https://github.com/google/coset", branch = "main" }
 hex = "0.4"
 thiserror = "2.0"
-x509-parser = "0.16"
 openssl = { version = "0.10", features = ["vendored"] }
 clap = { version = "4", features = ["derive"] }
