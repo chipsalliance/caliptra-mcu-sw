@@ -2,16 +2,16 @@
 
 [package]
 name = "ocptoken"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
+version = "0.1.0"
+edition = "2021"
+authors = ["Caliptra Contributors"]
 
 [dependencies]
-# coset = "0.4.0"
-coset = { git = "https://github.com/google/coset", branch = "main" }
-hex = "0.4"
+coset.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+openssl.workspace = true
+x509-parser.workspace = true
+clap.workspace = true
 
-thiserror = "2.0.17"
-openssl = { version = "0.10", features = ["vendored"] }
-x509-parser = "0.16"
 
