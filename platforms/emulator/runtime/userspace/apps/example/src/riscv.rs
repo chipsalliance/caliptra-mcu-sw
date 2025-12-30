@@ -7,13 +7,12 @@ use core::fmt::Write;
 use core::mem::MaybeUninit;
 use embedded_alloc::Heap;
 use libtock::console::Console;
-use libtock::runtime::{set_main, stack_size};
+use libtock::runtime::set_main;
 
 const HEAP_SIZE: usize = 0x40;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
-stack_size! {0x9000}
 set_main! {main}
 
 // TODO: remove this dependence on the emulator when the emulator-specific

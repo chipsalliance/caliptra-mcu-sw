@@ -13,11 +13,13 @@ pub const EMULATOR_APPS: &[App] = &[
         name: "example-app",
         permissions: vec![],
         minimum_ram: 64 * 1024,
+        stack_size: 0x9000,
     },
     App {
         name: "user-app",
         permissions: vec![],
         minimum_ram: 116 * 1024,
+        stack_size: 0xae00,
     },
 ];
 
@@ -27,11 +29,13 @@ pub const FPGA_APPS: &[App] = &[
         name: "example-app",
         permissions: vec![],
         minimum_ram: 64 * 1024,
+        stack_size: 0x9000,
     },
     App {
         name: "user-app",
         permissions: vec![],
         minimum_ram: 116 * 1024,
+        stack_size: 0xae00,
     },
 ];
 
@@ -39,6 +43,7 @@ pub struct App {
     pub name: &'static str,
     pub permissions: Vec<(u32, u32)>, // pairs of (driver, command). All console and alarm commands are allowed by default.
     pub minimum_ram: u32,
+    pub stack_size: usize,
 }
 
 pub const BASE_PERMISSIONS: &[(u32, u32)] = &[
@@ -143,6 +148,7 @@ fn app_build_tbf(
         ram_start,
         ram_length,
         tbf_header_size,
+        app.stack_size,
         features,
     )?;
     let objcopy = objcopy()?;
@@ -182,6 +188,7 @@ fn app_build_tbf(
 }
 
 // creates an ELF of the app
+#[allow(clippy::too_many_arguments)]
 fn app_build(
     app_name: &str,
     platform: &str,
@@ -189,6 +196,7 @@ fn app_build(
     ram_start: usize,
     ram_length: usize,
     tbf_header_size: usize,
+    stack_size: usize,
     features: &[&str],
 ) -> Result<()> {
     let app_ld_filename = format!("{}-layout.ld", app_name);
@@ -221,8 +229,9 @@ FLASH_START = 0x{:x};
 FLASH_LENGTH = 0x4a500;
 RAM_START = 0x{:x};
 RAM_LENGTH = 0x{:x};
+STACK_SIZE = 0x{:x};
 INCLUDE platforms/emulator/runtime/userspace/apps/app_layout.ld",
-            tbf_header_size, offset, ram_start, ram_length,
+            tbf_header_size, offset, ram_start, ram_length, stack_size,
         ),
     )?;
 
