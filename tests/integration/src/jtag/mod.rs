@@ -11,7 +11,7 @@ mod test {
     use caliptra_hw_model::Fuses;
     use mcu_builder::FirmwareBinaries;
     use mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel};
-    use mcu_rom_common::LifecycleControllerState;
+    use romtime::LifecycleControllerState;
 
     pub fn ss_setup(
         initial_lc_state: Option<LifecycleControllerState>,

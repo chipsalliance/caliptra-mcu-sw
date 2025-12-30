@@ -12,10 +12,11 @@ Abstract:
 
 --*/
 
-use crate::{Lifecycle, Otp, Soc};
+use crate::Soc;
 use core::ptr::addr_of;
 use registers_generated::{i3c, lc_ctrl, mci, otp_ctrl, soc};
 use romtime::{CaliptraSoC, Mci, StaticRef};
+use romtime::{Lifecycle, Otp};
 
 /// ROM Environment containing all peripherals and managers
 pub struct RomEnv {

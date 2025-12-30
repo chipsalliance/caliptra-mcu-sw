@@ -2,7 +2,7 @@
 
 use anyhow::{bail, Result};
 use emulator_periph::{otp_digest, otp_scramble, otp_unscramble};
-use mcu_rom_common::LifecycleControllerState;
+use romtime::LifecycleControllerState;
 use sha3::{digest::ExtendableOutput, digest::Update, CShake128, CShake128Core};
 
 // These are the default lifecycle controller constants from the
@@ -384,7 +384,7 @@ fn otp_unscramble_data(data: &mut [u8], key_idx: usize) -> Result<()> {
 
 /// Generate the OTP memory contents for lifecycle tokens partition (including the digest).
 pub fn otp_generate_lifecycle_tokens_mem(
-    tokens: &mcu_rom_common::LifecycleRawTokens,
+    tokens: &romtime::LifecycleRawTokens,
 ) -> Result<[u8; LIFECYCLE_TOKENS_MEM_SIZE]> {
     let mut output = [0u8; LIFECYCLE_TOKENS_MEM_SIZE];
     for (i, token) in tokens.test_unlock.iter().enumerate() {
@@ -412,7 +412,7 @@ pub fn otp_generate_lifecycle_tokens_mem(
 
 #[cfg(test)]
 mod tests {
-    use mcu_rom_common::{LifecycleRawTokens, LifecycleToken};
+    use romtime::{LifecycleRawTokens, LifecycleToken};
 
     use super::*;
 

@@ -1,11 +1,11 @@
 // Licensed under the Apache-2.0 license
 
+use crate::{HexBytes, HexWord, StaticRef};
 use core::fmt::Write;
 use mcu_error::{McuError, McuResult};
 use registers_generated::fuses;
 use registers_generated::fuses::Fuses;
 use registers_generated::otp_ctrl;
-use romtime::{HexBytes, HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
 use crate::{LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_OFFSET};
@@ -41,9 +41,9 @@ impl Otp {
     }
 
     pub fn init(&self) -> McuResult<()> {
-        romtime::println!("[mcu-rom-otp] Initializing OTP controller...");
+        crate::println!("[mcu-rom-otp] Initializing OTP controller...");
         if self.registers.otp_status.get() & OTP_STATUS_ERROR_MASK != 0 {
-            romtime::println!(
+            crate::println!(
                 "[mcu-rom-otp] OTP error: {}",
                 self.registers.otp_status.get()
             );
@@ -56,32 +56,32 @@ impl Otp {
             .otp_status
             .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
         {
-            romtime::println!("[mcu-rom-otp] OTP not idle");
+            crate::println!("[mcu-rom-otp] OTP not idle");
             return Err(McuError::ROM_OTP_INIT_NOT_IDLE);
         }
 
         // Enable periodic background checks
         if self.enable_consistency_check {
-            romtime::println!("[mcu-rom-otp] Enabling consistency check period");
+            crate::println!("[mcu-rom-otp] Enabling consistency check period");
             self.registers
                 .consistency_check_period
                 .set(OTP_CONSISTENCY_CHECK_PERIOD_MASK);
         }
         if self.enable_integrity_check {
-            romtime::println!("mcu-rom-otp] Enabling integrity check period");
+            crate::println!("mcu-rom-otp] Enabling integrity check period");
             self.registers
                 .integrity_check_period
                 .set(OTP_INTEGRITY_CHECK_PERIOD_MASK);
         }
-        romtime::println!("mcu-rom-otp] Enabling check timeout");
+        crate::println!("mcu-rom-otp] Enabling check timeout");
         self.registers.check_timeout.set(OTP_CHECK_TIMEOUT);
 
         // Disable modifications to the background checks
-        romtime::println!("[mcu-rom-otp] Disabling check modifications");
+        crate::println!("[mcu-rom-otp] Disabling check modifications");
         self.registers
             .check_regwen
             .write(otp_ctrl::bits::CheckRegwen::Regwen::CLEAR);
-        romtime::println!("[mcu-rom-otp] Done init");
+        crate::println!("[mcu-rom-otp] Done init");
         Ok(())
     }
 
@@ -125,7 +125,7 @@ impl Otp {
         {}
 
         if let Some(err) = self.check_error() {
-            romtime::println!("Error reading fuses: {}", HexWord(err));
+            crate::println!("Error reading fuses: {}", HexWord(err));
             return Err(McuError::ROM_OTP_READ_ERROR);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
@@ -142,11 +142,11 @@ impl Otp {
         {}
 
         // load the data
-        romtime::println!("Write dword 0: {}", HexWord(data as u32));
+        crate::println!("Write dword 0: {}", HexWord(data as u32));
         self.registers
             .dai_wdata_rf_direct_access_wdata_0
             .set((data) as u32);
-        romtime::println!("Write dword 1: {}", HexWord((data >> 32) as u32));
+        crate::println!("Write dword 1: {}", HexWord((data >> 32) as u32));
         self.registers
             .dai_wdata_rf_direct_access_wdata_1
             .set((data >> 32) as u32);
@@ -165,7 +165,7 @@ impl Otp {
         {}
 
         if let Some(err) = self.check_error() {
-            romtime::println!("Error writing fuses: {}", HexWord(err));
+            crate::println!("Error writing fuses: {}", HexWord(err));
             self.print_errors();
             return Err(McuError::ROM_OTP_WRITE_DWORD_ERROR);
         }
@@ -199,7 +199,7 @@ impl Otp {
         {}
 
         if let Some(err) = self.check_error() {
-            romtime::println!("[mcu-rom] Error writing fuses: {}", HexWord(err));
+            crate::println!("[mcu-rom] Error writing fuses: {}", HexWord(err));
             self.print_errors();
             return Err(McuError::ROM_OTP_WRITE_WORD_ERROR);
         }
@@ -209,7 +209,7 @@ impl Otp {
     /// Finalize a partition
     /// word_addr is in words
     pub fn finalize_digest(&self, partition_base_addr: usize) -> McuResult<()> {
-        romtime::println!(
+        crate::println!(
             "[mcu-rom] Finalizing partition at base address: {}",
             HexWord(partition_base_addr as u32)
         );
@@ -235,7 +235,7 @@ impl Otp {
         {}
 
         if let Some(err) = self.check_error() {
-            romtime::println!("[mcu-rom] Error writing digest: {}", HexWord(err));
+            crate::println!("[mcu-rom] Error writing digest: {}", HexWord(err));
             self.print_errors();
             return Err(McuError::ROM_OTP_FINALIZE_DIGEST_ERROR);
         }
@@ -266,7 +266,7 @@ impl Otp {
                 _ => 0,
             };
             if err_code != 0 {
-                romtime::println!("[mcu] OTP error code {}: {}", i, err_code);
+                crate::println!("[mcu] OTP error code {}: {}", i, err_code);
             }
         }
     }
@@ -283,50 +283,50 @@ impl Otp {
     pub fn read_fuses(&self) -> McuResult<Fuses> {
         let mut fuses = Fuses::default();
 
-        romtime::println!("[mcu-rom-otp] Reading SW tests unlock partition");
+        crate::println!("[mcu-rom-otp] Reading SW tests unlock partition");
         self.read_data(
             fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
             fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
             &mut fuses.sw_test_unlock_partition,
         )?;
-        romtime::println!("[mcu-rom-otp] Reading SW manufacturer partition");
+        crate::println!("[mcu-rom-otp] Reading SW manufacturer partition");
         self.read_data(
             fuses::SW_MANUF_PARTITION_BYTE_OFFSET,
             fuses::SW_MANUF_PARTITION_BYTE_SIZE,
             &mut fuses.sw_manuf_partition,
         )?;
-        romtime::println!("[mcu-rom-otp] Reading SVN partition");
+        crate::println!("[mcu-rom-otp] Reading SVN partition");
         self.read_data(
             fuses::SVN_PARTITION_BYTE_OFFSET,
             fuses::SVN_PARTITION_BYTE_SIZE,
             &mut fuses.svn_partition,
         )?;
-        romtime::println!("[mcu-rom-otp] Reading vendor test partition");
+        crate::println!("[mcu-rom-otp] Reading vendor test partition");
         self.read_data(
             fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_TEST_PARTITION_BYTE_SIZE,
             &mut fuses.vendor_test_partition,
         )?;
-        romtime::println!("[mcu-rom-otp] Reading vendor hashes manufacturer partition");
+        crate::println!("[mcu-rom-otp] Reading vendor hashes manufacturer partition");
         self.read_data(
             fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE,
             &mut fuses.vendor_hashes_manuf_partition,
         )?;
         // TODO: read these again when the offsets are fixed
-        romtime::println!("[mcu-rom-otp] Reading vendor hashes production partition");
+        crate::println!("[mcu-rom-otp] Reading vendor hashes production partition");
         self.read_data(
             fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
             &mut fuses.vendor_hashes_prod_partition,
         )?;
-        romtime::println!("[mcu-rom-otp] Reading vendor revocations production partition");
+        crate::println!("[mcu-rom-otp] Reading vendor revocations production partition");
         self.read_data(
             fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
             &mut fuses.vendor_revocations_prod_partition,
         )?;
-        romtime::println!("[mcu-rom-otp] Reading OCP LOCK HEK seeds");
+        crate::println!("[mcu-rom-otp] Reading OCP LOCK HEK seeds");
         self.read_data(
             fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET,
             fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE,
@@ -378,9 +378,9 @@ impl Otp {
         Ok(fuses)
     }
 
-    pub(crate) fn burn_lifecycle_tokens(&self, tokens: &LifecycleHashedTokens) -> McuResult<()> {
+    pub fn burn_lifecycle_tokens(&self, tokens: &LifecycleHashedTokens) -> McuResult<()> {
         for (i, tokeni) in tokens.test_unlock.iter().enumerate() {
-            romtime::println!(
+            crate::println!(
                 "[mcu-rom-otp] Burning test_unlock{} token: {}",
                 i,
                 HexBytes(&tokeni.0)
@@ -388,31 +388,31 @@ impl Otp {
             self.burn_lifecycle_token(LC_TOKENS_OFFSET + i * 16, tokeni)?;
         }
 
-        romtime::println!(
+        crate::println!(
             "[mcu-rom-otp] Burning manuf token: {}",
             HexBytes(&tokens.manuf.0)
         );
         self.burn_lifecycle_token(LC_TOKENS_OFFSET + 7 * 16, &tokens.manuf)?;
 
-        romtime::println!(
+        crate::println!(
             "[mcu-rom-otp] Burning manuf_to_prod token: {}",
             HexBytes(&tokens.manuf_to_prod.0)
         );
         self.burn_lifecycle_token(LC_TOKENS_OFFSET + 8 * 16, &tokens.manuf_to_prod)?;
 
-        romtime::println!(
+        crate::println!(
             "[mcu-rom-otp] Burning prod_to_prod_end token: {}",
             HexBytes(&tokens.prod_to_prod_end.0)
         );
         self.burn_lifecycle_token(LC_TOKENS_OFFSET + 9 * 16, &tokens.prod_to_prod_end)?;
 
-        romtime::println!(
+        crate::println!(
             "[mcu-rom-otp] Burning rma token: {}",
             HexBytes(&tokens.rma.0)
         );
         self.burn_lifecycle_token(LC_TOKENS_OFFSET + 10 * 16, &tokens.rma)?;
 
-        romtime::println!("[mcu-rom] Finalizing digest");
+        crate::println!("[mcu-rom] Finalizing digest");
         self.finalize_digest(LC_TOKENS_OFFSET)?;
         Ok(())
     }
