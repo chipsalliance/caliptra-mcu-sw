@@ -4114,6 +4114,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-api",
  "caliptra-registers",
+ "mcu-error",
  "registers-generated",
  "tock-registers",
  "ureg",
@@ -5741,6 +5742,7 @@ dependencies = [
  "quote",
  "registers-generator",
  "registers-systemrdl",
+ "romtime",
  "semver",
  "serde",
  "serde-hjson",

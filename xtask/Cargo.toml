@@ -36,6 +36,7 @@ proc-macro2.workspace = true
 quote.workspace = true
 registers-generator.workspace = true
 registers-systemrdl.workspace = true
+romtime.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde-hjson.workspace = true

@@ -3,8 +3,12 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![allow(static_mut_refs)]
 
+mod lifecycle;
+pub use lifecycle::*;
 mod mci;
 pub use mci::*;
+mod otp;
+pub use otp::*;
 mod soc_manager;
 pub use soc_manager::*;
 mod static_ref;

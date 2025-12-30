@@ -20,6 +20,7 @@ use kernel::utilities::StaticRef;
 use mcu_config::McuMemoryMap;
 use registers_generated::i3c::regs::I3c;
 use registers_generated::mci;
+use registers_generated::otp_ctrl;
 use rv32i::csr::{mcause, mie::mie, CSR};
 use rv32i::syscall::SysCall;
 
@@ -48,6 +49,7 @@ pub struct VeeRDefaultPeripherals<'a> {
     pub mci: romtime::Mci,
     pub mcu_mbox0: mcu_mbox_driver::McuMailbox<'a, InternalTimers<'a>>,
     pub additional_interrupt_handler: &'static dyn InterruptService,
+    pub otp: romtime::Otp,
 }
 
 impl<'a> VeeRDefaultPeripherals<'a> {
@@ -58,6 +60,10 @@ impl<'a> VeeRDefaultPeripherals<'a> {
         mci_regs: romtime::StaticRef<mci::regs::Mci>,
     ) -> Self {
         let mci_driver = romtime::Mci::new(mci_regs);
+        let otp: romtime::StaticRef<otp_ctrl::regs::OtpCtrl> = unsafe {
+            romtime::StaticRef::new(memory_map.otp_offset as *const otp_ctrl::regs::OtpCtrl)
+        };
+        let otp_driver = romtime::Otp::new(true, false, otp);
         Self {
             i3c: i3c_driver::core::I3CCore::new(
                 unsafe { StaticRef::new(memory_map.i3c_offset as *const I3c) },
@@ -70,6 +76,7 @@ impl<'a> VeeRDefaultPeripherals<'a> {
                 alarm,
             ),
             additional_interrupt_handler,
+            otp: otp_driver,
         }
     }
 

@@ -14,7 +14,7 @@ mod test {
     use caliptra_hw_model::HwModel;
     use caliptra_hw_model::DEFAULT_MANUF_DEBUG_UNLOCK_RAW_TOKEN;
     use mcu_hw_model::jtag::jtag_send_caliptra_mailbox_cmd;
-    use mcu_rom_common::LifecycleControllerState;
+    use romtime::LifecycleControllerState;
 
     use zerocopy::IntoBytes;
 

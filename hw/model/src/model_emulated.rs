@@ -45,11 +45,11 @@ use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp, 
 use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
-use mcu_rom_common::LifecycleControllerState;
 use mcu_rom_common::McuBootMilestones;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
 use registers_generated::fuses;
+use romtime::LifecycleControllerState;
 use semver::Version;
 use std::cell::Cell;
 use std::cell::RefCell;

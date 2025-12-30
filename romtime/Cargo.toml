@@ -9,9 +9,14 @@ edition.workspace = true
 [dependencies]
 caliptra-api.workspace = true
 caliptra-registers.workspace = true
+mcu-error.workspace = true
 registers-generated.workspace = true
 tock-registers.workspace = true
 ureg.workspace = true
 zerocopy.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
+
+[features]
+default = []
+core_test = []

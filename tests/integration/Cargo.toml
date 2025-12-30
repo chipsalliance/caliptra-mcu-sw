@@ -43,9 +43,9 @@ pldm-fw-pkg.workspace = true
 pldm-ua.workspace = true
 random-port.workspace = true
 registers-generated.workspace = true
+romtime.workspace = true
 sha2.workspace = true
 simple_logger.workspace = true
-romtime.workspace = true
 tempfile.workspace = true
 uio = { workspace = true, optional = true }
 uuid.workspace = true

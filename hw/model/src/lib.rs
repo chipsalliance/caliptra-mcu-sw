@@ -14,11 +14,10 @@ use caliptra_hw_model_types::{
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
 pub use mcu_mgr::McuManager;
-use mcu_rom_common::{
-    LifecycleControllerState, LifecycleRawTokens, LifecycleToken, McuBootMilestones,
-};
+use mcu_rom_common::McuBootMilestones;
 pub use model_emulated::ModelEmulated;
 use rand::{rngs::StdRng, SeedableRng};
+use romtime::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
 use sha2::Digest;
 use std::io::{stdout, ErrorKind};
 use std::path::{Path, PathBuf};
