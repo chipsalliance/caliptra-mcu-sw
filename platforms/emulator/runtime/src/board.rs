@@ -153,6 +153,7 @@ struct VeeR {
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
+    otp: &'static capsules_runtime::otp::Otp,
     system: &'static capsules_runtime::system::System<'static, EmulatorExiter>,
 }
 
@@ -194,6 +195,7 @@ impl SyscallDriverLookup for VeeR {
             capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
                 f(Some(self.mcu_mbox1_staging_sram))
             }
+            capsules_runtime::otp::DRIVER_NUM => f(Some(self.otp)),
             capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
 
             _ => f(None),
@@ -498,6 +500,15 @@ pub unsafe fn main() {
     )
     .finalize(mbox_sram_component_static!(InternalTimers<'static>));
 
+    let total_heks = 8;
+    let otp = mcu_components::otp::OtpComponent::new(
+        board_kernel,
+        capsules_runtime::otp::DRIVER_NUM,
+        total_heks,
+        &peripherals.otp,
+    )
+    .finalize(kernel::static_buf!(capsules_runtime::otp::Otp));
+
     let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
     chip.init(addr_of!(_pic_vector_table) as u32);
     CHIP = Some(chip);
@@ -711,6 +722,7 @@ pub unsafe fn main() {
             mci,
             mcu_mbox0,
             mcu_mbox1_staging_sram,
+            otp,
             system,
         }
     );

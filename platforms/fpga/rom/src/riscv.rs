@@ -19,9 +19,8 @@ use core::fmt::Write;
 core::arch::global_asm!(include_str!("start.s"));
 
 use mcu_config::{McuMemoryMap, McuStraps};
-use mcu_rom_common::{
-    LifecycleControllerState, LifecycleHashedToken, LifecycleToken, RomParameters,
-};
+use mcu_rom_common::RomParameters;
+use romtime::{LifecycleControllerState, LifecycleHashedToken, LifecycleToken};
 
 // re-export these so the common ROM and runtime can use them
 #[no_mangle]
@@ -79,7 +78,7 @@ pub extern "C" fn rom_entry() -> ! {
 
     // For now, we use the same tokens for all lifecycle transitions.
     let burn_lifecycle_tokens = if burn_tokens {
-        Some(mcu_rom_common::LifecycleHashedTokens {
+        Some(romtime::LifecycleHashedTokens {
             test_unlock: [burn_hashed_token; 7],
             manuf: burn_hashed_token,
             manuf_to_prod: burn_hashed_token,

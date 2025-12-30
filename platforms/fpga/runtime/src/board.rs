@@ -144,6 +144,7 @@ struct VeeR {
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
+    otp: &'static capsules_runtime::otp::Otp,
     system: &'static capsules_runtime::system::System<'static, FpgaExiter>,
     dma: &'static capsules_emulator::dma::Dma<'static>,
 }
@@ -175,6 +176,7 @@ impl SyscallDriverLookup for VeeR {
             capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
                 f(Some(self.mcu_mbox1_staging_sram))
             }
+            capsules_runtime::otp::DRIVER_NUM => f(Some(self.otp)),
             capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
             capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
             _ => f(None),
@@ -559,6 +561,16 @@ pub unsafe fn main() {
     .finalize(mbox_sram_component_static!(InternalTimers<'static>));
     romtime::println!("[mcu-runtime] MCU Mbox1 SRAM component initialized");
 
+    let total_heks = 8;
+    let otp = mcu_components::otp::OtpComponent::new(
+        board_kernel,
+        capsules_runtime::otp::DRIVER_NUM,
+        total_heks,
+        &peripherals.otp,
+    )
+    .finalize(kernel::static_buf!(capsules_runtime::otp::Otp));
+    romtime::println!("[mcu-runtime] OTP component initialized");
+
     #[allow(static_mut_refs)]
     let system = mcu_components::system::SystemComponent::new(unsafe { &mut FPGA_EXITER })
         .finalize(kernel::static_buf!(
@@ -617,6 +629,7 @@ pub unsafe fn main() {
             mailbox,
             mci,
             mcu_mbox1_staging_sram,
+            otp,
             system,
             dma,
         }

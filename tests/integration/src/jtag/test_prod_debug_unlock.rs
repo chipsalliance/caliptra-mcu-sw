@@ -24,7 +24,7 @@ mod test {
         prod_debug_unlock_wait_for_in_progress,
     };
     use mcu_hw_model::jtag::jtag_wait_for_caliptra_mailbox_resp;
-    use mcu_rom_common::LifecycleControllerState;
+    use romtime::LifecycleControllerState;
 
     use fips204::ml_dsa_87::PrivateKey as MldsaPrivateKey;
     use fips204::traits::SerDes;
