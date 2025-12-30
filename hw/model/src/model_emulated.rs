@@ -21,17 +21,11 @@ use caliptra_emu_cpu::CpuOrgArgs;
 use caliptra_emu_cpu::{Cpu, CpuArgs, InstrTracer, Pic};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::SocToCaliptraBus;
-use caliptra_emu_periph::{
-    ActionCb, CaliptraRootBus, CaliptraRootBusArgs, MailboxRequester, ReadyForFwCb, TbServicesCb,
-};
 use caliptra_emu_types::RvAddr;
 use caliptra_emu_types::RvData;
 use caliptra_emu_types::RvSize;
-use caliptra_hw_model::DeviceLifecycle;
 use caliptra_hw_model::ExitStatus;
-use caliptra_hw_model::ModelError;
 use caliptra_hw_model::Output;
-use caliptra_hw_model::SecurityState;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
 use emulator_bmc::Bmc;
@@ -45,7 +39,7 @@ use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp, 
 use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
-use mcu_config::McuMemoryMap;
+use mcu_config::{McuMemoryMap, McuStraps};
 use mcu_rom_common::McuBootMilestones;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
@@ -64,7 +58,6 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
-const DEFAULT_AXI_PAUSER: u32 = 0xaaaa_aaaa;
 const BOOT_CYCLES: u64 = 100_000_000;
 
 /// Emulated model
@@ -108,88 +101,12 @@ impl McuHwModel for ModelEmulated {
     {
         let clock = Rc::new(Clock::new());
         let pic = Rc::new(Pic::new());
-        let timer = clock.timer();
 
         let ready_for_fw = Rc::new(Cell::new(false));
-        let ready_for_fw_clone = ready_for_fw.clone();
 
         let cpu_enabled = Rc::new(Cell::new(false));
-        let cpu_enabled_cloned = cpu_enabled.clone();
 
         let output = Output::new(params.log_writer);
-
-        let output_sink = output.sink().clone();
-
-        let security_state_unprovisioned = SecurityState::default();
-        let security_state_manufacturing =
-            *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Manufacturing);
-        let security_state_prod =
-            *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Production);
-
-        let security_state = match params
-            .lifecycle_controller_state
-            .unwrap_or(LifecycleControllerState::Raw)
-        {
-            LifecycleControllerState::Raw
-            | LifecycleControllerState::Prod
-            | LifecycleControllerState::ProdEnd => security_state_prod,
-            LifecycleControllerState::Dev => security_state_manufacturing,
-            _ => security_state_unprovisioned,
-        };
-
-        let bus_args = CaliptraRootBusArgs {
-            rom: params.caliptra_rom.into(),
-            tb_services_cb: TbServicesCb::new(move |ch| {
-                output_sink.set_now(timer.now());
-                output_sink.push_uart_char(ch);
-            }),
-            ready_for_fw_cb: ReadyForFwCb::new(move |_| {
-                ready_for_fw_clone.set(true);
-            }),
-            bootfsm_go_cb: ActionCb::new(move || {
-                cpu_enabled_cloned.set(true);
-            }),
-            security_state,
-            dbg_manuf_service_req: params.dbg_manuf_service,
-            subsystem_mode: params.active_mode,
-            prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs,
-            debug_intent: params.debug_intent,
-            cptra_obf_key: params.cptra_obf_key,
-
-            itrng_nibbles: Some(params.itrng_nibbles),
-            etrng_responses: params.etrng_responses,
-            clock: clock.clone(),
-            ..CaliptraRootBusArgs::default()
-        };
-        let mut root_bus = CaliptraRootBus::new(bus_args);
-
-        root_bus
-            .soc_reg
-            .set_hw_config((1 | if params.active_mode { 1 << 5 } else { 0 }).into());
-
-        {
-            let mut iccm_ram = root_bus.iccm.ram().borrow_mut();
-            let Some(iccm_dest) = iccm_ram.data_mut().get_mut(0..params.caliptra_iccm.len()) else {
-                return Err(ModelError::ProvidedIccmTooLarge.into());
-            };
-            iccm_dest.copy_from_slice(params.caliptra_iccm);
-
-            let Some(dccm_dest) = root_bus
-                .dccm
-                .data_mut()
-                .get_mut(0..params.caliptra_dccm.len())
-            else {
-                return Err(ModelError::ProvidedDccmTooLarge.into());
-            };
-            dccm_dest.copy_from_slice(params.caliptra_dccm);
-        }
-
-        root_bus
-            .soc_reg
-            .set_hw_config((1 | if params.active_mode { 1 << 5 } else { 0 }).into());
-
-        let soc_to_caliptra_bus =
-            root_bus.soc_to_caliptra_bus(MailboxRequester::SocUser(DEFAULT_AXI_PAUSER));
 
         let mut hasher = DefaultHasher::new();
         std::hash::Hash::hash_slice(params.caliptra_rom, &mut hasher);
@@ -334,13 +251,20 @@ impl McuHwModel for ModelEmulated {
         // Use MCU recovery interface when flash-based boot is enabled
         let use_mcu_recovery_interface = params.flash_boot;
 
-        let (mut caliptra_cpu, soc_to_caliptra, ext_mci) = start_caliptra(&StartCaliptraArgs {
-            rom: BytesOrPath::Bytes(params.caliptra_rom.to_vec()),
-            device_lifecycle,
-            req_idevid_csr,
-            use_mcu_recovery_interface,
-        })
-        .expect("Failed to start Caliptra CPU");
+        let (mut caliptra_cpu, soc_to_caliptra, soc_to_caliptra_bus, ext_mci) =
+            start_caliptra(&StartCaliptraArgs {
+                rom: BytesOrPath::Bytes(params.caliptra_rom.to_vec()),
+                device_lifecycle,
+                req_idevid_csr,
+                use_mcu_recovery_interface,
+                extra_soc_bus: Some(
+                    params
+                        .caliptra_soc_axi_user
+                        .unwrap_or(McuStraps::default().axi_user1),
+                ),
+            })
+            .expect("Failed to start Caliptra CPU");
+        let soc_to_caliptra_bus = soc_to_caliptra_bus.unwrap();
 
         let mcu_mailbox0 = mcu_root_bus.mcu_mailbox0.clone();
         let mcu_mailbox1 = mcu_root_bus.mcu_mailbox1.clone();
