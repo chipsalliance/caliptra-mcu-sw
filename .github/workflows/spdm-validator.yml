@@ -137,9 +137,9 @@ jobs:
 
 
       - name: Build ocptoken CLI
-        working-directory: ocp-eat-verifier/ocptoken-rs
+        working-directory: ocp-eat-verifier
         run: |
-          cargo build --release
+          cargo build --release -p ocptoken
 
       - name: Decode SPDM measurement block using ocptoken
         env:
