@@ -108,27 +108,10 @@ impl ColdBoot {
 
 impl BootFlow for ColdBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
-        #[cfg(target_arch = "riscv32")]
-        {
-            use tock_registers::register_bitfields;
-            register_bitfields![usize,
-                value [
-                    value OFFSET(0) NUMBITS(32) [],
-                ],
-            ];
-            let mcycle: riscv_csr::csr::ReadWriteRiscvCsr<
-                usize,
-                value::Register,
-                { riscv_csr::csr::MCYCLE },
-            > = riscv_csr::csr::ReadWriteRiscvCsr::new();
-            let mcycleh: riscv_csr::csr::ReadWriteRiscvCsr<
-                usize,
-                value::Register,
-                { riscv_csr::csr::MCYCLEH },
-            > = riscv_csr::csr::ReadWriteRiscvCsr::new();
-            let cycle = (mcycleh.get() as u64) << 32 | (mcycle.get() as u64);
-            romtime::println!("[mcu-rom] Starting cold boot flow at time {}", cycle);
-        }
+        romtime::println!(
+            "[mcu-rom] Starting cold boot flow at time {}",
+            romtime::mcycle()
+        );
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::ColdBootFlowStarted.into());
 

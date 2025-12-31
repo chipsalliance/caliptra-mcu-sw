@@ -4191,6 +4191,8 @@ dependencies = [
  "caliptra-registers",
  "mcu-error",
  "registers-generated",
+ "riscv-csr",
+ "rv32i",
  "tock-registers",
  "ureg",
  "zerocopy",

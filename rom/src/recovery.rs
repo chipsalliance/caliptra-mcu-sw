@@ -267,7 +267,8 @@ pub fn load_flash_image_to_recovery(
     let mut state_machine = StateMachine::new(context);
 
     let mut prev_state = States::ReadProtCap;
-    let mut last_percent = 0u32;
+    let mut next_print_offset = 0u32;
+    let mut start_cycle = None;
 
     i3c_periph
         .soc_mgmt_if_rec_intf_cfg
@@ -328,21 +329,21 @@ pub fn load_flash_image_to_recovery(
             }
 
             States::TransferringImage => {
+                if start_cycle.is_none() {
+                    start_cycle = Some(romtime::mcycle());
+                }
+
                 let image_size = state_machine.context().image_size;
-                if image_size > 0
-                    && (state_machine.context().transfer_offset * 100 / image_size) / 10
-                        != last_percent
-                {
+                if state_machine.context().transfer_offset >= next_print_offset {
                     romtime::println!(
                         "[mcu-rom] Transferring image data at offset {} out of {}",
                         state_machine.context().transfer_offset,
                         image_size
                     );
-                    last_percent =
-                        (state_machine.context().transfer_offset * 100 / image_size) / 10;
+                    next_print_offset = state_machine.context().transfer_offset + image_size / 10;
                 }
 
-                if state_machine.context().transfer_offset >= state_machine.context().image_size {
+                if state_machine.context().transfer_offset >= image_size {
                     // Set REC_INTF_CFG.REC_PAYLOAD_DONE bit to indicate transfer complete
                     i3c_periph
                         .soc_mgmt_if_rec_intf_cfg
@@ -350,6 +351,18 @@ pub fn load_flash_image_to_recovery(
 
                     // If the transfer is complete, we can move to the next state
                     let _ = state_machine.process_event(Events::TransferComplete);
+                    let end_cycle = romtime::mcycle();
+                    let cycles = end_cycle - start_cycle.unwrap_or_default();
+                    let transfer_rate = if cycles > 0 {
+                        (state_machine.context().image_size as u64 * 1000) / cycles
+                    } else {
+                        0
+                    };
+                    romtime::println!(
+                        "[mcu-rom] Image transfer complete after {} cycles (≈{} bytes per 1,000 cycles)",
+                        cycles,
+                        transfer_rate,
+                    );
                 } else {
                     // wait for fifo empty before transferring full 256 bytes
                     // this is necessary to work around some hardware quirks where

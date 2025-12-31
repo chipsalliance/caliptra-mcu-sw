@@ -136,3 +136,33 @@ pub fn crc8(crc: u8, data: u8) -> u8 {
 
     (a ^ b) as u8
 }
+
+#[cfg(not(target_arch = "riscv32"))]
+/// Returns ths current cycle count using the RISC-V mcycle CSRs.
+pub fn mcycle() -> u64 {
+    // placeholder value for non-RV32
+    0
+}
+
+#[cfg(target_arch = "riscv32")]
+/// Returns ths current cycle count using the RISC-V mcycle CSRs.
+pub fn mcycle() -> u64 {
+    use tock_registers::interfaces::Readable;
+    use tock_registers::register_bitfields;
+    register_bitfields![usize,
+        value [
+            value OFFSET(0) NUMBITS(32) [],
+        ],
+    ];
+    let mcycle: riscv_csr::csr::ReadWriteRiscvCsr<
+        usize,
+        value::Register,
+        { riscv_csr::csr::MCYCLE },
+    > = riscv_csr::csr::ReadWriteRiscvCsr::new();
+    let mcycleh: riscv_csr::csr::ReadWriteRiscvCsr<
+        usize,
+        value::Register,
+        { riscv_csr::csr::MCYCLEH },
+    > = riscv_csr::csr::ReadWriteRiscvCsr::new();
+    (mcycleh.get() as u64) << 32 | (mcycle.get() as u64)
+}

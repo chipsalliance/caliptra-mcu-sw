@@ -15,8 +15,10 @@ tock-registers.workspace = true
 ureg.workspace = true
 zerocopy.workspace = true
 
-[target.'cfg(target_arch = "riscv32")'.dependencies]
-
 [features]
 default = []
 core_test = []
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+riscv-csr.workspace = true
+rv32i.workspace = true

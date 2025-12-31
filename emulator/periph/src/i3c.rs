@@ -128,7 +128,9 @@ impl I3c {
             i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1: ReadWriteRegister::new(0),
             // Initialize with Empty bit set (bit 0) to indicate FIFO can receive data
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0: ReadWriteRegister::new(1),
+            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0: ReadWriteRegister::new(
+                1 << IndirectFifoStatus0::Empty.shift,
+            ),
             i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_recovery_ctrl: ReadWriteRegister::new(0),
@@ -735,7 +737,7 @@ impl I3cPeripheral for I3c {
             // Set Empty bit (bit 0) to indicate FIFO can receive data
             self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0
                 .reg
-                .set(1);
+                .write(IndirectFifoStatus0::Empty::SET);
             self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
                 .reg
                 .set(0);
@@ -811,7 +813,7 @@ impl I3cPeripheral for I3c {
         self.indirect_fifo_data.clear();
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0
             .reg
-            .set(0);
+            .write(IndirectFifoStatus0::Empty::SET);
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
             .reg
             .set(0);
@@ -849,7 +851,7 @@ impl I3cPeripheral for I3c {
         if address >= image_len - 4 {
             self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0
                 .reg
-                .modify(IndirectFifoStatus0::Full::SET);
+                .modify(IndirectFifoStatus0::Full::SET + IndirectFifoStatus0::Empty::CLEAR);
         }
 
         let address: usize = address.try_into().unwrap();
