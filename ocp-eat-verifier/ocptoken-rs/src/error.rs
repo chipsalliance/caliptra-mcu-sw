@@ -1,7 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-// error.rs
-
 use thiserror::Error;
 /// Errors that can occur when working with OCP EAT tokens
 #[derive(Error, Debug)]
@@ -9,6 +7,9 @@ pub enum OcpEatError {
     /// COSE parsing or validation error
     #[error("COSE error: {0:?}")]
     CoseSign1(coset::CoseError),
+
+    #[error("Invalid token: {0}")]
+    InvalidToken(&'static str),
 
     /// Certificate parsing error
     #[error("Certificate error: {0}")]

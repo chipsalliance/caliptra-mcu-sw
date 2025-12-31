@@ -41,14 +41,8 @@ impl Evidence {
          * 2. Strict COSE decode
          * ---------------------------------------------------------- */
         let cose = match CoseSign1::from_slice(&cose_bytes) {
-            Ok(cose) => {
-                println!("coset strict decode succeeded");
-                cose
-            }
+            Ok(cose) => cose,
             Err(e) => {
-                println!("coset strict decode failed: {:?}", e);
-                println!("Dumping CBOR structure to identify offending tag/value:");
-                debug_dump_cbor(slice);
                 return Err(OcpEatError::CoseSign1(e));
             }
         };
@@ -60,20 +54,20 @@ impl Evidence {
 
         //  Extract payload
 
-        let payload = cose.payload.as_deref().ok_or_else(|| {
-            OcpEatError::CoseSign1(coset::CoseError::UnexpectedItem("nil", "bstr payload"))
-        })?;
+        let payload = cose
+            .payload
+            .as_deref()
+            .ok_or_else(|| OcpEatError::InvalidToken("Payload missing"))?;
 
         /* ----------------------------------------------------------
          * 4. Extract leaf cert from unprotected header
          * ---------------------------------------------------------- */
 
         let cert_der = extract_leaf_cert_der(&cose.unprotected)?;
-        dump_cert_der(&cert_der);
         let (pubkey_x, pubkey_y) = extract_pubkey_xy(&cert_der)?;
 
         /* ----------------------------------------------------------
-         * 5. Reconstruct Sig_structure (SPEC-CORRECT)
+         * 5. Reconstruct Sig_structure
          * ---------------------------------------------------------- */
 
         let sig_structure = sig_structure_data(
@@ -89,8 +83,6 @@ impl Evidence {
          * ---------------------------------------------------------- */
         verify_signature_es384(&cose.signature, pubkey_x, pubkey_y, &sig_structure)?;
 
-        println!("success decoded");
-
         Ok(Evidence {
             signed_eat: Some(cose),
         })
@@ -100,50 +92,6 @@ impl Evidence {
 /* -------------------------------------------------------------------------- */
 /*                               Helper functions                              */
 /* -------------------------------------------------------------------------- */
-
-use std::fs::File;
-use std::io::Write;
-
-pub fn debug_dump_cbor(slice: &[u8]) {
-    match Value::from_slice(slice) {
-        Ok(v) => {
-            println!("Top-level CBOR value: {:?}", v);
-            dump_cbor_value(&v, 0);
-        }
-        Err(e) => {
-            println!("CBOR parse failed before COSE: {:?}", e);
-        }
-    }
-}
-
-fn dump_cbor_value(v: &Value, indent: usize) {
-    let pad = "  ".repeat(indent);
-
-    match v {
-        Value::Tag(tag, inner) => {
-            println!("{pad}CBOR Tag: {}", tag);
-            dump_cbor_value(inner, indent + 1);
-        }
-        Value::Map(map) => {
-            println!("{pad}CBOR Map:");
-            for (k, v) in map {
-                println!("{pad}  Key: {:?}", k);
-                println!("{pad}  Value:");
-                dump_cbor_value(v, indent + 2);
-            }
-        }
-        Value::Array(arr) => {
-            println!("{pad}CBOR Array (len={}):", arr.len());
-            for (i, item) in arr.iter().enumerate() {
-                println!("{pad}  [{i}]");
-                dump_cbor_value(item, indent + 2);
-            }
-        }
-        other => {
-            println!("{pad}{:?}", other);
-        }
-    }
-}
 
 fn skip_cbor_tags(slice: &[u8]) -> OcpEatResult<Value> {
     let mut value = Value::from_slice(slice).map_err(OcpEatError::CoseSign1)?;
@@ -165,15 +113,6 @@ fn skip_cbor_tags(slice: &[u8]) -> OcpEatResult<Value> {
     }
 
     Ok(value)
-}
-
-fn dump_cert_der(cert_der: &[u8]) {
-    let mut f = File::create("x5chain_cert.der").expect("failed to create x5chain_cert.der");
-    f.write_all(cert_der).expect("failed to write cert DER");
-    println!(
-        "Wrote x5chain cert to x5chain_cert.der ({} bytes)",
-        cert_der.len()
-    );
 }
 
 /// Extract leaf certificate DER from x5chain (label 33)
@@ -251,8 +190,6 @@ fn extract_pubkey_xy(cert_der: &[u8]) -> OcpEatResult<([u8; 48], [u8; 48])> {
     x.copy_from_slice(&x_bytes);
     y.copy_from_slice(&y_bytes);
 
-    println!("extract_pubkey_xy: success");
-
     Ok((x, y))
 }
 
@@ -306,15 +243,9 @@ fn verify_signature_es384(
 
 fn verify_protected_header(protected: &Header) -> OcpEatResult<()> {
     match &protected.alg {
-        Some(coset::RegisteredLabelWithPrivate::Assigned(alg)) => {
-            println!("protected.alg (IANA) = {:?}", alg);
-        }
-        Some(coset::RegisteredLabelWithPrivate::PrivateUse(v)) => {
-            println!("protected.alg (private-use) = {}", v);
-        }
-        Some(coset::RegisteredLabelWithPrivate::Text(t)) => {
-            println!("protected.alg (text) = {}", t);
-        }
+        Some(coset::RegisteredLabelWithPrivate::Assigned(_alg)) => {}
+        Some(coset::RegisteredLabelWithPrivate::PrivateUse(_v)) => {}
+        Some(coset::RegisteredLabelWithPrivate::Text(_t)) => {}
         None => {
             return Err(OcpEatError::CoseSign1(coset::CoseError::UnexpectedItem(
                 "alg", "present",
