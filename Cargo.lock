@@ -4010,6 +4010,8 @@ dependencies = [
  "caliptra-api",
  "caliptra-registers",
  "registers-generated",
+ "riscv-csr",
+ "rv32i",
  "tock-registers",
  "ureg",
  "zerocopy",

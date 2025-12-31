@@ -7,7 +7,9 @@ use flash_image::{
     SOC_MANIFEST_IDENTIFIER,
 };
 use registers_generated::i3c;
-use registers_generated::i3c::bits::{RecIntfCfg, RecIntfRegW1cAccess, RecoveryCtrl};
+use registers_generated::i3c::bits::{
+    IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess, RecoveryCtrl,
+};
 use romtime::StaticRef;
 use smlang::statemachine;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -16,7 +18,6 @@ use zerocopy::FromBytes;
 const ACTIVATE_RECOVERY_IMAGE_CMD: u32 = 0xF;
 const BYPASS_CFG_USE_I3C: u32 = 0x0;
 const BYPASS_CFG_AXI_DIRECT: u32 = 0x1;
-const INDIRECT_FIFO_STATUS_0_FULL_MASK: u32 = 0x1;
 
 statemachine! {
     derive_states: [Clone, Copy, Debug],
@@ -268,7 +269,8 @@ pub fn load_flash_image_to_recovery(
     let mut state_machine = StateMachine::new(context);
 
     let mut prev_state = States::ReadProtCap;
-    let mut last_percent = 0u32;
+    let mut next_print_offset = 0u32;
+    let mut start_cycle = None;
 
     i3c_periph
         .soc_mgmt_if_rec_intf_cfg
@@ -329,19 +331,18 @@ pub fn load_flash_image_to_recovery(
             }
 
             States::TransferringImage => {
-                if (state_machine.context().transfer_offset * 100
-                    / state_machine.context().image_size)
-                    / 10
-                    != last_percent
-                {
+                if start_cycle.is_none() {
+                    start_cycle = Some(romtime::mcycle());
+                }
+
+                if state_machine.context().transfer_offset >= next_print_offset {
                     romtime::println!(
                         "[mcu-rom] Transferring image data at offset {} out of {}",
                         state_machine.context().transfer_offset,
                         state_machine.context().image_size
                     );
-                    last_percent = (state_machine.context().transfer_offset * 100
-                        / state_machine.context().image_size)
-                        / 10;
+                    next_print_offset = state_machine.context().transfer_offset
+                        + state_machine.context().image_size / 10;
                 }
 
                 if state_machine.context().transfer_offset >= state_machine.context().image_size {
@@ -352,22 +353,37 @@ pub fn load_flash_image_to_recovery(
 
                     // If the transfer is complete, we can move to the next state
                     let _ = state_machine.process_event(Events::TransferComplete);
+                    let end_cycle = romtime::mcycle();
+                    let cycles = end_cycle - start_cycle.unwrap_or_default();
+                    romtime::println!(
+                        "[mcu-rom] Image transfer complete after {} cycles (≈{} bytes per 1,000 cycles)",
+                        cycles,
+                        (state_machine.context().image_size as u64 * 1000) / cycles,
+                    );
                 } else {
-                    // Check if the Indirect FIFO is ready for more data
-                    let fifo_status = i3c_periph.sec_fw_recovery_if_indirect_fifo_status_0.get();
-                    if fifo_status & INDIRECT_FIFO_STATUS_0_FULL_MASK == 0 {
-                        // Indirect FIFO is not full, we can write more data
-                        let mut data = [0u8; 4];
-                        flash_driver
-                            .read(
-                                (state_machine.context().flash_offset
-                                    + state_machine.context().transfer_offset)
-                                    as usize,
-                                &mut data,
-                            )
-                            .map_err(|_| ())?;
-                        i3c_periph.tti_tx_data_port.set(u32::from_le_bytes(data));
-                        state_machine.context_mut().transfer_offset += 4; // Simulate writing 4 bytes
+                    let offset = (state_machine.context().flash_offset
+                        + state_machine.context().transfer_offset)
+                        as usize;
+                    let num_bytes = 256.min(
+                        state_machine.context().image_size
+                            - state_machine.context().transfer_offset,
+                    ) as usize;
+
+                    // always read 256 bytes from flash if we can
+                    let mut buf = [0u8; 256];
+                    flash_driver
+                        .read(offset, &mut buf[..num_bytes])
+                        .map_err(|_| ())?;
+                    let buf_dwords = <[u32; 64]>::ref_from_bytes(&buf).unwrap();
+
+                    for &dword in &buf_dwords[..num_bytes / 4] {
+                        // Check if the Indirect FIFO is ready for more data
+                        while i3c_periph
+                            .sec_fw_recovery_if_indirect_fifo_status_0
+                            .is_set(IndirectFifoStatus0::Full)
+                        {}
+                        i3c_periph.tti_tx_data_port.set(dword);
+                        state_machine.context_mut().transfer_offset += 4; // Simulate writing bytes
                     }
                 }
             }
