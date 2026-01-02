@@ -2,10 +2,15 @@
 
 [package]
 name = "ocptoken"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
+version = "0.1.0"
+edition = "2021"
+authors = ["Caliptra Contributors"]
 
 [dependencies]
-coset = "0.4.0"
-thiserror = "2.0.17"
+coset.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+openssl.workspace = true
+clap.workspace = true
+
+
