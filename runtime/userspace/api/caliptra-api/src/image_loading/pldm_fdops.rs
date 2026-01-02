@@ -93,7 +93,7 @@ impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
 
 #[async_trait(?Send)]
 impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
-    async fn get_device_identifiers(
+    fn get_device_identifiers(
         &self,
         device_identifiers: &mut [Descriptor],
     ) -> Result<usize, FdOpsError> {
@@ -108,7 +108,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         Ok(self.descriptors.len())
     }
 
-    async fn get_firmware_parms(
+    fn get_firmware_parms(
         &self,
         firmware_params: &mut FirmwareParameters,
     ) -> Result<(), FdOpsError> {
@@ -122,7 +122,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         Ok(size)
     }
 
-    async fn handle_component(
+    fn handle_component(
         &self,
         component: &FirmwareComponent,
         fw_params: &FirmwareParameters,
@@ -221,11 +221,11 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         Ok(TransferResult::TransferSuccess)
     }
 
-    async fn is_download_complete(&self, _component: &FirmwareComponent) -> bool {
+    fn is_download_complete(&self, _component: &FirmwareComponent) -> bool {
         DOWNLOAD_CTX.lock(|ctx| ctx.borrow().download_complete)
     }
 
-    async fn query_download_progress(
+    fn query_download_progress(
         &self,
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
@@ -257,15 +257,12 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         Ok(ApplyResult::ApplySuccess)
     }
 
-    async fn cancel_update_component(
-        &self,
-        _component: &FirmwareComponent,
-    ) -> Result<(), FdOpsError> {
+    fn cancel_update_component(&self, _component: &FirmwareComponent) -> Result<(), FdOpsError> {
         // TODO: Implement cancel update component logic if needed
         Ok(())
     }
 
-    async fn activate(
+    fn activate(
         &self,
         _self_contained_activation: u8,
         estimated_time: &mut u16,

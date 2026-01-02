@@ -18,7 +18,7 @@ use pldm_common::protocol::firmware_update::{
 use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
 
-const MAX_PLDM_TRANSFER_SIZE: usize = 180; // This should be smaller than I3C MAX_READ_WRITE_SIZE
+const MAX_PLDM_TRANSFER_SIZE: usize = 196; // This should be smaller than I3C MAX_READ_WRITE_SIZE
 const ESTIMATED_ACTIVATION_TIME_SECS: u16 = 300; // 5 minutes estimated activation time including reset
 
 pub struct UpdateFdOps {}
@@ -52,7 +52,7 @@ impl UpdateFdOps {
 
 #[async_trait(?Send)]
 impl FdOps for UpdateFdOps {
-    async fn get_device_identifiers(
+    fn get_device_identifiers(
         &self,
         device_identifiers: &mut [Descriptor],
     ) -> Result<usize, FdOpsError> {
@@ -65,11 +65,11 @@ impl FdOps for UpdateFdOps {
             });
             Ok(descriptors.len())
         } else {
-            return Err(FdOpsError::DeviceIdentifiersError);
+            Err(FdOpsError::DeviceIdentifiersError)
         }
     }
 
-    async fn get_firmware_parms(
+    fn get_firmware_parms(
         &self,
         firmware_params: &mut FirmwareParameters,
     ) -> Result<(), FdOpsError> {
@@ -77,9 +77,9 @@ impl FdOps for UpdateFdOps {
         if let Some(fw_params) = fw_params {
             // Clone the firmware parameters to avoid borrowing issues
             *firmware_params = fw_params.clone();
-            return Ok(());
+            Ok(())
         } else {
-            return Err(FdOpsError::FirmwareParametersError);
+            Err(FdOpsError::FirmwareParametersError)
         }
     }
 
@@ -89,7 +89,7 @@ impl FdOps for UpdateFdOps {
         Ok(size)
     }
 
-    async fn handle_component(
+    fn handle_component(
         &self,
         component: &FirmwareComponent,
         fw_params: &FirmwareParameters,
@@ -169,11 +169,11 @@ impl FdOps for UpdateFdOps {
         Ok(TransferResult::TransferSuccess)
     }
 
-    async fn is_download_complete(&self, _component: &FirmwareComponent) -> bool {
+    fn is_download_complete(&self, _component: &FirmwareComponent) -> bool {
         PLDM_STATE.lock(|state| *state.borrow() == State::ImageDownloadComplete)
     }
 
-    async fn query_download_progress(
+    fn query_download_progress(
         &self,
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
@@ -224,15 +224,12 @@ impl FdOps for UpdateFdOps {
         Ok(apply_result)
     }
 
-    async fn cancel_update_component(
-        &self,
-        _component: &FirmwareComponent,
-    ) -> Result<(), FdOpsError> {
+    fn cancel_update_component(&self, _component: &FirmwareComponent) -> Result<(), FdOpsError> {
         // TODO: Implement cancel update component logic if needed
         Ok(())
     }
 
-    async fn activate(
+    fn activate(
         &self,
         _self_contained_activation: u8,
         estimated_time: &mut u16,

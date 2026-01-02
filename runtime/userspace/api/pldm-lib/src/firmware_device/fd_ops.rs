@@ -56,7 +56,7 @@ pub trait FdOps {
     ///
     /// * `Result<usize, FdOpsError>` - On success, returns the number of device identifiers retrieved.
     ///   On failure, returns an `FdOpsError`.
-    async fn get_device_identifiers(
+    fn get_device_identifiers(
         &self,
         device_identifiers: &mut [Descriptor],
     ) -> Result<usize, FdOpsError>;
@@ -70,7 +70,7 @@ pub trait FdOps {
     /// # Returns
     ///
     /// * `Result<(), FdOpsError>` - On success, returns `Ok(())`. On failure, returns an `FdOpsError`.
-    async fn get_firmware_parms(
+    fn get_firmware_parms(
         &self,
         firmware_params: &mut FirmwareParameters,
     ) -> Result<(), FdOpsError>;
@@ -99,7 +99,7 @@ pub trait FdOps {
     ///
     /// * `Result<ComponentResponseCode, FdOpsError>` - On success, returns a `ComponentResponseCode`.
     ///   On failure, returns an `FdOpsError`.
-    async fn handle_component(
+    fn handle_component(
         &self,
         component: &FirmwareComponent,
         fw_params: &FirmwareParameters,
@@ -149,7 +149,7 @@ pub trait FdOps {
     /// # Returns
     ///
     /// * `bool` - Returns `true` if the download is complete, otherwise `false`.
-    async fn is_download_complete(&self, component: &FirmwareComponent) -> bool;
+    fn is_download_complete(&self, component: &FirmwareComponent) -> bool;
 
     /// Queries the download progress for a given firmware component.
     ///
@@ -161,7 +161,7 @@ pub trait FdOps {
     /// # Returns
     ///
     /// * `Result<(), FdOpsError>` - On success, returns `Ok(())`. On failure, returns an `FdOpsError`.
-    async fn query_download_progress(
+    fn query_download_progress(
         &self,
         component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
@@ -216,7 +216,7 @@ pub trait FdOps {
     ///
     /// The device implementation is responsible for verifying that the expected components
     /// have been updated. If not, it should return `PLDM_FWUP_INCOMPLETE_UPDATE`.
-    async fn activate(
+    fn activate(
         &self,
         self_contained_activation: u8,
         estimated_time: &mut u16,
@@ -231,10 +231,7 @@ pub trait FdOps {
     /// # Returns
     ///
     /// * `Result<(), FdOpsError>` - On success, returns `Ok(())`. On failure, returns an `FdOpsError`.
-    async fn cancel_update_component(
-        &self,
-        component: &FirmwareComponent,
-    ) -> Result<(), FdOpsError>;
+    fn cancel_update_component(&self, component: &FirmwareComponent) -> Result<(), FdOpsError>;
 
     /// Indicates which components will be in a non-functioning state upon exiting update mode
     /// due to cancel update request from UA.
@@ -266,7 +263,7 @@ pub trait FdOps {
     /// # Returns
     ///
     /// * `PldmFdTime` - The current timestamp in milliseconds.
-    async fn now(&self) -> PldmFdTime {
+    fn now(&self) -> PldmFdTime {
         AsyncAlarm::<DefaultSyscalls>::get_milliseconds().unwrap()
     }
 }

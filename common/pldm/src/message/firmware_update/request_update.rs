@@ -27,6 +27,10 @@ pub struct RequestUpdateRequestFixed {
     pub comp_image_set_ver_str_type: u8,
     pub comp_image_set_ver_str_len: u8,
 }
+pub const REQUEST_UPDATE_REQUEST_FIXED_HEADER_LEN: usize = 14;
+const _: () = assert!(
+    core::mem::size_of::<RequestUpdateRequestFixed>() == REQUEST_UPDATE_REQUEST_FIXED_HEADER_LEN
+);
 
 impl RequestUpdateRequest {
     pub fn new(

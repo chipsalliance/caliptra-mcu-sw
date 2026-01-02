@@ -82,7 +82,6 @@ impl<'a> FirmwareDeviceContext<'a> {
         let descriptor_cnt = self
             .ops
             .get_device_identifiers(&mut device_identifiers)
-            .await
             .map_err(MsgHandlerError::FdOps)?;
 
         // Create the response message
@@ -112,7 +111,6 @@ impl<'a> FirmwareDeviceContext<'a> {
         let mut firmware_params = FirmwareParameters::default();
         self.ops
             .get_firmware_parms(&mut firmware_params)
-            .await
             .map_err(MsgHandlerError::FdOps)?;
 
         // Construct response
@@ -227,7 +225,6 @@ impl<'a> FirmwareDeviceContext<'a> {
         let mut firmware_params = FirmwareParameters::default();
         self.ops
             .get_firmware_parms(&mut firmware_params)
-            .await
             .map_err(MsgHandlerError::FdOps)?;
 
         let comp_resp_code = self
@@ -237,7 +234,6 @@ impl<'a> FirmwareDeviceContext<'a> {
                 &firmware_params,
                 ComponentOperation::PassComponent,
             )
-            .await
             .map_err(MsgHandlerError::FdOps)?;
 
         // Construct response
@@ -311,7 +307,6 @@ impl<'a> FirmwareDeviceContext<'a> {
         let mut firmware_params = FirmwareParameters::default();
         self.ops
             .get_firmware_parms(&mut firmware_params)
-            .await
             .map_err(MsgHandlerError::FdOps)?;
 
         let comp_resp_code = self
@@ -321,7 +316,6 @@ impl<'a> FirmwareDeviceContext<'a> {
                 &firmware_params,
                 ComponentOperation::UpdateComponent, /* This indicates this is an update request */
             )
-            .await
             .map_err(MsgHandlerError::FdOps)?;
 
         // Construct response
@@ -394,7 +388,6 @@ impl<'a> FirmwareDeviceContext<'a> {
         let completion_code = self
             .ops
             .activate(self_contained, &mut estimated_time)
-            .await
             .map_err(MsgHandlerError::FdOps)?;
 
         // Construct response
@@ -456,7 +449,6 @@ impl<'a> FirmwareDeviceContext<'a> {
         if should_cancel {
             self.ops
                 .cancel_update_component(&self.internal.get_component().await)
-                .await
                 .map_err(MsgHandlerError::FdOps)?;
         }
 
@@ -512,7 +504,6 @@ impl<'a> FirmwareDeviceContext<'a> {
         if should_cancel {
             self.ops
                 .cancel_update_component(&self.internal.get_component().await)
-                .await
                 .map_err(MsgHandlerError::FdOps)?;
         }
 
@@ -563,8 +554,7 @@ impl<'a> FirmwareDeviceContext<'a> {
                 let mut progress = ProgressPercent::default();
                 let _ = self
                     .ops
-                    .query_download_progress(&self.internal.get_component().await, &mut progress)
-                    .await;
+                    .query_download_progress(&self.internal.get_component().await, &mut progress);
                 let update_flags = self.internal.get_update_flags().await;
                 (progress, update_flags)
             }
@@ -652,9 +642,7 @@ impl<'a> FirmwareDeviceContext<'a> {
     }
 
     pub async fn set_fd_t1_ts(&self) {
-        self.internal
-            .set_fd_t1_update_ts(self.ops.now().await)
-            .await;
+        self.internal.set_fd_t1_update_ts(self.ops.now()).await;
     }
 
     pub async fn should_start_initiator_mode(&self) -> bool {
@@ -680,7 +668,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             _ => Err(MsgHandlerError::FdInitiatorModeError),
         }?;
 
-        let now = self.ops.now().await;
+        let now = self.ops.now();
         let ts = self.internal.get_fd_t1_update_ts().await;
         let elapsed = now.saturating_sub(ts);
         // If a response is not received within T1 in FD-driven states, cancel the update and transition to idle state.
@@ -692,7 +680,6 @@ impl<'a> FirmwareDeviceContext<'a> {
         {
             self.ops
                 .cancel_update_component(&self.internal.get_component().await)
-                .await
                 .map_err(MsgHandlerError::FdOps)?;
             self.internal.fd_idle_timeout().await;
             return Ok(0);
@@ -774,7 +761,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             .map_err(MsgHandlerError::FdOps)?;
 
         if res == TransferResult::TransferSuccess {
-            if self.ops.is_download_complete(fw_component).await {
+            if self.ops.is_download_complete(fw_component) {
                 // Mark as complete, next progress() call will send the TransferComplete request
                 self.internal
                     .set_fd_req(
@@ -923,7 +910,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             .map_err(MsgHandlerError::Codec)?;
 
             // Set fd req state to sent
-            let req_sent_timestamp = self.ops.now().await;
+            let req_sent_timestamp = self.ops.now();
             self.internal
                 .set_fd_req(
                     FdReqState::Sent,
@@ -963,7 +950,7 @@ impl<'a> FirmwareDeviceContext<'a> {
                     .await;
 
                 // Set fd req state to sent
-                let req_sent_timestamp = self.ops.now().await;
+                let req_sent_timestamp = self.ops.now();
                 self.internal
                     .set_fd_req(
                         FdReqState::Sent,
@@ -1022,7 +1009,7 @@ impl<'a> FirmwareDeviceContext<'a> {
                 Some(res as u8),
                 Some(instance_id),
                 Some(FwUpdateCmd::VerifyComplete as u8),
-                Some(self.ops.now().await),
+                Some(self.ops.now()),
             )
             .await;
 
@@ -1074,7 +1061,7 @@ impl<'a> FirmwareDeviceContext<'a> {
                 Some(res as u8),
                 Some(instance_id),
                 Some(FwUpdateCmd::ApplyComplete as u8),
-                Some(self.ops.now().await),
+                Some(self.ops.now()),
             )
             .await;
 
@@ -1082,7 +1069,7 @@ impl<'a> FirmwareDeviceContext<'a> {
     }
 
     async fn should_send_fd_request(&self) -> bool {
-        let now = self.ops.now().await;
+        let now = self.ops.now();
 
         let fd_req_state = self.internal.get_fd_req_state().await;
         match fd_req_state {
