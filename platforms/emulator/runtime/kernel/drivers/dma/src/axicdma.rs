@@ -6,8 +6,8 @@
 
 use core::cell::RefCell;
 
-use crate::hil::{DMAClient, DMAError, DMA};
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use capsules_runtime::dma::hil::{DMAClient, DMAError, DMAStatus, DmaRoute, DMA};
 use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -23,21 +23,21 @@ pub struct AxiCDMA<'a, A: Alarm<'a>> {
     dma_client: OptionalCell<&'a dyn DMAClient>,
     btt: RefCell<u32>,
     use_interrupt: bool,
-    alarm: VirtualMuxAlarm<'a, A>,
+    alarm: Option<VirtualMuxAlarm<'a, A>>,
 }
 
 impl<'a, A: Alarm<'a>> AxiCDMA<'a, A> {
     pub fn new(
         base: StaticRef<Axicdma>,
         use_interrupt: bool,
-        alarm: &'a MuxAlarm<'a, A>,
+        alarm: Option<&'a MuxAlarm<'a, A>>,
     ) -> AxiCDMA<'a, A> {
         AxiCDMA {
             registers: base,
             dma_client: OptionalCell::empty(),
             btt: RefCell::new(0),
             use_interrupt,
-            alarm: VirtualMuxAlarm::new(alarm),
+            alarm: alarm.map(|a| VirtualMuxAlarm::new(a)),
         }
     }
 
@@ -45,8 +45,11 @@ impl<'a, A: Alarm<'a>> AxiCDMA<'a, A> {
         self.reset();
         self.clear_error_interrupt();
         self.clear_event_interrupt();
-        self.alarm.setup();
-        self.alarm.set_alarm_client(self);
+
+        if let Some(alarm) = &self.alarm {
+            alarm.setup();
+            alarm.set_alarm_client(self);
+        }
     }
 
     fn enable_interrupts(&self) {
@@ -99,19 +102,21 @@ impl<'a, A: Alarm<'a>> AxiCDMA<'a, A> {
         if dmactrl_intr.is_set(AxicdmaStatus::IrqIoc) {
             self.clear_event_interrupt();
             self.dma_client.map(move |client| {
-                client.transfer_complete(crate::hil::DMAStatus::TxnDone);
+                client.transfer_complete(DMAStatus::TxnDone);
             });
         }
     }
 
     fn schedule_alarm(&self) {
-        let now = self.alarm.now();
-        let dt = A::Ticks::from(10000);
-        self.alarm.set_alarm(now, dt);
+        if let Some(alarm) = &self.alarm {
+            let now = alarm.now();
+            let dt = A::Ticks::from(20000);
+            alarm.set_alarm(now, dt);
+        }
     }
 }
 
-impl<'a, A: Alarm<'a>> crate::hil::DMA for AxiCDMA<'a, A> {
+impl<'a, A: Alarm<'a>> DMA for AxiCDMA<'a, A> {
     fn configure_transfer(
         &self,
         byte_count: usize,
@@ -159,15 +164,15 @@ impl<'a, A: Alarm<'a>> crate::hil::DMA for AxiCDMA<'a, A> {
 
     fn start_transfer(
         &self,
-        read_route: crate::hil::DmaRoute,
-        write_route: crate::hil::DmaRoute,
+        read_route: DmaRoute,
+        write_route: DmaRoute,
         _fixed_addr: bool,
     ) -> Result<(), ErrorCode> {
-        if read_route != crate::hil::DmaRoute::AxiToAxi {
+        if read_route != DmaRoute::AxiToAxi {
             // Only AxiToAxi route is supported
             return Err(ErrorCode::INVAL);
         }
-        if write_route != crate::hil::DmaRoute::AxiToAxi {
+        if write_route != DmaRoute::AxiToAxi {
             // Only AxiToAxi route is supported
             return Err(ErrorCode::INVAL);
         }
@@ -186,11 +191,11 @@ impl<'a, A: Alarm<'a>> crate::hil::DMA for AxiCDMA<'a, A> {
         Ok(())
     }
 
-    fn poll_status(&self) -> Result<crate::hil::DMAStatus, DMAError> {
+    fn poll_status(&self) -> Result<DMAStatus, DMAError> {
         // Read the op_status register
         let op_status = self.registers.axicdma_status.extract();
         if op_status.is_set(AxicdmaStatus::Idle) {
-            return Ok(crate::hil::DMAStatus::TxnDone);
+            return Ok(DMAStatus::TxnDone);
         }
         if op_status.is_set(AxicdmaStatus::ErrInternal)
             || op_status.is_set(AxicdmaStatus::ErrSlave)
@@ -198,7 +203,7 @@ impl<'a, A: Alarm<'a>> crate::hil::DMA for AxiCDMA<'a, A> {
         {
             return Err(DMAError::CommandError);
         }
-        Ok(crate::hil::DMAStatus::RdFifoNotEmpty)
+        Ok(DMAStatus::RdFifoNotEmpty)
     }
 
     fn write_fifo(&self, _data: &[u8]) -> Result<(), DMAError> {
@@ -217,9 +222,9 @@ impl<'a, A: Alarm<'a>> crate::hil::DMA for AxiCDMA<'a, A> {
 impl<'a, A: Alarm<'a>> AlarmClient for AxiCDMA<'a, A> {
     fn alarm(&self) {
         match self.poll_status() {
-            Ok(crate::hil::DMAStatus::TxnDone) => {
+            Ok(DMAStatus::TxnDone) => {
                 self.dma_client.map(move |client| {
-                    client.transfer_complete(crate::hil::DMAStatus::TxnDone);
+                    client.transfer_complete(DMAStatus::TxnDone);
                 });
                 self.disable_interrupts();
             }

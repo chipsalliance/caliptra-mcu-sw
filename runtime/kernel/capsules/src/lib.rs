@@ -5,6 +5,7 @@
 
 pub mod test;
 
+pub mod dma;
 pub mod doe;
 pub mod mailbox;
 pub mod mbox_sram;

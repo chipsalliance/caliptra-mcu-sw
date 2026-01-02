@@ -239,6 +239,18 @@ impl MciMailboxImpl {
         self.lock.reg.set(0); // Release lock after clearing
     }
 
+    pub fn read_mcu_mbox0_csr_mbox_sram_block(&mut self, index: usize, len: usize) -> Vec<u8> {
+        if index + len > MCU_MAILBOX0_SRAM_SIZE as usize {
+            panic!(
+                "Read length {len} exceeds mcu_mbox0 SRAM size of {}",
+                MCU_MAILBOX0_SRAM_SIZE
+            );
+        }
+        let sram = self.sram.ram.lock().unwrap();
+        let mem = sram.data();
+        mem[index..index + len].to_vec()
+    }
+
     pub fn read_mcu_mbox0_csr_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
         if index >= (MCU_MAILBOX0_SRAM_SIZE as usize / 4) {
             panic!("Index out of bounds for mcu_mbox0 SRAM: {index}");
@@ -276,6 +288,23 @@ impl MciMailboxImpl {
         {
             panic!("Failed to write mcu_mbox0 SRAM at index {index}: {e:?}");
         }
+    }
+
+    pub fn write_mcu_mbox0_csr_mbox_sram_block(&mut self, data: &[u8], index: usize) {
+        if !self.is_locked() {
+            panic!("Cannot write to mcu_mbox0 SRAM when mailbox is unlocked");
+        }
+
+        let dlen = data.len();
+        if index + dlen > MCU_MAILBOX0_SRAM_SIZE as usize {
+            panic!(
+                "Data length {dlen} exceeds mcu_mbox0 SRAM size of {}",
+                MCU_MAILBOX0_SRAM_SIZE
+            );
+        }
+        let mut sram = self.sram.ram.lock().unwrap();
+        let mem = sram.data_mut();
+        mem[index..index + dlen].copy_from_slice(data);
     }
 
     pub fn read_mcu_mbox0_csr_mbox_lock(

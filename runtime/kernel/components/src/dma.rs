@@ -2,14 +2,14 @@
 
 // Component for DMA driver.
 
+use capsules_runtime::dma::hil::DMA;
 use core::mem::MaybeUninit;
-use dma_driver::hil::DMA;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::create_capability;
 
 pub struct DmaComponent {
-    driver: &'static dyn dma_driver::hil::DMA,
+    driver: &'static dyn DMA,
     board_kernel: &'static kernel::Kernel,
     driver_num: usize,
 }

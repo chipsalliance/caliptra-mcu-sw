@@ -7,8 +7,8 @@
 
 use core::cell::RefCell;
 
-use crate::hil::{DMAClient, DMAError};
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use capsules_runtime::dma::hil::{DMAClient, DMAError, DMAStatus, DmaRoute, DMA};
 use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::OptionalCell;
 use kernel::ErrorCode;
@@ -46,7 +46,7 @@ impl<'a, A: Alarm<'a>> NoDMA<'a, A> {
     }
 }
 
-impl<'a, A: Alarm<'a>> crate::hil::DMA for NoDMA<'a, A> {
+impl<'a, A: Alarm<'a>> DMA for NoDMA<'a, A> {
     fn configure_transfer(
         &self,
         byte_count: usize,
@@ -79,15 +79,15 @@ impl<'a, A: Alarm<'a>> crate::hil::DMA for NoDMA<'a, A> {
 
     fn start_transfer(
         &self,
-        read_route: crate::hil::DmaRoute,
-        write_route: crate::hil::DmaRoute,
+        read_route: DmaRoute,
+        write_route: DmaRoute,
         _fixed_addr: bool,
     ) -> Result<(), ErrorCode> {
-        if read_route != crate::hil::DmaRoute::AxiToAxi {
+        if read_route != DmaRoute::AxiToAxi {
             // Only AxiToAxi route is supported
             return Err(ErrorCode::INVAL);
         }
-        if write_route != crate::hil::DmaRoute::AxiToAxi {
+        if write_route != DmaRoute::AxiToAxi {
             // Only AxiToAxi route is supported
             return Err(ErrorCode::INVAL);
         }
@@ -101,7 +101,7 @@ impl<'a, A: Alarm<'a>> crate::hil::DMA for NoDMA<'a, A> {
         Ok(())
     }
 
-    fn poll_status(&self) -> Result<crate::hil::DMAStatus, DMAError> {
+    fn poll_status(&self) -> Result<DMAStatus, DMAError> {
         // Not supported
         Err(DMAError::CommandError)
     }
@@ -138,7 +138,7 @@ impl<'a, A: Alarm<'a>> AlarmClient for NoDMA<'a, A> {
 
         *self.busy.borrow_mut() = false;
         self.dma_client.map(move |client| {
-            client.transfer_complete(crate::hil::DMAStatus::TxnDone);
+            client.transfer_complete(DMAStatus::TxnDone);
         });
     }
 }
