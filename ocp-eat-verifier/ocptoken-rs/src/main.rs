@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::fs;
 use std::path::PathBuf;
 
@@ -11,24 +11,52 @@ use ocptoken::token::evidence::Evidence;
     name = "ocptoken",
     author,
     version,
-    about = "Decode and verify an OCP TOKEN COSE_Sign1 token"
+    about = "Verify an OCP TOKEN COSE_Sign1 token",
+    long_about = None
 )]
 struct Cli {
-    /// Path to CBOR-encoded evidence
-    #[arg(short = 'e', long = "evidence", value_name = "FILE")]
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Cryptographically verify the supplied OCP token using the EAT attestation key
+    Verify(VerifyArgs),
+}
+
+#[derive(Parser, Debug)]
+#[command(
+    author,
+    version,
+    about = "Cryptographically verify the supplied OCP token using the EAT attestation key"
+)]
+struct VerifyArgs {
+    #[arg(
+        short = 'e',
+        long = "evidence",
+        value_name = "EVIDENCE",
+        default_value = "ocp_eat.cbor"
+    )]
     evidence: PathBuf,
 }
 
 fn main() {
     let cli = Cli::parse();
 
+    match cli.command {
+        Commands::Verify(args) => run_verify(&args),
+    }
+}
+
+fn run_verify(args: &VerifyArgs) {
     // 1. Load the binary file
-    let encoded = match fs::read(&cli.evidence) {
+    let encoded = match fs::read(&args.evidence) {
         Ok(b) => b,
         Err(e) => {
             eprintln!(
                 "Failed to read evidence file '{}': {}",
-                cli.evidence.display(),
+                args.evidence.display(),
                 e
             );
             std::process::exit(1);
@@ -37,7 +65,7 @@ fn main() {
 
     println!(
         "Loaded evidence file '{}' ({} bytes)",
-        cli.evidence.display(),
+        args.evidence.display(),
         encoded.len()
     );
 
@@ -49,7 +77,7 @@ fn main() {
         Err(e) => {
             eprintln!("Evidence::decode failed: {:?}", e);
 
-            // Optional: show first few bytes to help debugging
+            // Optional debug dump
             let prefix_len = encoded.len().min(32);
             eprintln!(
                 "First {} bytes of input: {:02x?}",
