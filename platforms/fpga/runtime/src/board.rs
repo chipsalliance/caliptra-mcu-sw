@@ -452,7 +452,7 @@ pub unsafe fn main() {
         Some(MCU_MEMORY_MAP.soc_offset),
         Some(MCU_MEMORY_MAP.soc_offset),
         Some(MCU_MEMORY_MAP.mbox_offset),
-        mbox_staging_addr,
+        mbox_staging_addr
     ));
 
     mailbox.alarm.set_alarm_client(mailbox);
