@@ -28,7 +28,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const MAX_TRANSFER_SIZE: u32 =
-    (250 - REQUEST_UPDATE_REQUEST_FIXED_HEADER_LEN - PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN) as u32; // Maximum bytes to transfer in one request
+    (250 - REQUEST_UPDATE_REQUEST_FIXED_HEADER_LEN - PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN - 8)
+        as u32; // Maximum bytes to transfer in one request
 const BASELINE_TRANSFER_SIZE: u32 = 32; // Minimum bytes to transfer in one request
 const MAX_OUTSTANDING_TRANSFER_REQ: u8 = 1;
 const GET_STATUS_ACTIVATION_POLL_INTERVAL: Duration = Duration::from_secs(1);
