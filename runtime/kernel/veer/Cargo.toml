@@ -12,6 +12,7 @@ capsules-extra.workspace = true
 capsules-runtime.workspace = true
 capsules-system.workspace = true
 components.workspace = true
+flash-driver.workspace = true
 i3c-driver.workspace = true
 kernel.workspace = true
 mcu-config.workspace = true

@@ -25,12 +25,18 @@ pub mod hw_model_tests {
         bin_name: "axi_bypass",
         ..BASE_FWID
     };
+
+    pub const EXCEPTION_HANDLER: FwId = FwId {
+        bin_name: "exception_handler",
+        ..BASE_FWID
+    };
 }
 
 pub const REGISTERED_FW: &[&FwId] = &[
     &hw_model_tests::MAILBOX_RESPONDER,
     &hw_model_tests::HITLESS_UPDATE_FLOW,
     &hw_model_tests::AXI_BYPASS,
+    &hw_model_tests::EXCEPTION_HANDLER,
 ];
 
 pub const CPTRA_REGISTERED_FW: &[&FwId] = &[

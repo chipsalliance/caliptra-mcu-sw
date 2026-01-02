@@ -26,7 +26,16 @@ use crate::PROJECT_ROOT;
 use crate::TARGET;
 use crate::{firmware, ImageCfg};
 
+use std::collections::HashSet;
+use std::sync::LazyLock;
 use std::{env::var, sync::OnceLock};
+
+static FEATURES_WITH_EXAMPLE_APP: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    HashSet::from([
+        "test-fpga-flash-ctrl",
+        // Add more features as needed
+    ])
+});
 
 #[derive(Default)]
 pub struct FirmwareBinaries {
@@ -39,6 +48,7 @@ pub struct FirmwareBinaries {
     pub caliptra_test_roms: Vec<(String, Vec<u8>)>,
     pub test_soc_manifests: Vec<(String, Vec<u8>)>,
     pub test_runtimes: Vec<(String, Vec<u8>)>,
+    pub test_pldm_fw_pkgs: Vec<(String, Vec<u8>)>,
 }
 
 impl FirmwareBinaries {
@@ -97,6 +107,9 @@ impl FirmwareBinaries {
                 }
                 name if name.contains("cptra-test-rom") => {
                     binaries.caliptra_test_roms.push((name.to_string(), data));
+                }
+                name if name.contains("mcu-test-pldm-fw-pkg") => {
+                    binaries.test_pldm_fw_pkgs.push((name.to_string(), data));
                 }
                 _ => continue,
             }
@@ -164,6 +177,18 @@ impl FirmwareBinaries {
             "Runtime not found. File name: {expected_name}, feature: {feature}"
         ))
     }
+
+    pub fn test_pldm_fw_pkg(&self, feature: &str) -> Result<Vec<u8>> {
+        let expected_name = format!("mcu-test-pldm-fw-pkg-{}.bin", feature);
+        for (name, data) in self.test_pldm_fw_pkgs.iter() {
+            if &expected_name == name {
+                return Ok(data.clone());
+            }
+        }
+        Err(anyhow::anyhow!(
+            "PLDM FW Package not found. File name: {expected_name}, feature: {feature}"
+        ))
+    }
 }
 
 #[derive(Default)]
@@ -177,7 +202,7 @@ pub struct AllBuildArgs<'a> {
     pub runtime_features: Option<&'a str>,
     pub separate_runtimes: bool,
     pub soc_images: Option<Vec<ImageCfg>>,
-    pub mcu_cfg: Option<ImageCfg>,
+    pub mcu_cfgs: Option<Vec<ImageCfg>>,
     pub pldm_manifest: Option<&'a str>,
 }
 
@@ -193,7 +218,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         runtime_features,
         separate_runtimes,
         soc_images,
-        mcu_cfg,
+        mcu_cfgs,
         pldm_manifest,
     } = args;
 
@@ -256,9 +281,9 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let base_runtime_file = tempfile::NamedTempFile::new().unwrap();
     let base_runtime_path = base_runtime_file.path().to_str().unwrap();
 
-    let mcu_runtime = &crate::runtime_build_with_apps_cached(
+    let mcu_runtime = &crate::runtime_build_with_apps(
         &base_runtime_features,
-        Some(base_runtime_path),
+        Some(base_runtime_path.to_string()),
         false,
         Some(platform),
         Some(memory_map),
@@ -270,6 +295,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     )?;
 
     let fpga = platform == "fpga";
+    let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none");
     let mut caliptra_builder = crate::CaliptraBuilder::new(
         fpga,
         None,
@@ -278,7 +304,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         None,
         Some(mcu_runtime.into()),
         soc_images.clone(),
-        mcu_cfg.clone(),
+        mcu_image_cfg,
         None,
         None,
         None,
@@ -326,11 +352,12 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     for feature in separate_features.iter() {
         let feature_runtime_file = tempfile::NamedTempFile::new().unwrap();
         let feature_runtime_path = feature_runtime_file.path().to_str().unwrap().to_string();
+        let include_example_app = FEATURES_WITH_EXAMPLE_APP.contains(feature);
 
-        crate::runtime_build_with_apps_cached(
+        crate::runtime_build_with_apps(
             &[feature],
-            Some(&feature_runtime_path),
-            false,
+            Some(feature_runtime_path),
+            include_example_app,
             Some(platform),
             Some(memory_map),
             use_dccm_for_stack,
@@ -340,6 +367,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             None,
         )?;
 
+        let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature);
+
         let mut caliptra_builder = crate::CaliptraBuilder::new(
             fpga,
             Some(caliptra_rom.clone()),
@@ -348,7 +377,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             Some(vendor_pk_hash.clone()),
             Some(feature_runtime_file.path().to_path_buf()),
             soc_images.clone(),
-            mcu_cfg.clone(),
+            mcu_image_cfg.clone(),
             None,
             None,
             None,
@@ -508,6 +537,15 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     zip.finish()?;
 
     Ok(())
+}
+
+fn get_image_cfg_feature(image_cfg: &[ImageCfg], feature: &str) -> Option<ImageCfg> {
+    for img in image_cfg {
+        if img.feature == feature {
+            return Some(img.clone());
+        }
+    }
+    None
 }
 
 fn add_to_zip(

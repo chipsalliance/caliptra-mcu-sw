@@ -18,5 +18,8 @@ libtock_platform.workspace = true
 libtock_console.workspace = true
 zerocopy.workspace = true
 
+[features]
+large-buffer = []
+
 [dev-dependencies]
 rand.workspace = true

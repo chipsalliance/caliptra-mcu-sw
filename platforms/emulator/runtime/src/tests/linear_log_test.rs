@@ -10,7 +10,6 @@ use capsules_emulator::logging::logging_flash as log;
 use capsules_emulator::logging::logging_flash::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
 use core::cell::Cell;
 use core::ptr::addr_of_mut;
-use flash_driver::flash_ctrl;
 use kernel::debug;
 use kernel::hil::flash;
 use kernel::hil::log::{LogRead, LogReadClient, LogWrite, LogWriteClient};
@@ -34,12 +33,12 @@ const LOG_FLASH_BASE_ADDR: u32 = mcu_config_emulator::flash::LOGGING_FLASH_CONFI
 
 pub unsafe fn run(
     mux_alarm: &'static MuxAlarm<'static, InternalTimers>,
-    flash_controller: &'static flash_ctrl::EmulatedFlashCtrl,
+    flash_controller: &'static flash_ctrl_emulator::EmulatedFlashCtrl,
 ) -> Option<u32> {
     flash_controller.init();
     let pagebuffer = static_init!(
-        flash_ctrl::EmulatedFlashPage,
-        flash_ctrl::EmulatedFlashPage::default()
+        flash_ctrl_emulator::EmulatedFlashPage,
+        flash_ctrl_emulator::EmulatedFlashPage::default()
     );
     // Create actual log storage abstraction on top of flash.
     let log: &'static mut Log = static_init!(
@@ -122,7 +121,7 @@ enum TestOp {
     Erase,
 }
 
-type Log = log::Log<'static, flash_ctrl::EmulatedFlashCtrl<'static>>;
+type Log = log::Log<'static, flash_ctrl_emulator::EmulatedFlashCtrl<'static>>;
 struct LogTest<A: 'static + Alarm<'static>> {
     log: &'static Log,
     buffer: TakeCell<'static, [u8]>,

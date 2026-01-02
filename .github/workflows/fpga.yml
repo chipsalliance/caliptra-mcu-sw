@@ -133,8 +133,11 @@ jobs:
 
           # Build ROM and runtime binaries
           echo "Cross compiling FPGA binaries"
+
+          export MCU_STAGING_ADDR=0xB00C0000
           cargo xtask-fpga all-build --platform fpga \
-            --runtime-features test-mctp-capsule-loopback \
+            --runtime-features "test-mctp-capsule-loopback,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming" \
+            --mcu_cfg mcu,0x0,$MCU_STAGING_ADDR,2,2,test-fpga-flash-ctrl \
             --separate-runtimes
           sccache --show-stats
 
@@ -240,12 +243,19 @@ jobs:
               --target-dir-remap="${TEST_BIN}/target"
               --workspace-remap=.
               -E 'package(mcu-hw-model) - test(model_emulated::test::test_new_unbooted)'
-              -E 'package(tests-integration) and test(test_axi_bypass)' # Modify this as we onboard crates to the FPGA test suite.
-              -E 'package(tests-integration) and test(test_jtag_taps) and test(test_lc_transitions) and test(test_uds)' # Modify this as we onboard crates to the FPGA test suite.
+              -E 'package(tests-integration) and test(test_axi_bypass)'
+              -E 'package(tests-integration) and test(test_jtag_taps)'
+              -E 'package(tests-integration) and test(test_lc_transitions)'
+              -E 'package(tests-integration) and test(test_manuf_debug_unlock)'
+              -E 'package(tests-integration) and test(test_prod_debug_unlock)'
+              -E 'package(tests-integration) and test(test_uds)' # Modify this as we onboard crates to the FPGA test suite.
+              -E 'package(tests-integration) and test(test_imaginary_flash_controller)'
+              -E 'package(tests-integration) and test(test_fw_update_e2e)'
           )
               # disabled for now due to flakiness of recovery boot
               # -E 'package(tests-integration) and test(test_mctp_capsule_loopback)'
-
+              # TODO(#694): renable after debugging failing tests:
+              # -E 'package(tests-integration) and test(test_firmware_update_streaming)'
 
           cargo-nextest nextest list \
               "${COMMON_ARGS[@]}" \

@@ -35,6 +35,8 @@ test_certs
 
 # ld scripts
 layout.ld
+platforms/fpga/runtime/example-app-layout.ld
+platforms/fpga/runtime/user-app-layout.ld
 
 # Zstandard Archives (e.g. cargo nextest test archive)
 **/*.tar.zst
@@ -47,3 +49,6 @@ cross-target/
 
 docs/src/mdbook-plantuml-img
 docs/*.jar
+
+# FPGA bitstreams
+subsystem.pdi

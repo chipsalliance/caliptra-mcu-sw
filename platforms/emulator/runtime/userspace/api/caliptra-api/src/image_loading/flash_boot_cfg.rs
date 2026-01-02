@@ -6,9 +6,10 @@ use libtock_platform::ErrorCode;
 use mcu_config::boot::{
     BootConfigAsync, BootConfigError, PartitionId, PartitionStatus, RollbackEnable,
 };
+use mcu_config::flash::FlashPartition;
 use mcu_config_emulator::flash::{
-    FlashPartition, PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION,
-    IMAGE_B_PARTITION, PARTITION_TABLE,
+    PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
+    PARTITION_TABLE,
 };
 use zerocopy::{FromBytes, IntoBytes};
 

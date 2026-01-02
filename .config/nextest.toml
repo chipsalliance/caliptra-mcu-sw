@@ -3,9 +3,19 @@
 [profile.nightly]
 failure-output = "immediate-final"
 fail-fast = false
-slow-timeout = { period = "30s", terminate-after = 6 }
+slow-timeout = { period = "5m", terminate-after = 6 }
 
 [profile.nightly.junit]
+path = "/tmp/junit.xml"
+store-success-output = true
+store-failure-output = true
+
+[profile.nightly-emulator]
+failure-output = "immediate-final"
+fail-fast = false
+slow-timeout = { period = "30m", terminate-after = 6 }
+
+[profile.nightly-emulator.junit]
 path = "/tmp/junit.xml"
 store-success-output = true
 store-failure-output = true

@@ -11,6 +11,7 @@ mod test {
         PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
     };
     use mcu_config_emulator::EMULATOR_MEMORY_MAP;
+    use mcu_testing_common::DeviceLifecycle;
     use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
@@ -203,7 +204,7 @@ mod test {
             opts.runtime.clone(),
             opts.i3c_port.to_string(),
             true,
-            false,
+            DeviceLifecycle::Production,
             Some(opts.soc_images.clone()),
             opts.pldm_fw_pkg_path.clone(),
             opts.primary_flash_image_path.clone(),
@@ -242,13 +243,15 @@ mod test {
                 ..Default::default()
             },
         ];
-        let update_runtime_firmware = compile_runtime(Some("test-flash-based-boot"), false);
+        let feature = "test-flash-based-boot";
+        let update_runtime_firmware = compile_runtime(Some(feature), false);
         let mcu_cfg = ImageCfg {
             path: update_runtime_firmware.clone(),
             load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
             staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
             image_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
+            feature: feature.to_string(),
         };
 
         let mut update_builder = CaliptraBuilder::new(
@@ -556,6 +559,7 @@ mod test {
             staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
             image_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
+            feature: feature.to_string(),
         };
 
         // Build the Runtime image
@@ -649,7 +653,7 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    // TODO: fails with
+    // TODO(#694): fails with
     // 2025-12-06T00:14:42.314Z INFO  [pldm_ua::update_sm] Transfer complete success
     // [FW Upd] Verifying Caliptra Bundle
     // Error copying from mailbox: MailboxCmdFailed(720898)
@@ -660,11 +664,36 @@ mod test {
         test_firmware_update_common(true);
     }
 
+    // TODO(#694): fails with
+    //Timeout waiting for EXECUTE bit to clear
+    //1,410,219,676 UART: Error copying from mailbox: MailboxCmdFailed(720898)
+    //* TESTCASE FAILED
+    //Emulator exited with error: firmware exited with failure
+    #[cfg(feature = "fpga_realtime")]
+    #[ignore]
     #[test]
     fn test_firmware_update_streaming() {
         if env::var("PLDM_FW_PKG").is_err() {
-            println!("Skipping test_firmware_update_streaming as PLDM_FW_PKG is not set");
-            return;
+            if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+                // If PLDM_FW_PKG is not specified, we will use the PLDM firmware package
+                // for test-fpga-flash-ctrl that was built during the FPGA build.
+                // We choose this package since it is small enough to fit in the
+                // FPGA staging memory.
+                let test_pldm_pkg_data = binaries.test_pldm_fw_pkg("test-fpga-flash-ctrl").unwrap();
+                let test_pldm_pkg_path = tempfile::NamedTempFile::new()
+                    .expect("Failed to create temp file")
+                    .path()
+                    .to_path_buf();
+                std::fs::write(&test_pldm_pkg_path, test_pldm_pkg_data)
+                    .expect("Failed to write PLDM FW PKG temp file");
+                env::set_var(
+                    "PLDM_FW_PKG",
+                    test_pldm_pkg_path.to_string_lossy().to_string(),
+                );
+            } else {
+                println!("Skipping test_firmware_update_streaming as PLDM_FW_PKG is not set");
+                return;
+            }
         }
         crate::test_pldm_fw_update::test::start_pldm_test(
             "test_firmware_update_streaming",

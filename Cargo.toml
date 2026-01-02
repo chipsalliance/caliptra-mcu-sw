@@ -176,7 +176,9 @@ emulator-consts = { "path" = "emulator/consts" }
 emulator-mcu-mbox = { path = "emulator/app/mcu-mbox"}
 emulator-periph = { path = "emulator/periph" }
 emulator-registers-generated = { path = "registers/generated-emulator" }
-flash-driver = { path = "platforms/emulator/runtime/kernel/drivers/flash" }
+flash-ctrl-emulator = { path = "platforms/emulator/runtime/kernel/drivers/flash_ctrl"}
+flash-ctrl-fpga = { path = "platforms/fpga/runtime/drivers/flash_ctrl"}
+flash-driver = { path = "runtime/kernel/drivers/flash" }
 flash-image = { path = "common/flash-image" }
 i3c-driver = { path = "runtime/kernel/drivers/i3c" }
 libtockasync = { path = "runtime/userspace/libtockasync" }
@@ -213,7 +215,7 @@ romtime = { path = "romtime" }
 external-cmds-common = { path = "runtime/userspace/api/external-cmds-common" }
 mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
 pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
-spdm-lib = { path = "runtime/userspace/api/spdm-lib" }
+spdm-lib = { path = "runtime/userspace/api/spdm-lib", default-features = false }
 libsyscall-caliptra = { path = "runtime/userspace/syscall" }
 libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }
 libapi-emulated-caliptra = { path = "platforms/emulator/runtime/userspace/api/caliptra-api" }

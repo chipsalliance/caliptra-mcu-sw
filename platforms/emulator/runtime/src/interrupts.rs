@@ -16,8 +16,8 @@ pub const DOE_MBOX_EVENT_IRQ: u8 = 0x19;
 
 pub struct EmulatorPeripherals<'a> {
     pub uart: SemihostUart<'a>,
-    pub primary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
-    pub secondary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl<'a>,
+    pub primary_flash_ctrl: flash_ctrl_emulator::EmulatedFlashCtrl<'a>,
+    pub secondary_flash_ctrl: flash_ctrl_emulator::EmulatedFlashCtrl<'a>,
     pub dma: dma_driver::axicdma::AxiCDMA<'a, InternalTimers<'a>>,
     pub doe_transport: doe_mbox_driver::EmulatedDoeTransport<'a, InternalTimers<'a>>,
 }
@@ -26,11 +26,11 @@ impl<'a> EmulatorPeripherals<'a> {
     pub fn new(alarm: &'a MuxAlarm<'a, InternalTimers<'a>>) -> Self {
         Self {
             uart: SemihostUart::new(),
-            primary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
-                flash_driver::flash_ctrl::PRIMARY_FLASH_CTRL_BASE,
+            primary_flash_ctrl: flash_ctrl_emulator::EmulatedFlashCtrl::new(
+                flash_ctrl_emulator::PRIMARY_FLASH_CTRL_BASE,
             ),
-            secondary_flash_ctrl: flash_driver::flash_ctrl::EmulatedFlashCtrl::new(
-                flash_driver::flash_ctrl::SECONDARY_FLASH_CTRL_BASE,
+            secondary_flash_ctrl: flash_ctrl_emulator::EmulatedFlashCtrl::new(
+                flash_ctrl_emulator::SECONDARY_FLASH_CTRL_BASE,
             ),
             dma: dma_driver::axicdma::AxiCDMA::new(
                 dma_driver::axicdma::DMA_CTRL_BASE,

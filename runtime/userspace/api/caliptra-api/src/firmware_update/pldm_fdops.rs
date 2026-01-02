@@ -19,6 +19,7 @@ use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
 
 const MAX_PLDM_TRANSFER_SIZE: usize = 180; // This should be smaller than I3C MAX_READ_WRITE_SIZE
+const ESTIMATED_ACTIVATION_TIME_SECS: u16 = 300; // 5 minutes estimated activation time including reset
 
 pub struct UpdateFdOps {}
 
@@ -236,7 +237,7 @@ impl FdOps for UpdateFdOps {
         _self_contained_activation: u8,
         estimated_time: &mut u16,
     ) -> Result<u8, FdOpsError> {
-        *estimated_time = 0;
+        *estimated_time = ESTIMATED_ACTIVATION_TIME_SECS;
         PLDM_STATE.lock(|state| {
             let mut state = state.borrow_mut();
             *state = State::Activate;
