@@ -11,11 +11,12 @@ use caliptra_api::mailbox::{
     CmAesGcmSpdmEncryptInitResp, Cmk, MailboxReqHeader, Request,
     CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
 };
+use core::mem::size_of;
 use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
 
-pub type Aes256GcmIv = [u8; 12];
-pub type Aes256GcmTag = [u8; 16];
+pub type Aes256GcmIv = [u32; 3];
+pub type Aes256GcmTag = [u32; 4];
 
 pub struct AesGcm {
     context: Option<[u8; CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE]>,
@@ -451,7 +452,7 @@ impl AesGcm {
         let mut req = CmAesGcmDecryptFinalReq {
             hdr: MailboxReqHeader::default(),
             context,
-            tag_len: tag.len() as u32,
+            tag_len: size_of::<Aes256GcmTag>() as u32,
             tag,
             ciphertext_size: 0,
             ciphertext: [0; MAX_CMB_DATA_SIZE],

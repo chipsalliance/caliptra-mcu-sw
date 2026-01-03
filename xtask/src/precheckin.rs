@@ -9,7 +9,7 @@ pub(crate) fn precheckin() -> Result<()> {
     crate::header::check()?;
     crate::deps::check()?;
     crate::registers::autogen(true, &[], &[], None, None)?;
-    mcu_builder::runtime_build_with_apps_cached(
+    mcu_builder::runtime_build_with_apps(
         &[],
         None,
         false,
@@ -21,7 +21,7 @@ pub(crate) fn precheckin() -> Result<()> {
         None,
         None,
     )?;
-    mcu_builder::runtime_build_with_apps_cached(
+    mcu_builder::runtime_build_with_apps(
         &[],
         None,
         false,

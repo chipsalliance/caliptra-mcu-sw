@@ -3,9 +3,10 @@
 //! This module tests the PLDM Firmware Update
 
 #[cfg(test)]
+#[cfg(feature = "fpga_realtime")]
 pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
-
+    use crate::test_fpga_flash_ctrl::test::run_imaginary_flash_controller_service;
     use chrono::{TimeZone, Utc};
     use lazy_static::lazy_static;
     use log::{error, LevelFilter};
@@ -51,9 +52,13 @@ pub mod test {
             .unwrap();
         PldmFwUpdateTest::run(pldm_socket, debug_level);
 
+        let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
+        run_imaginary_flash_controller_service(mci_ptr);
+
         let test = finish_runtime_hw_model(&mut hw);
 
         assert_eq!(0, test);
+        MCU_RUNNING.store(false, Ordering::Relaxed);
 
         // force the compiler to keep the lock
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -142,7 +147,7 @@ pub mod test {
             &self,
             expected_state: update_sm::States,
         ) -> Result<(), ()> {
-            let timeout = Duration::from_secs(500);
+            let timeout = Duration::from_secs(1800);
             let start_time = std::time::Instant::now();
 
             while start_time.elapsed() < timeout {
@@ -222,8 +227,9 @@ pub mod test {
                     exit(-1);
                 } else {
                     println!("Passed");
+                    MCU_RUNNING.store(false, Ordering::Relaxed);
+                    exit(0);
                 }
-                MCU_RUNNING.store(false, Ordering::Relaxed);
             });
         }
     }

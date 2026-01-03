@@ -316,6 +316,7 @@ impl McuHwModel for ModelEmulated {
 
         let device_lifecycle: Option<String> = match params.lifecycle_controller_state {
             Some(LifecycleControllerState::Dev) => Some("manufacturing".into()),
+            Some(LifecycleControllerState::Raw) => Some("unprovisioned".into()),
             _ => Some("production".into()),
         };
 
@@ -677,7 +678,7 @@ mod test {
     #[test]
     fn test_new_unbooted() {
         let mcu_rom = mcu_builder::rom_build(None, "").expect("Could not build MCU ROM");
-        let mcu_runtime = &mcu_builder::runtime_build_with_apps_cached(
+        let mcu_runtime = &mcu_builder::runtime_build_with_apps(
             &[],
             None,
             false,

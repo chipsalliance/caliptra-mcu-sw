@@ -149,15 +149,15 @@ pub(crate) enum DpeResponse {
     PartialEq,
     Eq,
     zerocopy::IntoBytes,
-    zerocopy::FromBytes,
+    zerocopy::TryFromBytes,
     zerocopy::Immutable,
     zerocopy::KnownLayout,
 )]
 pub(crate) struct CertifyEcKeyResp {
     pub resp_hdr: ResponseHdr,
     pub new_context_handle: ContextHandle,
-    pub derived_pubkey_x: [u8; DPE_PROFILE.get_ecc_int_size()],
-    pub derived_pubkey_y: [u8; DPE_PROFILE.get_ecc_int_size()],
+    pub derived_pubkey_x: [u8; DPE_PROFILE.ecc_int_size()],
+    pub derived_pubkey_y: [u8; DPE_PROFILE.ecc_int_size()],
     pub cert_size: u32,
     pub cert: [u8; MAX_ECC_CERT_SIZE],
 }
@@ -167,7 +167,7 @@ pub(crate) struct CertifyEcKeyResp {
     Debug,
     PartialEq,
     Eq,
-    zerocopy::FromBytes,
+    zerocopy::TryFromBytes,
     zerocopy::IntoBytes,
     zerocopy::Immutable,
     zerocopy::KnownLayout,

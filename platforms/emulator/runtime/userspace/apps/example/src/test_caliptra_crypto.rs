@@ -15,6 +15,8 @@ use libapi_caliptra::mailbox_api::{MAX_RANDOM_NUM_SIZE, MAX_RANDOM_STIR_SIZE};
 
 use romtime::{println, test_exit, HexBytes};
 
+use zerocopy::IntoBytes;
+
 const EXPECTED_HASHES_384: [[u8; 48]; 1] = [[
     // data 1
     0x95, 0x07, 0x7f, 0x78, 0x7b, 0x9a, 0xe1, 0x93, 0x72, 0x24, 0x54, 0xbe, 0x37, 0xf5, 0x01, 0x2a,
@@ -415,7 +417,7 @@ async fn test_caliptra_aes_gcm_spdm() {
     println!(
         "SPDM AES-GCM encryption completed successfully. Ciphertext size: {}, Tag: {}",
         ciphertext_size,
-        HexBytes(&tag)
+        HexBytes(&tag.as_bytes())
     );
 
     // Decrypt the ciphertext using the new decrypt API

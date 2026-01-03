@@ -9,7 +9,7 @@ use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
 use crate::measurements::{MeasurementsError, SpdmMeasurements};
 use crate::protocol::*;
-use crate::session::{SessionInfo, SessionState};
+use crate::session::SessionInfo;
 use crate::state::ConnectionState;
 use crate::transcript::{Transcript, TranscriptContext};
 use bitfield::bitfield;
@@ -405,10 +405,7 @@ async fn process_get_measurements<'a>(
     req_payload: &mut MessageBuf<'a>,
 ) -> CommandResult<MeasurementsResponse> {
     // Validate the version
-    let connection_version = ctx.state.connection_info.version_number();
-    if spdm_hdr.version().ok() != Some(connection_version) {
-        Err(ctx.generate_error_response(req_payload, ErrorCode::VersionMismatch, 0, None))?;
-    }
+    let connection_version = ctx.validate_spdm_version(&spdm_hdr, req_payload)?;
 
     // Decode the request
     let req_common = GetMeasurementsReqCommon::decode(req_payload).map_err(|_| {
@@ -458,9 +455,7 @@ async fn process_get_measurements<'a>(
     ctx.append_message_to_transcript(req_payload, TranscriptContext::L1, session_id)
         .await?;
 
-    let asym_algo = ctx.negotiated_base_asym_algo().map_err(|_| {
-        ctx.generate_error_response(req_payload, ErrorCode::InvalidRequest, 0, None)
-    })?;
+    let asym_algo = ctx.validate_negotiated_base_asym_algo(req_payload)?;
 
     let get_meas_req_context = MeasurementsResponse {
         spdm_version: connection_version,
@@ -485,7 +480,7 @@ pub(crate) async fn generate_measurements_response<'a>(
         // If the response is larger than the minimum data transfer size, use chunked response
         let large_rsp = LargeResponse::Measurements(rsp_ctx);
         let handle = ctx.large_resp_context.init(large_rsp, rsp_len);
-        Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, handle, None))?
+        Err(ctx.generate_error_response(rsp, ErrorCode::LargeResponse, 0, Some(&[handle])))?
     } else {
         let session_info = match ctx.session_mgr.active_session_id() {
             Some(session_id) => match ctx.session_mgr.session_info_mut(session_id) {
@@ -536,21 +531,6 @@ pub(crate) async fn handle_get_measurements<'a>(
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
 
-    // If GET_MEASUREMENTS is received within a session, ensure the session is established
-    if let Some(session_id) = ctx.session_mgr.active_session_id() {
-        match ctx.session_mgr.session_info(session_id) {
-            Ok(session_info) if session_info.session_state == SessionState::Established => {}
-            _ => {
-                return Err(ctx.generate_error_response(
-                    req_payload,
-                    ErrorCode::UnexpectedRequest,
-                    0,
-                    None,
-                ))
-            }
-        }
-    }
-
     // Check if the measurement capability is supported
     if ctx.local_capabilities.flags.meas_cap() == MeasCapability::NoMeasurement as u8 {
         return Err(ctx.generate_error_response(
@@ -563,9 +543,10 @@ pub(crate) async fn handle_get_measurements<'a>(
 
     // Verify that the DMTF measurement spec is selected and the measurement hash algorithm is SHA384
     let meas_spec_sel = selected_measurement_specification(ctx);
-    if meas_spec_sel.dmtf_measurement_spec() == 0 || ctx.verify_negotiated_hash_algo().is_err() {
+    if meas_spec_sel.dmtf_measurement_spec() == 0 {
         Err(ctx.generate_error_response(req_payload, ErrorCode::UnexpectedRequest, 0, None))?;
     }
+    ctx.validate_negotiated_hash_algo(req_payload)?;
 
     // Process GET_MEASUREMENTS request
     let rsp_ctx = process_get_measurements(ctx, spdm_hdr, req_payload).await?;

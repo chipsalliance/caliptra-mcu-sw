@@ -7,7 +7,7 @@ use caliptra_api::{self as api, SocManager};
 use caliptra_api_types as api_types;
 use caliptra_emu_bus::Event;
 pub use caliptra_emu_cpu::{CodeRange, ImageInfo, StackInfo, StackRange};
-use caliptra_hw_model::{BootParams, ExitStatus, Output};
+use caliptra_hw_model::{BootParams, ExitStatus, ModelCallback, Output};
 use caliptra_hw_model_types::{
     EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
 };
@@ -29,6 +29,8 @@ pub use vmem::read_otp_vmem_data;
 mod bus_logger;
 #[cfg(feature = "fpga_realtime")]
 pub mod debug_unlock;
+#[cfg(feature = "fpga_realtime")]
+pub mod flash_ctrl;
 mod fpga_regs;
 #[cfg(feature = "fpga_realtime")]
 pub mod jtag;
@@ -207,6 +209,8 @@ pub struct InitParams<'a> {
     pub dot_flash_initial_contents: Option<Vec<u8>>,
 
     pub check_booted_to_runtime: bool,
+
+    pub rom_callback: Option<ModelCallback>,
 }
 
 impl InitParams<'_> {
@@ -275,6 +279,7 @@ impl Default for InitParams<'_> {
             i3c_port: None,
             dot_flash_initial_contents: None,
             check_booted_to_runtime: true,
+            rom_callback: None,
         }
     }
 }

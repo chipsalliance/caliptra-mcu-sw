@@ -340,7 +340,12 @@ pub fn start_spdm_tee_io_validator(
     no_default_features: bool,
 ) -> io::Result<Child> {
     // Default features if none provided
-    let default_features = ["spdm-ring", "hashed-transcript-data", "async-executor"];
+    let default_features = [
+        "spdm-ring",
+        "hashed-transcript-data",
+        "async-executor",
+        "chunk-cap",
+    ];
     let features_to_use = features.unwrap_or(&default_features);
     let features_str = features_to_use.join(",");
     spawn_validator_binary(

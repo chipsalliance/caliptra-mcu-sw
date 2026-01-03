@@ -1,0 +1,13 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "flash-ctrl-fpga"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+capsules-core.workspace = true
+kernel.workspace = true
+registers-generated.workspace = true
+romtime.workspace = true

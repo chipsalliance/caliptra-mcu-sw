@@ -6,6 +6,7 @@
 pub mod test;
 
 pub mod doe;
+pub mod flash_partition;
 pub mod mailbox;
 pub mod mbox_sram;
 pub mod mci;
