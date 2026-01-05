@@ -243,7 +243,7 @@ pub trait FdOps {
     ///     - `NonFunctioningComponentIndication`: Indicates whether components are functioning or not.
     ///     - `NonFunctioningComponentBitmap`: A bitmap representing non-functioning components.
     ///   On failure, returns an `FdOpsError`.
-    async fn get_non_functional_component_info(
+    fn get_non_functional_component_info(
         &self,
     ) -> Result<
         (
