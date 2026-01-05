@@ -33,12 +33,17 @@ flowchart LR
         Caliptra["Caliptra"]
         RecoveryIF["Recovery I/F"]
         MCU_ROM["MCU ROM"]
+        Mailbox["Mailbox"]
+        MCU_RT["MCU Runtime"]
 
         Caliptra <--> RecoveryIF
         RecoveryIF <--> MCU_ROM
+        Caliptra <--> Mailbox
+        Mailbox <--> MCU_RT
     end
 
     MCU_ROM <--> Network_ROM["Network ROM<br/>- DHCP<br/>- TFTP Client<br/>- FW ID Mapping"]
+    MCU_RT <--> Network_ROM
     Network_ROM <--> Image_Server["Image Server<br/>- Image Store<br/>- DHCP<br/>- TFTP Server<br/>- Config File"]
 ```
 
@@ -93,6 +98,54 @@ sequenceDiagram
     end
 
     MCU->>CRIF: Finalize recovery
+```
+
+## Runtime SoC Image Loading
+
+This section describes the flow for loading and authenticating SoC images at runtime through the MCU Runtime. The MCU Runtime uses the Caliptra mailbox to coordinate image authorization with Caliptra, while Network ROM handles downloading image data from the network.
+
+```mermaid
+sequenceDiagram
+    participant CAL as Caliptra
+    participant MBOX as Mailbox
+    participant MCURT as MCU RT
+    participant NET as Network ROM
+    participant IMG as Image Server
+
+    MCURT->>NET: initialize_image_loader()
+    NET-->>MCURT: Ready
+
+    MCURT->>NET: get_toc()
+    NET-->>MCURT: TOC { image_id -> filename mapping }
+
+    loop For each SoC image (image_id)
+        MCURT->>MBOX: get_image_info(image_id)
+        MBOX->>CAL: get_image_info(image_id)
+        CAL-->>MBOX: ImageInfo { load_address, component_id }
+        MBOX-->>MCURT: ImageInfo { load_address, component_id }
+
+        MCURT->>MCURT: Determine offset & length from TOC using component_id
+
+        MCURT->>NET: request_image_transfer(image_id)
+
+        loop Image transfer by chunk
+            NET->>IMG: TFTP GET image file
+            IMG-->>NET: Image chunk
+            NET-->>MCURT: Image chunk
+
+            MCURT->>MCURT: Write chunk to load_address
+        end
+
+        MCURT->>MBOX: authorize(component_id)
+        MBOX->>CAL: authorize(component_id)
+        CAL->>CAL: Forward image to SHA Accelerator
+        CAL->>CAL: Verify hash against SOC manifest
+        CAL-->>MBOX: Success/Error response
+        MBOX-->>MCURT: Authorization result
+    end
+
+    MCURT->>NET: deinitialize_image_loader()
+    NET-->>MCURT: Stopped
 ```
 
 ## Messaging Protocol
@@ -347,6 +400,7 @@ Boot source providers implement the following core operations:
 - **ID 0**: Caliptra FMC+RT image
 - **ID 1**: SoC Manifest
 - **ID 2**: MCU RT image
+- **ID 0x10000000 - 0x1FFFFFFF**: Reserved for SoC Images (range supports up to 268,435,456 distinct SoC image IDs)
 
 ### Boot Source Provider Interface
 
@@ -380,6 +434,8 @@ pub enum FirmwareId {
     SocManifest = 1,
     /// MCU RT image
     McuRt = 2,
+    /// SoC Image (raw u32 value in range 0x10000000 - 0x1FFFFFFF)
+    SocImage(u32),
 }
 
 /// Boot source initialization and capability status
@@ -528,10 +584,19 @@ The network boot coprocessor downloads a configuration file (TOC) that maps firm
   "firmware_mappings": {
     "0": { "filename": "caliptra-fmc-rt.bin", "size": 1048576 },
     "1": { "filename": "soc-manifest.bin", "size": 65536 },
-    "2": { "filename": "mcu-runtime.bin", "size": 262144 }
+    "2": { "filename": "mcu-runtime.bin", "size": 262144 },
+    "268435456": { "filename": "soc-pci-device.bin", "size": 524288, "component_id": 1 },
+    "268435457": { "filename": "soc-nvme-device.bin", "size": 262144, "component_id": 2 },
+    "268435458": { "filename": "soc-security-engine.bin", "size": 131072, "component_id": 3 }
   }
 }
 ```
+
+**Notes**:
+- Firmware IDs 0-2 are reserved for early boot firmware
+- SoC image IDs use the range `0x10000000` (268435456 in decimal) and above
+- Each SoC image entry includes an optional `component_id` field used for authorization with Caliptra
+- The `filename` field specifies the TFTP path relative to the TFTP server root
 ## Network Stack Implementation
 
 For the Network Boot Coprocessor implementation, we use **lwIP (Lightweight IP)** with Rust bindings/wrappers to support DHCP and TFTP while meeting ROM environment constraints.
