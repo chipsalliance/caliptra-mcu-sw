@@ -70,9 +70,10 @@ fn run_verify(args: &VerifyArgs) {
     );
 
     // 2. Decode the evidence
-    match Evidence::decode(&encoded) {
-        Ok(_ev) => {
-            println!("success decoded");
+    let ev = match Evidence::decode(&encoded) {
+        Ok(ev) => {
+            println!("Decode successful");
+            ev
         }
         Err(e) => {
             eprintln!("Evidence::decode failed: {:?}", e);
@@ -85,6 +86,17 @@ fn run_verify(args: &VerifyArgs) {
                 &encoded[..prefix_len]
             );
 
+            std::process::exit(1);
+        }
+    };
+
+    // 3. Cryptographically verify
+    match ev.verify() {
+        Ok(()) => {
+            println!("Signature verification successful");
+        }
+        Err(e) => {
+            eprintln!("Evidence::verify failed: {:?}", e);
             std::process::exit(1);
         }
     }
