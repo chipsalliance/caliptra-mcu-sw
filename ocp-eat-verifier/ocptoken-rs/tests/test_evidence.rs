@@ -48,7 +48,7 @@ fn decode_and_verify_cose_sign1() {
     cert_builder.set_subject_name(&name).unwrap();
     cert_builder.set_issuer_name(&name).unwrap();
 
-    //  validity
+    // validity
     let not_before = Asn1Time::days_from_now(0).unwrap();
     let not_after = Asn1Time::days_from_now(365).unwrap();
     cert_builder.set_not_before(&not_before).unwrap();
@@ -63,7 +63,7 @@ fn decode_and_verify_cose_sign1() {
     let cert = cert_builder.build();
     let cert_der = cert.to_der().unwrap();
 
-    //  Dummy payload
+    // Dummy payload
     let payload = b"dummy payload for COSE signature";
 
     // 4️ Create COSE_Sign1 structure
@@ -93,11 +93,11 @@ fn decode_and_verify_cose_sign1() {
     // 5️ Encode to CBOR
     let encoded = cose.to_vec().unwrap();
 
-    // 6️ Decode + verify
-    let evidence = Evidence::decode(&encoded);
+    // 6️ Decode
+    let evidence = Evidence::decode(&encoded).expect("Evidence::decode should succeed");
 
-    assert!(
-        evidence.is_ok(),
-        "COSE_Sign1 signature verification should succeed"
-    );
+    // 7️ Verify
+    evidence
+        .verify()
+        .expect("COSE_Sign1 signature verification should succeed");
 }

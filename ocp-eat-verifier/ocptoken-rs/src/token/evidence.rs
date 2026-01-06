@@ -1,7 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use crate::error::{OcpEatError, OcpEatResult};
-use coset::{cbor::value::Value, sig_structure_data, CborSerializable, CoseSign1, Header};
+use coset::{
+    cbor::value::Value, iana::Algorithm, sig_structure_data, CborSerializable, CoseSign1, Header,
+};
 
 use openssl::{
     bn::{BigNum, BigNumContext},
@@ -10,6 +12,8 @@ use openssl::{
     pkey::PKey,
     x509::X509,
 };
+
+pub const OCP_EAT_CLAIMS_KEY_ID: &str = "";
 
 /// Parsed and verified EAT evidence
 pub struct Evidence {
@@ -29,63 +33,69 @@ impl Evidence {
         }
     }
 
-    /// Decode and verify a COSE_Sign1
+    /// Decode and structurally validate a COSE_Sign1
+    /// (Steps 1–3)
     pub fn decode(slice: &[u8]) -> OcpEatResult<Self> {
-        /* ----------------------------------------------------------
-         * 1. Skip CBOR tags / bstr
-         * ---------------------------------------------------------- */
+        /* ==========================================================
+         *  Skip CBOR tags / bstr
+         * ========================================================== */
         let value = skip_cbor_tags(slice)?;
         let cose_bytes = value.to_vec().map_err(OcpEatError::CoseSign1)?;
 
-        /* ----------------------------------------------------------
-         * 2. Strict COSE decode
-         * ---------------------------------------------------------- */
-        let cose = match CoseSign1::from_slice(&cose_bytes) {
-            Ok(cose) => cose,
-            Err(e) => {
-                return Err(OcpEatError::CoseSign1(e));
-            }
-        };
+        /* ==========================================================
+         *  Strict COSE decode
+         * ========================================================== */
+        let cose = CoseSign1::from_slice(&cose_bytes).map_err(OcpEatError::CoseSign1)?;
 
-        /* ----------------------------------------------------------
-         * 3. Verify protected header
-         * ---------------------------------------------------------- */
+        /* ==========================================================
+         *  Verify protected header
+         * ========================================================== */
         verify_protected_header(&cose.protected.header)?;
 
-        //  Extract payload
+        Ok(Evidence {
+            signed_eat: Some(cose),
+        })
+    }
 
+    /// Cryptographically verify the decoded COSE_Sign1
+
+    pub fn verify(&self) -> OcpEatResult<()> {
+        let cose = self
+            .signed_eat
+            .as_ref()
+            .ok_or_else(|| OcpEatError::InvalidToken("Missing COSE_Sign1"))?;
+
+        /* ----------------------------------------------------------
+         * Extract payload
+         * ---------------------------------------------------------- */
         let payload = cose
             .payload
             .as_deref()
             .ok_or_else(|| OcpEatError::InvalidToken("Payload missing"))?;
 
         /* ----------------------------------------------------------
-         * 4. Extract leaf cert from unprotected header
+         *  Extract leaf cert from unprotected header
          * ---------------------------------------------------------- */
-
         let cert_der = extract_leaf_cert_der(&cose.unprotected)?;
         let (pubkey_x, pubkey_y) = extract_pubkey_xy(&cert_der)?;
 
         /* ----------------------------------------------------------
-         * 5. Reconstruct Sig_structure
+         *  Reconstruct Sig_structure
          * ---------------------------------------------------------- */
-
         let sig_structure = sig_structure_data(
             coset::SignatureContext::CoseSign1,
-            cose.protected.clone(), // uses original_data internally
+            cose.protected.clone(), // preserves original_data
             None,
             &[],
             payload,
         );
 
         /* ----------------------------------------------------------
-         * 6. Verify ES384 signature using pubkey and
+         *  Verify ES384 signature
          * ---------------------------------------------------------- */
         verify_signature_es384(&cose.signature, pubkey_x, pubkey_y, &sig_structure)?;
 
-        Ok(Evidence {
-            signed_eat: Some(cose),
-        })
+        Ok(())
     }
 }
 
@@ -242,15 +252,51 @@ fn verify_signature_es384(
 }
 
 fn verify_protected_header(protected: &Header) -> OcpEatResult<()> {
-    match &protected.alg {
-        Some(coset::RegisteredLabelWithPrivate::Assigned(_alg)) => {}
-        Some(coset::RegisteredLabelWithPrivate::PrivateUse(_v)) => {}
-        Some(coset::RegisteredLabelWithPrivate::Text(_t)) => {}
+    /* ----------------------------------------------------------
+     * Algorithm must be ES384 or ESP384
+     * ---------------------------------------------------------- */
+
+    let alg_ok = matches!(
+        protected.alg,
+        Some(coset::RegisteredLabelWithPrivate::Assigned(
+            Algorithm::ES384
+        )) | Some(coset::RegisteredLabelWithPrivate::Assigned(
+            Algorithm::ESP384
+        ))
+    );
+
+    if !alg_ok {
+        return Err(OcpEatError::InvalidToken(
+            "Unexpected algorithm in protected header",
+        ));
+    }
+
+    /* ----------------------------------------------------------
+     * Content-Type must be EAT (CWT)
+     * ---------------------------------------------------------- */
+    match &protected.content_type {
         None => {
-            return Err(OcpEatError::CoseSign1(coset::CoseError::UnexpectedItem(
-                "alg", "present",
-            )));
+            // Accept missing content-type
+        }
+        Some(coset::RegisteredLabel::Assigned(coset::iana::CoapContentFormat::EatCwt)) => {
+            // Accept EAT CWT
+        }
+        _other => {
+            return Err(OcpEatError::InvalidToken(
+                "Content format mismatch in protected header",
+            ));
         }
     }
+
+    /* ----------------------------------------------------------
+     * Key ID must match expected EAT key ID
+     * ---------------------------------------------------------- */
+
+    if protected.key_id != OCP_EAT_CLAIMS_KEY_ID.as_bytes().to_vec() {
+        return Err(OcpEatError::InvalidToken(
+            "Key ID mismatch in protected header",
+        ));
+    }
+
     Ok(())
 }
