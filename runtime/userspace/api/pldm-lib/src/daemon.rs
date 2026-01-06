@@ -27,6 +27,7 @@ use pldm_common::util::mctp_transport::{
 };
 
 pub const MAX_MCTP_PLDM_MSG_SIZE: usize = 1024;
+const YIELD_EVERY_ITERATIONS: u32 = 32;
 
 #[derive(Debug)]
 pub enum PldmServiceError {
@@ -149,6 +150,8 @@ pub async fn pldm_initiator(
         let mut session = cmd_interface.create_transfer_session().await;
         let mut in_optimized_download = true;
 
+        let mut counter: u32 = 0;
+
         while running.load(Ordering::SeqCst) {
             if cmd_interface.should_stop_initiator_mode().await {
                 break;
@@ -186,8 +189,14 @@ pub async fn pldm_initiator(
                 }
             }
 
-            // Handle non-download phases (TransferComplete, Verify, Apply) via regular path
-            if !in_optimized_download {
+            if in_optimized_download {
+                // yield every so often still so that we handle cancelations
+                counter = counter.wrapping_add(1);
+                if counter % YIELD_EVERY_ITERATIONS == 0 {
+                    let _ = AsyncAlarm::<DefaultSyscalls>::sleep_ticks(1).await;
+                }
+            } else {
+                // Handle non-download phases (TransferComplete, Verify, Apply) via regular path
                 match cmd_interface
                     .handle_initiator_msg(&mut transport, &mut msg_buffer)
                     .await
