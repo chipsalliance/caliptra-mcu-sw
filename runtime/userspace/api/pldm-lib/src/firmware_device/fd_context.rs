@@ -518,6 +518,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         let (non_functioning_component_indication, non_functioning_component_bitmap) = self
             .ops
             .get_non_functional_component_info()
+            .await
             .map_err(MsgHandlerError::FdOps)?;
 
         let resp = CancelUpdateResponse::new(

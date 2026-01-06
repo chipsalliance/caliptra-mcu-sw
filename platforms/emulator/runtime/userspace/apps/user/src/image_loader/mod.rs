@@ -131,7 +131,7 @@ async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), Err
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2)
             .await?;
         // Close the PLDM session
-        pldm_image_loader.finalize().await?;
+        pldm_image_loader.finalize()?;
         // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
         activate_soc_images(&[
             config::streaming_boot_consts::IMAGE_ID1,
