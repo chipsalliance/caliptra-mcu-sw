@@ -272,7 +272,7 @@ fn verify_protected_header(protected: &Header) -> OcpEatResult<()> {
     }
 
     /* ----------------------------------------------------------
-     * Content-Type must be EAT (CWT)
+     * Content-Type
      * ---------------------------------------------------------- */
     match &protected.content_type {
         None => {
@@ -289,7 +289,7 @@ fn verify_protected_header(protected: &Header) -> OcpEatResult<()> {
     }
 
     /* ----------------------------------------------------------
-     * Key ID must match expected EAT key ID
+     * Key ID
      * ---------------------------------------------------------- */
 
     if protected.key_id != OCP_EAT_CLAIMS_KEY_ID.as_bytes().to_vec() {
