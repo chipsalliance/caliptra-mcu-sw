@@ -102,7 +102,7 @@ impl FdOpsObject {
 
 #[async_trait(?Send)]
 impl FdOps for FdOpsObject {
-    async fn get_device_identifiers(
+    fn get_device_identifiers(
         &self,
         device_identifiers: &mut [Descriptor],
     ) -> Result<usize, FdOpsError> {
@@ -115,7 +115,7 @@ impl FdOps for FdOpsObject {
         }
     }
 
-    async fn get_firmware_parms(
+    fn get_firmware_parms(
         &self,
         firmware_params: &mut FirmwareParameters,
     ) -> Result<(), FdOpsError> {
@@ -129,7 +129,7 @@ impl FdOps for FdOpsObject {
             .max(ua_transfer_size.min(pldm_lib::config::FD_MAX_XFER_SIZE)))
     }
 
-    async fn handle_component(
+    fn handle_component(
         &self,
         component: &FirmwareComponent,
         fw_params: &FirmwareParameters,
@@ -188,7 +188,7 @@ impl FdOps for FdOpsObject {
         Ok(TransferResult::TransferSuccess)
     }
 
-    async fn is_download_complete(&self, component: &FirmwareComponent) -> bool {
+    fn is_download_complete(&self, component: &FirmwareComponent) -> bool {
         let download_ctx = self.download_ctx.borrow();
         if let Some(image_size) = component.comp_image_size {
             download_ctx.length >= image_size as usize
@@ -197,7 +197,7 @@ impl FdOps for FdOpsObject {
         }
     }
 
-    async fn query_download_progress(
+    fn query_download_progress(
         &self,
         _component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
@@ -241,7 +241,7 @@ impl FdOps for FdOpsObject {
         Ok(ApplyResult::ApplySuccess)
     }
 
-    async fn activate(
+    fn activate(
         &self,
         self_contained_activation: u8,
         estimated_time: &mut u16,
@@ -253,10 +253,7 @@ impl FdOps for FdOpsObject {
         Ok(0) // PLDM completion code for success
     }
 
-    async fn cancel_update_component(
-        &self,
-        _component: &FirmwareComponent,
-    ) -> Result<(), FdOpsError> {
+    fn cancel_update_component(&self, _component: &FirmwareComponent) -> Result<(), FdOpsError> {
         // Clean up download, verify, and apply contexts
         let mut download_ctx = self.download_ctx.borrow_mut();
         download_ctx.offset = 0;
