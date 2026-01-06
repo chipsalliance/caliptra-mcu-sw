@@ -9,6 +9,15 @@ use pldm_common::protocol::firmware_update::{
 };
 use pldm_common::util::fw_component::FirmwareComponent;
 
+/// Result of prepare_download_request batch operation
+pub struct DownloadRequestInfo {
+    pub instance_id: u8,
+    pub is_complete: bool,
+    pub result: Option<u8>,
+    pub component: FirmwareComponent,
+    pub chunk_info: Option<(u32, u32)>, // (offset, length)
+}
+
 pub struct FdInternal {
     inner: Mutex<NoopRawMutex, FdInternalInner>,
 }
@@ -318,6 +327,92 @@ impl FdInternal {
         inner.fd_t1_timeout
     }
 
+    /// Batch operation for preparing a download request.
+    /// Combines multiple mutex acquisitions into one for better performance.
+    /// Returns: (instance_id, is_complete, result, component, chunk_info)
+    /// where chunk_info is Some((offset, length)) if in download state
+    pub async fn prepare_download_request(
+        &self,
+        requested_offset: u32,
+        requested_length: u32,
+    ) -> Option<DownloadRequestInfo> {
+        let mut inner = self.inner.lock().await;
+
+        // Check if we should send (equivalent to should_send_fd_request check for req state)
+        if inner.req.state != FdReqState::Ready {
+            return None;
+        }
+
+        // Allocate next instance ID
+        inner.req.instance_id = Some(
+            inner
+                .req
+                .instance_id
+                .map_or(1, |id| (id + 1) % crate::config::INSTANCE_ID_COUNT),
+        );
+        let instance_id = inner.req.instance_id?;
+
+        // Check if request is complete
+        let is_complete = inner.req.complete;
+        let result = inner.req.result;
+
+        // Get component (clone to return)
+        let component = inner.update_comp.clone();
+
+        // Get download chunk info if in download state
+        let chunk_info = if inner.state == FirmwareDeviceState::Download && !is_complete {
+            let comp_image_size = inner.update_comp.comp_image_size.unwrap_or(0);
+            if requested_offset <= comp_image_size {
+                let chunk_size = requested_length.min(inner.max_xfer_size);
+                Some((requested_offset, chunk_size))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Some(DownloadRequestInfo {
+            instance_id,
+            is_complete,
+            result,
+            component,
+            chunk_info,
+        })
+    }
+
+    /// Batch operation to finalize a download request after encoding.
+    /// Sets the download state and request state in a single lock.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn finalize_download_request(
+        &self,
+        chunk_offset: u32,
+        chunk_length: u32,
+        instance_id: u8,
+        command: u8,
+        sent_time: PldmFdTime,
+        is_complete: bool,
+        result: Option<u8>,
+    ) {
+        let mut inner = self.inner.lock().await;
+
+        // Set download state
+        if let InitiatorModeState::Download(download) = &mut inner.initiator_mode_state {
+            download.offset = chunk_offset;
+            download.length = chunk_length;
+        }
+
+        // Set request state
+        inner.req = FdReq {
+            state: FdReqState::Sent,
+            complete: is_complete,
+            result,
+            instance_id: Some(instance_id),
+            command: Some(command),
+            sent_time: Some(sent_time),
+        };
+    }
+
     pub async fn set_fd_t2_retry_time(&self, retry_time: PldmFdTime) {
         let mut inner = self.inner.lock().await;
         inner.fd_t2_retry_time = retry_time;
@@ -326,6 +421,42 @@ impl FdInternal {
     pub async fn get_fd_t2_retry_time(&self) -> PldmFdTime {
         let inner = self.inner.lock().await;
         inner.fd_t2_retry_time
+    }
+
+    /// Create a transfer session by capturing current state.
+    /// This is used to avoid mutex acquisitions during the hot download path.
+    pub async fn create_transfer_session(
+        &self,
+        now: PldmFdTime,
+    ) -> super::transfer_session::TransferSession {
+        let inner = self.inner.lock().await;
+        super::transfer_session::TransferSession::new(
+            inner.max_xfer_size,
+            inner.update_comp.clone(),
+            inner.fd_t1_timeout,
+            inner.fd_t2_retry_time,
+            inner.req.instance_id.unwrap_or(0),
+            now,
+        )
+    }
+
+    /// Sync state from a transfer session back to internal state.
+    /// Called at the end of a download or periodically for progress updates.
+    pub async fn sync_from_transfer_session(
+        &self,
+        session: &super::transfer_session::TransferSession,
+    ) {
+        let mut inner = self.inner.lock().await;
+        inner.req.instance_id = Some(session.instance_id);
+        inner.req.state = session.req_state.clone();
+        inner.req.complete = session.complete;
+        inner.req.result = session.result.map(|r| r as u8);
+        inner.req.sent_time = session.sent_time;
+        inner.fd_t1_update_ts = session.fd_t1_update_ts;
+        if let InitiatorModeState::Download(ref mut download) = inner.initiator_mode_state {
+            download.offset = session.offset;
+            download.length = session.length;
+        }
     }
 }
 
