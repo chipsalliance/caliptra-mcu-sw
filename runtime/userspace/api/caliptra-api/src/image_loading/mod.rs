@@ -158,8 +158,8 @@ impl<'a, D: DMAMapping + 'static> PldmImageLoader<'a, D> {
             dma_mapping,
         }
     }
-    pub async fn finalize(&self) -> Result<(), ErrorCode> {
-        pldm_client::finalize(VerifyResult::VerifySuccess).await
+    pub fn finalize(&self) -> Result<(), ErrorCode> {
+        pldm_client::finalize(VerifyResult::VerifySuccess)
     }
 }
 
@@ -182,7 +182,7 @@ impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
             authorize_image(&self.mailbox, image_id, size).await
         };
         if result.is_err() {
-            self.finalize().await?;
+            self.finalize()?;
             return Err(ErrorCode::Fail);
         }
 

@@ -199,7 +199,7 @@ pub async fn initialize_pldm<'a, D: DMAMapping + 'static>(
     Ok(())
 }
 
-pub async fn finalize(verify_result: VerifyResult) -> Result<(), ErrorCode> {
+pub fn finalize(verify_result: VerifyResult) -> Result<(), ErrorCode> {
     DOWNLOAD_CTX.lock(|ctx| {
         let mut ctx = ctx.borrow_mut();
         ctx.download_complete = true;
