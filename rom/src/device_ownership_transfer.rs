@@ -14,13 +14,13 @@ Abstract:
 
 use crate::fuses::OwnerPkHash;
 use crate::hil::FlashStorage;
-use crate::otp::Otp;
 use crate::RomEnv;
 use caliptra_api::mailbox::{
     CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacResp, CmShaReqHdr,
     CmShaResp, CmStableKeyType, CommandId, EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader,
 };
 use caliptra_mcu_error::{McuError, McuResult};
+use caliptra_mcu_romtime::Otp;
 use caliptra_mcu_romtime::{HexWord, McuRomBootStatus};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 

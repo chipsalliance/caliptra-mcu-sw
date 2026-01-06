@@ -10,7 +10,7 @@ mod test {
     use caliptra_hw_model::HwModel;
     use caliptra_hw_model::DEFAULT_LIFECYCLE_RAW_TOKEN;
     use caliptra_mcu_hw_model::lcc::{lc_token_to_words, lc_transition, read_lc_state};
-    use caliptra_mcu_rom_common::LifecycleControllerState;
+    use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 
     #[test]
     fn test_raw_unlock() {

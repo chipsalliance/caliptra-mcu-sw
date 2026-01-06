@@ -14,7 +14,7 @@ mod test {
     use caliptra_mcu_builder::FirmwareBinaries;
     use caliptra_mcu_config_fpga::FPGA_MEMORY_MAP;
     use caliptra_mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel};
-    use caliptra_mcu_rom_common::LifecycleControllerState;
+    use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 
     use anyhow::{bail, Result};
 

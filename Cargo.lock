@@ -1690,6 +1690,9 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.10.0",
  "caliptra-api",
+ "caliptra-mcu-error",
+ "caliptra-mcu-otp-digest",
+ "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-registers-generated",
  "caliptra-registers",
  "caliptra-ureg",
@@ -1744,6 +1747,7 @@ dependencies = [
 name = "caliptra-mcu-test-fw-lc-ctrl"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-rom-common",
  "caliptra-mcu-romtime",
  "caliptra-mcu-test-harness",
@@ -1859,6 +1863,7 @@ dependencies = [
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-otp-digest",
+ "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-fw-pkg",
  "caliptra-mcu-pldm-ua",
@@ -3631,6 +3636,7 @@ dependencies = [
  "caliptra-mcu-builder",
  "caliptra-mcu-config",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
  "caliptra-mcu-romtime",
@@ -5971,10 +5977,12 @@ dependencies = [
  "caliptra-mcu-fusegen",
  "caliptra-mcu-fuses-generator",
  "caliptra-mcu-hw-model",
+ "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-pldm-fw-pkg",
  "caliptra-mcu-registers-generator",
  "caliptra-mcu-registers-systemrdl",
  "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
  "cargo_metadata",
  "cc",
  "clap 4.5.51",

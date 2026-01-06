@@ -14,27 +14,28 @@ Abstract:
 
 #![allow(clippy::empty_loop)]
 
+use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
 use crate::fuses::{DefaultVendorKeyPolicy, VendorKeyPolicy};
 use crate::hil::FlashStorage;
-use crate::otp::{Otp, PROD_DEBUG_UNLOCK_PK_ENTRIES};
 use crate::ColdBoot;
 use crate::FwBoot;
 use crate::FwHitlessUpdate;
 use crate::ImageVerifier;
-use crate::LifecycleControllerState;
-use crate::LifecycleHashedTokens;
-use crate::LifecycleToken;
 use crate::RomEnv;
 use crate::WarmBoot;
-use crate::{fatal_error, PqcKeyType};
 use caliptra_api::mailbox::CmStableKeyType;
 use caliptra_mcu_error::McuError;
+use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use caliptra_mcu_registers_generated::soc;
+use caliptra_mcu_romtime::LifecycleHashedTokens;
+use caliptra_mcu_romtime::LifecycleToken;
+use caliptra_mcu_romtime::PqcKeyType;
 use caliptra_mcu_romtime::{HexWord, McuBootMilestones, StaticRef};
+use caliptra_mcu_romtime::{Otp, PROD_DEBUG_UNLOCK_PK_ENTRIES};
 use core::fmt::Write;
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};

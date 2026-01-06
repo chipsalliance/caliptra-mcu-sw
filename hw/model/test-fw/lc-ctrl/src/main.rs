@@ -13,7 +13,9 @@
 #![no_main]
 #![no_std]
 
-use caliptra_mcu_rom_common::{LifecycleControllerState, LifecycleToken, RomEnv};
+use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
+use caliptra_mcu_rom_common::RomEnv;
+use caliptra_mcu_romtime::LifecycleToken;
 use caliptra_mcu_romtime::McuBootMilestones;
 use tock_registers::interfaces::Readable;
 

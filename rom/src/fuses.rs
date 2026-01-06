@@ -4,10 +4,10 @@
 #![allow(dead_code)]
 #![allow(unused)]
 
-use crate::otp::Otp;
-use crate::{Bits, Duplication, FuseLayout, PqcKeyType};
 use caliptra_mcu_error::{McuError, McuResult};
 use caliptra_mcu_registers_generated::fuses as generated_fuses;
+use caliptra_mcu_romtime::Otp;
+use caliptra_mcu_romtime::{Bits, Duplication, FuseLayout, PqcKeyType};
 use core::num::NonZero;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 

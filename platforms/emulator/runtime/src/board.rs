@@ -158,6 +158,7 @@ struct VeeR {
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
+    otp: &'static caliptra_mcu_capsules_runtime::otp::Otp,
     system: &'static caliptra_mcu_capsules_runtime::system::System<'static, EmulatorExiter>,
 }
 
@@ -209,6 +210,7 @@ impl SyscallDriverLookup for VeeR {
             caliptra_mcu_capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
                 f(Some(self.mcu_mbox1_staging_sram))
             }
+            caliptra_mcu_capsules_runtime::otp::DRIVER_NUM => f(Some(self.otp)),
             caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
 
             _ => f(None),
@@ -521,6 +523,15 @@ pub unsafe fn main() {
     )
     .finalize(mbox_sram_component_static!(InternalTimers<'static>));
 
+    let total_heks = 0;
+    let otp = caliptra_mcu_components::otp::OtpComponent::new(
+        board_kernel,
+        caliptra_mcu_capsules_runtime::otp::DRIVER_NUM,
+        total_heks,
+        &peripherals.otp,
+    )
+    .finalize(kernel::static_buf!(caliptra_mcu_capsules_runtime::otp::Otp));
+
     let chip = static_init!(
         VeeRChip,
         caliptra_mcu_tock_veer::chip::VeeR::new(peripherals, epmp)
@@ -762,6 +773,7 @@ pub unsafe fn main() {
             mci,
             mcu_mbox0,
             mcu_mbox1_staging_sram,
+            otp,
             system,
         }
     );

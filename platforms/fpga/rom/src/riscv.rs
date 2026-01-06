@@ -20,10 +20,10 @@ use core::fmt::Write;
 core::arch::global_asm!(include_str!("start.s"));
 
 use caliptra_mcu_config::{McuMemoryMap, McuStraps};
+use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 use caliptra_mcu_rom_common::flash::flash_partition::FlashPartition;
-use caliptra_mcu_rom_common::{
-    LifecycleControllerState, LifecycleHashedToken, LifecycleToken, RomHooks, RomParameters,
-};
+use caliptra_mcu_rom_common::{RomHooks, RomParameters};
+use caliptra_mcu_romtime::{LifecycleHashedToken, LifecycleToken};
 
 /// Example `RomHooks` implementation for the FPGA platform. Emits a
 /// distinctive tagged log line for each milestone and records which
@@ -178,7 +178,7 @@ pub extern "C" fn rom_entry() -> ! {
 
     // For now, we use the same tokens for all lifecycle transitions.
     let burn_lifecycle_tokens = if burn_tokens {
-        Some(caliptra_mcu_rom_common::LifecycleHashedTokens {
+        Some(caliptra_mcu_romtime::LifecycleHashedTokens {
             test_unlock: [burn_hashed_token; 7],
             manuf: burn_hashed_token,
             manuf_to_prod: burn_hashed_token,

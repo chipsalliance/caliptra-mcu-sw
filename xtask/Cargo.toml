@@ -35,6 +35,7 @@ caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-firmware-bundler.workspace = true
 caliptra-mcu-fusegen.workspace = true
+caliptra-mcu-otp-lifecycle.workspace = true
 caliptra-mcu-rom-common = { workspace = true, optional = true }
 caliptra-mcu-hw-model = { workspace = true, optional = true }
 caliptra-mcu-fuses-generator.workspace = true
@@ -44,6 +45,7 @@ proc-macro2.workspace = true
 quote.workspace = true
 caliptra-mcu-registers-generator.workspace = true
 caliptra-mcu-registers-systemrdl.workspace = true
+caliptra-mcu-romtime.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true

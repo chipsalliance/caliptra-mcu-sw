@@ -15,4 +15,5 @@ fpga_realtime = ["caliptra-mcu-test-harness/fpga_realtime"]
 caliptra-mcu-rom-common.workspace = true
 caliptra-mcu-test-harness.workspace = true
 caliptra-mcu-romtime.workspace = true
+caliptra-mcu-otp-lifecycle.workspace = true
 tock-registers.workspace = true

@@ -73,7 +73,7 @@ enum DispatchResult {
 pub struct DotContext<'a> {
     pub soc_manager: &'a mut caliptra_mcu_romtime::CaliptraSoC,
     pub mci: &'a caliptra_mcu_romtime::Mci,
-    pub otp: &'a crate::Otp,
+    pub otp: &'a caliptra_mcu_romtime::Otp,
     pub dot_fuses: &'a crate::DotFuses,
     pub dot_flash: &'a dyn crate::hil::FlashStorage,
     pub key_type: caliptra_api::mailbox::CmStableKeyType,

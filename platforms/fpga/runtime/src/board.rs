@@ -157,6 +157,7 @@ struct VeeR {
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
+    otp: &'static caliptra_mcu_capsules_runtime::otp::Otp,
     system: &'static caliptra_mcu_capsules_runtime::system::System<'static, FpgaExiter>,
     dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
 }
@@ -207,6 +208,7 @@ impl SyscallDriverLookup for VeeR {
             caliptra_mcu_capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
                 f(Some(self.mcu_mbox1_staging_sram))
             }
+            caliptra_mcu_capsules_runtime::otp::DRIVER_NUM => f(Some(self.otp)),
             caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
             caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
             _ => f(None),
@@ -635,6 +637,16 @@ pub unsafe fn main() {
     );
     caliptra_mcu_romtime::println!("[mcu-runtime] Flash partition component initialized");
 
+    let total_heks = 0;
+    let otp = caliptra_mcu_components::otp::OtpComponent::new(
+        board_kernel,
+        caliptra_mcu_capsules_runtime::otp::DRIVER_NUM,
+        total_heks,
+        &peripherals.otp,
+    )
+    .finalize(kernel::static_buf!(caliptra_mcu_capsules_runtime::otp::Otp));
+    caliptra_mcu_romtime::println!("[mcu-runtime] OTP component initialized");
+
     #[allow(static_mut_refs)]
     let system = caliptra_mcu_components::system::SystemComponent::new(unsafe { &mut FPGA_EXITER })
         .finalize(kernel::static_buf!(
@@ -706,6 +718,7 @@ pub unsafe fn main() {
             mci,
             mcu_mbox0,
             mcu_mbox1_staging_sram,
+            otp,
             system,
             dma,
         }

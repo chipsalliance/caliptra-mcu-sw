@@ -13,6 +13,7 @@ caliptra-mcu-config-fpga.workspace = true
 [dependencies]
 caliptra-mcu-config.workspace = true
 caliptra-mcu-config-fpga.workspace = true
+caliptra-mcu-otp-lifecycle.workspace = true
 caliptra-mcu-rom-common.workspace = true
 caliptra-mcu-registers-generated.workspace = true
 caliptra-mcu-romtime.workspace = true

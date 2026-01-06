@@ -5,8 +5,14 @@
 
 mod boot_status;
 pub use boot_status::*;
+mod lifecycle;
+pub use lifecycle::*;
+mod fuse_layout;
+pub use fuse_layout::*;
 mod mci;
 pub use mci::*;
+mod otp;
+pub use otp::*;
 mod soc_manager;
 pub use soc_manager::*;
 mod static_ref;

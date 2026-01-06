@@ -12,7 +12,7 @@ mod test {
     use crate::platform;
     use caliptra_mcu_builder::firmware;
     use caliptra_mcu_hw_model::{InitParams, McuHwModel};
-    use caliptra_mcu_rom_common::LifecycleControllerState;
+    use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 
     fn load_roms() -> (Vec<u8>, Vec<u8>) {
         if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {

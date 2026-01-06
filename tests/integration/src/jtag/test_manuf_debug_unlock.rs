@@ -16,7 +16,7 @@ mod test {
     use caliptra_mcu_hw_model::jtag::{
         jtag_get_caliptra_mailbox_resp, jtag_send_caliptra_mailbox_cmd,
     };
-    use caliptra_mcu_rom_common::LifecycleControllerState;
+    use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 
     use zerocopy::IntoBytes;
 

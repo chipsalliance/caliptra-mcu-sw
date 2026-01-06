@@ -3,7 +3,7 @@
 use anyhow::{bail, Result};
 use caliptra_mcu_emulator_periph::{caliptra_mcu_otp_digest, otp_scramble, otp_unscramble};
 use caliptra_mcu_otp_lifecycle::hash_lc_token;
-use caliptra_mcu_rom_common::LifecycleControllerState;
+use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 
 // Re-export lifecycle ECC encode/decode from the common crate.
 pub use caliptra_mcu_otp_lifecycle::{
@@ -91,7 +91,7 @@ fn otp_unscramble_data(data: &mut [u8], key_idx: usize) -> Result<()> {
 
 /// Generate the OTP memory contents for lifecycle tokens partition (including the digest).
 pub fn otp_generate_lifecycle_tokens_mem(
-    tokens: &caliptra_mcu_rom_common::LifecycleRawTokens,
+    tokens: &caliptra_mcu_romtime::LifecycleRawTokens,
 ) -> Result<[u8; LIFECYCLE_TOKENS_MEM_SIZE]> {
     let mut output = [0u8; LIFECYCLE_TOKENS_MEM_SIZE];
     for (i, token) in tokens.test_unlock.iter().enumerate() {
@@ -119,7 +119,7 @@ pub fn otp_generate_lifecycle_tokens_mem(
 
 #[cfg(test)]
 mod tests {
-    use caliptra_mcu_rom_common::{LifecycleRawTokens, LifecycleToken};
+    use caliptra_mcu_romtime::{LifecycleRawTokens, LifecycleToken};
 
     use super::*;
 

@@ -45,6 +45,7 @@ caliptra-mcu-core-util-host-mctp-vdm-test-config.workspace = true
 caliptra-mcu-core-util-host-transport.workspace = true
 caliptra-mcu-error.workspace = true
 caliptra-mcu-otp-digest.workspace = true
+caliptra-mcu-otp-lifecycle.workspace = true
 caliptra-mcu-firmware-bundler.workspace = true
 caliptra-mcu-hw-model.workspace = true
 caliptra-mcu-image-header.workspace = true

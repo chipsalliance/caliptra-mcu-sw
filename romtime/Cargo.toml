@@ -11,6 +11,9 @@ bitflags.workspace = true
 caliptra-api.workspace = true
 caliptra-registers.workspace = true
 caliptra-ureg.workspace = true
+caliptra-mcu-error.workspace = true
+caliptra-mcu-otp-digest.workspace = true
+caliptra-mcu-otp-lifecycle.workspace = true
 caliptra-mcu-registers-generated.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
@@ -18,3 +21,7 @@ zerocopy.workspace = true
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 riscv-csr.workspace = true
 rv32i.workspace = true
+
+[features]
+default = []
+core_test = []

@@ -40,8 +40,8 @@ use caliptra_mcu_emulator_periph::{
 use caliptra_mcu_emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use caliptra_mcu_emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
 use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
+use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 use caliptra_mcu_registers_generated::fuses;
-use caliptra_mcu_rom_common::LifecycleControllerState;
 use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use caliptra_mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};

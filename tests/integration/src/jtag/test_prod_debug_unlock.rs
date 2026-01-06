@@ -23,7 +23,7 @@ mod test {
         prod_debug_unlock_send_request, prod_debug_unlock_send_token,
         prod_debug_unlock_wait_for_in_progress,
     };
-    use caliptra_mcu_rom_common::LifecycleControllerState;
+    use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 
     use fips204::ml_dsa_87::PrivateKey as MldsaPrivateKey;
     use fips204::traits::SerDes;

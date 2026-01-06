@@ -6,7 +6,7 @@ use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
 use caliptra_mcu_builder::{FirmwareBinaries, ImageCfg};
 use caliptra_mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
-use caliptra_mcu_rom_common::LifecycleControllerState;
+use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 use clap::Subcommand;
 use configurations::Configuration;
 use std::path::{Path, PathBuf};

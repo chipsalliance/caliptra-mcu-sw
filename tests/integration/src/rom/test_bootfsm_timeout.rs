@@ -4,7 +4,7 @@
 mod test {
     use caliptra_mcu_error::McuError;
     use caliptra_mcu_hw_model::{InitParams, McuHwModel};
-    use caliptra_mcu_rom_common::LifecycleControllerState;
+    use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 
     #[test]
     fn test_bootfsm_timeout() {

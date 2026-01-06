@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_rom_common::ImageVerifier;
-use caliptra_mcu_rom_common::Otp;
+use caliptra_mcu_romtime::Otp;
 
 pub struct McuImageVerifier;
 
