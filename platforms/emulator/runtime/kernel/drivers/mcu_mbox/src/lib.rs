@@ -12,6 +12,7 @@ use mcu_mbox_comm::hil::{Mailbox, MailboxClient, MailboxStatus};
 use registers_generated::mci;
 use registers_generated::mci::bits::{MboxCmdStatus, Notif0IntrEnT, Notif0IntrT};
 use romtime::StaticRef;
+use romtime::println;
 
 pub const MCU_MBOX0_SRAM_OFFSET: u32 = 0x40_0000;
 pub const MCU_MBOX1_SRAM_OFFSET: u32 = 0x80_0000;
@@ -52,6 +53,7 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
         sram_base: u32,
         alarm: &'a MuxAlarm<'a, A>,
     ) -> Self {
+        println!("MCU_MBOX_DRIVER: new");
         let dw_len = registers.mcu_mbox0_csr_mbox_sram.len();
         McuMailbox {
             registers,
@@ -72,6 +74,7 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
     }
 
     fn reset_before_use(&self) {
+        println!("MCU_MBOX_DRIVER: Resetting mbox");
         let mbox_sram_size = (self.registers.mcu_mbox0_csr_mbox_sram.len() * 4) as u32;
         // MCU acquires the lock to allow SRAM clearing.
         self.registers.mcu_mbox0_csr_mbox_lock.get();
@@ -80,6 +83,7 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
     }
 
     pub fn handle_interrupt(&self) {
+        println!("MCU_MBOX_DRIVER: handle interrupt");
         let intr_status = self
             .registers
             .intr_block_rf_notif0_internal_intr_r
@@ -105,6 +109,7 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
     }
 
     fn handle_incoming_request(&self) {
+        println!("MCU_MBOX_DRIVER: handle request");
         if self.state.get() != McuMboxState::RxWait {
             return;
         }
@@ -239,6 +244,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
     }
 
     fn enable(&self) {
+        println!("MCU_MBOX_DRIVER: enabled interrupts");
         self.enable_interrupts();
     }
 

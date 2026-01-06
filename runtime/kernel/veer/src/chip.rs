@@ -90,11 +90,12 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
             self.i3c.handle_interrupt();
             return true;
         } else if interrupt == MCI_IRQ as u32 {
+            romtime::println!("[mcu-runtime] MCI interrupt");
             self.mci.handle_interrupt();
             self.mcu_mbox0.handle_interrupt();
             return true;
         }
-        debug!("Unhandled interrupt {}", interrupt);
+        romtime::println!("Unhandled interrupt {}", interrupt);
         false
     }
 }
