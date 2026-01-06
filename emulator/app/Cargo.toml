@@ -107,7 +107,7 @@ test-mctp-user-loopback = ["emulator-periph/test-mctp-user-loopback"]
 test-mctp-spdm-responder-conformance = [
     "emulator-periph/test-mctp-spdm-responder-conformance",
 ]
-test-mcu-mbox = ["emulator-periph/test-mcu-mbox"]
+test-mcu-mbox-driver = ["emulator-periph/test-mcu-mbox-driver"]
 test-mcu-mbox-soc-requester-loopback = []
 test-mcu-mbox-usermode = []
 test-mcu-mbox-cmds = []

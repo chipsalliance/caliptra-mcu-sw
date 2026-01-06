@@ -775,8 +775,6 @@ impl Emulator {
         )?;
         #[cfg(any(
             feature = "test-mcu-mbox-soc-requester-loopback",
-            feature = "test-mcu-mbox-usermode",
-            feature = "test-mcu-mbox-cmds",
             feature = "test-caliptra-util-host-validator",
         ))]
         let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));

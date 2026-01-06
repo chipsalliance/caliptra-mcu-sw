@@ -10,6 +10,7 @@ mod test_exception_handler;
 mod test_firmware_update;
 mod test_fpga_flash_ctrl;
 mod test_mctp_capsule_loopback;
+mod test_mcu_mbox;
 mod test_pldm_fw_update;
 mod test_soc_boot;
 
@@ -613,12 +614,9 @@ mod test {
     run_test!(test_doe_spdm_responder_conformance, nightly);
     run_test!(test_doe_spdm_tdisp_ide_validator, nightly);
     run_test!(test_mci, example_app);
-    run_test!(test_mcu_mbox);
+    run_test!(test_mcu_mbox_driver);
     run_test!(test_mcu_mbox_soc_requester_loopback, example_app);
-    run_test!(test_mcu_mbox_usermode, example_app);
-    run_test!(test_mcu_mbox_cmds);
     run_test!(test_mbox_sram, example_app);
-
     run_test!(test_warm_reset, example_app);
 
     /// This tests a full active mode boot run through with Caliptra, including

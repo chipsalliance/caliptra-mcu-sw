@@ -35,6 +35,7 @@ mcu-config-fpga.workspace = true
 mcu-error.workspace = true
 mcu-hw-model.workspace = true
 mcu-image-header.workspace = true
+mcu-mbox-common.workspace = true
 mcu-rom-common.workspace = true
 mcu-testing-common.workspace = true
 p384.workspace = true

@@ -4804,6 +4804,7 @@ dependencies = [
  "mcu-error",
  "mcu-hw-model",
  "mcu-image-header",
+ "mcu-mbox-common",
  "mcu-rom-common",
  "mcu-testing-common",
  "p384",

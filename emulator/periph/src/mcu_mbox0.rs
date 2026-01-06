@@ -417,7 +417,7 @@ impl MciMailboxImpl {
         self.execute.reg.set(new_val);
         if new_val == MboxExecute::Execute::SET.value {
             // Workaround: temporarily lift the check for mailbox requester to support integration tests
-            if cfg!(feature = "test-mcu-mbox")
+            if cfg!(feature = "test-mcu-mbox-driver")
                 || matches!(self.user.reg.get().into(), MciMailboxRequester::SocAgent(_))
             {
                 self.irq = true;

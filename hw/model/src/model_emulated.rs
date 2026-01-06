@@ -24,7 +24,6 @@ use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_types::RvAddr;
 use caliptra_emu_types::RvData;
 use caliptra_emu_types::RvSize;
-use caliptra_hw_model::ExitStatus;
 use caliptra_hw_model::Output;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
@@ -442,15 +441,6 @@ impl McuHwModel for ModelEmulated {
         self.collected_events_from_caliptra.extend(events);
         if self.cycle_count() % mcu_testing_common::TICK_NOTIFY_TICKS == 0 {
             mcu_testing_common::update_ticks(self.cycle_count());
-        }
-    }
-
-    fn exit_status(&self) -> Option<ExitStatus> {
-        // tests trigger success by stopping the emulator
-        if !MCU_RUNNING.load(Ordering::Relaxed) {
-            Some(ExitStatus::Passed)
-        } else {
-            None
         }
     }
 
