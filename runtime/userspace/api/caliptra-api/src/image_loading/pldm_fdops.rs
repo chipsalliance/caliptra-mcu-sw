@@ -169,10 +169,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
                 PLDM_FWUP_BASELINE_TRANSFER_SIZE
             } else {
                 let remaining = ctx.total_length - ctx.total_downloaded;
-                core::cmp::max(
-                    core::cmp::min(remaining, MAX_PLDM_TRANSFER_SIZE),
-                    PLDM_FWUP_BASELINE_TRANSFER_SIZE,
-                )
+                remaining.clamp(MAX_PLDM_TRANSFER_SIZE, PLDM_FWUP_BASELINE_TRANSFER_SIZE)
             };
 
             ctx.last_requested_length = length;
