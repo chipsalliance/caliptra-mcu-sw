@@ -1,9 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::error::{OcpEatError, OcpEatResult};
-use coset::{
-    cbor::value::Value, iana::Algorithm, sig_structure_data, CborSerializable, CoseSign1, Header,
-};
+use coset::{cbor::value::Value, iana::Algorithm, CborSerializable, CoseSign1, Header};
 
 use openssl::{
     bn::{BigNum, BigNumContext},
@@ -14,6 +12,9 @@ use openssl::{
 };
 
 pub const OCP_EAT_CLAIMS_KEY_ID: &str = "";
+
+/// COSE header parameter: x5chain (label 33)
+const COSE_HDR_PARAM_X5CHAIN: i64 = 33;
 
 /// Parsed and verified EAT evidence
 pub struct Evidence {
@@ -66,34 +67,18 @@ impl Evidence {
             .ok_or_else(|| OcpEatError::InvalidToken("Missing COSE_Sign1"))?;
 
         /* ----------------------------------------------------------
-         * Extract payload
-         * ---------------------------------------------------------- */
-        let payload = cose
-            .payload
-            .as_deref()
-            .ok_or_else(|| OcpEatError::InvalidToken("Payload missing"))?;
-
-        /* ----------------------------------------------------------
          *  Extract leaf cert from unprotected header
          * ---------------------------------------------------------- */
         let cert_der = extract_leaf_cert_der(&cose.unprotected)?;
         let (pubkey_x, pubkey_y) = extract_pubkey_xy(&cert_der)?;
 
         /* ----------------------------------------------------------
-         *  Reconstruct Sig_structure
-         * ---------------------------------------------------------- */
-        let sig_structure = sig_structure_data(
-            coset::SignatureContext::CoseSign1,
-            cose.protected.clone(), // preserves original_data
-            None,
-            &[],
-            payload,
-        );
-
-        /* ----------------------------------------------------------
          *  Verify ES384 signature
          * ---------------------------------------------------------- */
-        verify_signature_es384(&cose.signature, pubkey_x, pubkey_y, &sig_structure)?;
+        //  verify_signature_es384(&cose.signature, pubkey_x, pubkey_y, &sig_structure)?;
+        cose.verify_signature(&[], |signature, to_be_signed| {
+            verify_signature_es384(signature, pubkey_x, pubkey_y, to_be_signed)
+        })?;
 
         Ok(())
     }
@@ -114,10 +99,9 @@ fn skip_cbor_tags(slice: &[u8]) -> OcpEatResult<Value> {
             }
             Value::Array(_) => break,
             _ => {
-                return Err(OcpEatError::CoseSign1(coset::CoseError::UnexpectedItem(
-                    "tag / bstr / array",
-                    "unexpected CBOR wrapper",
-                )));
+                return Err(OcpEatError::InvalidToken(
+                    "Invalid COSE_Sign1 structure: expected CBOR tag, byte string, or array",
+                ));
             }
         }
     }
@@ -131,15 +115,15 @@ fn extract_leaf_cert_der(unprotected: &Header) -> OcpEatResult<Vec<u8>> {
         .rest
         .iter()
         .find_map(|(label, value)| {
-            if *label == coset::Label::Int(33) {
+            if *label == coset::Label::Int(COSE_HDR_PARAM_X5CHAIN) {
                 Some(value)
             } else {
                 None
             }
         })
-        .ok_or_else(|| {
-            OcpEatError::CoseSign1(coset::CoseError::UnexpectedItem("x5chain", "present"))
-        })?;
+        .ok_or(OcpEatError::InvalidToken(
+            "Missing x5chain in COSE protected header",
+        ))?;
 
     match value {
         Value::Array(arr) => arr.first(),
@@ -150,12 +134,9 @@ fn extract_leaf_cert_der(unprotected: &Header) -> OcpEatResult<Vec<u8>> {
         Value::Bytes(bytes) => Some(bytes.clone()), // 👈 CLONE
         _ => None,
     })
-    .ok_or_else(|| {
-        OcpEatError::CoseSign1(coset::CoseError::UnexpectedItem(
-            "x5chain",
-            "DER cert bytes",
-        ))
-    })
+    .ok_or(OcpEatError::InvalidToken(
+        "Missing or invalid x5chain: expected DER-encoded certificate bytes",
+    ))
 }
 
 /// Extract raw P-384 public key coordinates (x, y) from DER X.509 cert
