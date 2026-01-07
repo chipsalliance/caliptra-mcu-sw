@@ -144,9 +144,9 @@ jobs:
         working-directory: ocp-eat-verifier
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
-        run: |
-          ./target/release/ocptoken \
-            --evidence $SPDM_VALIDATOR_DIR/measurement_block_fd.bin
+          run: |
+            ./target/release/ocptoken verify \
+            -e $SPDM_VALIDATOR_DIR/measurement_block_fd.bin
 
 
       - name: Run SPDM validator tests on DOE transport
