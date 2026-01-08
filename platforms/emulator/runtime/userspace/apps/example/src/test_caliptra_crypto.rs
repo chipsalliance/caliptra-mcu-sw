@@ -11,7 +11,7 @@ use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE}
 use libapi_caliptra::crypto::hmac::{HkdfSalt, Hmac};
 use libapi_caliptra::crypto::import::Import;
 use libapi_caliptra::crypto::rng::Rng;
-use libapi_caliptra::mailbox_api::{MAX_RANDOM_NUM_SIZE, MAX_RANDOM_STIR_SIZE};
+use libapi_caliptra::mailbox_api::{MAX_ECC_CERT_SIZE, MAX_RANDOM_NUM_SIZE, MAX_RANDOM_STIR_SIZE};
 
 use romtime::{println, test_exit, HexBytes};
 
@@ -459,11 +459,11 @@ async fn test_ecdsa() {
     let mut cert_ctx = CertContext::new();
     let mut pubkey_x = [0u8; ECC_P384_PARAM_X_SIZE];
     let mut pubkey_y = [0u8; ECC_P384_PARAM_Y_SIZE];
-    let mut cert_buf = [0u8; 1024];
+    let mut cert_buf = [0u8; MAX_ECC_CERT_SIZE];
 
     let message: [u8; 128] = [0x55; 128];
 
-    let size = cert_ctx
+    let _ = cert_ctx
         .certify_key(
             &mut cert_buf,
             Some(&test_key_label),

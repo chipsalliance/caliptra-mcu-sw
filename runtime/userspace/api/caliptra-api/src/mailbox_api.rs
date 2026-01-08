@@ -11,6 +11,7 @@
 //! - `MAX_CRYPTO_MBOX_DATA_SIZE`: Maximum size of cryptographic mailbox data.
 //! - `MAX_DPE_RESP_DATA_SIZE`: Maximum size of DPE response data.
 //! - `MAX_ECC_CERT_SIZE`: Maximum size of an ECC certificate.
+//! - `MAX_MLDSA_CERT_SIZE`: Maximum size of a MLDSA certificate.
 //! - `MAX_CERT_CHUNK_SIZE`: Maximum size of a certificate chunk.
 //! - `MAX_RANDOM_NUM_SIZE`: Maximum size of a random number and the rand_stir input.
 //!
@@ -50,8 +51,9 @@ use libtock_platform::ErrorCode;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const MAX_CRYPTO_MBOX_DATA_SIZE: usize = 1024;
-pub const MAX_DPE_RESP_DATA_SIZE: usize = 1536;
-pub const MAX_ECC_CERT_SIZE: usize = 1024;
+pub const MAX_DPE_RESP_DATA_SIZE: usize = 2048;
+pub const MAX_ECC_CERT_SIZE: usize = 1536;
+pub const MAX_MLDSA_CERT_SIZE: usize = 17 * 1024;
 pub const MAX_CERT_CHUNK_SIZE: usize = 1024;
 pub const MAX_RANDOM_STIR_SIZE: usize = 48;
 pub const MAX_RANDOM_NUM_SIZE: usize = 48;
@@ -59,6 +61,7 @@ pub const MAX_RANDOM_NUM_SIZE: usize = 48;
 const _: () = assert!(MAX_CRYPTO_MBOX_DATA_SIZE <= MAX_CMB_DATA_SIZE);
 const _: () = assert!(size_of::<DpeEcResp>() <= size_of::<InvokeDpeResp>());
 const _: () = assert!(size_of::<CertificateChainResp>() <= size_of::<GetCertificateChainResp>());
+const _: () = assert!(size_of::<CertifyEcKeyResp>() <= MAX_DPE_RESP_DATA_SIZE);
 const _: () = assert!(size_of::<CertifyEcKeyResp>() <= size_of::<CertifyKeyResp>());
 const _: () = assert!(size_of::<RandomStirReq>() <= size_of::<CmRandomStirReq>());
 const _: () = assert!(size_of::<RandomGenerateResp>() <= size_of::<CmRandomGenerateResp>());
@@ -137,6 +140,7 @@ impl Default for DpeEcResp {
 
 // DPE Commands
 
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum DpeResponse {
     CertifyKey(CertifyEcKeyResp),
     Sign(SignResp),

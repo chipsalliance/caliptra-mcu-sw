@@ -3,12 +3,12 @@
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::{
     execute_mailbox_cmd, CertificateChainResp, CertifyEcKeyResp, DpeEcResp, DpeResponse,
-    MAX_DPE_RESP_DATA_SIZE,
+    MAX_DPE_RESP_DATA_SIZE, MAX_ECC_CERT_SIZE,
 };
 use caliptra_api::mailbox::{
-    CommandId, GetFmcAliasEcc384CertReq, GetIdevCsrReq, GetIdevCsrResp, GetLdevCertResp,
-    GetLdevEcc384CertReq, GetRtAliasEcc384CertReq, InvokeDpeReq, MailboxReqHeader,
-    MailboxRespHeader, PopulateIdevEcc384CertReq, Request,
+    CommandId, GetFmcAliasEcc384CertReq, GetIdevCsrReq, GetIdevCsrResp, GetLdevEcc384CertReq,
+    GetRtAliasEcc384CertReq, InvokeDpeReq, MailboxReqHeader, MailboxRespHeader,
+    PopulateIdevEcc384CertReq, Request, MAX_RESP_DATA_SIZE,
 };
 use dpe::commands::{
     CertifyKeyCmd, CertifyKeyFlags, Command, CommandHdr, GetCertificateChainCmd, SignCmd, SignFlags,
@@ -20,7 +20,7 @@ use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromZeros, IntoBytes, TryFromBytes};
 
 pub const IDEV_ECC_CSR_MAX_SIZE: usize = GetIdevCsrResp::DATA_MAX_SIZE;
-pub const MAX_ECC_CERT_SIZE: usize = GetLdevCertResp::DATA_MAX_SIZE;
+pub const MAX_MAILBOX_GET_CERT_RESP_SIZE: usize = MAX_RESP_DATA_SIZE;
 pub const MAX_CERT_CHUNK_SIZE: usize = 1024;
 pub const KEY_LABEL_SIZE: usize = DPE_PROFILE.hash_size();
 
@@ -100,7 +100,7 @@ impl CertContext {
         cert: &mut [u8; MAX_ECC_CERT_SIZE],
     ) -> CaliptraApiResult<usize> {
         let resp = self.get_cert::<GetLdevEcc384CertReq>().await?;
-        if resp.data_size > MAX_ECC_CERT_SIZE as u32 {
+        if resp.data_size > MAX_MAILBOX_GET_CERT_RESP_SIZE as u32 {
             return Err(CaliptraApiError::InvalidResponse);
         }
         cert[..resp.data_size as usize].copy_from_slice(&resp.data[..resp.data_size as usize]);
@@ -112,7 +112,7 @@ impl CertContext {
         cert: &mut [u8; MAX_ECC_CERT_SIZE],
     ) -> CaliptraApiResult<usize> {
         let resp = self.get_cert::<GetFmcAliasEcc384CertReq>().await?;
-        if resp.data_size > MAX_ECC_CERT_SIZE as u32 {
+        if resp.data_size > MAX_MAILBOX_GET_CERT_RESP_SIZE as u32 {
             return Err(CaliptraApiError::InvalidResponse);
         }
         cert[..resp.data_size as usize].copy_from_slice(&resp.data[..resp.data_size as usize]);
@@ -124,7 +124,7 @@ impl CertContext {
         cert: &mut [u8; MAX_ECC_CERT_SIZE],
     ) -> CaliptraApiResult<usize> {
         let resp = self.get_cert::<GetRtAliasEcc384CertReq>().await?;
-        if resp.data_size > MAX_ECC_CERT_SIZE as u32 {
+        if resp.data_size > MAX_MAILBOX_GET_CERT_RESP_SIZE as u32 {
             return Err(CaliptraApiError::InvalidResponse);
         }
         cert[..resp.data_size as usize].copy_from_slice(&resp.data[..resp.data_size as usize]);
