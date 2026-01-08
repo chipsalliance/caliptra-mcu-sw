@@ -59,6 +59,17 @@ impl BootFlow for WarmBoot {
         soc.set_axi_users(straps.into());
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
+        // Set SS_CONFIG_DONE to lock MCI configuration registers until warm reset
+        romtime::println!("[mcu-rom] Setting SS_CONFIG_DONE");
+        mci.set_ss_config_done();
+        mci.set_flow_checkpoint(McuRomBootStatus::SsConfigDoneSet.into());
+
+        // Verify that SS_CONFIG_DONE is actually set
+        if !mci.is_ss_config_done() {
+            romtime::println!("[mcu-rom] SS_CONFIG_DONE verification failed");
+            fatal_error(McuError::ROM_SOC_SS_CONFIG_DONE_VERIFY_FAILED);
+        }
+
         // According to https://github.com/chipsalliance/caliptra-rtl/blob/main/docs/CaliptraIntegrationSpecification.md#fuses
         // we still need to write the fuse write done bit even though fuses can't be changed on a
         // warm reset.
