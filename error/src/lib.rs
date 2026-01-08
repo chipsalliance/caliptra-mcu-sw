@@ -288,6 +288,21 @@ impl McuError {
             "SOC tried to lock an Mbox user out of range"
         ),
         (
+            ROM_SOC_PK_HASH_VERIFY_FAILED,
+            0x5_000E,
+            "Production debug unlock PK hash verification failed after locking"
+        ),
+        (
+            ROM_SOC_MCU_MBOX_AXI_USER_VERIFY_FAILED,
+            0x5_000F,
+            "MCU mailbox AXI user verification failed after locking"
+        ),
+        (
+            ROM_SOC_SS_CONFIG_DONE_VERIFY_FAILED,
+            0x5_0010,
+            "SS_CONFIG_DONE or SS_CONFIG_DONE_STICKY verification failed after setting"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"
