@@ -4,7 +4,7 @@
 use kernel::ErrorCode;
 
 /// This trait provides the interfaces for managing DMA transfers.
-pub trait DMA {
+pub trait Dma {
     /// Configure the DMA transfer with 64-bit source and destination addresses.
     ///
     /// # Arguments:
@@ -33,13 +33,13 @@ pub trait DMA {
     ) -> Result<(), ErrorCode>;
 
     /// Poll the DMA status for transfer progress or completion.
-    fn poll_status(&self) -> Result<DMAStatus, DMAError>;
+    fn poll_status(&self) -> Result<DmaStatus, DmaError>;
 
     /// Push data into the WR FIFO for AHB -> AXI WR transfers.
     ///
     /// # Arguments:
     /// - `data`: Slice of data to be written (as bytes).
-    fn write_fifo(&self, data: &[u8]) -> Result<(), DMAError>;
+    fn write_fifo(&self, data: &[u8]) -> Result<(), DmaError>;
 
     /// Pop data from the RD FIFO for AXI RD -> AHB transfers.
     ///
@@ -48,10 +48,10 @@ pub trait DMA {
     ///
     /// Returns:
     /// - `Ok(bytes_read)` indicating the number of bytes read.
-    fn read_fifo(&self, buffer: &mut [u8]) -> Result<usize, DMAError>;
+    fn read_fifo(&self, buffer: &mut [u8]) -> Result<usize, DmaError>;
 
     /// Set a client for receiving DMA transfer events asynchronously.
-    fn set_client(&self, client: &'static dyn DMAClient);
+    fn set_client(&self, client: &'static dyn DmaClient);
 }
 
 /// DMA Route configuration for Read/Write routes.
@@ -63,7 +63,7 @@ pub enum DmaRoute {
 
 /// Represents the current status of the DMA transfer.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum DMAStatus {
+pub enum DmaStatus {
     TxnDone,        // Transaction complete
     RdFifoNotEmpty, // Read FIFO has data
     RdFifoFull,     // Read FIFO is full
@@ -73,7 +73,7 @@ pub enum DMAStatus {
 
 /// Represents possible DMA errors.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum DMAError {
+pub enum DmaError {
     CommandError,     // General command error
     AxiReadError,     // AXI Read error
     AxiWriteError,    // AXI Write error
@@ -85,10 +85,10 @@ pub enum DMAError {
 }
 
 /// A client trait for handling asynchronous DMA transfer events.
-pub trait DMAClient {
+pub trait DmaClient {
     /// Called when a DMA transfer completes successfully.
-    fn transfer_complete(&self, status: DMAStatus);
+    fn transfer_complete(&self, status: DmaStatus);
 
     /// Called when a DMA transfer encounters an error.
-    fn transfer_error(&self, error: DMAError);
+    fn transfer_error(&self, error: DmaError);
 }

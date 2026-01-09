@@ -5,6 +5,7 @@
 
 pub mod test;
 
+pub mod dma;
 pub mod doe;
 pub mod flash_partition;
 pub mod mailbox;

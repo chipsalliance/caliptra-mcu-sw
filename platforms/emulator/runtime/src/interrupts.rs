@@ -35,7 +35,7 @@ impl<'a> EmulatorPeripherals<'a> {
             dma: dma_driver::axicdma::AxiCDMA::new(
                 dma_driver::axicdma::DMA_CTRL_BASE,
                 false,
-                alarm,
+                Some(alarm),
             ),
             doe_transport: doe_mbox_driver::EmulatedDoeTransport::new(
                 doe_mbox_driver::DOE_MBOX_BASE,

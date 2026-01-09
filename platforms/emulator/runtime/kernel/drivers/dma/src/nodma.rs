@@ -7,14 +7,14 @@
 
 use core::cell::RefCell;
 
-use crate::hil::{DMAClient, DMAError};
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
+use capsules_runtime::dma::hil::{Dma, DmaClient, DmaError, DmaRoute, DmaStatus};
 use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::OptionalCell;
 use kernel::ErrorCode;
 
 pub struct NoDMA<'a, A: Alarm<'a>> {
-    dma_client: OptionalCell<&'a dyn DMAClient>,
+    dma_client: OptionalCell<&'a dyn DmaClient>,
     src_addr: RefCell<u32>,
     dest_addr: RefCell<u32>,
     btt: RefCell<u32>,
@@ -46,7 +46,7 @@ impl<'a, A: Alarm<'a>> NoDMA<'a, A> {
     }
 }
 
-impl<'a, A: Alarm<'a>> crate::hil::DMA for NoDMA<'a, A> {
+impl<'a, A: Alarm<'a>> Dma for NoDMA<'a, A> {
     fn configure_transfer(
         &self,
         byte_count: usize,
@@ -79,15 +79,15 @@ impl<'a, A: Alarm<'a>> crate::hil::DMA for NoDMA<'a, A> {
 
     fn start_transfer(
         &self,
-        read_route: crate::hil::DmaRoute,
-        write_route: crate::hil::DmaRoute,
+        read_route: DmaRoute,
+        write_route: DmaRoute,
         _fixed_addr: bool,
     ) -> Result<(), ErrorCode> {
-        if read_route != crate::hil::DmaRoute::AxiToAxi {
+        if read_route != DmaRoute::AxiToAxi {
             // Only AxiToAxi route is supported
             return Err(ErrorCode::INVAL);
         }
-        if write_route != crate::hil::DmaRoute::AxiToAxi {
+        if write_route != DmaRoute::AxiToAxi {
             // Only AxiToAxi route is supported
             return Err(ErrorCode::INVAL);
         }
@@ -101,20 +101,20 @@ impl<'a, A: Alarm<'a>> crate::hil::DMA for NoDMA<'a, A> {
         Ok(())
     }
 
-    fn poll_status(&self) -> Result<crate::hil::DMAStatus, DMAError> {
+    fn poll_status(&self) -> Result<DmaStatus, DmaError> {
         // Not supported
-        Err(DMAError::CommandError)
+        Err(DmaError::CommandError)
     }
 
-    fn write_fifo(&self, _data: &[u8]) -> Result<(), DMAError> {
-        Err(DMAError::CommandError)
+    fn write_fifo(&self, _data: &[u8]) -> Result<(), DmaError> {
+        Err(DmaError::CommandError)
     }
 
-    fn read_fifo(&self, _buffer: &mut [u8]) -> Result<usize, DMAError> {
-        Err(DMAError::CommandError)
+    fn read_fifo(&self, _buffer: &mut [u8]) -> Result<usize, DmaError> {
+        Err(DmaError::CommandError)
     }
 
-    fn set_client(&self, client: &'static dyn DMAClient) {
+    fn set_client(&self, client: &'static dyn DmaClient) {
         self.dma_client.set(client);
     }
 }
@@ -138,7 +138,7 @@ impl<'a, A: Alarm<'a>> AlarmClient for NoDMA<'a, A> {
 
         *self.busy.borrow_mut() = false;
         self.dma_client.map(move |client| {
-            client.transfer_complete(crate::hil::DMAStatus::TxnDone);
+            client.transfer_complete(DmaStatus::TxnDone);
         });
     }
 }

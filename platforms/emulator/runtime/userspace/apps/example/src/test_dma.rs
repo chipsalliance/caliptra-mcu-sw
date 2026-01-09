@@ -5,11 +5,9 @@ use libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
 use libsyscall_caliptra::system::System;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
-use romtime::println;
+use mcu_config_emulator::EMULATOR_MEMORY_MAP;
 
-const MCU_SRAM_HI_OFFSET: u64 = 0x0000_0000;
-const TEST_EXTERNAL_SRAM_DEST_ADDRESS: u32 = 0xB00C_0000;
-
+const TEST_EXTERNAL_SRAM_DEST_ADDRESS: u32 = EMULATOR_MEMORY_MAP.staging_sram_offset;
 fn local_ram_to_axi_address(addr: u32) -> u64 {
     // Convert a local address to an AXI address
     addr as u64

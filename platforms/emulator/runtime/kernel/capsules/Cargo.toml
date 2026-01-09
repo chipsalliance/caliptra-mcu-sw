@@ -8,7 +8,7 @@ edition.workspace = true
 
 [dependencies]
 bitfield.workspace = true
-dma-driver.workspace = true
+capsules-runtime.workspace = true
 flash-driver.workspace = true
 mcu-platforms-common.workspace = true
 kernel.workspace = true

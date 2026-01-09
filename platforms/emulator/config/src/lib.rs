@@ -46,6 +46,9 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     lc_offset: 0x7000_0400,
     lc_size: 0x8c,
     lc_properties: MemoryRegionType::MMIO,
+
+    staging_sram_offset: 0xb00c_0000,
+    staging_sram_size: 1024 * 1024,
 };
 
 pub const EMULATOR_MCU_STRAPS: McuStraps = McuStraps::default();

@@ -461,16 +461,27 @@ pub unsafe fn main() {
     );
     hil::time::Alarm::set_alarm_client(virtual_alarm_user, alarm);
 
+    let mbox_dma_driver = static_init!(
+        dma_driver::axicdma::AxiCDMA<'static, InternalTimers<'static>>,
+        dma_driver::axicdma::AxiCDMA::new(dma_driver::axicdma::DMA_CTRL_BASE, false, None,)
+    );
+    let mbox_staging_addr = if cfg!(feature = "hw-2-1") {
+        Some(MCU_MEMORY_MAP.staging_sram_offset as u64)
+    } else {
+        None
+    };
     let mailbox = mcu_components::mailbox::MailboxComponent::new(
         board_kernel,
         capsules_runtime::mailbox::DRIVER_NUM,
         mux_alarm,
+        mbox_dma_driver,
     )
     .finalize(mailbox_component_static!(
         InternalTimers<'static>,
         Some(MCU_MEMORY_MAP.soc_offset),
         Some(MCU_MEMORY_MAP.soc_offset),
-        Some(MCU_MEMORY_MAP.mbox_offset)
+        Some(MCU_MEMORY_MAP.mbox_offset),
+        mbox_staging_addr
     ));
     mailbox.alarm.set_alarm_client(mailbox);
 

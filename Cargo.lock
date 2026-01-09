@@ -894,7 +894,7 @@ name = "capsules-emulator"
 version = "0.1.0"
 dependencies = [
  "bitfield",
- "dma-driver",
+ "capsules-runtime",
  "flash-driver",
  "kernel",
  "mcu-platforms-common",
@@ -1493,6 +1493,7 @@ name = "dma-driver"
 version = "0.1.0"
 dependencies = [
  "capsules-core",
+ "capsules-runtime",
  "kernel",
  "registers-generated",
  "romtime",
@@ -1788,6 +1789,7 @@ dependencies = [
  "emulator-consts",
  "emulator-registers-generated",
  "lazy_static",
+ "mcu-config-emulator",
  "mcu-testing-common",
  "num_enum",
  "registers-generated",

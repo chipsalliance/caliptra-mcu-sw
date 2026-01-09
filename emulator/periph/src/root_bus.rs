@@ -392,18 +392,12 @@ impl Bus for McuRootBus {
                     start + len
                 );
             } else {
-                let data = (start..start + len).step_by(4).map(|index| {
-                    self.mcu_mailbox0
-                        .regs
-                        .lock()
-                        .unwrap()
-                        .read_mcu_mbox0_csr_mbox_sram(index)
-                });
-                let data: Vec<u8> = data
-                    .flat_map(|val| val.to_be_bytes().to_vec())
-                    .take(len)
-                    .collect();
-
+                let data = self
+                    .mcu_mailbox0
+                    .regs
+                    .lock()
+                    .unwrap()
+                    .read_mcu_mbox0_csr_mbox_sram_block(start, len);
                 if let Some(event_sender) = self.event_sender.as_ref() {
                     event_sender
                         .send(Event {
@@ -430,18 +424,12 @@ impl Bus for McuRootBus {
                     start + len
                 );
             } else {
-                let data = (start..start + len).step_by(4).map(|index| {
-                    self.mcu_mailbox1
-                        .regs
-                        .lock()
-                        .unwrap()
-                        .read_mcu_mbox0_csr_mbox_sram(index.div_ceil(4))
-                });
-                let data: Vec<u8> = data
-                    .flat_map(|val| val.to_be_bytes().to_vec())
-                    .take(len)
-                    .collect();
-
+                let data = self
+                    .mcu_mailbox1
+                    .regs
+                    .lock()
+                    .unwrap()
+                    .read_mcu_mbox0_csr_mbox_sram_block(start, len);
                 if let Some(event_sender) = self.event_sender.as_ref() {
                     event_sender
                         .send(Event {
@@ -472,19 +460,6 @@ impl Bus for McuRootBus {
                 let ram_size = ram.len() as usize;
                 let len = len.min(ram_size - start);
                 let data = ram.data()[start..start + len].to_vec();
-
-                // Caliptra DMA processes the data in 4-byte chunks
-                let data: Vec<u8> = data
-                    .chunks(4)
-                    .flat_map(|chunk| {
-                        if chunk.len() == 4 {
-                            chunk.iter().rev().cloned().collect::<Vec<u8>>()
-                        } else {
-                            chunk.to_vec()
-                        }
-                    })
-                    .collect();
-
                 if let Some(event_sender) = self.event_sender.as_ref() {
                     event_sender
                         .send(Event {
