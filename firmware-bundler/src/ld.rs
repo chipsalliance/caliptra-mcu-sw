@@ -384,3 +384,385 @@ INCLUDE $BASE_LD_CONTENTS
         subst::substitute(APP_LD_TEMPLATE, &sub_map).map_err(|e| e.into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::manifest::Platform;
+    use tempfile::TempDir;
+
+    /// Create a platform with configurable memory sizes.
+    /// All memory regions start at offset 0x0, 0x10000, and 0x20000 respectively.
+    fn test_platform(rom_size: u64, itcm_size: u64, ram_size: u64) -> Platform {
+        Platform {
+            tuple: "riscv32imc-unknown-none-elf".to_string(),
+            default_alignment: Some(8),
+            page_size: Some(256),
+            rom: Memory {
+                offset: 0x0,
+                size: rom_size,
+            },
+            itcm: Memory {
+                offset: 0x10000,
+                size: itcm_size,
+            },
+            ram: Memory {
+                offset: 0x20000,
+                size: ram_size,
+            },
+        }
+    }
+
+    /// Create a binary with specified resource requirements.
+    fn test_binary(name: &str, exec_size: u64, ram_size: u64) -> Binary {
+        Binary::new_for_test(name, exec_size, ram_size, None, 0)
+    }
+
+    /// Create a Common args struct pointing to a temp directory.
+    fn test_common(temp_dir: &TempDir) -> Common {
+        Common {
+            rom_ld_base: None,
+            kernel_ld_base: None,
+            app_ld_base: None,
+            workspace_dir: Some(temp_dir.path().to_path_buf()),
+        }
+    }
+
+    /// Build a complete manifest from components.
+    fn test_manifest(
+        platform: Platform,
+        rom: Option<Binary>,
+        kernel: Binary,
+        apps: Vec<Binary>,
+    ) -> Manifest {
+        Manifest {
+            platform,
+            rom,
+            kernel,
+            apps,
+        }
+    }
+
+    // ==================== Happy Path Tests ====================
+
+    #[test]
+    fn kernel_only_fits() {
+        let temp = TempDir::new().unwrap();
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x1000, 0x1000),
+            None,
+            test_binary("kernel", 0x100, 0x100),
+            vec![],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_ok());
+
+        let build_def = result.unwrap();
+        assert!(build_def.rom.is_none());
+        assert_eq!(build_def.kernel.name, "kernel");
+        assert!(build_def.apps.is_empty());
+    }
+
+    #[test]
+    fn rom_and_kernel_fit() {
+        let temp = TempDir::new().unwrap();
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x1000, 0x1000),
+            Some(test_binary("rom", 0x100, 0x100)),
+            test_binary("kernel", 0x100, 0x100),
+            vec![],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_ok());
+
+        let build_def = result.unwrap();
+        assert!(build_def.rom.is_some());
+        assert_eq!(build_def.rom.as_ref().unwrap().name, "rom");
+        assert_eq!(build_def.kernel.name, "kernel");
+        assert!(build_def.apps.is_empty());
+    }
+
+    #[test]
+    fn kernel_and_single_app_fit() {
+        let temp = TempDir::new().unwrap();
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x1000, 0x1000),
+            None,
+            test_binary("kernel", 0x100, 0x100),
+            vec![test_binary("app1", 0x100, 0x100)],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_ok());
+
+        let build_def = result.unwrap();
+        assert!(build_def.rom.is_none());
+        assert_eq!(build_def.kernel.name, "kernel");
+        assert_eq!(build_def.apps.len(), 1);
+        assert_eq!(build_def.apps[0].name, "app1");
+    }
+
+    #[test]
+    fn kernel_and_multiple_apps_fit() {
+        let temp = TempDir::new().unwrap();
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x2000, 0x2000),
+            None,
+            test_binary("kernel", 0x100, 0x100),
+            vec![
+                test_binary("app1", 0x100, 0x100),
+                test_binary("app2", 0x100, 0x100),
+                test_binary("app3", 0x100, 0x100),
+            ],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_ok());
+
+        let build_def = result.unwrap();
+        assert_eq!(build_def.apps.len(), 3);
+        assert_eq!(build_def.apps[0].name, "app1");
+        assert_eq!(build_def.apps[1].name, "app2");
+        assert_eq!(build_def.apps[2].name, "app3");
+    }
+
+    #[test]
+    fn full_manifest_rom_kernel_apps_fit() {
+        let temp = TempDir::new().unwrap();
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x2000, 0x2000),
+            Some(test_binary("rom", 0x200, 0x200)),
+            test_binary("kernel", 0x200, 0x200),
+            vec![
+                test_binary("app1", 0x100, 0x100),
+                test_binary("app2", 0x100, 0x100),
+            ],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_ok());
+
+        let build_def = result.unwrap();
+        assert!(build_def.rom.is_some());
+        assert_eq!(build_def.rom.as_ref().unwrap().name, "rom");
+        assert_eq!(build_def.kernel.name, "kernel");
+        assert_eq!(build_def.apps.len(), 2);
+    }
+
+    #[test]
+    fn exact_fit_consumes_all_resources() {
+        let temp = TempDir::new().unwrap();
+        // Platform with exactly enough space for kernel + 1 app
+        // ITCM: 0x200 total, kernel 0x100, app 0x100
+        // RAM: 0x200 total, kernel 0x100, app 0x100
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x200, 0x200),
+            None,
+            test_binary("kernel", 0x100, 0x100),
+            vec![test_binary("app1", 0x100, 0x100)],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_ok());
+
+        let build_def = result.unwrap();
+        assert_eq!(build_def.kernel.name, "kernel");
+        assert_eq!(build_def.apps.len(), 1);
+    }
+
+    #[test]
+    fn linker_scripts_created_on_disk() {
+        let temp = TempDir::new().unwrap();
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x1000, 0x1000),
+            Some(test_binary("my_rom", 0x100, 0x100)),
+            test_binary("my_kernel", 0x100, 0x100),
+            vec![test_binary("my_app", 0x100, 0x100)],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_ok());
+
+        let build_def = result.unwrap();
+
+        // Verify linker script files exist on disk
+        assert!(build_def.rom.as_ref().unwrap().linker_script.exists());
+        assert!(build_def.kernel.linker_script.exists());
+        assert!(build_def.apps[0].linker_script.exists());
+
+        // Verify base layout files also exist
+        let linker_dir = temp
+            .path()
+            .join("target/riscv32imc-unknown-none-elf/linker-scripts");
+        assert!(linker_dir.join("rom-layout.ld").exists());
+        assert!(linker_dir.join("kernel-layout.ld").exists());
+        assert!(linker_dir.join("app-layout.ld").exists());
+    }
+
+    // ==================== Failure Cases ====================
+
+    #[test]
+    fn kernel_exceeds_itcm() {
+        let temp = TempDir::new().unwrap();
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x100, 0x1000), // Small ITCM
+            None,
+            test_binary("kernel", 0x200, 0x100), // Kernel exec_mem > ITCM
+            vec![],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn kernel_exceeds_ram() {
+        let temp = TempDir::new().unwrap();
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x1000, 0x100), // Small RAM
+            None,
+            test_binary("kernel", 0x100, 0x200), // Kernel RAM > platform RAM
+            vec![],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rom_exceeds_rom_memory() {
+        let temp = TempDir::new().unwrap();
+        let manifest = test_manifest(
+            test_platform(0x100, 0x1000, 0x1000),   // Small ROM
+            Some(test_binary("rom", 0x200, 0x100)), // ROM exec_mem > platform ROM
+            test_binary("kernel", 0x100, 0x100),
+            vec![],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rom_exceeds_ram() {
+        let temp = TempDir::new().unwrap();
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x1000, 0x100),   // Small RAM
+            Some(test_binary("rom", 0x100, 0x200)), // ROM RAM > platform RAM
+            test_binary("kernel", 0x100, 0x100),
+            vec![],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn single_app_exceeds_remaining_itcm() {
+        let temp = TempDir::new().unwrap();
+        // ITCM: 0x200 total, kernel takes 0x100, only 0x100 left for app
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x200, 0x1000),
+            None,
+            test_binary("kernel", 0x100, 0x100),
+            vec![test_binary("app1", 0x200, 0x100)], // App needs 0x200, only 0x100 available
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn single_app_exceeds_remaining_ram() {
+        let temp = TempDir::new().unwrap();
+        // RAM: 0x200 total, kernel takes 0x100, only 0x100 left for app
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x1000, 0x200),
+            None,
+            test_binary("kernel", 0x100, 0x100),
+            vec![test_binary("app1", 0x100, 0x200)], // App needs 0x200 RAM, only 0x100 available
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn multiple_apps_exceed_itcm_cumulatively() {
+        let temp = TempDir::new().unwrap();
+        // ITCM: 0x300 total, kernel takes 0x100, leaves 0x200 for apps
+        // Three apps each need 0x100, totaling 0x300 - exceeds available 0x200
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x300, 0x1000),
+            None,
+            test_binary("kernel", 0x100, 0x100),
+            vec![
+                test_binary("app1", 0x100, 0x50),
+                test_binary("app2", 0x100, 0x50),
+                test_binary("app3", 0x100, 0x50), // This one should fail
+            ],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn multiple_apps_exceed_ram_cumulatively() {
+        let temp = TempDir::new().unwrap();
+        // RAM: 0x300 total, kernel takes 0x100, leaves 0x200 for apps
+        // Three apps each need 0x100 RAM, totaling 0x300 - exceeds available 0x200
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x1000, 0x300),
+            None,
+            test_binary("kernel", 0x100, 0x100),
+            vec![
+                test_binary("app1", 0x50, 0x100),
+                test_binary("app2", 0x50, 0x100),
+                test_binary("app3", 0x50, 0x100), // This one should fail
+            ],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn last_app_causes_itcm_overflow() {
+        let temp = TempDir::new().unwrap();
+        // ITCM: 0x280 total, kernel takes 0x100, leaves 0x180 for apps
+        // First two apps fit (0x80 each = 0x100), third app (0x100) overflows
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x280, 0x1000),
+            None,
+            test_binary("kernel", 0x100, 0x100),
+            vec![
+                test_binary("app1", 0x80, 0x50),
+                test_binary("app2", 0x80, 0x50),
+                test_binary("app3", 0x100, 0x50), // Needs 0x100, only 0x80 left
+            ],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn last_app_causes_ram_overflow() {
+        let temp = TempDir::new().unwrap();
+        // RAM: 0x280 total, kernel takes 0x100, leaves 0x180 for apps
+        // First two apps fit (0x80 each = 0x100), third app (0x100) overflows
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x1000, 0x280),
+            None,
+            test_binary("kernel", 0x100, 0x100),
+            vec![
+                test_binary("app1", 0x50, 0x80),
+                test_binary("app2", 0x50, 0x80),
+                test_binary("app3", 0x50, 0x100), // Needs 0x100 RAM, only 0x80 left
+            ],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn zero_size_memory_regions_fail() {
+        let temp = TempDir::new().unwrap();
+        // ITCM has zero size - kernel cannot fit
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x0, 0x1000),
+            None,
+            test_binary("kernel", 0x100, 0x100),
+            vec![],
+        );
+        let result = generate(manifest, test_common(&temp));
+        assert!(result.is_err());
+    }
+}
