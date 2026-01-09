@@ -49,7 +49,7 @@ flowchart LR
 
 ## Network Recovery Boot Flow
 
-The following diagram illustrates the high-level flow using the `BootSourceProvider` interface, showing how `initialize()` drives DHCP and TOC fetch:
+The following diagram illustrates the high-level flow using the `BootSourceProvider` interface, showing how `discover()` drives DHCP and TOC fetch:
 
 ```mermaid
 sequenceDiagram
@@ -58,12 +58,10 @@ sequenceDiagram
     participant NET as Network ROM (BootSourceProvider)
     participant IMG as Image Server
 
-    MCU->>NET: initialize()
+    MCU->>NET: discover()
     NET->>IMG: DHCP Discovery
     IMG-->>NET: DHCP Offer
-    NET->>IMG: TFTP GET config (TOC)
-    IMG-->>NET: TOC
-    NET-->>MCU: BootSourceStatus { ready=true, config_available=true }
+    NET->>MCU: discover response()
 ```
 
 ### Image Transfer Sequence
@@ -112,11 +110,8 @@ sequenceDiagram
     participant NET as Network ROM
     participant IMG as Image Server
 
-    MCURT->>NET: initialize_image_loader()
-    NET-->>MCURT: Ready
-
-    MCURT->>NET: get_toc()
-    NET-->>MCURT: TOC { image_id -> filename mapping }
+    MCURT->>NET: discover()
+    NET-->>MCURT: discovery response
 
     loop For each SoC image (image_id)
         MCURT->>MBOX: get_image_info(image_id)
@@ -134,6 +129,7 @@ sequenceDiagram
             NET-->>MCURT: Image chunk
 
             MCURT->>MCURT: Write chunk to load_address
+            MCURT->>NET: Chunk Ack
         end
 
         MCURT->>MBOX: authorize(component_id)
@@ -189,10 +185,11 @@ Offset  Size  Field              Description
 0       1     Message Type       0x81 - Discovery Response
 1       1     Status             0x00=Success, non-zero=Error
 2       2     Reserved           Must be 0
-4       4     Available Images   Bitmask of available firmware images
-8       4     Config Version     Version of the configuration/TOC
-12      4     Reserved           For future use
-16      N     Source Specific    Source-specific response data
+4       4     Image Count        Number of available firmware images
+8       4*N   Firmware IDs       Array of u32 firmware IDs (N = Image Count)
+8+4*N   4     Config Version     Version of the configuration
+12+4*N  4     Reserved           For future use
+16+4*N  M     Source Specific    Source-specific response data
 ```
 
 #### 2. Image Info Request
@@ -222,7 +219,8 @@ Offset  Size  Field              Description
 44      4     Version            Image version number
 48      4     Flags              Bit 0: Compressed, Bit 1: Signed, etc.
 52      4     Reserved           For future use
-56      8     Metadata           Flexible metadata field for extensions
+56      4     Metadata Length    Length of metadata in bytes
+60      N     Metadata           Variable-length metadata (e.g., TFTP filename)
 ```
 
 #### 3. Image Download Request
@@ -444,7 +442,7 @@ pub struct BootSourceStatus {
     pub ready: bool,
     pub initialized: bool,
     pub config_available: bool,
-    pub available_images: u32,
+    pub available_images: Vec<u32>,
 }
 
 /// Metadata for a firmware image
@@ -454,6 +452,7 @@ pub struct ImageInfo {
     pub size: u64,
     pub checksum: Option<[u8; 32]>,
     pub version: Option<String>,
+    pub metadata: Vec<u8>,
 }
 
 /// Streaming interface for image data
@@ -499,7 +498,7 @@ impl BootSourceProvider for NetworkBootSource {
             ready: true,
             initialized: true,
             config_available: true,
-            available_images: self.toc.firmware_mappings.len() as u32,
+            available_images: self.toc.firmware_mappings.keys().copied().collect(),
         })
     }
     
@@ -524,7 +523,7 @@ impl BootSourceProvider for NetworkBootSource {
             ready: self.tftp_client.is_reachable(),
             initialized: true,
             config_available: true,
-            available_images: self.toc.firmware_mappings.len() as u32,
+            available_images: self.toc.firmware_mappings.keys().copied().collect(),
         })
     }
 }
