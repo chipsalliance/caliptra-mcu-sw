@@ -20,3 +20,5 @@
 //! repository.  This will provide a number of benefits including simpler integration with `cargo b`
 //! commands.  However, a binary application will also be made available if the vendor wishes to
 //! only include the distribution composition support, without the build system integration.
+
+pub mod args;
