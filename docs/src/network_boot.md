@@ -61,6 +61,8 @@ sequenceDiagram
     MCU->>NET: discover()
     NET->>IMG: DHCP Discovery
     IMG-->>NET: DHCP Offer
+    NET->>IMG: Get TOC
+    IMG->>NET: TOC
     NET->>MCU: discover response()
 ```
 
@@ -111,6 +113,8 @@ sequenceDiagram
     participant IMG as Image Server
 
     MCURT->>NET: discover()
+    NET->>IMG: Get TOC
+    IMG->>NET: TOC
     NET-->>MCURT: discovery response
 
     loop For each SoC image (image_id)
