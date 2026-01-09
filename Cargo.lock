@@ -5614,6 +5614,7 @@ dependencies = [
  "clap-num",
  "crc32fast",
  "elf",
+ "firmware-bundler",
  "mcu-builder",
  "mcu-config-emulator",
  "mcu-config-fpga",
