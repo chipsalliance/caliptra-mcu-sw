@@ -35,7 +35,7 @@ use registers_generated::fuses::Fuses;
 use registers_generated::mci;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use registers_generated::soc;
-use romtime::{HexWord, StaticRef};
+use romtime::{HexWord, Mci, StaticRef};
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -488,6 +488,45 @@ impl Soc {
         // Clear the reset request interrupt
         notif0.modify(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
     }
+
+    pub fn set_mci_axi_users(&self, users: MciAxiUsers, mci: &Mci) {
+        let MciAxiUsers {
+            mci_mbox0_users,
+            mci_mbox1_users,
+        } = users;
+
+        for (i, user) in mci_mbox0_users.iter().enumerate() {
+            if let Some(user) = *user {
+                romtime::println!(
+                    "[mcu-rom] Setting MCI mailbox0 user {i} to {}",
+                    HexWord(user)
+                );
+                if let Err(e) = mci.set_mci_mbox0_valid_axi_user(i, user) {
+                    fatal_error(e);
+                }
+                romtime::println!("[mcu-rom] Locking MCI mailbox0 user {i}");
+                if let Err(e) = mci.set_mci_mbox0_axi_user_lock(i, 1) {
+                    fatal_error(e);
+                }
+            }
+        }
+
+        for (i, user) in mci_mbox1_users.iter().enumerate() {
+            if let Some(user) = *user {
+                romtime::println!(
+                    "[mcu-rom] Setting MCI mailbox1 user {i} to {}",
+                    HexWord(user)
+                );
+                if let Err(e) = mci.set_mci_mbox1_valid_axi_user(i, user) {
+                    fatal_error(e);
+                }
+                romtime::println!("[mcu-rom] Locking MCI mailbox1 user {i}");
+                if let Err(e) = mci.set_mci_mbox1_axi_user_lock(i, 1) {
+                    fatal_error(e);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -503,6 +542,8 @@ pub struct RomParameters<'a> {
     pub dot_stable_key_type: Option<CmStableKeyType>,
     /// Flash storage interface for DOT blob.
     pub dot_flash: Option<&'a dyn FlashStorage>,
+    pub axi_users: Option<AxiUsers>,
+    pub mci_axi_users: Option<MciAxiUsers>,
 }
 
 pub fn rom_start(params: RomParameters) {
@@ -586,4 +627,9 @@ impl From<&McuStraps> for AxiUsers {
             dma_user: straps.axi_user0,
         }
     }
+}
+
+pub struct MciAxiUsers {
+    pub mci_mbox0_users: [Option<u32>; 5],
+    pub mci_mbox1_users: [Option<u32>; 5],
 }

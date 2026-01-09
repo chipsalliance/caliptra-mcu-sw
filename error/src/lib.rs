@@ -288,6 +288,16 @@ impl McuError {
             "SOC tried to lock an Mbox user out of range"
         ),
         (
+            ROM_MCI_MBOX_USER_OUT_OF_RANGE,
+            0x5_000E,
+            "Tried to set a MCI Mbox user beyond the length of register array"
+        ),
+        (
+            ROM_MCI_MBOX_USER_LOCK_OUT_OF_RANGE,
+            0x5_000F,
+            "OC tried to lock a MCI Mbox user beyond the length of the register array"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"

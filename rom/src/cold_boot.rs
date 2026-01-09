@@ -218,7 +218,23 @@ impl BootFlow for ColdBoot {
 
         romtime::println!("[mcu-rom] Writing fuses to Caliptra");
 
-        soc.set_axi_users(straps.into());
+        #[cfg(feature = "axi_user_rom_param")]
+        {
+            if params.axi_users.is_some() {
+                soc.set_axi_users(params.axi_users.unwrap());
+            } else {
+                soc.set_axi_users(straps.into());
+            }
+
+            if params.mci_axi_users.is_some() {
+                soc.set_mci_axi_users(params.mci_axi_users.unwrap(), mci);
+            }
+        }
+        #[cfg(not(feature = "axi_user_rom_param"))]
+        {
+            soc.set_axi_users(straps.into());
+        }
+
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         romtime::println!("[mcu-rom] Populating fuses");

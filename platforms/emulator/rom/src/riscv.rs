@@ -33,7 +33,7 @@ use mcu_config_emulator::flash::{
 use mcu_rom_common::flash::flash_partition::FlashPartition;
 use mcu_rom_common::hil::FlashStorage;
 use mcu_rom_common::memory::SimpleFlash;
-use mcu_rom_common::{fatal_error, RomParameters};
+use mcu_rom_common::{fatal_error, AxiUsers, MciAxiUsers, RomParameters};
 use romtime::HexWord;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -135,6 +135,52 @@ pub extern "C" fn rom_entry() -> ! {
         mcu_rom_common::rom_start(RomParameters {
             flash_partition_driver: Some(&mut flash_image_partition_driver),
             dot_flash,
+            axi_users: {
+                #[cfg(feature = "axi_user_rom_param")]
+                {
+                    Some(AxiUsers {
+                        mbox_users: [
+                            Some(0xcccc_cccc),
+                            Some(0xdddd_dddd),
+                            Some(0xeeee_eeee),
+                            Some(0xffff_ffff),
+                            Some(0x1111_1111),
+                        ],
+                        fuse_user: 0xcccc_cccc,
+                        trng_user: 0xcccc_cccc,
+                        dma_user: 0xcccc_cccc,
+                    })
+                }
+                #[cfg(not(feature = "axi_user_rom_param"))]
+                {
+                    None
+                }
+            },
+            mci_axi_users: {
+                #[cfg(feature = "axi_user_rom_param")]
+                {
+                    Some(MciAxiUsers {
+                        mci_mbox0_users: [
+                            Some(0xcccc_cccc),
+                            Some(0xdddd_dddd),
+                            Some(0xeeee_eeee),
+                            Some(0xffff_ffff),
+                            Some(0x1111_1111),
+                        ],
+                        mci_mbox1_users: [
+                            Some(0xcccc_cccc),
+                            Some(0xdddd_dddd),
+                            Some(0xeeee_eeee),
+                            Some(0xffff_ffff),
+                            Some(0x1111_1111),
+                        ],
+                    })
+                }
+                #[cfg(not(feature = "axi_user_rom_param"))]
+                {
+                    None
+                }
+            },
             ..Default::default()
         });
     } else if cfg!(any(
@@ -153,6 +199,52 @@ pub extern "C" fn rom_entry() -> ! {
     } else {
         mcu_rom_common::rom_start(RomParameters {
             dot_flash,
+            axi_users: {
+                #[cfg(feature = "axi_user_rom_param")]
+                {
+                    Some(AxiUsers {
+                        mbox_users: [
+                            Some(0xcccc_cccc),
+                            Some(0xdddd_dddd),
+                            Some(0xeeee_eeee),
+                            Some(0xffff_ffff),
+                            Some(0x1111_1111),
+                        ],
+                        fuse_user: 0xcccc_cccc,
+                        trng_user: 0xcccc_cccc,
+                        dma_user: 0xcccc_cccc,
+                    })
+                }
+                #[cfg(not(feature = "axi_user_rom_param"))]
+                {
+                    None
+                }
+            },
+            mci_axi_users: {
+                #[cfg(feature = "axi_user_rom_param")]
+                {
+                    Some(MciAxiUsers {
+                        mci_mbox0_users: [
+                            Some(0xcccc_cccc),
+                            Some(0xdddd_dddd),
+                            Some(0xeeee_eeee),
+                            Some(0xffff_ffff),
+                            Some(0x1111_1111),
+                        ],
+                        mci_mbox1_users: [
+                            Some(0xcccc_cccc),
+                            Some(0xdddd_dddd),
+                            Some(0xeeee_eeee),
+                            Some(0xffff_ffff),
+                            Some(0x1111_1111),
+                        ],
+                    })
+                }
+                #[cfg(not(feature = "axi_user_rom_param"))]
+                {
+                    None
+                }
+            },
             ..Default::default()
         });
     }
