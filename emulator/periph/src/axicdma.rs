@@ -8,6 +8,7 @@ use caliptra_emu_bus::{ActionHandle, Clock, Ram, ReadWriteRegister, Timer};
 use caliptra_emu_cpu::Irq;
 use emulator_consts::{RAM_ORG, RAM_SIZE};
 use emulator_registers_generated::axicdma::{AxicdmaGenerated, AxicdmaPeripheral};
+use mcu_config_emulator::EMULATOR_MEMORY_MAP;
 use registers_generated::axicdma::bits::{AxicdmaBytesToTransfer, AxicdmaControl, AxicdmaStatus};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
@@ -37,8 +38,9 @@ pub enum DmaOpError {
 const MCU_SRAM_START_ADDR: u64 = RAM_ORG as u64;
 const MCU_SRAM_END_ADDR: u64 = (RAM_ORG + RAM_SIZE) as u64;
 
-const EXTERNAL_SRAM_START_ADDR: u64 = 0xB00C_0000;
-const EXTERNAL_SRAM_END_ADDR: u64 = 0xB010_0000;
+const EXTERNAL_SRAM_START_ADDR: u64 = EMULATOR_MEMORY_MAP.staging_sram_offset as u64;
+const EXTERNAL_SRAM_END_ADDR: u64 =
+    (EMULATOR_MEMORY_MAP.staging_sram_offset + EMULATOR_MEMORY_MAP.staging_sram_size) as u64;
 
 const MCU_MBOX0_SRAM_START_ADDR: u64 = 0xA840_0000;
 const MCU_MBOX0_SRAM_END_ADDR: u64 = 0xA860_0000;
@@ -214,15 +216,11 @@ impl AxiCDMA {
             let source_data = &source_ram.data()[source_addr..source_addr + xfer_size];
 
             if let Some(mbox0) = &self.mcu_mailbox0 {
-                for (index, chunk) in source_data.chunks(4).enumerate() {
-                    let mut data = [0u8; 4];
-                    data[..chunk.len()].copy_from_slice(chunk);
-                    let value = u32::from_le_bytes(data);
-                    let regs = &mbox0.regs;
-                    regs.lock()
-                        .unwrap()
-                        .write_mcu_mbox0_csr_mbox_sram(value, index + dest_addr);
-                }
+                mbox0
+                    .regs
+                    .lock()
+                    .unwrap()
+                    .write_mcu_mbox0_csr_mbox_sram_block(source_data, dest_addr);
                 return Ok(());
             } else {
                 return Err(DmaOpError::WriteError);
@@ -233,15 +231,11 @@ impl AxiCDMA {
             let source_data = &source_ram.data()[source_addr..source_addr + xfer_size];
 
             if let Some(mbox1) = &self.mcu_mailbox1 {
-                for (index, chunk) in source_data.chunks(4).enumerate() {
-                    let mut data = [0u8; 4];
-                    data[..chunk.len()].copy_from_slice(chunk);
-                    let value = u32::from_le_bytes(data);
-                    let regs = &mbox1.regs;
-                    regs.lock()
-                        .unwrap()
-                        .write_mcu_mbox0_csr_mbox_sram(value, index + dest_addr.div_ceil(4));
-                }
+                mbox1
+                    .regs
+                    .lock()
+                    .unwrap()
+                    .write_mcu_mbox0_csr_mbox_sram_block(source_data, dest_addr);
                 return Ok(());
             } else {
                 return Err(DmaOpError::WriteError);

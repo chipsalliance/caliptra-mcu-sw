@@ -2,6 +2,7 @@
 
 //! This provides the dma syscall driver
 
+use capsules_runtime::dma::hil::{Dma as DmaHal, DmaClient, DmaError, DmaRoute, DmaStatus};
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::OptionalCell;
@@ -36,7 +37,7 @@ pub struct App {
 
 pub struct Dma<'a> {
     // The underlying dma storage driver.
-    driver: &'a dyn dma_driver::hil::DMA,
+    driver: &'a dyn DmaHal,
     // Per-app state.
     apps: Grant<App, UpcallCount<1>, AllowRoCount<0>, AllowRwCount<0>>,
     current_app: OptionalCell<ProcessId>,
@@ -44,7 +45,7 @@ pub struct Dma<'a> {
 
 impl<'a> Dma<'a> {
     pub fn new(
-        driver: &'a dyn dma_driver::hil::DMA,
+        driver: &'a dyn DmaHal,
         grant: Grant<App, UpcallCount<1>, AllowRoCount<0>, AllowRwCount<0>>,
     ) -> Dma<'a> {
         Dma {
@@ -114,19 +115,16 @@ impl<'a> Dma<'a> {
                         app.source_address,
                         app.dest_address,
                     )?;
-                    self.driver.start_transfer(
-                        dma_driver::hil::DmaRoute::AxiToAxi,
-                        dma_driver::hil::DmaRoute::AxiToAxi,
-                        false,
-                    )
+                    self.driver
+                        .start_transfer(DmaRoute::AxiToAxi, DmaRoute::AxiToAxi, false)
                 })
                 .unwrap_or_else(|err| Err(err.into()))
         })
     }
 }
 
-impl dma_driver::hil::DMAClient for Dma<'_> {
-    fn transfer_complete(&self, status: dma_driver::hil::DMAStatus) {
+impl DmaClient for Dma<'_> {
+    fn transfer_complete(&self, status: DmaStatus) {
         if let Some(processid) = self.current_app.take() {
             let _ = self.apps.enter(processid, move |_, kernel_data| {
                 // Signal the app.
@@ -137,7 +135,7 @@ impl dma_driver::hil::DMAClient for Dma<'_> {
         };
     }
 
-    fn transfer_error(&self, error: dma_driver::hil::DMAError) {
+    fn transfer_error(&self, error: DmaError) {
         if let Some(processid) = self.current_app.take() {
             let _ = self.apps.enter(processid, move |_, kernel_data| {
                 // Signal the app.
