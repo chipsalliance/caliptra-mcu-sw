@@ -2,14 +2,14 @@
 
 use core::mem;
 
-use caliptra_api::mailbox::Request;
 use caliptra_api::{
-    mailbox::{ExternalMailboxCmdReq, MailboxRespHeader},
+    calc_checksum,
+    mailbox::{ExternalMailboxCmdReq, MailboxReqHeader, MailboxRespHeader, Request},
     CaliptraApiError, SocManager,
 };
 use registers_generated::{mbox, soc};
 use ureg::RealMmioMut;
-use zerocopy::{transmute, IntoBytes};
+use zerocopy::{transmute, FromBytes, IntoBytes};
 
 const MAILBOX_SIZE: usize = 256 * 1024;
 pub struct CaliptraSoC {
@@ -259,6 +259,43 @@ impl CaliptraSoC {
             checksum: 0,
             expected_checksum,
         }))
+    }
+
+    /// Executes a mailbox request that is represented as a u32 slice and
+    /// writing the response to a u32 slice.
+    /// This is useful for code size to avoid unaligned and byte-level access,
+    /// when possible.
+    pub fn exec_mailbox_req_u32(
+        &mut self,
+        cmd: u32,
+        req: &mut [u32],
+        resp: &mut [u32],
+    ) -> core::result::Result<(), CaliptraApiError> {
+        if req.len() * 4 < core::mem::size_of::<MailboxReqHeader>() {
+            return Err(CaliptraApiError::MailboxReqTypeTooSmall);
+        }
+
+        let (header_bytes, payload_bytes) = req
+            .as_mut_bytes()
+            .split_at_mut(core::mem::size_of::<MailboxReqHeader>());
+
+        let header = MailboxReqHeader::mut_from_bytes(header_bytes as &mut [u8]).unwrap();
+        header.chksum = calc_checksum(cmd, payload_bytes);
+
+        self.start_mailbox_req(cmd, req.len() * 4, req.iter().copied())?;
+        let resp_len_bytes = resp.len() * 4;
+        match self.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
+            Ok(Some(resp_iter)) => {
+                for (i, r) in resp_iter.enumerate() {
+                    if i < resp.len() {
+                        resp[i] = r;
+                    }
+                }
+                Ok(())
+            }
+            Err(err) => Err(err),
+            _ => Err(CaliptraApiError::MailboxNoResponseData),
+        }
     }
 }
 

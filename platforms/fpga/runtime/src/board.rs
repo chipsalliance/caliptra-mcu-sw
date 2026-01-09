@@ -298,6 +298,10 @@ pub fn exit_fpga(exit_code: u32) -> ! {
 /// # Safety
 /// Accesses memory, memory-mapped registers and CSRs.
 pub unsafe fn main() {
+    if cfg!(feature = "test-do-nothing") {
+        loop {}
+    }
+
     print_to_console("[mcu-runtime] Hello from MCU runtime\n");
     // only machine mode
     rv32i::configure_trap_handler();

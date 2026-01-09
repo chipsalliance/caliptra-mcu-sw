@@ -16,6 +16,9 @@ stack_size! {0xae00}
 set_main! {main}
 
 fn main() {
+    if cfg!(feature = "test-do-nothing") {
+        loop {}
+    }
     // setup the global allocator for futures
     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
     // Safety: HEAP_MEM is a valid array of MaybeUninit, so we can safely initialize it.

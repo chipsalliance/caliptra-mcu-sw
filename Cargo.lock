@@ -3165,6 +3165,7 @@ dependencies = [
  "bitflags 2.10.0",
  "caliptra-api",
  "caliptra-drivers",
+ "constant_time_eq 0.4.2",
  "flash-image",
  "mcu-config",
  "mcu-error",

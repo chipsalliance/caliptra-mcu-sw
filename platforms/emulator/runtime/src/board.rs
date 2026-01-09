@@ -286,6 +286,10 @@ impl romtime::Exit for EmulatorExiter {
 /// # Safety
 /// Accesses memory, memory-mapped registers and CSRs.
 pub unsafe fn main() {
+    if cfg!(feature = "test-do-nothing") {
+        loop {}
+    }
+
     // only machine mode
     rv32i::configure_trap_handler();
 

@@ -139,7 +139,6 @@ impl BootFlow for ColdBoot {
         let otp = &mut env.otp;
         let i3c = &mut env.i3c;
         let i3c_base = env.i3c_base;
-        let soc_manager = &mut env.soc_manager;
         let straps = env.straps.deref();
 
         romtime::println!("[mcu-rom] Setting Caliptra boot go");
@@ -312,6 +311,7 @@ impl BootFlow for ColdBoot {
             } else {
                 let dot_blob: DotBlob = transmute!(dot_blob);
                 if let Err(err) = device_ownership_transfer::dot_flow(
+                    env,
                     fuses,
                     &dot_fuses,
                     &dot_blob,
@@ -327,6 +327,11 @@ impl BootFlow for ColdBoot {
                 }
             }
         }
+
+        // re-borrow to avoid ownership issues
+        let mci = &env.mci;
+        let soc = &env.soc;
+        let soc_manager = &mut env.soc_manager;
 
         // tell Caliptra to download firmware from the recovery interface
         romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command",);
