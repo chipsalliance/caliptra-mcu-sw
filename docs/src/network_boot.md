@@ -154,11 +154,11 @@ The network boot system uses a simple messaging protocol between the MCU ROM and
 
 | Message | Direction | Fields | Purpose |
 |-------|----------|--------|----------|
-| Network Boot Discovery | MCU → Network ROM | — | Start network boot |
+| Initiate Network Boot| MCU → Network ROM | — | Start network boot |
 | Image Info Request | MCU → Network ROM | firmware_id | Query image metadata |
 | Image Download Request | MCU → Network ROM | firmware_id | Start transfer |
 | Chunk ACK | MCU → Network ROM | firmware_id, offset | Flow control |
-| Boot Complete / Error | MCU → Network ROM | status, error_code | Completion |
+| Finalize| MCU → Network ROM | status, error_code | Completion |
 
 ## Protocol Support
 
@@ -169,7 +169,7 @@ The boot source provider communication uses a simple request-response messaging 
 
 ### Message Types and Packet Formats
 
-#### 1. Network Boot Discovery Request
+#### 1. Initiate Network Boot Request
 Initiates the boot source discovery process.
 
 **Request Packet:**
@@ -187,16 +187,11 @@ Offset  Size  Field              Description
 Offset  Size  Field              Description
 ------  ----  -----              -----------
 0       1     Message Type       0x81 - Discovery Response
-1       1     Status             0x00=Success, non-zero=Error
+1       1     Status             0x00=Started, 0x01=InProgress, non-zero=Error
 2       2     Reserved           Must be 0
-4       4     Image Count        Number of available firmware images
-8       4*N   Firmware IDs       Array of u32 firmware IDs (N = Image Count)
-8+4*N   4     Config Version     Version of the configuration
-12+4*N  4     Reserved           For future use
-16+4*N  M     Source Specific    Source-specific response data
 ```
 
-#### 2. Image Info Request
+#### 2. Get Image Metadata Request
 Queries metadata about a specific firmware image.
 
 **Request Packet:**
@@ -204,10 +199,8 @@ Queries metadata about a specific firmware image.
 Offset  Size  Field              Description
 ------  ----  -----              -----------
 0       1     Message Type       0x02 - Image Info Request
-1       1     Firmware ID        0=CaliptraFmcRt, 1=SocManifest, 2=McuRt
+1       1     Firmware ID        0=CaliptraFmcRt, 1=SocManifest, 2=McuRt, 3..-SoC
 2       2     Reserved           Must be 0
-4       4     Request Flags      Bit 0: Request checksum
-8       4     Reserved           For future use
 ```
 
 **Response Packet:**
@@ -223,8 +216,6 @@ Offset  Size  Field              Description
 44      4     Version            Image version number
 48      4     Flags              Bit 0: Compressed, Bit 1: Signed, etc.
 52      4     Reserved           For future use
-56      4     Metadata Length    Length of metadata in bytes
-60      N     Metadata           Variable-length metadata (e.g., TFTP filename)
 ```
 
 #### 3. Image Download Request
@@ -237,10 +228,8 @@ Offset  Size  Field              Description
 0       1     Message Type       0x03 - Image Download Request
 1       1     Firmware ID        0=CaliptraFmcRt, 1=SocManifest, 2=McuRt
 2       2     Reserved           Must be 0
-4       4     Offset             Starting byte offset (for resumable transfers)
-8       4     Max Chunk Size     Maximum chunk size in bytes (0=default)
-12      4     Flags              Bit 0: Verify checksum, Bit 1: Compression
-16      4     Timeout            Transfer timeout in milliseconds
+4       4     Reserved           Can be extended to support flash-based boot
+8       4     Reserved           Can be extended to support flash-based boot
 ```
 
 **Response Packet (per chunk):**
@@ -250,11 +239,10 @@ Offset  Size  Field              Description
 0       1     Message Type       0x83 - Image Chunk
 1       1     Status             0x00=Success, non-zero=Error
 2       2     Sequence Number    For ordered delivery
-4       4     Offset             Current byte offset in image
+4       4     Offset             Current byte offset in image (TBD: Check if needed)
 8       4     Chunk Size         Size of data in this chunk
 12      4     Total Size         Total image size (0 if unknown)
-16      4     Checksum           CRC32 of this chunk (optional)
-20      N     Image Data         Chunk payload (size = Chunk Size field)
+16      N     Image Data         Chunk payload (size = Chunk Size field)
 ```
 
 #### 4. Chunk Acknowledgment
@@ -266,36 +254,24 @@ Offset  Size  Field              Description
 ------  ----  -----              -----------
 0       1     Message Type       0x04 - Chunk ACK
 1       1     Firmware ID        Firmware being transferred
-2       2     Reserved           Must be 0
-4       4     Offset             Byte offset of last received chunk
+2       2     Sequence Number    Sequence number to be acknowledge
+4       4     Reserved           
 8       4     Flags              Bit 0: Ready for next, Bit 1: Error detected
-12      4     Reserved           For future use
 ```
 
-**Response Packet:**
-```
-Offset  Size  Field              Description
-------  ----  -----              -----------
-0       1     Message Type       0x84 - ACK Response
-1       1     Status             0x00=Continue, 0x01=End of transfer, non-zero=Error
-2       2     Reserved           Must be 0
-4       4     Next Offset        Offset for next chunk (can resume)
-8       4     Reserved           For future use
-```
 
-#### 5. Boot Complete / Recovery Status
+
+#### 5. Finalize
 Notifies the boot source of recovery completion or error.
 
 **Request Packet:**
 ```
 Offset  Size  Field              Description
 ------  ----  -----              -----------
-0       1     Message Type       0x05 - Recovery Complete
+0       1     Message Type       0x05 - Finalize
 1       1     Status             0x00=Success, non-zero=Error
 2       2     Error Code         Specific error code if Status != 0
-4       4     Images Processed   Bitmask of successfully received images
-8       4     Validation Result  0=Valid, non-zero=Invalid
-12      4     Reserved           For future use
+4       4     Reserved           For future use
 ```
 
 **Response Packet:**
