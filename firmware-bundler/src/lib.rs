@@ -22,4 +22,5 @@
 //! only include the distribution composition support, without the build system integration.
 
 pub mod args;
+pub mod manifest;
 pub(crate) mod utils;
