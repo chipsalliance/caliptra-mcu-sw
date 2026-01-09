@@ -5617,6 +5617,7 @@ dependencies = [
  "mcu-builder",
  "mcu-config-emulator",
  "mcu-config-fpga",
+ "mcu-firmware-bundler",
  "mcu-fuses-generator",
  "mcu-hw-model",
  "mcu-rom-common",

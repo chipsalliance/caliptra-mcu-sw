@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
 use core::panic;
 use mcu_builder::ImageCfg;
+use mcu_firmware_bundler::args::Commands as BundleCommands;
 use std::path::PathBuf;
 
 mod auth_manifest;
@@ -293,6 +294,12 @@ enum Commands {
         #[command(subcommand)]
         subcommand: AuthManifestCommands,
     },
+    /// A collection of experimental composition commands.  These are not intended for production
+    /// use, but can be used to test the functionality of the composition functionality.
+    Experimental {
+        #[command(subcommand)]
+        cmd: BundleCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -518,6 +525,7 @@ fn main() {
                 output,
             } => auth_manifest::create(images, mcu_image, output),
         },
+        Commands::Experimental { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {}", e);
