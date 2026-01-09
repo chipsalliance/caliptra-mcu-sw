@@ -376,8 +376,8 @@ pub unsafe fn main() {
 
     // Staging SRAM
     platform_regions.push(PlatformRegion {
-        start_addr: 0xB00C0000 as *const u8,
-        size: 0x40000,
+        start_addr: MCU_MEMORY_MAP.staging_sram_offset as *const u8,
+        size: MCU_MEMORY_MAP.staging_sram_size as usize,
         is_mmio: true,
         user_accessible: true,
         read: true,
@@ -449,17 +449,30 @@ pub unsafe fn main() {
     hil::time::Alarm::set_alarm_client(virtual_alarm_user, alarm);
     romtime::println!("[mcu-runtime] Alarm initialized");
 
+    let mbox_dma_driver = static_init!(
+        dma_driver::nodma::NoDMA<'static, InternalTimers<'static>>,
+        dma_driver::nodma::NoDMA::new(mux_alarm)
+    );
+    let mbox_staging_addr = if cfg!(feature = "hw-2-1") {
+        Some(MCU_MEMORY_MAP.staging_sram_offset as u64)
+    } else {
+        None
+    };
+
     let mailbox = mcu_components::mailbox::MailboxComponent::new(
         board_kernel,
         capsules_runtime::mailbox::DRIVER_NUM,
         mux_alarm,
+        mbox_dma_driver,
     )
     .finalize(mcu_components::mailbox_component_static!(
         InternalTimers<'static>,
         Some(MCU_MEMORY_MAP.soc_offset),
         Some(MCU_MEMORY_MAP.soc_offset),
-        Some(MCU_MEMORY_MAP.mbox_offset)
+        Some(MCU_MEMORY_MAP.mbox_offset),
+        mbox_staging_addr
     ));
+
     mailbox.alarm.set_alarm_client(mailbox);
     romtime::println!("[mcu-runtime] Mailbox initialized");
 

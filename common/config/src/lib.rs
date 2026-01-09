@@ -49,6 +49,9 @@ pub struct McuMemoryMap {
     pub lc_offset: u32,
     pub lc_size: u32,
     pub lc_properties: MemoryRegionType,
+
+    pub staging_sram_offset: u32,
+    pub staging_sram_size: u32,
 }
 
 impl Default for McuMemoryMap {
@@ -94,6 +97,9 @@ impl Default for McuMemoryMap {
             lc_offset: 0x7000_0400,
             lc_size: 0x8c,
             lc_properties: MemoryRegionType::MMIO,
+
+            staging_sram_offset: 0xb00c_0000,
+            staging_sram_size: 1024 * 1024,
         }
     }
 }

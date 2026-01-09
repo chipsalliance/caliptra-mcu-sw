@@ -3,6 +3,7 @@
 //! This provides the mailbox capsule that calls the underlying mailbox driver to
 //! communicate with Caliptra.
 
+use crate::dma::hil::{Dma, DmaRoute, DmaStatus};
 use caliptra_api::CaliptraApiError;
 use core::cell::Cell;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
@@ -59,6 +60,12 @@ pub struct Mailbox<'a, A: Alarm<'a>> {
     current_app: OptionalCell<ProcessId>,
     resp_min_size: Cell<usize>,
     resp_size: Cell<usize>,
+    /// AXI address of the staging SRAM
+    staging_sram_axi_addr: Option<u64>,
+    current_request_offset: Cell<usize>,
+    current_cmd: Cell<u32>,
+    // DMA peripheral for data transfers
+    dma_driver: &'static dyn Dma,
 }
 
 impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
@@ -71,6 +78,8 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
         driver: &'static mut CaliptraSoC,
+        staging_sram_axi_addr: Option<u64>,
+        dma_driver: &'static dyn Dma,
     ) -> Mailbox<'a, A> {
         Mailbox {
             alarm,
@@ -79,6 +88,10 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             current_app: OptionalCell::empty(),
             resp_min_size: Cell::new(0),
             resp_size: Cell::new(0),
+            staging_sram_axi_addr,
+            current_request_offset: Cell::new(0),
+            current_cmd: Cell::new(0),
+            dma_driver,
         }
     }
 
@@ -90,6 +103,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         if self.current_app.is_some() {
             return Err(ErrorCode::BUSY);
         }
+        self.current_cmd.set(command);
         self.apps.enter(processid, |_app, kernel_data| {
             // copy the request so we can write async
             kernel_data
@@ -115,6 +129,73 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         })?
     }
 
+    fn copy_app_buffer_to_staging_sram(
+        &self,
+        app_buffer: &ReadableProcessSlice,
+        offset: usize,
+    ) -> Result<(), ErrorCode> {
+        const CHUNK_SIZE: usize = 256;
+        const MAX_DMA_POLL_TRIES: usize = 10000;
+        let buffer_len = app_buffer.len();
+        let mut bytes_written = 0;
+
+        // Process in CHUNK_SIZE byte chunks
+        while bytes_written < buffer_len {
+            let chunk_len = core::cmp::min(CHUNK_SIZE, buffer_len - bytes_written);
+            let mut chunk_buf = [0u8; CHUNK_SIZE];
+
+            if let Some(chunk) = app_buffer.get(bytes_written..bytes_written + chunk_len) {
+                chunk.copy_to_slice(&mut chunk_buf[..chunk_len]);
+
+                // Configure and execute DMA transfer for this chunk
+                let src_addr = chunk_buf.as_ptr() as u64;
+                let dest_addr =
+                    self.staging_sram_axi_addr.unwrap() + (offset + bytes_written) as u64;
+                self.dma_driver.configure_transfer(
+                    chunk_len,
+                    chunk_len,
+                    Some(src_addr),
+                    Some(dest_addr),
+                )?;
+
+                // Start the DMA transfer for this chunk
+                self.dma_driver
+                    .start_transfer(DmaRoute::AxiToAxi, DmaRoute::AxiToAxi, false)
+                    .map_err(|_| ErrorCode::FAIL)?;
+
+                // Poll for completion of this chunk
+                let mut completed = false;
+                for _ in 0..MAX_DMA_POLL_TRIES {
+                    match self.dma_driver.poll_status() {
+                        Ok(DmaStatus::TxnDone) => {
+                            completed = true;
+                            break;
+                        }
+                        Ok(_) => continue,
+                        Err(e) => {
+                            debug!("DMA transfer error: {:?}", e);
+                            return Err(ErrorCode::FAIL);
+                        }
+                    }
+                }
+                if !completed {
+                    debug!("DMA transfer timed out");
+                    return Err(ErrorCode::FAIL);
+                }
+
+                bytes_written += chunk_len;
+            } else {
+                debug!(
+                    "Failed to get chunk from app_buffer at offset {}",
+                    bytes_written
+                );
+                return Err(ErrorCode::FAIL);
+            }
+        }
+
+        Ok(())
+    }
+
     fn start_request(
         &self,
         processid: ProcessId,
@@ -124,23 +205,39 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     ) -> Result<(), ErrorCode> {
         self.current_app.set(processid);
 
-        // App buffer contains the full payload
-        match driver.start_mailbox_req(
-            command,
-            app_buffer.len(),
-            app_buffer.chunks(4).map(|chunk| {
-                let mut dest = [0u8; 4];
-                chunk.copy_to_slice(&mut dest);
-                u32::from_le_bytes(dest)
-            }),
-        ) {
-            Ok(_) => {
-                self.schedule_alarm();
-                Ok(())
+        if let Some(staging_axi_addr) = self.staging_sram_axi_addr {
+            // Copy payload to staging SRAM
+            self.copy_app_buffer_to_staging_sram(app_buffer, 0)?;
+
+            match driver.execute_ext_mailbox_req(command, app_buffer.len(), staging_axi_addr) {
+                Ok(_) => {
+                    self.schedule_alarm();
+                    Ok(())
+                }
+                Err(err) => {
+                    debug!("Error starting mailbox command: {:?}", err);
+                    Err(ErrorCode::FAIL)
+                }
             }
-            Err(err) => {
-                debug!("Error starting mailbox command: {:?}", err);
-                Err(ErrorCode::FAIL)
+        } else {
+            // Copy payload to mailbox directly
+            match driver.start_mailbox_req(
+                command,
+                app_buffer.len(),
+                app_buffer.chunks(4).map(|chunk| {
+                    let mut dest = [0u8; 4];
+                    chunk.copy_to_slice(&mut dest);
+                    u32::from_le_bytes(dest)
+                }),
+            ) {
+                Ok(_) => {
+                    self.schedule_alarm();
+                    Ok(())
+                }
+                Err(err) => {
+                    debug!("Error starting mailbox command: {:?}", err);
+                    Err(ErrorCode::FAIL)
+                }
             }
         }
     }
@@ -156,13 +253,19 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             return Err(ErrorCode::BUSY);
         }
         self.current_app.set(processid);
-        self.driver
-            .map(|driver| {
-                driver
-                    .initiate_request(command, payload_size)
-                    .map_err(|_| ErrorCode::FAIL)
-            })
-            .ok_or(ErrorCode::RESERVE)?
+        self.current_cmd.set(command);
+        if self.staging_sram_axi_addr.is_none() {
+            // If not using staging SRAM, then the mailbox command can be initiated directly.
+            let _ = self
+                .driver
+                .map(|driver| {
+                    driver
+                        .initiate_request(command, payload_size)
+                        .map_err(|_| ErrorCode::FAIL)
+                })
+                .ok_or(ErrorCode::RESERVE)?;
+        }
+        Ok(())
     }
 
     fn send_next_chunk(&self, processid: ProcessId) -> Result<(), ErrorCode> {
@@ -180,11 +283,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                 })
                 .and_then(|ro_buffer| {
                     ro_buffer
-                        .enter(|app_buffer| {
-                            self.driver
-                                .map(|driver| self.write_chunk(driver, app_buffer))
-                                .ok_or(ErrorCode::RESERVE)?
-                        })
+                        .enter(|app_buffer| self.write_chunk(app_buffer))
                         .map_err(|err| {
                             debug!("Error getting application buffer: {:?}", err);
                             ErrorCode::FAIL
@@ -199,23 +298,35 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         })?
     }
 
-    fn write_chunk(
-        &self,
-        driver: &mut CaliptraSoC,
-        app_buffer: &ReadableProcessSlice,
-    ) -> Result<(), ErrorCode> {
-        for chunk in app_buffer.chunks(4) {
-            if chunk.len() == 4 {
-                let mut buf = [0u8; 4];
-                chunk.copy_to_slice(&mut buf);
-                let data = u32::from_le_bytes(buf);
-                driver.write_data(data).map_err(|_| ErrorCode::FAIL)?;
-            } else {
-                // If the last chunk is not 4 bytes, we can't write it to the mailbox
-                debug!("Error: Incomplete data chunk in mailbox request");
-                return Err(ErrorCode::FAIL);
-            }
+    fn write_chunk(&self, app_buffer: &ReadableProcessSlice) -> Result<(), ErrorCode> {
+        if self.staging_sram_axi_addr.is_none() {
+            // Copy payload directly to mailbox
+            let _ = self
+                .driver
+                .map(|driver| {
+                    for chunk in app_buffer.chunks(4) {
+                        if chunk.len() == 4 {
+                            let mut buf = [0u8; 4];
+                            chunk.copy_to_slice(&mut buf);
+                            let data = u32::from_le_bytes(buf);
+                            driver.write_data(data).map_err(|_| ErrorCode::FAIL)?;
+                        } else {
+                            // If the last chunk is not 4 bytes, we can't write it to the mailbox
+                            debug!("Error: Incomplete data chunk in mailbox request");
+                            return Err(ErrorCode::FAIL);
+                        }
+                    }
+                    Ok(())
+                })
+                .ok_or(ErrorCode::RESERVE)?;
+        } else {
+            // Copy payload to staging SRAM
+            let offset = self.current_request_offset.get();
+            let buffer_len = app_buffer.len();
+            self.copy_app_buffer_to_staging_sram(app_buffer, offset)?;
+            self.current_request_offset.set(offset + buffer_len);
         }
+
         Ok(())
     }
 
@@ -224,15 +335,35 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         if self.current_app.is_none() {
             return Err(ErrorCode::CANCEL);
         }
-        self.driver
-            .map(|driver| match driver.execute_command() {
-                Ok(()) => {
-                    self.schedule_alarm();
-                    Ok(())
-                }
-                Err(_) => Err(ErrorCode::FAIL),
-            })
-            .unwrap_or(Err(ErrorCode::FAIL))
+        if let Some(staging_axi_addr) = self.staging_sram_axi_addr {
+            // If using staging SRAM, execute the command with staging address
+            self.driver
+                .map(|driver| {
+                    match driver.execute_ext_mailbox_req(
+                        self.current_cmd.take(),
+                        self.current_request_offset.take(),
+                        staging_axi_addr,
+                    ) {
+                        Ok(()) => {
+                            self.schedule_alarm();
+                            Ok(())
+                        }
+                        Err(_) => Err(ErrorCode::FAIL),
+                    }
+                })
+                .unwrap_or(Err(ErrorCode::FAIL))?;
+        } else {
+            self.driver
+                .map(|driver| match driver.execute_command() {
+                    Ok(()) => {
+                        self.schedule_alarm();
+                        Ok(())
+                    }
+                    Err(_) => Err(ErrorCode::FAIL),
+                })
+                .unwrap_or(Err(ErrorCode::FAIL))?;
+        }
+        Ok(())
     }
 
     /// Returns number of bytes in response  if the response was copied to the app.

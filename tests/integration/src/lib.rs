@@ -40,6 +40,8 @@ mod test {
     };
     use zerocopy::IntoBytes;
 
+    const TEST_HW_REVISION: &str = "2.1.0";
+
     #[derive(Default)]
     pub struct TestParams<'a> {
         pub feature: Option<&'a str>,
@@ -104,6 +106,9 @@ mod test {
         let mut features = vec![];
         if let Some(feature) = feature {
             features.push(feature);
+        }
+        if TEST_HW_REVISION == "2.1.0" {
+            features.push("hw-2-1");
         }
         let feature = feature.map(|f| format!("-{f}")).unwrap_or_default();
         let output = target_binary(&format!("runtime{}-{}.bin", feature, platform()));
