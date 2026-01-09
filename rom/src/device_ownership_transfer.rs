@@ -144,6 +144,7 @@ impl DotBlob {
 ///
 /// # Arguments
 /// * `env` - Mutable reference to the ROM environment containing hardware interfaces.
+/// * `main_fuses` - Main fuse data.
 /// * `dot_fuses` - DOT fuse data.
 /// * `blob` - DOT blob loaded from storage.
 /// * `stable_key_type` - The type of stable key to derive to verify the DOT blob with.

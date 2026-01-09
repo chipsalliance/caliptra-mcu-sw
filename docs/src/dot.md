@@ -159,7 +159,7 @@ DOT_EFFECTIVE_KEY = KDF(DOT_ROOT_KEY, DOT_FUSE_ARRAY_VALUE)
 
 ```
 DOT_BLOB = {CAK, LAK, metadata}
-HMAC_TAG = HMAC(DOT_EFFECTIVE_KEY, DOT_BLOB)
+HMAC_TAG = HMAC-SHA-512(DOT_EFFECTIVE_KEY, DOT_BLOB)
 ```
 
 The DOT_BLOB is authenticated on every boot in ODD state to ensure the CAK and LAK is authentic.
@@ -570,7 +570,7 @@ note across : After reset, Ref "DOT State Management" for more details
 3. MCU RT authenticates command with LAK.pub
    - If authentication fails: Return error
 4. MCU RT creates DOT_BLOB containing CAK and LAK
-5. MCU RT seals DOT_BLOB with HMAC(DOT_EFFECTIVE_KEY, DOT_BLOB)
+5. MCU RT seals DOT_BLOB with HMAC-SHA-512(DOT_EFFECTIVE_KEY, DOT_BLOB)
    - DOT_EFFECTIVE_KEY was derived with (n+1) during boot
 6. Write DOT_BLOB to storage (primary and redundant copies)
 7. Update Ownership_Storage with desired DOT_FUSE_ARRAY state = (n+1)
@@ -613,7 +613,7 @@ Diagram is [above](#dot-5-command-lock).
 4. MCU RT authenticates command with LAK.pub
    - If authentication fails: Return error
 5. MCU RT creates DOT_BLOB containing LAK but no CAK
-6. MCU RT seals DOT_BLOB with HMAC(DOT_EFFECTIVE_KEY, DOT_BLOB)
+6. MCU RT seals DOT_BLOB with HMAC-SHA512(DOT_EFFECTIVE_KEY, DOT_BLOB)
 7. Write DOT_BLOB to storage (primary and redundant copies)
 8. Update Ownership_Storage with desired DOT_FUSE_ARRAY state = (n+1)
 9. Return success and request subsystem reset
