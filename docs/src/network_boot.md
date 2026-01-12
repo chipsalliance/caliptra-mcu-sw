@@ -122,7 +122,7 @@ sequenceDiagram
         CORE-->>MCURT: ImageInfo { load_address, component_id }
 
         MCURT->>NET: get_image_metadata(id)
-        NET-->>MCU: ImageMetadata { size, checksum, version }
+        NET-->>MCURT: ImageMetadata { size, checksum, version }
 
         MCURT->>NET: download_image(image_id)
         NET->>IMG: TFTP GET image file
