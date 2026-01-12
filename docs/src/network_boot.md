@@ -82,7 +82,7 @@ sequenceDiagram
         CRIF-->>MCU: Awaiting recovery image id
 
         MCU->>NET: get_image_metadata(id)
-        NET-->>MCU: ImageInfo { size, checksum, version }
+        NET-->>MCU: ImageMetadata { size, checksum, version }
 
         MCU->>CRIF: Set image size (INDIRECT_FIFO_CTRL.write)
 
@@ -118,10 +118,11 @@ sequenceDiagram
     NET-->>MCURT: InitiateBoot response
 
     loop For each SoC image (image_id)
-        MCURT->>CORE: get_image_metadata(image_id)
+        MCURT->>CORE: get_image_info(image_id)
         CORE-->>MCURT: ImageInfo { load_address, component_id }
 
-        MCURT->>MCURT: Determine offset & length from TOC using component_id
+        MCU->>NET: get_image_metadata(id)
+        NET-->>MCU: ImageMetadata { size, checksum, version }
 
         MCURT->>NET: download_image(image_id)
         NET->>IMG: TFTP GET image file
