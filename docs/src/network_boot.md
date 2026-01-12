@@ -576,89 +576,87 @@ The MCU and Network ROM share a contiguous region of external memory organized a
 ├────────────────────────────────────────────┤
 │ Synchronization Registers (256 bytes)      │ ← Memory-mapped control registers
 ├────────────────────────────────────────────┤
-│ MCU-to-Network ROM Message Buffer (4 KB)   │ ← MCU writes messages here
-├────────────────────────────────────────────┤
-│ Network ROM-to-MCU Message Buffer (4 KB)   │ ← Network ROM writes messages here
+│ Shared Message Buffer (8 KB)               │ ← Bidirectional message buffer
 ├────────────────────────────────────────────┤
 │ Reserved for Future Use                    │
 └────────────────────────────────────────────┘
 ```
 
+**Note**: Since communication is one-way at a time (either MCU → Network ROM or Network ROM → MCU), a single message buffer is sufficient. The LOCK bit in the control register ensures exclusive access.
+
 ### Synchronization Registers
 
-Memory-mapped registers enable notification and handshaking between MCU and Network ROM. Each side monitors specific registers to detect incoming messages.
+Memory-mapped registers enable notification and handshaking between MCU and Network ROM. The LOCK bit provides mutual exclusion similar to mailbox designs.
 
 **Synchronization Register Layout (at base address `SHM_BASE`):**
 
 ```
 Offset  Size  Name                          Description
 ------  ----  ----                          -----------
-0x00    4     MCU_CTRL                      MCU-to-Network ROM control flags
-0x04    4     NET_CTRL                      Network ROM-to-MCU control flags
-0x08    4     MCU_MSG_STATUS                MCU message status and sequence counter
-0x0C    4     NET_MSG_STATUS                Network ROM message status and sequence counter
-0x10    4     MCU_MSG_OFFSET                Offset of MCU message in shared buffer
-0x14    4     MCU_MSG_SIZE                  Size of MCU message payload
-0x18    4     NET_MSG_OFFSET                Offset of Network ROM message in shared buffer
-0x1C    4     NET_MSG_SIZE                  Size of Network ROM message payload
-0x20    4     INTERRUPT_ENABLE              Enable bits for each side
-0x24    4     INTERRUPT_STATUS              Interrupt/event status bits
-0x28    4     ERROR_CODE                    Last error code (if applicable)
-0x2C    4     RESERVED                      For future use
-0x30    4     RESERVED                      For future use
-0x34    4     RESERVED                      For future use
+0x00    4     CTRL                          Control and status flags
+0x04    4     MSG_SIZE                      Size of message payload in bytes
+0x08    4     MSG_OFFSET                    Offset of message in shared buffer (typically 0)
+0x0C    4     SEQUENCE                      Sequence counter for message ordering
+0x10    4     INTERRUPT_ENABLE              Interrupt enable bits
+0x14    4     INTERRUPT_STATUS              Interrupt/event status bits
+0x18    4     ERROR_CODE                    Last error code (if applicable)
+0x1C    4     RESERVED                      For future use
+0x20    4     RESERVED                      For future use
+0x24    4     RESERVED                      For future use
 ```
 
-**Control Flag Register Fields (MCU_CTRL and NET_CTRL):**
+**Control Register (CTRL) Bit Fields:**
 
 ```
 Bit     Name                Description
 ---     ----                -----------
-[0]     MSG_READY           Message ready to process (set by sender, cleared by receiver)
-[1]     MSG_COMPLETE        Message processing complete (set by receiver)
+[0]     LOCK                Mailbox lock (1=locked, 0=unlocked)
+                            - Sender acquires lock before writing message
+                            - Receiver releases lock after reading message
+[1]     DATA_READY          Message ready to process (set by sender after lock acquired)
 [2]     ERROR               Error occurred during processing
-[3]     BUSY                Receiver busy processing previous message
-[4]     ACK_PENDING         Acknowledgment pending from receiver
-[5:31]  RESERVED            Reserved for future use
+[3]     DIRECTION           Message direction (0=MCU→Network ROM, 1=Network ROM→MCU)
+[4:31]  RESERVED            Reserved for future use
 ```
 
 ### Message Passing Protocol
 
-#### 1. Message Initiation (MCU ↔ Network ROM)
+The protocol uses a LOCK-based mechanism for mutual exclusion, similar to mailbox designs. Since communication is one-way at a time, a single shared buffer serves both directions.
+
+#### Sending a Message
 
 **Sender Side (MCU or Network ROM):**
-1. Wait until receiver's `*_CTRL[MSG_COMPLETE]` is set (receiver finished previous message)
-2. Write message to sender's message buffer at offset `*_MSG_OFFSET`
-3. Update `*_MSG_SIZE` with actual message size
-4. Increment sender's sequence counter in `*_MSG_STATUS[31:0]`
-5. Set `*_CTRL[MSG_READY]` to 1 (signal message ready)
-6. Generate interrupt/notification (implementation-dependent)
+1. Acquire lock: Write `1` to `CTRL[LOCK]` and verify it reads back as `1`
+   - If lock acquisition fails (reads `0`), retry or wait
+2. Set direction bit: `CTRL[DIRECTION]` = `0` (MCU→Network ROM) or `1` (Network ROM→MCU)
+3. Write message to shared buffer at offset `MSG_OFFSET` (typically 0)
+4. Update `MSG_SIZE` with actual message size in bytes
+5. Increment `SEQUENCE` counter for message ordering
+6. Set `CTRL[DATA_READY]` to `1` to signal message is ready
+7. Generate interrupt/notification (optional, implementation-dependent)
+8. Keep lock held until receiver acknowledges
 
 **Receiver Side (Network ROM or MCU):**
-1. Poll or wait for sender's `*_CTRL[MSG_READY]` to be set
-2. Read message size from `*_MSG_SIZE`
-3. Read message from sender's buffer at offset `*_MSG_OFFSET`
-4. Process message and generate response (if request-response pattern)
-5. Set receiver's `*_CTRL[BUSY]` to 0 (clear busy flag)
-6. Set receiver's `*_CTRL[MSG_COMPLETE]` to 1 (acknowledge receipt and processing complete)
+1. Poll or wait for `CTRL[DATA_READY]` to be set
+2. Verify `CTRL[DIRECTION]` matches expected direction
+3. Read message size from `MSG_SIZE`
+4. Read message from shared buffer at offset `MSG_OFFSET`
+5. Process message
+6. Clear `CTRL[DATA_READY]` to acknowledge receipt
+7. Release lock: Write `0` to `CTRL[LOCK]`
 
-#### 2. Response Return (Reverse Direction)
+#### Request-Response Pattern
 
-For bidirectional communication (request-response pattern):
+For request-response communication:
 
-**Responder Side:**
-1. Write response message to responder's message buffer at offset `*_MSG_OFFSET`
-2. Update `*_MSG_SIZE` with response message size
-3. Increment responder's sequence counter in `*_MSG_STATUS[31:0]`
-4. Set responder's `*_CTRL[MSG_READY]` to 1 (signal response ready)
-5. Generate interrupt/notification (implementation-dependent)
+1. **Request**: Sender acquires lock, sends request, waits for response with lock held
+2. **Response**: Receiver processes request, writes response to same buffer, sets `DATA_READY`, releases lock
+3. **Completion**: Original sender reads response, clears `DATA_READY`, releases lock
 
-**Original Requester Side:**
-1. Poll or wait for responder's `*_CTRL[MSG_READY]` to be set
-2. Read message size from `*_MSG_SIZE`
-3. Read response message from responder's buffer at offset `*_MSG_OFFSET`
-4. Process response message
-5. Set requester's `*_CTRL[MSG_COMPLETE]` to 1 (acknowledge receipt)
+**Alternative (Lock Handoff)**:
+1. **Request**: Sender acquires lock, sends request, releases lock
+2. **Response**: Receiver waits for lock, acquires it, sends response
+3. **Completion**: Original sender waits for lock, reads response, releases lock
 
 ### Example: Full MCU Message Handler
 
@@ -667,9 +665,20 @@ use portable_atomic::{AtomicU32, Ordering};
 use heapless::Vec;
 
 const SHM_BASE: usize = 0x50000000;
-const REQUEST_BUFFER_OFFSET: usize = 0x100;
-const RESPONSE_BUFFER_OFFSET: usize = 0x1100;
-const BUFFER_SIZE: usize = 4096;
+const MSG_BUFFER_OFFSET: usize = 0x100;  // Offset to shared message buffer
+const BUFFER_SIZE: usize = 8192;          // 8 KB shared buffer
+
+// Register offsets
+const CTRL_REG: usize = 0x00;
+const MSG_SIZE_REG: usize = 0x04;
+const MSG_OFFSET_REG: usize = 0x08;
+const SEQUENCE_REG: usize = 0x0C;
+
+// Control register bit masks
+const CTRL_LOCK: u32 = 1 << 0;
+const CTRL_DATA_READY: u32 = 1 << 1;
+const CTRL_ERROR: u32 = 1 << 2;
+const CTRL_DIRECTION: u32 = 1 << 3;  // 0=MCU→Net, 1=Net→MCU
 
 pub struct NetworkRomInterface {
     base: *const u32,
@@ -693,19 +702,43 @@ impl NetworkRomInterface {
         unsafe { core::ptr::write_volatile(self.base.add(offset / 4) as *mut u32, value) }
     }
     
+    /// Acquire the mailbox lock
+    fn acquire_lock(&self) -> Result<(), &'static str> {
+        // Attempt to acquire lock
+        self.write_register(CTRL_REG, CTRL_LOCK);
+        
+        // Verify lock was acquired
+        let ctrl = self.read_register(CTRL_REG);
+        if ctrl & CTRL_LOCK != 0 {
+            Ok(())
+        } else {
+            Err("Failed to acquire lock")
+        }
+    }
+    
+    /// Release the mailbox lock
+    fn release_lock(&self) {
+        let ctrl = self.read_register(CTRL_REG);
+        self.write_register(CTRL_REG, ctrl & !CTRL_LOCK);
+    }
+    
     /// Send a message to the Network ROM
     pub fn send_message(&self, msg: &[u8]) -> Result<(), &'static str> {
-        // Wait for Network ROM to complete previous message
+        // Acquire lock with retry
         loop {
-            let status = self.read_register(0x04); // NET_CTRL
-            if status & 0x02 != 0 {  // MSG_COMPLETE bit
+            if self.acquire_lock().is_ok() {
                 break;
             }
             core::hint::spin_loop();
         }
         
-        // Write message to MCU buffer
-        let base_ptr = (SHM_BASE + REQUEST_BUFFER_OFFSET) as *mut u8;
+        // Set direction: MCU → Network ROM
+        let mut ctrl = self.read_register(CTRL_REG);
+        ctrl &= !CTRL_DIRECTION;  // Clear direction bit
+        self.write_register(CTRL_REG, ctrl);
+        
+        // Write message to shared buffer
+        let base_ptr = (SHM_BASE + MSG_BUFFER_OFFSET) as *mut u8;
         unsafe {
             core::ptr::copy_nonoverlapping(
                 msg.as_ptr(),
@@ -714,56 +747,51 @@ impl NetworkRomInterface {
             );
         }
         
-        // Update message size
-        self.write_register(0x14, msg.len() as u32);  // MCU_MSG_SIZE
+        // Update message size and sequence
+        self.write_register(MSG_SIZE_REG, msg.len() as u32);
+        let seq = self.read_register(SEQUENCE_REG);
+        self.write_register(SEQUENCE_REG, seq.wrapping_add(1));
         
-        // Signal message ready
-        let ctrl = self.read_register(0x00);  // MCU_CTRL
-        self.write_register(0x00, ctrl | 0x01);  // Set MSG_READY
+        // Signal data ready
+        ctrl = self.read_register(CTRL_REG);
+        self.write_register(CTRL_REG, ctrl | CTRL_DATA_READY);
         
         Ok(())
     }
     
     /// Receive a message from the Network ROM
-    pub fn receive_message(&self) -> Result<Vec<u8, 4096>, &'static str> {
-        // Wait for Network ROM response
+    pub fn receive_message(&self) -> Result<Vec<u8, 8192>, &'static str> {
+        // Wait for data ready with expected direction (Network ROM → MCU)
         loop {
-            let status = self.read_register(0x04);  // NET_CTRL
-            if status & 0x01 != 0 {  // MSG_READY bit
+            let ctrl = self.read_register(CTRL_REG);
+            if (ctrl & CTRL_DATA_READY != 0) && (ctrl & CTRL_DIRECTION != 0) {
                 break;
             }
             core::hint::spin_loop();
         }
         
-        // Read response size
-        let size = self.read_register(0x1C) as usize;  // NET_MSG_SIZE
+        // Read message size
+        let size = self.read_register(MSG_SIZE_REG) as usize;
         
-        // Read response message
-        let base_ptr = (SHM_BASE + RESPONSE_BUFFER_OFFSET) as *const u8;
+        // Read message from shared buffer
+        let base_ptr = (SHM_BASE + MSG_BUFFER_OFFSET) as *const u8;
         let mut msg = Vec::new();
         unsafe {
             let slice = core::slice::from_raw_parts(base_ptr, size);
             msg.extend_from_slice(slice).map_err(|_| "Buffer overflow")?;
         }
         
-        // Clear message ready flag
-        let ctrl = self.read_register(0x04);
-        self.write_register(0x04, ctrl & !0x01);
+        // Clear data ready flag
+        let ctrl = self.read_register(CTRL_REG);
+        self.write_register(CTRL_REG, ctrl & !CTRL_DATA_READY);
+        
+        // Release lock
+        self.release_lock();
         
         Ok(msg)
     }
 }
 ```
-
-### Testing and Validation
-
-For emulator environments, ensure the following:
-
-1. **Concurrent Access**: Test simultaneous MCU and Network ROM memory operations
-2. **Race Conditions**: Validate synchronization prevents register race conditions
-3. **Message Ordering**: Verify messages are processed in correct order
-4. **Timeout Handling**: Implement timeouts to detect deadlocks or communication failures
-5. **Memory Isolation**: Ensure shared memory region is properly isolated and protected
 
 ## Network Stack Implementation
 
