@@ -338,7 +338,7 @@ sequenceDiagram
         SPDM_Responder -->>- SPDM_Requester: CERTIFICATES
     end
     opt Challenge the device to prove possession of the private key
-        SPDM_Requester ->>+ SPDM_Responder: CHALLENGE (slot_id)
+        SPDM_Requester ->>+ SPDM_Responder: CHALLENGE (slot_id, nonce)
         SPDM_Responder -->>- SPDM_Requester: CHALLENGE_AUTH
     end
     SPDM_Requester ->>+ SPDM_Responder: GET_MEASUREMENTS (slot_id, nonce)
