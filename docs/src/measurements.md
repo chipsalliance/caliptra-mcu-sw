@@ -59,25 +59,25 @@ sequenceDiagram
     rect rgba(206, 234, 235, 1)
         note over MCU RT: STAGE: VERIFY
         rect rgba(65, 156, 29, 1)
+            note over MCU RT: Verify and Authenticate Caliptra FW
+            MCU RT ->> Caliptra RT: Issue FIRMWARE_VERIFY mailbox command to Caliptra RT.
+            Caliptra RT ->> MCU RT: VERIFY_SUCCESS
+        end
+        rect rgba(65, 156, 29, 1)
             note over MCU RT: Verify and Authenticate the SoC Manifest
             MCU RT ->> Caliptra RT: Read the SoC Manifest, issue VERIFY_AUTH_MANIFEST mailbox command to Caliptra RT.
             Caliptra RT ->> Caliptra RT: Authenticate SoC manifest using keys available in the Caliptra Image Manifest.
+            Caliptra RT ->> MCU RT: AUTH_SUCCESS
         end
-        loop For each firmware_component in the firmware_image
-            alt Caliptra firmware component
-                MCU RT ->> MCU RT: Skip image verification.
-            else SoC Manifest firmware component
-                MCU RT ->> MCU RT: Skip image verification.
-            else MCU RT or SoC firmware component
-                MCU RT ->> MCU RT: match digest locally.
-            end
+        loop MCU RT or SoC firmware component
+            MCU RT ->> MCU RT: match digest locally.
         end
     end
 
     rect rgba(206, 234, 235, 1)
-        note over MCU RT: STAGE: APPLY
+        note over MCU RT: STAGE: ACTIVATE
         rect rgba(65, 156, 29, 1)
-            Note over MCU RT: Apply the Caliptra FW update
+            Note over MCU RT: Activate the Caliptra FW update
             MCU RT ->>+ Caliptra RT: Update Caliptra FW with FIRMWARE_LOAD command<br/> and wait for Caliptra Core to boot with new FW.
             note over Caliptra ROM: Caliptra ROM handles<br/> impactless update flow and boots new Caliptra RT firmware.
             note over Caliptra RT: Run UpdateReset flow in Caliptra RT.
@@ -101,7 +101,7 @@ sequenceDiagram
             note over MCU RT: Copy MCU firmware image to staging area.
             MCU RT ->> Caliptra RT: Update MCU using `ACTIVATE_FIRMWARE` command.
             note over Caliptra RT: Set the MCU reset reason to FW_HITLESS_UPDATE.
-            note over Caliptra RT: Requests MCU to reset itself <br/> by setting notif_cptra_mcu_reset_req_sts bit <br/> in notif0_internal_intr_r register
+            note over Caliptra RT: Requests MCU to reset itself <br/> by setting notif_cptra_mcu_reset_req_trig bit <br/> in notif0_intr_trig_r register
         end
         Caliptra RT -->> Caliptra RT: Wait for MCU to clear notif_cptra_mcu_reset_req_sts bit.
         rect rgba(65, 156, 29, 1)
