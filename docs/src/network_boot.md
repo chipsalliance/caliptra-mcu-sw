@@ -121,7 +121,7 @@ sequenceDiagram
         MCURT->>CORE: get_image_info(image_id)
         CORE-->>MCURT: ImageInfo { load_address, component_id }
 
-        MCU->>NET: get_image_metadata(id)
+        MCURT->>NET: get_image_metadata(id)
         NET-->>MCU: ImageMetadata { size, checksum, version }
 
         MCURT->>NET: download_image(image_id)
