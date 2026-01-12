@@ -6,7 +6,7 @@ mod test {
     use std::thread;
     use std::time::Duration;
 
-    use crate::jtag::test::ss_setup;
+    use crate::jtag::test::{debug_is_unlocked, ss_setup};
 
     use caliptra_api::mailbox::CommandId;
     use caliptra_hw_model::jtag::CaliptraCoreReg;
@@ -39,6 +39,10 @@ mod test {
             .jtag_tap_connect(&jtag_params, JtagTap::CaliptraCoreTap)
             .expect("Failed to connect to the Caliptra Core JTAG TAP.");
         println!("Connected.");
+
+        // Confirm debug is locked.
+        let is_unlocked = debug_is_unlocked(&mut *tap).unwrap_or(false);
+        assert_eq!(is_unlocked, false);
 
         // Request manuf debug unlock operation.
         tap.write_reg(&CaliptraCoreReg::SsDbgManufServiceRegReq, 0x1)
@@ -74,5 +78,13 @@ mod test {
             model.base.step();
             thread::sleep(Duration::from_millis(100));
         }
+
+        // Confirm debug is unlocked.
+        tap.reexamine_cpu_target()
+            .expect("Failed to reexamine CPU target.");
+        tap.set_sysbus_access()
+            .expect("Failed to set sysbus access.");
+        let is_unlocked = debug_is_unlocked(&mut *tap).unwrap_or(false);
+        assert_eq!(is_unlocked, true);
     }
 }

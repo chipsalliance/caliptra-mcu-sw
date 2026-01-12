@@ -8,10 +8,14 @@ mod test_uds;
 
 #[cfg(test)]
 mod test {
+    use caliptra_hw_model::jtag::DmReg;
+    use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
     use caliptra_hw_model::Fuses;
     use mcu_builder::FirmwareBinaries;
     use mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel};
     use mcu_rom_common::LifecycleControllerState;
+
+    use anyhow::Result;
 
     pub fn ss_setup(
         initial_lc_state: Option<LifecycleControllerState>,
@@ -37,5 +41,16 @@ mod test {
         // tell the ROM to boot by setting bits 30 and 31
         m.set_mcu_generic_input_wires(&[0, 0xc000_0000]);
         m
+    }
+
+    pub fn debug_is_unlocked(tap: &mut OpenOcdJtagTap) -> Result<bool> {
+        // Check dmstatus.allrunning and dmstatus.anyrunning bits to see if
+        // debug access has been unlocked.
+        let dmstatus = tap.read_reg(&DmReg::DmStatus)?;
+        if (dmstatus & 0x00000c00) == 0 {
+            println!("Debug is not unlocked: dmstatus = 0x{:08x}", dmstatus);
+            return Ok(false);
+        }
+        Ok(true)
     }
 }
