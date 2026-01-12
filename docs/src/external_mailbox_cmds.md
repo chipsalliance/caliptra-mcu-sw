@@ -69,8 +69,8 @@ These commands support a wide range of functionalities, including querying devic
 | MC_PRODUCTION_DEBUG_UNLOCK_REQ    | 0x4D44_5552 ("MDUR") | Requests debug unlock in a production environment.                                                 |
 | MC_PRODUCTION_DEBUG_UNLOCK_TOKEN  | 0x4D44_5554 ("MDUT") | Sends the debug unlock token.                                                                      |
 | MC_FUSE_READ                      | 0x4946_5052 ("IFPR") | See [fuses spec](fuses.md) for details |
-| MC_FUSE_WRITE                      | 0x4946_5057 ("IFPW") | See [fuses spec](fuses.md) for details |
-| MC_FUSE_LOCK_PARTITION             | 0x4946_504B ("IFPK") | See [fuses spec](fuses.md) for details |
+| MC_FUSE_WRITE                     | 0x4946_5057 ("IFPW") | See [fuses spec](fuses.md) for details |
+| MC_FUSE_LOCK_PARTITION            | 0x4946_504B ("IFPK") | See [fuses spec](fuses.md) for details |
 
 ## Command Format
 
