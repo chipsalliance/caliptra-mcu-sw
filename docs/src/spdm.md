@@ -316,3 +316,31 @@ pub trait SpdmSecureSessionManager {
     async fn encode_secure_message(&self, response: &mut [u8]) -> Result<(), SpdmError>;
 }
 ```
+
+# Attestation
+SPDM attestation 
+
+```mermaid
+sequenceDiagram
+    participant SPDM_Requester
+    participant SPDM_Responder
+    SPDM_Requester ->>+ SPDM_Responder: GET_VERSION
+    SPDM_Responder -->>- SPDM_Requester: VERSION
+    SPDM_Requester ->>+ SPDM_Responder: GET_CAPABILITIES
+    SPDM_Responder -->>- SPDM_Requester: CAPABILITIES
+    SPDM_Requester ->>+ SPDM_Responder: NEGOTIATE_ALGORITHMS
+    SPDM_Responder -->>- SPDM_Requester: ALGORITHMS
+    alt If already cached certificates
+        SPDM_Requester ->>+ SPDM_Responder: GET_DIGESTS
+        SPDM_Responder -->>- SPDM_Requester: DIGESTS
+    else If no cached certificates or cache is stale
+        SPDM_Requester ->>+ SPDM_Responder: GET_CERTIFICATES
+        SPDM_Responder -->>- SPDM_Requester: CERTIFICATES
+    end
+    opt Challenge the device to prove possession of the private key
+        SPDM_Requester ->>+ SPDM_Responder: CHALLENGE (slot_id)
+        SPDM_Responder -->>- SPDM_Requester: CHALLENGE_AUTH
+    end
+    SPDM_Requester ->>+ SPDM_Responder: GET_MEASUREMENTS (slot_id, nonce)
+    SPDM_Responder -->>- SPDM_Requester: MEASUREMENTS
+```
