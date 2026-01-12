@@ -52,12 +52,12 @@ sequenceDiagram
     SPDMRequester-->>SPDMRequester: Validate the CSR and <br/>Issue endorsement certificate for LDevID
     critical Within secure session and/or with requester authorization
         Note over SPDMRequester,MCU: 5. Complete Owner Slot Provisioning
-        SPDMRequester->>+MCU: SET_CERTIFICATE (SlotID: 2, <font color="red">KeyPairID</font>: 1, CertChain)
+        SPDMRequester->>+MCU: SET_CERTIFICATE (SlotID: 2, KeyPairID: 1, CertChain)
         MCU->>-SPDMRequester:SET_CERTIFICATE_RSP (SlotID: 2)
     end
     Note over SPDMRequester,MCU: 6. Verify Owner Slot Certificate Installation
-    SPDMRequester->>+MCU: GET_KEY_PAIR_INFO (<font color="red">KeyPairID</font>: 1)
-    MCU->>-SPDMRequester: KEY_PAIR_INFO (TotalKeyPairs: 3, <font color="red">KeyPairID</font>: 1, AssocCertSlotMask: 0x04)
+    SPDMRequester->>+MCU: GET_KEY_PAIR_INFO (KeyPairID: 1)
+    MCU->>-SPDMRequester: KEY_PAIR_INFO (TotalKeyPairs: 3, KeyPairID: 1, AssocCertSlotMask: 0x04)
     opt Get installed certificate chain and validate
         SPDMRequester->>+MCU: GET_CERTIFICATE (SlotID: 2)
         MCU->>-SPDMRequester: CERTIFICATE (SlotID: 2, CertChain)
