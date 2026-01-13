@@ -1119,7 +1119,7 @@ def parse_generic_claim_value(payload, claims_offset, value_type, value_info):
 
 def parse_eat_claims(payload):
     """Parse EAT claims from payload"""
-    print("\n=== EAT Claims Analysis ===")
+    print("\n--- EAT Claims Analysis ---")
     claims_offset = 0
     claims_header, claims_offset = parse_cbor_header(payload, claims_offset)
     
