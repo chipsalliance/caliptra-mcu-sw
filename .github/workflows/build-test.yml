@@ -98,7 +98,7 @@ jobs:
           # Build ROM and runtime binaries
           cargo xtask all-build --platform emulator \
             --rom-features hw-2-1 \
-            --runtime-features "test-mctp-capsule-loopback,test-firmware-update-streaming,test-pldm-fw-update-e2e,test-do-nothing,test-exit-immediately" \
+            --runtime-features "test-i3c-simple,test-i3c-constant-writes,test-mctp-capsule-loopback,test-firmware-update-streaming,test-pldm-fw-update-e2e,test-do-nothing,test-exit-immediately" \
             --separate-runtimes
 
           export CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip"

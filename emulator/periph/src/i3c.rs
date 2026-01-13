@@ -1048,18 +1048,6 @@ impl I3cPeripheral for I3c {
                 }
             }
         }
-
-        if cfg!(feature = "test-i3c-constant-writes") {
-            static mut COUNTER: u32 = 0;
-            // ensure there are 10 writes queued
-            if self.tti_rx_desc_queue_raw.is_empty() && unsafe { COUNTER } < 10 {
-                unsafe {
-                    COUNTER += 1;
-                }
-                self.tti_rx_desc_queue_raw.push_back(100);
-                self.tti_rx_data_raw.push_back(vec![0xff; 100]);
-            }
-        }
     }
 }
 

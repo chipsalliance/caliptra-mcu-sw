@@ -85,8 +85,6 @@ test-doe-spdm-tdisp-ide-validator = [
     "emulator-periph/test-doe-spdm-tdisp-ide-validator",
 ]
 test-doe-user-loopback = ["emulator-periph/test-doe-user-loopback"]
-test-i3c-simple = []
-test-i3c-constant-writes = ["emulator-periph/test-i3c-constant-writes"]
 test-flash-based-boot = []
 test-flash-ctrl-init = []
 test-flash-ctrl-read-write-page = []

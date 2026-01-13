@@ -9,6 +9,8 @@ mod test_dot;
 mod test_exception_handler;
 mod test_firmware_update;
 mod test_fpga_flash_ctrl;
+mod test_i3c_constant_writes;
+mod test_i3c_simple;
 mod test_mctp_capsule_loopback;
 mod test_mcu_mbox;
 mod test_pldm_fw_update;
@@ -594,8 +596,6 @@ mod test {
     run_test!(test_doe_user_loopback, example_app);
     run_test!(test_doe_discovery, example_app);
     run_test!(test_get_device_state, example_app);
-    run_test!(test_i3c_simple);
-    run_test!(test_i3c_constant_writes);
     run_test!(test_flash_ctrl_init);
     run_test!(test_flash_ctrl_read_write_page);
     run_test!(test_flash_ctrl_erase_page);

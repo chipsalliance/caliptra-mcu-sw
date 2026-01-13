@@ -3142,6 +3142,8 @@ dependencies = [
 name = "mcu-platforms-common"
 version = "0.1.0"
 dependencies = [
+ "i3c-driver",
+ "kernel",
  "mcu-config",
  "mcu-tock-veer",
  "romtime",

@@ -787,10 +787,10 @@ pub unsafe fn main() {
         Some(0)
     } else if cfg!(feature = "test-i3c-simple") {
         debug!("Executing test-i3c-simple");
-        crate::tests::i3c_target_test::test_i3c_simple()
+        crate::tests::i3c_target_test::run_test_i3c_simple()
     } else if cfg!(feature = "test-i3c-constant-writes") {
         debug!("Executing test-i3c-constant-writes");
-        crate::tests::i3c_target_test::test_i3c_constant_writes()
+        crate::tests::i3c_target_test::run_test_i3c_constant_writes()
     } else if cfg!(feature = "test-flash-ctrl-init") {
         debug!("Executing test-flash-ctrl-init");
         crate::tests::flash_ctrl_test::test_flash_ctrl_init()

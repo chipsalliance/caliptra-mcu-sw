@@ -740,12 +740,10 @@ pub unsafe fn main() {
         Some(0)
     } else if cfg!(feature = "test-i3c-simple") {
         debug!("Executing test-i3c-simple");
-        //crate::tests::i3c_target_test::test_i3c_simple()
-        None
+        crate::tests::i3c_target_test::run_test_i3c_simple()
     } else if cfg!(feature = "test-i3c-constant-writes") {
         debug!("Executing test-i3c-constant-writes");
-        //crate::tests::i3c_target_test::test_i3c_constant_writes()
-        None
+        crate::tests::i3c_target_test::run_test_i3c_constant_writes()
     } else {
         None
     };
