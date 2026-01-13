@@ -219,14 +219,14 @@ The verification process:
 
 ### MCU Mailbox AXI User Verification
 
-The `MBOX0_VALID_AXI_USER` and `MBOX1_VALID_AXI_USER` registers control which AXI users can access the MCU mailboxes. These registers can be locked using `MBOX0_AXI_USER_LOCK` and `MBOX1_AXI_USER_LOCK`. Similar to the PK hash registers, these values could be manipulated before locking.
+The `MBOX0_VALID_AXI_USER` and `MBOX1_VALID_AXI_USER` registers control which AXI users can access the MCU mailboxes. These registers are locked using `MBOX0_AXI_USER_LOCK` and `MBOX1_AXI_USER_LOCK`, which make the corresponding AXI user registers read-only. Note that unlike the PK hash registers, the MBOX registers are not affected by `SS_CONFIG_DONE*`—only the LOCK registers control their access.
 
-**Security Requirement**: MCU ROM must configure the MCU mailbox AXI users, lock them, and verify that both the AXI user values and the lock register values match the expected configuration after both `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` are set. If verification fails, the ROM must trigger a fatal error and halt.
+**Security Requirement**: MCU ROM must configure the MCU mailbox AXI users, lock them using the LOCK registers, and verify that both the AXI user values and the lock register values match the expected configuration. If verification fails, the ROM must trigger a fatal error and halt. The verification is performed after `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` are set to consolidate all MCI register verification in one place.
 
 The verification process:
 1. MCU ROM configures `MBOX[0,1]_VALID_AXI_USER` registers with the expected AXI user values
-2. MCU ROM sets `MBOX[0,1]_AXI_USER_LOCK` to lock each configured slot
-3. MCU ROM sets `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` to lock the configuration
+2. MCU ROM sets `MBOX[0,1]_AXI_USER_LOCK` to lock each configured slot (this makes the AXI user registers read-only)
+3. MCU ROM sets `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE`
 4. MCU ROM verifies that both config done registers are actually set
 5. MCU ROM reads back the `MBOX[0,1]_VALID_AXI_USER` register values and compares them against the expected configuration
 6. MCU ROM reads back the `MBOX[0,1]_AXI_USER_LOCK` register values and verifies they match the expected lock status
