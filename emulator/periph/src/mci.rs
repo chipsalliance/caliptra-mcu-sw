@@ -103,7 +103,10 @@ impl Mci {
         let delay = if now >= self.mtimecmp {
             1
         } else {
-            self.mtimecmp - now
+            // Clamp to i64::MAX to avoid overflow in the timer scheduler.
+            // This can happen when software writes mtimecmp in two halves,
+            // creating a temporary very large value.
+            (self.mtimecmp - now).min(i64::MAX as u64)
         };
 
         // Directly schedule the machine timer interrupt
