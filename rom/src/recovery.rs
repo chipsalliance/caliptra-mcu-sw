@@ -7,9 +7,7 @@ use flash_image::{
     SOC_MANIFEST_IDENTIFIER,
 };
 use registers_generated::i3c;
-use registers_generated::i3c::bits::{
-    IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess, RecoveryCtrl,
-};
+use registers_generated::i3c::bits::{IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess};
 use romtime::StaticRef;
 use smlang::statemachine;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -395,14 +393,11 @@ pub fn load_flash_image_to_recovery(
             }
 
             States::Activate => {
-                // Set the RECOVERY_CTRL_ACTIVATE_REC_IMG bit to allow access to RecoveryCtrl
-                i3c_periph
-                    .soc_mgmt_if_rec_intf_reg_w1_c_access
-                    .modify(RecIntfRegW1cAccess::RecoveryCtrlActivateRecImg.val(0xff));
                 // Activate the recovery image
-                i3c_periph
-                    .sec_fw_recovery_if_recovery_ctrl
-                    .modify(RecoveryCtrl::ActivateRecImg.val(ACTIVATE_RECOVERY_IMAGE_CMD));
+                i3c_periph.soc_mgmt_if_rec_intf_reg_w1_c_access.modify(
+                    RecIntfRegW1cAccess::RecoveryCtrlActivateRecImg
+                        .val(ACTIVATE_RECOVERY_IMAGE_CMD),
+                );
                 let _ = state_machine.process_event(Events::CheckFwActivation);
             }
 
