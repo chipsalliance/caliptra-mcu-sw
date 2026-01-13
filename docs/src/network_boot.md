@@ -48,46 +48,47 @@ flowchart LR
 ```
 
 ## Network Recovery Boot Flow
-
-The following diagram illustrates the high-level flow using the `BootSourceProvider` interface, showing how `discover()` drives DHCP and TOC fetch:
+### Stage 1: Booting early firmware
+- **Network recovery boot initiation**
+The following diagram illustrates the high-level flow using the `BootSourceProvider` interface, showing how `InitiateBoot` drives DHCP and TOC fetch:
 
 ```mermaid
 sequenceDiagram
     participant CRIF as Caliptra Recovery I/F
     participant MCU as MCU ROM
-    participant NET as Network ROM (BootSourceProvider)
+    participant NET as Network ROM<br>(BootSourceProvider)
     participant IMG as Image Server
 
-    MCU->>NET: InitiateBoot()
+    MCU->>NET: Initiate boot request
     NET->>IMG: DHCP Discovery
     IMG-->>NET: DHCP Offer
-    NET->>IMG: Get TOC
-    IMG->>NET: TOC
-    NET->>MCU: InitiateBoot response()
+    NET->>IMG: TFTP GET config file (TOC)
+    IMG-->>NET: TOC (FW ID mappings)
+    NET->>NET: Store FW ID to filename mappings
+    NET-->>MCU: Network boot available
 ```
 
-### Image Transfer Sequence
-
+- **Early firmware image transfer**
 Once the boot source is initialized, the MCU ROM uses the `BootSourceProvider` methods to fetch each firmware component:
 
 ```mermaid
 sequenceDiagram
     participant CRIF as Caliptra Recovery I/F
     participant MCU as MCU ROM
-    participant NET as Network ROM (BootSourceProvider)
+    participant NET as Network ROM<br>(BootSourceProvider)
     participant IMG as Image Server
 
-    loop For each image id (0,1,2)
+    loop For each image_id (0,1,2)
         MCU->>CRIF: Poll recovery readiness
-        CRIF-->>MCU: Awaiting recovery image id
+        CRIF-->>MCU: Awaiting recovery image_id
 
-        MCU->>NET: get_image_metadata(id)
+        MCU->>NET: get_image_metadata(image_id)
         NET-->>MCU: ImageMetadata { size, checksum, version }
 
         MCU->>CRIF: Set image size (INDIRECT_FIFO_CTRL.write)
 
-        MCU->>NET: download_image(id)
-        NET->>IMG: TFTP GET mapped filename
+        MCU->>NET: download_image(image_id)
+        NET->>IMG: TFTP GET image file
 
         loop Image transfer by chunk
             IMG-->>NET: Image chunk
@@ -97,31 +98,45 @@ sequenceDiagram
         end
     end
 
-    MCU->>CRIF: Finalize recovery
-    MCU->>NET: Finalize
+    MCU->>NET: Finalize network boot
 ```
 
-## Runtime SoC Image Loading
+### Stage 2: Booting remainder firmware
 
 This section describes the flow for loading and authenticating SoC images at runtime through the MCU Runtime. The MCU Runtime coordinates image authorization with the Caliptra Core, while Network ROM handles downloading image data from the network.
 
+- **Network recovery boot initiation**
+
 ```mermaid
 sequenceDiagram
-    participant CORE as Caliptra Core
+    participant CORE as Caliptra RT
     participant MCURT as MCU RT
-    participant NET as Network ROM
+    participant NET as Network ROM<br>(BootSourceProvider)
     participant IMG as Image Server
 
-    MCURT->>NET: InitiateBoot
-    NET->>IMG: Get TOC
-    IMG->>NET: TOC
-    NET-->>MCURT: InitiateBoot response
+    MCURT->>NET: Initiate boot request
+    opt If TOC not already cached
+        NET->>IMG: TFTP GET config file (TOC)
+        IMG-->>NET: TOC (FW ID mappings)
+        NET->>NET: Store FW ID to filename mappings
+    end
+    NET-->>MCURT: Network boot available
+```
 
-    loop For each SoC image (image_id)
+- **Remainder firmware images transfer**
+
+```mermaid
+sequenceDiagram
+    participant CORE as Caliptra RT
+    participant MCURT as MCU RT
+    participant NET as Network ROM<br>(BootSourceProvider)
+    participant IMG as Image Server
+
+    loop For each SoC image(image_id)
         MCURT->>CORE: get_image_info(image_id)
         CORE-->>MCURT: ImageInfo { load_address, component_id }
 
-        MCURT->>NET: get_image_metadata(id)
+        MCURT->>NET: get_image_metadata(image_id)
         NET-->>MCURT: ImageMetadata { size, checksum, version }
 
         MCURT->>NET: download_image(image_id)
@@ -137,7 +152,7 @@ sequenceDiagram
         CORE-->>MCURT: Success/Error response
     end
 
-    MCURT->>NET: Finalize
+    MCURT->>NET: Finalize network boot
 ```
 
 ## Messaging Protocol
@@ -232,7 +247,7 @@ Offset  Size  Field              Description
 0       1     Message Type       0x04 - Chunk ACK
 1       1     Firmware ID        Firmware being transferred
 2       2     Sequence Number    Sequence number to be acknowledged
-4       4     Reserved           
+4       4     Reserved
 8       4     Flags              Bit 0: Ready for next, Bit 1: Error detected
 ```
 
@@ -301,7 +316,7 @@ The boot source provider supports a minimal set of protocols optimized for the C
 
 ### DHCP (Dynamic Host Configuration Protocol)
 - **Purpose**: Automatic network configuration
-- **Advantages**: 
+- **Advantages**:
   - Standard network configuration protocol
   - Minimal overhead for basic IP assignment
   - Simple UDP-based protocol
@@ -309,7 +324,7 @@ The boot source provider supports a minimal set of protocols optimized for the C
 
 ### TFTP (Trivial File Transfer Protocol)
 - **Purpose**: Lightweight file transfer for firmware images
-- **Advantages**: 
+- **Advantages**:
   - Extremely lightweight - minimal overhead perfect for ROM environments
   - Simple UDP-based protocol - easy to implement securely
   - Small code footprint (~5-10KB implementation)
@@ -363,18 +378,18 @@ Boot source providers implement the following core operations:
 /// This interface abstracts different boot sources (network, flash, etc.)
 pub trait BootSourceProvider {
     type Error;
-    
+
     /// Initialize the boot source
     /// This performs source-specific initialization (e.g., DHCP for network, etc.)
     fn initiate_boot(&mut self) -> Result<BootSourceStatus, Self::Error>;
-    
+
     /// Get information about a firmware image
     fn get_image_metadata(&self, firmware_id: FirmwareId) -> Result<ImageInfo, Self::Error>;
-    
+
     /// Download firmware image by ID
     /// Returns a stream for reading image data in chunks
     fn download_image(&mut self, firmware_id: FirmwareId) -> Result<ImageStream, Self::Error>;
-    
+
     /// Get boot source status and capabilities
     fn get_boot_source_status(&self) -> Result<BootSourceStatus, Self::Error>;
 
@@ -418,10 +433,10 @@ pub struct ImageInfo {
 pub trait ImageStream {
     /// Read next chunk of image data
     fn read_chunk(&mut self, buffer: &mut [u8]) -> Result<usize, Error>;
-    
+
     /// Get total image size if known
     fn total_size(&self) -> Option<u64>;
-    
+
     /// Check if stream is complete
     fn is_complete(&self) -> bool;
 }
@@ -445,14 +460,14 @@ pub struct NetworkBootSource {
 
 impl BootSourceProvider for NetworkBootSource {
     type Error = NetworkBootError;
-    
+
     fn initiate_boot(&mut self) -> Result<BootSourceStatus, Self::Error> {
         // 1. Perform DHCP discovery
         self.dhcp_client.discover()?;
-        
+
         // 2. Download TOC via TFTP
         self.toc = self.tftp_client.download_config()?;
-        
+
         Ok(BootSourceStatus {
             ready: true,
             initialized: true,
@@ -460,7 +475,7 @@ impl BootSourceProvider for NetworkBootSource {
             available_images: self.toc.firmware_mappings.keys().copied().collect(),
         })
     }
-    
+
     fn get_image_metadata(&self, firmware_id: FirmwareId) -> Result<ImageInfo, Self::Error> {
         let mapping = self.toc.get_mapping(firmware_id)?;
         Ok(ImageInfo {
@@ -470,12 +485,12 @@ impl BootSourceProvider for NetworkBootSource {
             version: mapping.version.clone(),
         })
     }
-    
+
     fn download_image(&mut self, firmware_id: FirmwareId) -> Result<ImageStream, Self::Error> {
         let mapping = self.toc.get_mapping(firmware_id)?;
         self.tftp_client.get_file(&mapping.filename)
     }
-    
+
     fn get_boot_source_status(&self) -> Result<BootSourceStatus, Self::Error> {
         // Return current network and TFTP status
         Ok(BootSourceStatus {
@@ -499,29 +514,29 @@ impl BootSourceProvider for NetworkBootSource {
 fn perform_boot_from_source(mut boot_source: &mut dyn BootSourceProvider) -> Result<(), Error> {
     // 1. Initialize boot source
     let status = boot_source.initiate_boot()?;
-    
+
     if !status.ready || !status.initialized {
         return Err(Error::BootSourceNotAvailable);
     }
-    
+
     // 2. Download each firmware image
     for firmware_id in [FirmwareId::CaliptraFmcRt, FirmwareId::SocManifest, FirmwareId::McuRt] {
         // Get image metadata
         let image_info = boot_source.get_image_metadata(firmware_id)?;
-        
+
         // Set up recovery interface with image size
         set_recovery_image_size(image_info.size)?;
-        
+
         // Download image
         let mut stream = boot_source.download_image(firmware_id)?;
-        
+
         // Stream image chunks to recovery interface
         load_image_stream(stream, ImageDestination::Recovery)?;
     }
-    
+
     // 3. Finalize recovery
     boot_source.finalize()?;
-    
+
     Ok(())
 }
 
@@ -693,20 +708,20 @@ impl NetworkRomInterface {
             base: base as *const u32,
         }
     }
-    
+
     fn read_register(&self, offset: usize) -> u32 {
         unsafe { core::ptr::read_volatile(self.base.add(offset / 4)) }
     }
-    
+
     fn write_register(&self, offset: usize, value: u32) {
         unsafe { core::ptr::write_volatile(self.base.add(offset / 4) as *mut u32, value) }
     }
-    
+
     /// Acquire the mailbox lock
     fn acquire_lock(&self) -> Result<(), &'static str> {
         // Attempt to acquire lock
         self.write_register(CTRL_REG, CTRL_LOCK);
-        
+
         // Verify lock was acquired
         let ctrl = self.read_register(CTRL_REG);
         if ctrl & CTRL_LOCK != 0 {
@@ -715,13 +730,13 @@ impl NetworkRomInterface {
             Err("Failed to acquire lock")
         }
     }
-    
+
     /// Release the mailbox lock
     fn release_lock(&self) {
         let ctrl = self.read_register(CTRL_REG);
         self.write_register(CTRL_REG, ctrl & !CTRL_LOCK);
     }
-    
+
     /// Send a message to the Network ROM
     pub fn send_message(&self, msg: &[u8]) -> Result<(), &'static str> {
         // Acquire lock with retry
@@ -731,12 +746,12 @@ impl NetworkRomInterface {
             }
             core::hint::spin_loop();
         }
-        
+
         // Set direction: MCU → Network ROM
         let mut ctrl = self.read_register(CTRL_REG);
         ctrl &= !CTRL_DIRECTION;  // Clear direction bit
         self.write_register(CTRL_REG, ctrl);
-        
+
         // Write message to shared buffer
         let base_ptr = (SHM_BASE + MSG_BUFFER_OFFSET) as *mut u8;
         unsafe {
@@ -746,19 +761,19 @@ impl NetworkRomInterface {
                 msg.len().min(BUFFER_SIZE),
             );
         }
-        
+
         // Update message size and sequence
         self.write_register(MSG_SIZE_REG, msg.len() as u32);
         let seq = self.read_register(SEQUENCE_REG);
         self.write_register(SEQUENCE_REG, seq.wrapping_add(1));
-        
+
         // Signal data ready
         ctrl = self.read_register(CTRL_REG);
         self.write_register(CTRL_REG, ctrl | CTRL_DATA_READY);
-        
+
         Ok(())
     }
-    
+
     /// Receive a message from the Network ROM
     pub fn receive_message(&self) -> Result<Vec<u8, 8192>, &'static str> {
         // Wait for data ready with expected direction (Network ROM → MCU)
@@ -769,10 +784,10 @@ impl NetworkRomInterface {
             }
             core::hint::spin_loop();
         }
-        
+
         // Read message size
         let size = self.read_register(MSG_SIZE_REG) as usize;
-        
+
         // Read message from shared buffer
         let base_ptr = (SHM_BASE + MSG_BUFFER_OFFSET) as *const u8;
         let mut msg = Vec::new();
@@ -780,14 +795,14 @@ impl NetworkRomInterface {
             let slice = core::slice::from_raw_parts(base_ptr, size);
             msg.extend_from_slice(slice).map_err(|_| "Buffer overflow")?;
         }
-        
+
         // Clear data ready flag
         let ctrl = self.read_register(CTRL_REG);
         self.write_register(CTRL_REG, ctrl & !CTRL_DATA_READY);
-        
+
         // Release lock
         self.release_lock();
-        
+
         Ok(msg)
     }
 }
@@ -799,8 +814,8 @@ For the Network Boot Coprocessor implementation, we use **lwIP (Lightweight IP)*
 
 ### lwIP (Lightweight IP) with Rust Bindings
 
-**Repository**: https://git.savannah.nongnu.org/cgit/lwip.git (upstream C)  
-**Rust Bindings**: https://github.com/embassy-rs/lwip (Embassy lwIP bindings)  
+**Repository**: https://git.savannah.nongnu.org/cgit/lwip.git (upstream C)
+**Rust Bindings**: https://github.com/embassy-rs/lwip (Embassy lwIP bindings)
 
 **Description**: Mature, lightweight TCP/IP stack originally written in C with Rust FFI bindings.
 
@@ -814,5 +829,3 @@ For the Network Boot Coprocessor implementation, we use **lwIP (Lightweight IP)*
 - ✅ DHCP client
 - ✅ TFTP client
 - ✅ UDP sockets
-
-
