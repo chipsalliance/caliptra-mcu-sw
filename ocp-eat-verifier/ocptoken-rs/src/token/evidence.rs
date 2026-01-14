@@ -75,7 +75,6 @@ impl Evidence {
         /* ----------------------------------------------------------
          *  Verify ES384 signature
          * ---------------------------------------------------------- */
-        //  verify_signature_es384(&cose.signature, pubkey_x, pubkey_y, &sig_structure)?;
         cose.verify_signature(&[], |signature, to_be_signed| {
             verify_signature_es384(signature, pubkey_x, pubkey_y, to_be_signed)
         })?;

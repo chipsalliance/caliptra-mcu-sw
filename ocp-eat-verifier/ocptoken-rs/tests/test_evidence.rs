@@ -17,7 +17,7 @@ use openssl::{
 use ocptoken::token::evidence::Evidence;
 
 #[test]
-fn decode_and_verify_cose_sign1() {
+fn decode_and_verify_ecc_p384_cose_sign1() {
     // 1️ Generate ECC P-384 key pair
     let group = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
     let ec_key = EcKey::generate(&group).unwrap();
