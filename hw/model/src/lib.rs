@@ -17,6 +17,7 @@ pub use mcu_mgr::McuManager;
 use mcu_rom_common::{
     LifecycleControllerState, LifecycleRawTokens, LifecycleToken, McuBootMilestones,
 };
+use mcu_testing_common::MCU_RUNNING;
 pub use model_emulated::ModelEmulated;
 use rand::{rngs::StdRng, SeedableRng};
 use sha2::Digest;
@@ -24,6 +25,7 @@ use std::io::Write;
 use std::io::{stdout, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use ureg::MmioMut;
 pub use vmem::read_otp_vmem_data;
@@ -38,6 +40,7 @@ mod fpga_regs;
 pub mod jtag;
 #[cfg(feature = "fpga_realtime")]
 pub mod lcc;
+pub mod mcu_mbox_transport;
 mod mcu_mgr;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
@@ -380,7 +383,12 @@ pub trait McuHwModel {
     fn i3c_port(&self) -> Option<u16>;
 
     fn exit_status(&self) -> Option<ExitStatus> {
-        None
+        // tests trigger success by stopping the emulator or FPGA.
+        if !MCU_RUNNING.load(Ordering::Relaxed) {
+            Some(ExitStatus::Passed)
+        } else {
+            None
+        }
     }
 
     fn copy_output_until_exit_success(

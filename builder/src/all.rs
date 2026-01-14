@@ -33,6 +33,7 @@ use std::{env::var, sync::OnceLock};
 static FEATURES_WITH_EXAMPLE_APP: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     HashSet::from([
         "test-fpga-flash-ctrl",
+        "test-mcu-mbox-usermode",
         // Add more features as needed
     ])
 });

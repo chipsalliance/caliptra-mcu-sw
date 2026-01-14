@@ -7,6 +7,7 @@ use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use capsules_runtime::flash_partition::FlashPartition;
 use capsules_runtime::mctp::base_protocol::MessageType;
+use capsules_runtime::mcu_mbox::McuMboxDriver;
 use core::ptr::{addr_of, addr_of_mut};
 use kernel::capabilities;
 use kernel::component::Component;
@@ -24,6 +25,7 @@ use kernel::{create_capability, debug, static_init};
 use mcu_components::mbox_sram_component_static;
 use mcu_components::mctp_driver_component_static;
 use mcu_components::mctp_mux_component_static;
+use mcu_components::mcu_mbox_component_static;
 use mcu_components::{flash_partition_component_static, instantiate_flash_partitions};
 use mcu_config_fpga::flash::STAGING_PARTITION;
 use mcu_config_fpga::flash_partition_list_imaginary_flash;
@@ -146,6 +148,10 @@ struct VeeR {
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
     mci: &'static capsules_runtime::mci::Mci,
+    mcu_mbox0: &'static capsules_runtime::mcu_mbox::McuMboxDriver<
+        'static,
+        mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>,
+    >,
     mcu_mbox1_staging_sram: &'static capsules_runtime::mbox_sram::MboxSram<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
@@ -188,6 +194,7 @@ impl SyscallDriverLookup for VeeR {
             }
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
+            capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => f(Some(self.mcu_mbox0)),
             capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
                 f(Some(self.mcu_mbox1_staging_sram))
             }
@@ -289,6 +296,10 @@ pub fn exit_fpga(exit_code: u32) -> ! {
 /// # Safety
 /// Accesses memory, memory-mapped registers and CSRs.
 pub unsafe fn main() {
+    if cfg!(feature = "test-do-nothing") {
+        loop {}
+    }
+
     print_to_console("[mcu-runtime] Hello from MCU runtime\n");
     // only machine mode
     rv32i::configure_trap_handler();
@@ -604,6 +615,15 @@ pub unsafe fn main() {
     )
     .finalize(kernel::static_buf!(capsules_emulator::dma::Dma<'static>));
 
+    let mcu_mbox0 = mcu_components::mcu_mbox::McuMboxComponent::new(
+        board_kernel,
+        capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
+        &peripherals.mcu_mbox0,
+    )
+    .finalize(mcu_mbox_component_static!(
+        mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>
+    ));
+
     peripherals.init();
     romtime::println!("[mcu-runtime] Peripherals initialized");
 
@@ -649,6 +669,7 @@ pub unsafe fn main() {
             staging_partition,
             mailbox,
             mci,
+            mcu_mbox0,
             mcu_mbox1_staging_sram,
             system,
             dma,
@@ -693,12 +714,10 @@ pub unsafe fn main() {
         Some(0)
     } else if cfg!(feature = "test-i3c-simple") {
         debug!("Executing test-i3c-simple");
-        //crate::tests::i3c_target_test::test_i3c_simple()
-        None
+        crate::tests::i3c_target_test::run_test_i3c_simple()
     } else if cfg!(feature = "test-i3c-constant-writes") {
         debug!("Executing test-i3c-constant-writes");
-        //crate::tests::i3c_target_test::test_i3c_constant_writes()
-        None
+        crate::tests::i3c_target_test::run_test_i3c_constant_writes()
     } else {
         None
     };
