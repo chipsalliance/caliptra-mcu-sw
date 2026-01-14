@@ -56,9 +56,9 @@ The specification is published [here](https://chipsalliance.github.io/caliptra-m
 To build the documentation locally, you need to install `mdbook`:
 
 ```shell
-cargo install mdbook
-cargo install mdbook-mermaid
-cargo install mdbook-plantuml --no-default-features
+cargo install --version 0.4.52 mdbook
+cargo install --version 0.16.2 mdbook-mermaid
+cargo install --version 0.8.0 mdbook-plantuml --no-default-features
 wget https://github.com/plantuml/plantuml/releases/download/v1.2025.7/plantuml-asl-1.2025.7.jar -O docs/plantuml-asl-1.2025.7.jar
 ```
 
