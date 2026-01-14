@@ -22,6 +22,7 @@ use crate::{
 use caliptra_api::mailbox::{CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader};
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
+use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use caliptra_drivers::okref;
 use core::fmt::Write;
 use core::ops::Deref;
@@ -201,7 +202,24 @@ impl BootFlow for ColdBoot {
             soc.set_cptra_wdt_cfg(1, straps.cptra_wdt_cfg1);
 
             mci.set_nmi_vector(unsafe { MCU_MEMORY_MAP.rom_offset });
-            mci.configure_wdt(straps.mcu_wdt_cfg0, straps.mcu_wdt_cfg1);
+
+            let state = SecurityState::from(mci.security_state());
+            let lifecycle = state.device_lifecycle();
+            match (state.debug_locked(), lifecycle) {
+                (false, _) => {
+                    mci.configure_wdt(straps.mcu_wdt_cfg0_debug, straps.mcu_wdt_cfg1_debug);
+                }
+                (true, DeviceLifecycle::Manufacturing) => {
+                    mci.configure_wdt(
+                        straps.mcu_wdt_cfg0_manufacturing,
+                        straps.mcu_wdt_cfg1_manufacturing,
+                    );
+                }
+                (true, _) => {
+                    mci.configure_wdt(straps.mcu_wdt_cfg0, straps.mcu_wdt_cfg1);
+                }
+            }
+
             mci.set_flow_checkpoint(McuRomBootStatus::WatchdogConfigured.into());
         }
 

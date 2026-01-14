@@ -109,6 +109,10 @@ pub struct McuStraps {
     pub cptra_wdt_cfg1: u32,
     pub mcu_wdt_cfg0: u32,
     pub mcu_wdt_cfg1: u32,
+    pub mcu_wdt_cfg0_manufacturing: u32,
+    pub mcu_wdt_cfg1_manufacturing: u32,
+    pub mcu_wdt_cfg0_debug: u32,
+    pub mcu_wdt_cfg1_debug: u32,
 }
 
 impl McuStraps {
@@ -121,6 +125,10 @@ impl McuStraps {
             cptra_wdt_cfg1: 100_000_000,
             mcu_wdt_cfg0: 20_000_000,
             mcu_wdt_cfg1: 1,
+            mcu_wdt_cfg0_manufacturing: 20_000_000,
+            mcu_wdt_cfg1_manufacturing: 1,
+            mcu_wdt_cfg0_debug: 20_000_000,
+            mcu_wdt_cfg1_debug: 1,
         }
     }
 }
