@@ -1,4 +1,4 @@
-# In-field Provisioning and Managing SPDM Certificate Slots
+# In-field Provisioning and Management of SPDM Certificate Slots
 This document provides guidance for provisioning and managing certificate slots on Caliptra devices via the SPDM protocol, conforming to the [OCP Device Identity Provisioning Specification](https://opencomputeproject.github.io/Security/device-identity-provisioning/HEAD/).
 
 Supporting the multiple PKI ownership model defined by OCP requires SPDM Responder to support multiple asymmetric key pairs in the connection (`MULTI_KEY_CONN_RSP` is true). Consequently, OCP Device Identity Provisioning features requires SPDM version 1.3 or later.
@@ -66,6 +66,8 @@ sequenceDiagram
     Note over SPDMRequester,MCU: ...<br/> 7. Perform attestation using the newly installed Owner slot
 ```
     
-## Generating Envelope Signed CSR for Key Pair
-The SPDM responder on the MCU supports generating an envelope‑signed CSR for a specified key‑pair ID using the vendor‑defined `GET_ENVELOPE_SIGNED_CSR` command. Upon receiving this request, the MCU delegates the CSR‑generation process to the Caliptra RT firmware. The Caliptra RT firmware then produces the envelope‑signed CSR EAT, using the `RT Alias` key pair to sign the CSR corresponding to the requested key pair. The `nonce` provided in the request is forwarded to the RT firmware to be included in the EAT.
+## Envelope-signed CSR generation
+The MCU's SPDM responder supports retrieval of an envelope‑signed Certificate Signing Request (CSR) for a specified Device Identity Key-pair ID via the OCP vendor‑defined `GET_ENVELOPE_SIGNED_CSR` command. Upon receiving this request, the MCU forwards it to the Caliptra RT firmware, which generates the CSR and returns it encapsulated in an `EAT` (Entity Attestation Token). The `EAT` is signed using the `RT Alias` key pair. The `nonce` provided in the request is forwarded to the RT firmware and included in the EAT to ensure freshness.
 
+## Authorization and Security Considerations
+TBD
