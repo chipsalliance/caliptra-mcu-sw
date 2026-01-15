@@ -125,9 +125,9 @@ impl McuStraps {
             cptra_wdt_cfg1: 100_000_000,
             mcu_wdt_cfg0: 20_000_000,
             mcu_wdt_cfg1: 1,
-            mcu_wdt_cfg0_manufacturing: 20_000_000,
+            mcu_wdt_cfg0_manufacturing: 80_000_000,
             mcu_wdt_cfg1_manufacturing: 1,
-            mcu_wdt_cfg0_debug: 20_000_000,
+            mcu_wdt_cfg0_debug: 80_000_000,
             mcu_wdt_cfg1_debug: 1,
         }
     }
