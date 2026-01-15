@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::static_ref::StaticRef;
+use mcu_error::McuError;
 use registers_generated::mci;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
@@ -170,6 +171,42 @@ impl Mci {
     }
     pub fn write_wdt_timer1_en(&self, value: u32) {
         self.registers.mci_reg_wdt_timer1_en.set(value);
+    }
+
+    pub fn set_mci_mbox0_valid_axi_user(&self, index: usize, value: u32) -> Result<(), McuError> {
+        if index >= self.registers.mci_reg_mbox0_valid_axi_user.len() {
+            Err(McuError::ROM_MCI_MBOX_USER_OUT_OF_RANGE)
+        } else {
+            self.registers.mci_reg_mbox0_valid_axi_user[index].set(value);
+            Ok(())
+        }
+    }
+
+    pub fn set_mci_mbox0_axi_user_lock(&self, index: usize, value: u32) -> Result<(), McuError> {
+        if index >= self.registers.mci_reg_mbox0_axi_user_lock.len() {
+            Err(McuError::ROM_MCI_MBOX_USER_LOCK_OUT_OF_RANGE)
+        } else {
+            self.registers.mci_reg_mbox0_axi_user_lock[index].set(value);
+            Ok(())
+        }
+    }
+
+    pub fn set_mci_mbox1_valid_axi_user(&self, index: usize, value: u32) -> Result<(), McuError> {
+        if index >= self.registers.mci_reg_mbox1_valid_axi_user.len() {
+            Err(McuError::ROM_MCI_MBOX_USER_OUT_OF_RANGE)
+        } else {
+            self.registers.mci_reg_mbox1_valid_axi_user[index].set(value);
+            Ok(())
+        }
+    }
+
+    pub fn set_mci_mbox1_axi_user_lock(&self, index: usize, value: u32) -> Result<(), McuError> {
+        if index >= self.registers.mci_reg_mbox1_axi_user_lock.len() {
+            Err(McuError::ROM_MCI_MBOX_USER_LOCK_OUT_OF_RANGE)
+        } else {
+            self.registers.mci_reg_mbox1_axi_user_lock[index].set(value);
+            Ok(())
+        }
     }
 
     // Interrupt handler for MCI interrupts

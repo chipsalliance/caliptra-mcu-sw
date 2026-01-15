@@ -13,6 +13,7 @@ registers-generated.workspace = true
 tock-registers.workspace = true
 ureg.workspace = true
 zerocopy.workspace = true
+mcu-error.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 riscv-csr.workspace = true
