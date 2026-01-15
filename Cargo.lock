@@ -3166,6 +3166,7 @@ dependencies = [
  "bitfield",
  "bitflags 2.10.0",
  "caliptra-api",
+ "caliptra-api-types",
  "caliptra-drivers",
  "constant_time_eq 0.4.2",
  "flash-image",
