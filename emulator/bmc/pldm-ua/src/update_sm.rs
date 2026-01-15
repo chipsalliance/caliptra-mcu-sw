@@ -811,7 +811,7 @@ pub trait StateMachineActions {
                         .map_err(|_| ())?;
                 } else {
                     // Still waiting for activation
-                    info!(
+                    debug!(
                         "Still waiting for activation. Current state: {:?}",
                         response.current_state
                     );

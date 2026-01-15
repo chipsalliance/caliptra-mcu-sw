@@ -530,6 +530,7 @@ mod tests {
             Rc::new(RefCell::new(mci_irq)),
             Some(mcu_mailbox0.clone()),
             None,
+            None,
         );
         AutoRootBus::new(
             vec![],

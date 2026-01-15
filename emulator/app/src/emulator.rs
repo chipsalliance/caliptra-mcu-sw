@@ -18,9 +18,11 @@ use crate::elf;
 use crate::tests;
 use crate::tests::spdm_responder_validator::SpdmTestType;
 use caliptra_api_types::DeviceLifecycle;
+use caliptra_emu_bus::BusMmio;
 use caliptra_emu_bus::{Bus, Clock, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
+use caliptra_emu_periph::MailboxRequester;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
@@ -770,12 +772,24 @@ impl Emulator {
             feature = "test-mcu-mbox-cmds",
         ))]
         let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
+        let soc_ifc = unsafe {
+            caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
+                cli.soc_offset.unwrap_or(0x3003_0000) as *mut u32,
+                BusMmio::new(
+                    caliptra_cpu
+                        .bus
+                        .soc_to_caliptra_bus(MailboxRequester::Caliptra),
+                ),
+            )
+        };
+
         let mci = Mci::new(
             &clock.clone(),
             ext_mci,
             mci_irq,
             Some(mcu_mailbox0),
             Some(mcu_mailbox1),
+            Some(soc_ifc),
         );
 
         let mut auto_root_bus = AutoRootBus::new(

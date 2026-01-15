@@ -345,6 +345,7 @@ impl McuHwModel for ModelEmulated {
             Rc::new(RefCell::new(mci_irq)),
             Some(mcu_mailbox0),
             Some(mcu_mailbox1),
+            None,
         );
 
         let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =

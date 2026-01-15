@@ -2,9 +2,11 @@
 
 use crate::mcu_mbox0::McuMailbox0Internal;
 use crate::reset_reason::ResetReasonEmulator;
-use caliptra_emu_bus::{ActionHandle, Clock, ReadWriteRegister, Timer, TimerAction};
+use caliptra_emu_bus::{ActionHandle, BusMmio, Clock, ReadWriteRegister, Timer, TimerAction};
 use caliptra_emu_cpu::Irq;
+use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_types::RvData;
+use caliptra_registers::soc_ifc::RegisterBlock;
 use emulator_registers_generated::mci::{MciGenerated, MciPeripheral};
 use registers_generated::mci::bits::{
     Error0IntrT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest, SecurityState, WdtStatus,
@@ -37,6 +39,7 @@ pub struct Mci {
     mtimecmp: u64,
     op_mtimecmp_due_action: Option<ActionHandle>,
     mcu_mailbox1: Option<McuMailbox0Internal>,
+    soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
 }
 
 impl Mci {
@@ -46,6 +49,7 @@ impl Mci {
         irq: Rc<RefCell<Irq>>,
         mcu_mailbox0: Option<McuMailbox0Internal>,
         mcu_mailbox1: Option<McuMailbox0Internal>,
+        soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
     ) -> Self {
         // Clear the reset status, MCU and Caiptra are out of reset
         ext_mci_regs.regs.borrow_mut().reset_status = 0;
@@ -77,6 +81,7 @@ impl Mci {
             mtimecmp: default_mtimecmp,
             op_mtimecmp_due_action: None,
             mcu_mailbox1,
+            soc_regs,
         }
     }
 
@@ -1017,7 +1022,22 @@ impl MciPeripheral for Mci {
 
         if self.timer.fired(&mut self.op_mcu_reset_request_action) {
             // Handle MCU reset request
-            println!("[MCI] TimerAction::UpdateReset");
+            let mcu_fw_exec_ctrl = self
+                .soc_regs
+                .as_ref()
+                .map(|regs| regs.ss_generic_fw_exec_ctrl().get(0).unwrap().read());
+            if let Some(val) = mcu_fw_exec_ctrl {
+                // If bit 2 (MCU go bit) of SS_GENERIC_FW_EXEC_CTRL is 0
+                // and reset is requested, hold the MCU in reset
+                // by scheduling CPU halt action.
+                if val & (1 << 2) == 0 {
+                    self.timer.schedule_action_in(1, TimerAction::Halt);
+                    self.op_mcu_reset_request_action = Some(self.timer.schedule_poll_in(1000));
+                    self.ext_mci_regs.regs.borrow_mut().reset_status |= RESET_STATUS_MCU_RESET_MASK;
+                    return;
+                }
+            }
+
             self.timer.schedule_action_in(100, TimerAction::UpdateReset);
             self.op_wdt_timer2_expired_action = None;
             // Allow enough time for MCU to reset before asserting RESET_STATUS_MCU_RESET
@@ -1117,7 +1137,14 @@ mod tests {
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
         let pic = caliptra_emu_cpu::Pic::new();
         let irq = pic.register_irq(1);
-        let mci_reg: Mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None, None);
+        let mci_reg: Mci = Mci::new(
+            &clock,
+            ext_mci_regs,
+            Rc::new(RefCell::new(irq)),
+            None,
+            None,
+            None,
+        );
         let mut mci_bus = MciBus {
             periph: Box::new(mci_reg),
         };
@@ -1210,6 +1237,7 @@ mod tests {
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
             None,
+            None,
         );
         let mut mcu_mailbox = mci_reg.mcu_mailbox0.clone().unwrap();
         let mut mci_bus = MciBus {
@@ -1247,6 +1275,7 @@ mod tests {
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
             None,
+            None,
         );
 
         let hi: u32 = 0x0022_3344;
@@ -1274,6 +1303,7 @@ mod tests {
             ext_mci_regs,
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
+            None,
             None,
         );
 
@@ -1303,6 +1333,7 @@ mod tests {
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
             None,
+            None,
         );
 
         // Seed a known value.
@@ -1328,6 +1359,7 @@ mod tests {
             ext_mci_regs,
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
+            None,
             None,
         );
 
@@ -1358,6 +1390,7 @@ mod tests {
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
             None,
+            None,
         );
 
         // Initial time is 0
@@ -1382,6 +1415,7 @@ mod tests {
             ext_mci_regs,
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
+            None,
             None,
         );
 
@@ -1416,6 +1450,7 @@ mod tests {
             ext_mci_regs,
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
+            None,
             None,
         );
 
