@@ -18,7 +18,7 @@ use mcu_testing_common::i3c::{
 };
 use registers_generated::i3c::bits::{
     DeviceStatus0, ExtcapHeader, IndirectFifoCtrl0, IndirectFifoStatus0, InterruptEnable,
-    InterruptStatus, RecIntfCfg, StbyCrCapabilities, StbyCrDeviceAddr, TtiQueueSize,
+    InterruptStatus, RecIntfCfg, RecoveryCtrl, StbyCrCapabilities, StbyCrDeviceAddr, TtiQueueSize,
 };
 use semver::Version;
 use std::collections::VecDeque;
@@ -77,6 +77,8 @@ pub struct I3c {
     i3c_ec_soc_mgmt_if_rec_intf_cfg:
         ReadWriteRegister<u32, registers_generated::i3c::bits::RecIntfCfg::Register>,
     indirect_fifo_data: Vec<u8>,
+    i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access:
+        ReadWriteRegister<u32, registers_generated::i3c::bits::RecIntfRegW1cAccess::Register>,
 
     interrupt_status: ReadWriteRegister<u32, InterruptStatus::Register>,
     interrupt_enable: ReadWriteRegister<u32, InterruptEnable::Register>,
@@ -130,6 +132,7 @@ impl I3c {
             i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_recovery_ctrl: ReadWriteRegister::new(0),
             i3c_ec_soc_mgmt_if_rec_intf_cfg: ReadWriteRegister::new(0),
+            i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access: ReadWriteRegister::new(0),
             indirect_fifo_data: Vec::new(),
             interrupt_status: ReadWriteRegister::new(0),
             interrupt_enable: ReadWriteRegister::new(0),
@@ -384,6 +387,10 @@ impl I3c {
             0x060 => Ok(self.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4()),
             0x064 => Ok(self.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved()),
             0x068 => Ok(self.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data()),
+            0x210..0x214 => Ok(self
+                .read_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access()
+                .reg
+                .get()),
 
             _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
         }
@@ -481,6 +488,12 @@ impl I3c {
             }
             0x04c => {
                 self.write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(val);
+                Ok(())
+            }
+            0x210 => {
+                self.write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
@@ -890,6 +903,18 @@ impl I3cPeripheral for I3c {
             self.i3c_ec_sec_fw_recovery_if_recovery_ctrl.reg.get(),
         )
     }
+
+    fn read_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access.reg.get(),
+        )
+    }
+
     fn write_i3c_ec_sec_fw_recovery_if_recovery_ctrl(
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
@@ -917,6 +942,52 @@ impl I3cPeripheral for I3c {
         >,
     ) {
         self.i3c_ec_soc_mgmt_if_rec_intf_cfg.reg.set(val.reg.get());
+    }
+
+    fn write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
+        >,
+    ) {
+        self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access
+            .reg
+            .set(val.reg.get());
+
+        // Update recovery ctrl register
+        let new_activate_rec_img = self
+            .i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access
+            .reg
+            .read(registers_generated::i3c::bits::RecIntfRegW1cAccess::RecoveryCtrlActivateRecImg);
+
+        let recovery_ctrl = self.read_i3c_ec_sec_fw_recovery_if_recovery_ctrl();
+        recovery_ctrl
+            .reg
+            .modify(RecoveryCtrl::ActivateRecImg.val(new_activate_rec_img));
+        self.write_i3c_ec_sec_fw_recovery_if_recovery_ctrl(recovery_ctrl);
+
+        // Update indirect memory reset
+        let new_indirect_fifo_reset = self
+            .i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access
+            .reg
+            .read(registers_generated::i3c::bits::RecIntfRegW1cAccess::IndirectFifoCtrlReset);
+        let indirect_fifo_ctrl_0 = self.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0();
+        indirect_fifo_ctrl_0
+            .reg
+            .modify(IndirectFifoCtrl0::Reset.val(new_indirect_fifo_reset));
+        self.write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(indirect_fifo_ctrl_0);
+
+        // Update device reset
+        let new_device_reset = self
+            .i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access
+            .reg
+            .read(registers_generated::i3c::bits::RecIntfRegW1cAccess::DeviceResetCtrl);
+        let device_reset = self.read_i3c_ec_sec_fw_recovery_if_device_reset();
+        device_reset
+            .reg
+            .modify(registers_generated::i3c::bits::DeviceReset::ResetCtrl.val(new_device_reset));
+        self.write_i3c_ec_sec_fw_recovery_if_device_reset(device_reset);
     }
 
     fn poll(&mut self) {
