@@ -196,4 +196,125 @@ impl Mci {
     pub fn trigger_warm_reset(&self) {
         self.registers.mci_reg_reset_request.set(1);
     }
+
+    /// Sets the SS_CONFIG_DONE_STICKY register to lock configuration registers.
+    /// Once set, certain registers (like PROD_DEBUG_UNLOCK_PK_HASH) become read-only
+    /// until the next cold reset.
+    pub fn set_ss_config_done_sticky(&self) {
+        self.registers
+            .mci_reg_ss_config_done_sticky
+            .write(mci::bits::SsConfigDone::Done::SET);
+    }
+
+    /// Checks if SS_CONFIG_DONE_STICKY is set
+    pub fn is_ss_config_done_sticky(&self) -> bool {
+        self.registers
+            .mci_reg_ss_config_done_sticky
+            .is_set(mci::bits::SsConfigDone::Done)
+    }
+
+    /// Sets the SS_CONFIG_DONE register to lock configuration registers.
+    /// Once set, certain registers become read-only until the next warm reset.
+    pub fn set_ss_config_done(&self) {
+        self.registers
+            .mci_reg_ss_config_done
+            .write(mci::bits::SsConfigDone::Done::SET);
+    }
+
+    /// Checks if SS_CONFIG_DONE is set
+    pub fn is_ss_config_done(&self) -> bool {
+        self.registers
+            .mci_reg_ss_config_done
+            .is_set(mci::bits::SsConfigDone::Done)
+    }
+
+    /// Read the production debug unlock PK hash register at the given index
+    pub fn read_prod_debug_unlock_pk_hash(&self, index: usize) -> Option<u32> {
+        self.registers
+            .mci_reg_prod_debug_unlock_pk_hash_reg
+            .get(index)
+            .map(|reg| reg.get())
+    }
+
+    /// Get the length of the production debug unlock PK hash register array
+    pub fn prod_debug_unlock_pk_hash_len(&self) -> usize {
+        self.registers.mci_reg_prod_debug_unlock_pk_hash_reg.len()
+    }
+
+    /// Read the MCU mailbox 0 valid AXI user register at the given index
+    pub fn read_mbox0_valid_axi_user(&self, index: usize) -> Option<u32> {
+        self.registers
+            .mci_reg_mbox0_valid_axi_user
+            .get(index)
+            .map(|reg| reg.get())
+    }
+
+    /// Read the MCU mailbox 0 AXI user lock register at the given index
+    pub fn read_mbox0_axi_user_lock(&self, index: usize) -> Option<bool> {
+        self.registers
+            .mci_reg_mbox0_axi_user_lock
+            .get(index)
+            .map(|reg| reg.is_set(mci::bits::MboxxAxiUserLock::Lock))
+    }
+
+    /// Read the MCU mailbox 1 valid AXI user register at the given index
+    pub fn read_mbox1_valid_axi_user(&self, index: usize) -> Option<u32> {
+        self.registers
+            .mci_reg_mbox1_valid_axi_user
+            .get(index)
+            .map(|reg| reg.get())
+    }
+
+    /// Read the MCU mailbox 1 AXI user lock register at the given index
+    pub fn read_mbox1_axi_user_lock(&self, index: usize) -> Option<bool> {
+        self.registers
+            .mci_reg_mbox1_axi_user_lock
+            .get(index)
+            .map(|reg| reg.is_set(mci::bits::MboxxAxiUserLock::Lock))
+    }
+
+    /// Get the length of the MCU mailbox AXI user register arrays
+    pub fn mbox_axi_user_len(&self) -> usize {
+        self.registers.mci_reg_mbox0_valid_axi_user.len()
+    }
+
+    /// Write to the MCU mailbox 0 valid AXI user register at the given index
+    pub fn write_mbox0_valid_axi_user(&self, index: usize, value: u32) -> bool {
+        if let Some(reg) = self.registers.mci_reg_mbox0_valid_axi_user.get(index) {
+            reg.set(value);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Lock the MCU mailbox 0 AXI user register at the given index
+    pub fn lock_mbox0_axi_user(&self, index: usize) -> bool {
+        if let Some(reg) = self.registers.mci_reg_mbox0_axi_user_lock.get(index) {
+            reg.write(mci::bits::MboxxAxiUserLock::Lock::SET);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Write to the MCU mailbox 1 valid AXI user register at the given index
+    pub fn write_mbox1_valid_axi_user(&self, index: usize, value: u32) -> bool {
+        if let Some(reg) = self.registers.mci_reg_mbox1_valid_axi_user.get(index) {
+            reg.set(value);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Lock the MCU mailbox 1 AXI user register at the given index
+    pub fn lock_mbox1_axi_user(&self, index: usize) -> bool {
+        if let Some(reg) = self.registers.mci_reg_mbox1_axi_user_lock.get(index) {
+            reg.write(mci::bits::MboxxAxiUserLock::Lock::SET);
+            true
+        } else {
+            false
+        }
+    }
 }

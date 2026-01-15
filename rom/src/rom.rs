@@ -38,6 +38,7 @@ use romtime::LifecycleToken;
 use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
+use zerocopy::IntoBytes;
 
 // values in fuses
 const LMS_FUSE_VALUE: u8 = 1;
@@ -566,6 +567,191 @@ impl Soc {
         // Clear the reset request interrupt
         notif0.modify(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
     }
+}
+
+/// Number of users supported by the MCU MBOX ACL mechanism.
+pub const MCU_MBOX_USERS: usize = 5;
+
+/// Structure to hold expected values for MCU mailbox AXI user configuration.
+/// Used for verification after SS_CONFIG_DONE_STICKY is set.
+#[derive(Debug, Default, Clone)]
+pub struct McuMboxAxiUserConfig {
+    /// Expected values for MBOX0 valid AXI users (None = not configured)
+    pub mbox0_users: [Option<u32>; MCU_MBOX_USERS],
+    /// Expected values for MBOX1 valid AXI users (None = not configured)
+    pub mbox1_users: [Option<u32>; MCU_MBOX_USERS],
+    /// Expected lock status for MBOX0 AXI users
+    pub mbox0_locks: [bool; MCU_MBOX_USERS],
+    /// Expected lock status for MBOX1 AXI users
+    pub mbox1_locks: [bool; MCU_MBOX_USERS],
+}
+
+/// Configures MCU mailbox AXI users in MCI and returns the configuration for later verification.
+pub fn configure_mcu_mbox_axi_users(
+    mci: &romtime::Mci,
+    straps: &McuStraps,
+) -> McuMboxAxiUserConfig {
+    let mut config = McuMboxAxiUserConfig::default();
+
+    // Configure MBOX0 AXI users based on straps
+    for (i, user) in straps.mcu_mbox0_axi_users.into_iter().enumerate() {
+        // skip unconfigured users and avoid impossible panics
+        if user != 0 && i < config.mbox0_users.len() && i < config.mbox0_locks.len() {
+            romtime::println!(
+                "[mcu-rom] Setting MCI mailbox 0 user {} to {}",
+                i,
+                HexWord(user)
+            );
+            config.mbox0_users[i] = Some(user);
+            config.mbox0_locks[i] = true;
+            mci.write_mbox0_valid_axi_user(i, user);
+            mci.lock_mbox0_axi_user(i);
+        }
+    }
+
+    // Configure MBOX1 AXI users based on straps
+    for (i, user) in straps.mcu_mbox1_axi_users.into_iter().enumerate() {
+        // skip unconfigured users and avoid impossible panics
+        if user != 0 && i < config.mbox1_users.len() && i < config.mbox1_locks.len() {
+            romtime::println!(
+                "[mcu-rom] Setting MCI mailbox 1 user {} to {}",
+                i,
+                HexWord(user)
+            );
+            config.mbox1_users[i] = Some(user);
+            config.mbox1_locks[i] = true;
+            mci.write_mbox1_valid_axi_user(i, user);
+            mci.lock_mbox1_axi_user(i);
+        }
+    }
+
+    config
+}
+
+/// Verifies that the production debug unlock PK hashes haven't been tampered with
+/// after SS_CONFIG_DONE_STICKY is set.
+///
+/// This function compares the current MCI register values against the expected values
+/// computed from the fuses.
+pub fn verify_prod_debug_unlock_pk_hash(mci: &romtime::Mci, fuses: &Fuses) -> Result<(), McuError> {
+    let mut expected_hashes = [0u8; 384];
+    let fuse_slices = [
+        fuses.cptra_ss_prod_debug_unlock_pks_0(),
+        fuses.cptra_ss_prod_debug_unlock_pks_1(),
+        fuses.cptra_ss_prod_debug_unlock_pks_2(),
+        fuses.cptra_ss_prod_debug_unlock_pks_3(),
+        fuses.cptra_ss_prod_debug_unlock_pks_4(),
+        fuses.cptra_ss_prod_debug_unlock_pks_5(),
+        fuses.cptra_ss_prod_debug_unlock_pks_6(),
+        fuses.cptra_ss_prod_debug_unlock_pks_7(),
+    ];
+    for (i, fuse_slice) in fuse_slices.iter().enumerate() {
+        let start = i * 48;
+        if fuse_slice.len() != 48 {
+            // impossible but avoid panic
+            return Err(McuError::ROM_SOC_PK_HASH_VERIFY_FAILED);
+        }
+        if let Some(slice) = expected_hashes.get_mut(start..start + 48) {
+            slice.copy_from_slice(fuse_slice);
+        }
+    }
+
+    // Verify length matches: 384 bytes = 96 u32 words
+    let pk_hash_len = mci.prod_debug_unlock_pk_hash_len();
+    if pk_hash_len != 96 {
+        romtime::println!(
+            "[mcu-rom] PK hash length mismatch: expected 96, got {}",
+            pk_hash_len
+        );
+        return Err(McuError::ROM_SOC_PK_HASH_VERIFY_FAILED);
+    }
+
+    let mut fuse_hashes = [0u32; 96];
+    for (i, fuse_hash) in fuse_hashes.iter_mut().enumerate() {
+        *fuse_hash = mci.read_prod_debug_unlock_pk_hash(i).unwrap_or(0);
+    }
+    if !constant_time_eq::constant_time_eq(&expected_hashes, fuse_hashes.as_bytes()) {
+        romtime::println!("[mcu-rom] Prod debug unlock PK hash verification failed");
+        return Err(McuError::ROM_SOC_PK_HASH_VERIFY_FAILED);
+    }
+    romtime::println!("[mcu-rom] Prod debug unlock PK hash verification passed");
+    Ok(())
+}
+
+/// Verifies that the MCU mailbox AXI user configuration hasn't been tampered with
+/// after SS_CONFIG_DONE_STICKY is set.
+pub fn verify_mcu_mbox_axi_users(
+    mci: &romtime::Mci,
+    expected: &McuMboxAxiUserConfig,
+) -> Result<(), McuError> {
+    // Verify MBOX0 AXI users and locks
+    for (i, (expected_user, expected_lock)) in expected
+        .mbox0_users
+        .iter()
+        .zip(expected.mbox0_locks.iter())
+        .enumerate()
+    {
+        // Verify AXI user value if configured
+        if let Some(expected_val) = *expected_user {
+            let actual_val = mci.read_mbox0_valid_axi_user(i).unwrap_or(0);
+            if expected_val != actual_val {
+                romtime::println!(
+                    "[mcu-rom] MCU mailbox 0 user {} verification failed: expected {}, got {}",
+                    i,
+                    HexWord(expected_val),
+                    HexWord(actual_val)
+                );
+                return Err(McuError::ROM_SOC_MCU_MBOX_AXI_USER_VERIFY_FAILED);
+            }
+        }
+        // Verify lock status matches expected
+        let actual_locked = mci.read_mbox0_axi_user_lock(i).unwrap_or(false);
+        if *expected_lock != actual_locked {
+            romtime::println!(
+                "[mcu-rom] MCU mailbox 0 user {} lock verification failed: expected {}, got {}",
+                i,
+                expected_lock,
+                actual_locked
+            );
+            return Err(McuError::ROM_SOC_MCU_MBOX_AXI_USER_VERIFY_FAILED);
+        }
+    }
+
+    // Verify MBOX1 AXI users and locks
+    for (i, (expected_user, expected_lock)) in expected
+        .mbox1_users
+        .iter()
+        .zip(expected.mbox1_locks.iter())
+        .enumerate()
+    {
+        // Verify AXI user value if configured
+        if let Some(expected_val) = *expected_user {
+            let actual_val = mci.read_mbox1_valid_axi_user(i).unwrap_or(0);
+            if expected_val != actual_val {
+                romtime::println!(
+                    "[mcu-rom] MCU mailbox 1 user {} verification failed: expected {}, got {}",
+                    i,
+                    HexWord(expected_val),
+                    HexWord(actual_val)
+                );
+                return Err(McuError::ROM_SOC_MCU_MBOX_AXI_USER_VERIFY_FAILED);
+            }
+        }
+        // Verify lock status matches expected
+        let actual_locked = mci.read_mbox1_axi_user_lock(i).unwrap_or(false);
+        if *expected_lock != actual_locked {
+            romtime::println!(
+                "[mcu-rom] MCU mailbox 1 user {} lock verification failed: expected {}, got {}",
+                i,
+                expected_lock,
+                actual_locked
+            );
+            return Err(McuError::ROM_SOC_MCU_MBOX_AXI_USER_VERIFY_FAILED);
+        }
+    }
+
+    romtime::println!("[mcu-rom] MCU mailbox AXI user verification passed");
+    Ok(())
 }
 
 #[derive(Default)]

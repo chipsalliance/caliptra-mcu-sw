@@ -16,8 +16,9 @@ Abstract:
 
 use crate::boot_status::McuRomBootStatus;
 use crate::{
-    device_ownership_transfer, fatal_error, BootFlow, DotBlob, DotFuses, McuBootMilestones, RomEnv,
-    RomParameters, MCU_MEMORY_MAP,
+    configure_mcu_mbox_axi_users, device_ownership_transfer, fatal_error,
+    verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, BootFlow, DotBlob, DotFuses,
+    McuBootMilestones, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api::mailbox::{CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader};
 use caliptra_api::CaliptraApiError;
@@ -251,6 +252,43 @@ impl BootFlow for ColdBoot {
         romtime::println!("[mcu-rom] Populating fuses");
         soc.populate_fuses(fuses, mci);
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
+
+        // Configure MCU mailbox AXI users before locking
+        romtime::println!("[mcu-rom] Configuring MCU mailbox AXI users");
+        let mcu_mbox_config = configure_mcu_mbox_axi_users(mci, straps);
+        mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersConfigured.into());
+
+        // Set SS_CONFIG_DONE_STICKY to lock MCI configuration registers
+        romtime::println!("[mcu-rom] Setting SS_CONFIG_DONE_STICKY to lock configuration");
+        mci.set_ss_config_done_sticky();
+        mci.set_flow_checkpoint(McuRomBootStatus::SsConfigDoneStickySet.into());
+
+        // Set SS_CONFIG_DONE to lock MCI configuration registers until warm reset
+        romtime::println!("[mcu-rom] Setting SS_CONFIG_DONE");
+        mci.set_ss_config_done();
+        mci.set_flow_checkpoint(McuRomBootStatus::SsConfigDoneSet.into());
+
+        // Verify that SS_CONFIG_DONE_STICKY and SS_CONFIG_DONE are actually set
+        if !mci.is_ss_config_done_sticky() || !mci.is_ss_config_done() {
+            romtime::println!("[mcu-rom] SS_CONFIG_DONE verification failed");
+            fatal_error(McuError::ROM_SOC_SS_CONFIG_DONE_VERIFY_FAILED);
+        }
+
+        // Verify PK hashes haven't been tampered with after locking
+        romtime::println!("[mcu-rom] Verifying production debug unlock PK hashes");
+        if let Err(err) = verify_prod_debug_unlock_pk_hash(mci, fuses) {
+            romtime::println!("[mcu-rom] PK hash verification failed");
+            fatal_error(err);
+        }
+        mci.set_flow_checkpoint(McuRomBootStatus::PkHashVerified.into());
+
+        // Verify MCU mailbox AXI users haven't been tampered with after locking
+        romtime::println!("[mcu-rom] Verifying MCU mailbox AXI users");
+        if let Err(err) = verify_mcu_mbox_axi_users(mci, &mcu_mbox_config) {
+            romtime::println!("[mcu-rom] MCU mailbox AXI user verification failed");
+            fatal_error(err);
+        }
+        mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersVerified.into());
 
         romtime::println!("[mcu-rom] Setting Caliptra fuse write done");
         soc.fuse_write_done();

@@ -59,7 +59,7 @@ impl Default for McuMemoryMap {
         McuMemoryMap {
             rom_offset: 0x8000_0000,
             rom_size: 32 * 1024,
-            rom_stack_size: 0x2f00,
+            rom_stack_size: 0x2d00,
             rom_estack_size: 0x200,
             rom_properties: MemoryRegionType::MEMORY,
 
@@ -111,6 +111,10 @@ pub struct McuStraps {
     pub i3c_static_addr: u8,
     pub axi_user0: u32,
     pub axi_user1: u32,
+    /// Valid users for the MCU mailboxes. 0 values are ignored.
+    pub mcu_mbox0_axi_users: [u32; 5],
+    /// Valid users for the MCU mailboxes. 0 values are ignored.
+    pub mcu_mbox1_axi_users: [u32; 5],
     pub cptra_wdt_cfg0: u32,
     pub cptra_wdt_cfg1: u32,
     pub mcu_wdt_cfg0: u32,
@@ -123,6 +127,20 @@ impl McuStraps {
             i3c_static_addr: 0x3a,
             axi_user0: 0xcccc_cccc,
             axi_user1: 0xdddd_dddd,
+            mcu_mbox0_axi_users: [
+                0xcccc_cccc,
+                0xdddd_dddd,
+                0x0000_0000,
+                0x0000_0000,
+                0x0000_0000,
+            ],
+            mcu_mbox1_axi_users: [
+                0xcccc_cccc,
+                0xdddd_dddd,
+                0x0000_0000,
+                0x0000_0000,
+                0x0000_0000,
+            ],
             cptra_wdt_cfg0: 100_000_000,
             cptra_wdt_cfg1: 100_000_000,
             mcu_wdt_cfg0: 20_000_000,

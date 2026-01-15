@@ -298,13 +298,28 @@ impl McuError {
             "SOC tried to lock an Mbox user out of range"
         ),
         (
-            ROM_SOC_UDS_SEED_LEN_MISMATCH,
+            ROM_SOC_PK_HASH_VERIFY_FAILED,
             0x5_000E,
+            "Production debug unlock PK hash verification failed after locking"
+        ),
+        (
+            ROM_SOC_MCU_MBOX_AXI_USER_VERIFY_FAILED,
+            0x5_000F,
+            "MCU mailbox AXI user verification failed after locking"
+        ),
+        (
+            ROM_SOC_SS_CONFIG_DONE_VERIFY_FAILED,
+            0x5_0010,
+            "SS_CONFIG_DONE or SS_CONFIG_DONE_STICKY verification failed after setting"
+        ),
+        (
+            ROM_SOC_UDS_SEED_LEN_MISMATCH,
+            0x5_0011,
             "SOC UDS seed length mismatch"
         ),
         (
             ROM_SOC_FIELD_ENTROPY_LEN_MISMATCH,
-            0x5_000F,
+            0x5_0012,
             "SOC field entropy length mismatch"
         ),
         (
