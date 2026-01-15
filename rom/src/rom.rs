@@ -491,18 +491,21 @@ impl Soc {
     }
 }
 
+/// Number of users supported by the MCU MBOX ACL mechanism.
+pub const MCU_MBOX_USERS: usize = 5;
+
 /// Structure to hold expected values for MCU mailbox AXI user configuration.
 /// Used for verification after SS_CONFIG_DONE_STICKY is set.
 #[derive(Debug, Default, Clone)]
 pub struct McuMboxAxiUserConfig {
     /// Expected values for MBOX0 valid AXI users (None = not configured)
-    pub mbox0_users: [Option<u32>; 5],
+    pub mbox0_users: [Option<u32>; MCU_MBOX_USERS],
     /// Expected values for MBOX1 valid AXI users (None = not configured)
-    pub mbox1_users: [Option<u32>; 5],
+    pub mbox1_users: [Option<u32>; MCU_MBOX_USERS],
     /// Expected lock status for MBOX0 AXI users
-    pub mbox0_locks: [bool; 5],
+    pub mbox0_locks: [bool; MCU_MBOX_USERS],
     /// Expected lock status for MBOX1 AXI users
-    pub mbox1_locks: [bool; 5],
+    pub mbox1_locks: [bool; MCU_MBOX_USERS],
 }
 
 /// Configures MCU mailbox AXI users in MCI and returns the configuration for later verification.
@@ -529,7 +532,7 @@ pub fn configure_mcu_mbox_axi_users(
     }
 
     // Configure MBOX1 AXI users based on straps
-    for (i, user) in straps.mcu_mbox0_axi_users.into_iter().enumerate() {
+    for (i, user) in straps.mcu_mbox1_axi_users.into_iter().enumerate() {
         // skip unconfigured users and avoid impossible panics
         if user != 0 && i < config.mbox1_users.len() && i < config.mbox1_locks.len() {
             romtime::println!(
