@@ -56,10 +56,13 @@ use pldm_common::util::fw_component::FirmwareComponent;
 use crate::firmware_device::fd_internal::{
     ApplyState, DownloadState, InitiatorModeState, VerifyState,
 };
+use crate::firmware_device::transfer_session::CancellationFlag;
 
 pub struct FirmwareDeviceContext<'a> {
     ops: &'a dyn FdOps,
     internal: FdInternal,
+    /// Cancellation flag for signaling download abort from responder task.
+    cancellation_flag: CancellationFlag,
 }
 
 impl<'a> FirmwareDeviceContext<'a> {
@@ -68,6 +71,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         Self {
             ops,
             internal: FdInternal::default(),
+            cancellation_flag: CancellationFlag::new(),
         }
     }
 
@@ -447,6 +451,8 @@ impl<'a> FirmwareDeviceContext<'a> {
         };
 
         if should_cancel {
+            // Signal cancellation to the download loop
+            self.cancellation_flag.cancel();
             self.ops
                 .cancel_update_component(&self.internal.get_component().await)
                 .map_err(MsgHandlerError::FdOps)?;
@@ -502,6 +508,8 @@ impl<'a> FirmwareDeviceContext<'a> {
         };
 
         if should_cancel {
+            // Signal cancellation to the download loop
+            self.cancellation_flag.cancel();
             self.ops
                 .cancel_update_component(&self.internal.get_component().await)
                 .map_err(MsgHandlerError::FdOps)?;
@@ -1087,5 +1095,37 @@ impl<'a> FirmwareDeviceContext<'a> {
                 return (now - fd_req_sent_time) >= self.internal.get_fd_t2_retry_time().await;
             }
         }
+    }
+
+    /// Check if cancellation has been requested.
+    pub fn is_cancelled(&self) -> bool {
+        self.cancellation_flag.is_cancelled()
+    }
+
+    /// Reset the cancellation flag (called when starting a new transfer).
+    pub fn reset_cancellation(&self) {
+        self.cancellation_flag.reset();
+    }
+
+    /// Create a transfer session for optimized download.
+    /// This captures the current state to avoid mutex acquisitions in the hot path.
+    pub async fn create_transfer_session(&self) -> super::transfer_session::TransferSession {
+        self.reset_cancellation();
+        self.internal.create_transfer_session(self.ops.now()).await
+    }
+
+    /// Sync state from a transfer session back to internal state.
+    pub async fn sync_transfer_session(&self, session: &super::transfer_session::TransferSession) {
+        self.internal.sync_from_transfer_session(session).await;
+    }
+
+    /// Get current timestamp from ops.
+    pub fn now(&self) -> pldm_common::protocol::firmware_update::PldmFdTime {
+        self.ops.now()
+    }
+
+    /// Get the ops reference for download operations.
+    pub fn ops(&self) -> &dyn FdOps {
+        self.ops
     }
 }

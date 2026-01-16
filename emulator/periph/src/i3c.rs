@@ -93,7 +93,7 @@ pub struct I3c {
 
 impl I3c {
     const HCI_VERSION: u32 = 0x120;
-    const HCI_TICKS: u64 = 1000;
+    const HCI_TICKS: u64 = 100; // Reduced from 1000 for faster I/O
 
     pub fn new(
         clock: &Clock,

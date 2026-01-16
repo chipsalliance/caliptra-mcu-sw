@@ -83,7 +83,12 @@ pub const NUM_PROCS: usize = 4;
 pub static mut PROCESSES: [Option<&'static dyn kernel::process::Process>; NUM_PROCS] =
     [None; NUM_PROCS];
 
-pub type VeeRChip = mcu_tock_veer::chip::VeeR<'static, VeeRDefaultPeripherals<'static>>;
+/// Number of interrupt cells to scan (1 cell = 32 interrupts).
+/// Using 1 for performance since we only use interrupts 0-31.
+pub const PIC_USED_CELLS: usize = 1;
+
+pub type VeeRChip =
+    mcu_tock_veer::chip::VeeR<'static, VeeRDefaultPeripherals<'static>, PIC_USED_CELLS>;
 
 // Reference to the chip and peripherals for panic dumps and tests.
 pub static mut CHIP: Option<&'static VeeRChip> = None;
@@ -111,7 +116,7 @@ const FAULT_RESPONSE: capsules_system::process_policies::PanicFaultPolicy =
 pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
 
 #[no_mangle]
-pub static mut PIC: Pic = Pic::new(MCU_MEMORY_MAP.pic_offset);
+pub static mut PIC: Pic<PIC_USED_CELLS> = Pic::new(MCU_MEMORY_MAP.pic_offset);
 
 // Storage volume for logging flash. Use 64KB as placeholder.
 storage_volume!(LOG, 64);
@@ -507,7 +512,10 @@ pub unsafe fn main() {
     )
     .finalize(mbox_sram_component_static!(InternalTimers<'static>));
 
-    let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
+    let chip = static_init!(
+        VeeRChip,
+        mcu_tock_veer::chip::VeeR::new(&*addr_of!(PIC), peripherals, epmp)
+    );
     chip.init(addr_of!(_pic_vector_table) as u32);
     CHIP = Some(chip);
 

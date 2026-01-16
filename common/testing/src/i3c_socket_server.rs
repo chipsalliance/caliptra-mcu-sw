@@ -41,7 +41,6 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
-use std::time::Duration;
 use std::vec;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
@@ -118,7 +117,7 @@ fn handle_i3c_socket_connection(
     stream.set_nonblocking(true).unwrap();
 
     while running.load(Ordering::Relaxed) {
-        // try reading
+        // try reading from TCP socket (non-blocking)
         let mut incoming_header_bytes = [0u8; 9];
         match stream.read_exact(&mut incoming_header_bytes) {
             Ok(()) => {
@@ -146,21 +145,31 @@ fn handle_i3c_socket_connection(
             }
             Err(e) => panic!("Error reading message from socket: {}", e),
         }
-        if let Ok(response) = bus_response_rx.recv_timeout(Duration::from_millis(10)) {
-            let data_len = response.resp.resp.data_length() as usize;
-            if data_len > 255 {
-                panic!("Cannot write more than 255 bytes to socket");
+
+        // Try receiving from bus response channel (non-blocking)
+        match bus_response_rx.try_recv() {
+            Ok(response) => {
+                let data_len = response.resp.resp.data_length() as usize;
+                if data_len > 255 {
+                    panic!("Cannot write more than 255 bytes to socket");
+                }
+                let outgoing_header = OutgoingHeader {
+                    ibi: response.ibi.unwrap_or_default(),
+                    from_addr: response.addr.into(),
+                    response_descriptor: response.resp.resp,
+                };
+                let header_bytes: [u8; 6] = transmute!(outgoing_header);
+                stream.write_all(&header_bytes).unwrap();
+                if data_len > 0 {
+                    stream.write_all(&response.resp.data[..data_len]).unwrap();
+                }
             }
-            let outgoing_header = OutgoingHeader {
-                ibi: response.ibi.unwrap_or_default(),
-                from_addr: response.addr.into(),
-                response_descriptor: response.resp.resp,
-            };
-            let header_bytes: [u8; 6] = transmute!(outgoing_header);
-            stream.write_all(&header_bytes).unwrap();
-            if data_len > 0 {
-                stream.write_all(&response.resp.data[..data_len]).unwrap();
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                // Wait for next tick notification instead of busy-spinning
+                let lock = crate::TICK_LOCK.lock().unwrap();
+                let _ = crate::TICK_COND.wait_timeout(lock, std::time::Duration::from_micros(100));
             }
+            Err(_) => {}
         }
     }
 }

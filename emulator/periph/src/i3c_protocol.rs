@@ -21,7 +21,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
 
 #[derive(Default)]
 pub struct I3cController {
@@ -71,8 +70,17 @@ impl I3cController {
                     .for_each(|resp| {
                         tx.send(resp.clone()).unwrap();
                     });
-                if let Ok(cmd) = rx.recv_timeout(Duration::from_millis(5)) {
-                    I3cController::incoming(targets.clone(), counter.clone(), cmd);
+                match rx.try_recv() {
+                    Ok(cmd) => {
+                        I3cController::incoming(targets.clone(), counter.clone(), cmd);
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                        // Wait for next tick notification instead of busy-spinning
+                        let lock = mcu_testing_common::TICK_LOCK.lock().unwrap();
+                        let _ = mcu_testing_common::TICK_COND
+                            .wait_timeout(lock, std::time::Duration::from_micros(100));
+                    }
+                    Err(_) => {}
                 }
             }
         })

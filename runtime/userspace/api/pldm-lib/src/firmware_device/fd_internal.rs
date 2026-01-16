@@ -327,6 +327,42 @@ impl FdInternal {
         let inner = self.inner.lock().await;
         inner.fd_t2_retry_time
     }
+
+    /// Create a transfer session by capturing current state.
+    /// This is used to avoid mutex acquisitions during the hot download path.
+    pub async fn create_transfer_session(
+        &self,
+        now: PldmFdTime,
+    ) -> super::transfer_session::TransferSession {
+        let inner = self.inner.lock().await;
+        super::transfer_session::TransferSession::new(
+            inner.max_xfer_size,
+            inner.update_comp.clone(),
+            inner.fd_t1_timeout,
+            inner.fd_t2_retry_time,
+            inner.req.instance_id.unwrap_or(0),
+            now,
+        )
+    }
+
+    /// Sync state from a transfer session back to internal state.
+    /// Called at the end of a download or periodically for progress updates.
+    pub async fn sync_from_transfer_session(
+        &self,
+        session: &super::transfer_session::TransferSession,
+    ) {
+        let mut inner = self.inner.lock().await;
+        inner.req.instance_id = Some(session.instance_id);
+        inner.req.state = session.req_state.clone();
+        inner.req.complete = session.complete;
+        inner.req.result = session.result.map(|r| r as u8);
+        inner.req.sent_time = session.sent_time;
+        inner.fd_t1_update_ts = session.fd_t1_update_ts;
+        if let InitiatorModeState::Download(ref mut download) = inner.initiator_mode_state {
+            download.offset = session.offset;
+            download.length = session.length;
+        }
+    }
 }
 
 impl Default for FdInternalInner {

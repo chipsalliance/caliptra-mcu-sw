@@ -53,8 +53,6 @@ impl MctpTransport {
     }
 
     pub async fn receive_response(&mut self, rsp: &mut [u8]) -> Result<(), TransportError> {
-        // Reset msg buffer
-        rsp.fill(0);
         let (rsp_len, _msg_info) = if let Some(msg_info) = &self.cur_req_ctx {
             self.mctp
                 .receive_response(rsp, msg_info.tag, msg_info.eid)
@@ -78,9 +76,50 @@ impl MctpTransport {
         Ok(())
     }
 
+    /// Send a request and receive the response in a single operation.
+    ///
+    /// This is more efficient than separate send_request + receive_response calls
+    /// as it eliminates one syscall round-trip.
+    ///
+    /// Returns (rsp_len, recv_time) where recv_time is kernel's clock tick when message arrived.
+    pub async fn send_request_and_receive(
+        &mut self,
+        dest_eid: u8,
+        req: &[u8],
+        rsp: &mut [u8],
+    ) -> Result<(u32, u32), TransportError> {
+        let mctp_hdr = MctpCommonHeader(req[MCTP_COMMON_HEADER_OFFSET]);
+        if mctp_hdr.ic() != 0 || mctp_hdr.msg_type() != MCTP_PLDM_MSG_TYPE {
+            Err(TransportError::UnexpectedMessageType)?;
+        }
+
+        // Note: We don't zero the response buffer here for performance.
+        // The caller should only use rsp[..rsp_len] based on the returned length.
+
+        let (rsp_len, recv_time, _msg_info) = self
+            .mctp
+            .send_request_and_receive(dest_eid, req, rsp)
+            .await
+            .map_err(|_| TransportError::SendError)?;
+
+        if rsp_len == 0 {
+            Err(TransportError::BufferTooSmall)?;
+        }
+
+        // Check common header
+        let mctp_hdr = MctpCommonHeader(rsp[MCTP_COMMON_HEADER_OFFSET]);
+        if mctp_hdr.ic() != 0 || mctp_hdr.msg_type() != MCTP_PLDM_MSG_TYPE {
+            Err(TransportError::UnexpectedMessageType)?;
+        }
+
+        // Clear context - response received
+        self.cur_req_ctx = None;
+        Ok((rsp_len, recv_time))
+    }
+
     pub async fn receive_request(&mut self, req: &mut [u8]) -> Result<(), TransportError> {
-        // Reset msg buffer
-        req.fill(0);
+        // Note: We don't zero the request buffer here for performance.
+        // The MCTP layer overwrites it with the actual request data.
         let (req_len, msg_info) = self
             .mctp
             .receive_request(req)

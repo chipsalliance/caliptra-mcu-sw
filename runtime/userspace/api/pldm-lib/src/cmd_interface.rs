@@ -115,6 +115,36 @@ impl<'a> CmdInterface<'a> {
         self.fd_ctx.should_stop_initiator_mode().await
     }
 
+    /// Check if the current transfer has been cancelled.
+    pub fn is_cancelled(&self) -> bool {
+        self.fd_ctx.is_cancelled()
+    }
+
+    /// Create a transfer session for optimized download.
+    pub async fn create_transfer_session(
+        &self,
+    ) -> crate::firmware_device::transfer_session::TransferSession {
+        self.fd_ctx.create_transfer_session().await
+    }
+
+    /// Sync state from a transfer session back to internal state.
+    pub async fn sync_transfer_session(
+        &self,
+        session: &crate::firmware_device::transfer_session::TransferSession,
+    ) {
+        self.fd_ctx.sync_transfer_session(session).await;
+    }
+
+    /// Get current timestamp.
+    pub fn now(&self) -> pldm_common::protocol::firmware_update::PldmFdTime {
+        self.fd_ctx.now()
+    }
+
+    /// Get the FdOps reference for download operations.
+    pub fn ops(&self) -> &dyn crate::firmware_device::fd_ops::FdOps {
+        self.fd_ctx.ops()
+    }
+
     async fn process_request(&self, msg_buf: &mut [u8]) -> Result<usize, MsgHandlerError> {
         // Check if the handler is busy processing a request
         if self.busy.load(Ordering::SeqCst) {
