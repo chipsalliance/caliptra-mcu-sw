@@ -23,51 +23,74 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
 ### Cold Boot Flow
 
 1. Check the MCI `RESET_REASON` register for MCU status (it should be in cold boot mode)
-1. Initialize I3C registers according to the [initialization sequence](https://chipsalliance.github.io/i3c-core/initialization.html).
-1. Initialize I3C recovery interface [initialization sequence](https://chipsalliance.github.io/i3c-core/recovery_flow.html).
+1. Initialize I3C recovery interface. For AXI bypass boot, only the recovery interface initialization is required; basic I3C initialization can be skipped.
+   * For I3C boot: Initialize I3C registers according to the [initialization sequence](https://chipsalliance.github.io/i3c-core/initialization.html), then initialize I3C recovery interface per the [recovery flow](https://chipsalliance.github.io/i3c-core/recovery_flow.html).
+   * For AXI bypass boot: Only initialize the recovery interface registers needed for streaming boot.
+1. Assert Caliptra boot go signal to bring Caliptra out of reset.
+1. Read Caliptra SoC `FLOW_STATUS` register to wait for Caliptra Ready for Fuses state.
 1. Anything SoC-specific can happen here
-    1. Stash to Caliptra if required (i.e., if any security-sensitive code is loaded, such as PLL programming or configuration loading)
-1. Read Caliptra SoC `FLOW_STATUS` register to wait for Caliptra Ready for Fuses state
-1. Read non-secret fuse registers from creator SW OTP partition in OpenTitan OTP controller. The list of fuses and their sizes are reproduced here, but the authoritative fuse map is contained in [the main Caliptra specification](https://github.com/chipsalliance/Caliptra/blob/main/doc/Caliptra.md#fuse-map).
-    * `KEY MANIFEST PK HASH`: 384 bits
-    * `ECC REVOCATION (KEY MANIFEST PK HASH MASK)`: 4 bits
-    * `OWNER PK HASH`: 384 bits
-    * `FMC KEY MANIFEST SVN`: 32 bits
-    * `RUNTIME SVN`: 128 bits
-    * `ANTI-ROLLBACK DISABLE`: 1 bits
-    * `IDEVID CERT IDEVID ATTR`: 768 bits
-    * `IDEVID MANUF HSM IDENTIFIER`: 128 bits
-    * `LIFE CYCLE`: 2 bits
-    * `LMS REVOCATION`: 32 bits
-    * `MLDSA REVOCATION`: 4 bits
-    * `SOC STEPPING ID`: 16 bits
-    * `MANUF_DEBUG_UNLOCK_TOKEN`: 128 bits
-1. Write fuse data to Caliptra SoC interface fuse registers.
+   1. Stash to Caliptra if required (i.e., if any security-sensitive code is loaded, such as PLL programming or configuration loading). Note: Caliptra must be up and ready for fuses before stashing can occur.
+1. Read non-secret fuses from the OTP controller. The authoritative fuse map is contained in [the main Caliptra specification](https://github.com/chipsalliance/Caliptra/blob/main/doc/Caliptra.md#fuse-map).
+1. Write fuse data to Caliptra SoC interface fuse registers. The following fuses are written to the corresponding Caliptra registers:
+    * [`FUSE_PQC_KEY_TYPE`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_pqc_key_type): Vendor PQC key type (2 bits)
+    * [`FUSE_FMC_KEY_MANIFEST_SVN`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_soc_manifest_svn%5B0%5D): FMC key manifest SVN (32 bits)
+    * [`FUSE_VENDOR_PK_HASH`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_vendor_pk_hash%5B0%5D): Vendor public key hash (384 bits)
+    * [`FUSE_RUNTIME_SVN`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_runtime_svn%5B0%5D): Runtime SVN (128 bits)
+    * [`FUSE_SOC_MANIFEST_SVN`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_soc_manifest_svn): SoC manifest SVN (128 bits)
+    * [`FUSE_SOC_MANIFEST_MAX_SVN`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_soc_manifest_max_svn): SoC manifest max SVN (32 bits)
+    * [`FUSE_MANUF_DBG_UNLOCK_TOKEN`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_manuf_dbg_unlock_token): Manufacturing debug unlock token (128 bits)
+    * [`FUSE_ECC_REVOCATION`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_ecc_revocation): Vendor ECC key revocation (4 bits)
+    * [`FUSE_LMS_REVOCATION`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_lms_revocation): Vendor LMS key revocation (32 bits)
+    * [`FUSE_MLDSA_REVOCATION`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_mldsa_revocation): Vendor MLDSA key revocation (4 bits)
+    * [`CPTRA_OWNER_PK_HASH`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.CPTRA_OWNER_PK_HASH): Owner public key hash (384 bits, written only if non-zero, could be overridden by [device ownership transfer](dot.md))
+    * [`FUSE_SOC_STEPPING_ID`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_soc_stepping_id): SoC stepping ID (16 bits)
+    * [`FUSE_ANTI_ROLLBACK_DISABLE`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_anti_rollback_disable): Anti-rollback disable (1 bit)
+    * [`FUSE_IDEVID_CERT_ATTR`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_idevid_cert_attr): IDevID certificate attributes (768 bits)
+    * [`FUSE_IDEVID_MANUF_HSM_ID`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_idevid_manuf_hsm_id): IDevID manufacturing HSM identifier (128 bits)
+    * [`SS_UDS_SEED_BASE_ADDR_L/H`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_UDS_SEED_BASE_ADDR_L): UDS/FE partition base address in OTP
+    * [`SS_STRAP_GENERIC`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): OTP DAI idle bit offset and direct access command register offset
+    * [MCI] [`PROD_DEBUG_UNLOCK_PK_HASH_REG`](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.PROD_DEBUG_UNLOCK_PK_HASH_REG%5B0%5D%5B0%5D) Production debug unlock public key hashes (384 bytes total for 8 key hashes)
 1. Configure MCU mailbox AXI users (see [Security Configuration](#security-configuration) below).
-1. Set `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` registers to lock MCI configuration.
+1. Set mailbox AXI user lock registers.
+1. [2.1] Set [FC_FIPS_ZEROZATION](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.FC_FIPS_ZEROZATION) to the appropriate value.
+1. Set `SS_CONFIG_DONE_STICKY`, `SS_CONFIG_DONE` registers to lock MCI configuration.
 1. Verify PK hashes and MCU mailbox AXI users after locking (see [Security Configuration](#security-configuration) below).
 1. Poll on Caliptra `FLOW_STATUS` registers for Caliptra to deassert the Ready for Fuses state.
-1. Handle [device ownership transfer](./dot.md).
-1. Send the `RI_DOWNLOAD_FIRMWARE` command to Caliptra to start the firmware loading process.
-1. Wait for reset to trigger firmware update flow.
+1. Handle [device ownership transfer](./dot.md), if applicable.
+1. Stash the MCU ROM and other measurements to Caliptra.
+1. Send the `RI_DOWNLOAD_FIRMWARE` command to Caliptra to start the firmware loading process. Caliptra will:
+   1. Follow all of the [steps](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#firmware-processor-stage) in the Caliptra ROM documentation for firmware loading in the ROM cold reset.
+   1. Transition to Caliptra runtime firmware.
+   1. Load the SoC manifest over the recovery interface and verify it.
+   1. Load the MCU runtime over the recovery interface registers to the MCU SRAM.
+   1. Verify the MCU runtime against the SoC manifest.
+   1. [2.1] If the MCU runtime is encrypted:
+      1. Caliptra runtime returns to mailbox processing mode.
+      1. MCU derives or imports the decryption key to the Caliptra cryptographic mailbox.
+      1. MCU issues a CM_AES_GCM_DECRYPT_DMA command to decrypt the firmware in MCU SRAM.
+      1. MCU issues the ACTIVATE_FIRMARE command to Caliptra activate the MCU firmware.
+   1. Caliptra sets the MCI [`FW_EXEC_CTRL[2]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_GENERIC_FW_EXEC_CTRL%5B0%5D) bit to indicate that MCU firmware is ready
+1. Wait for Caliptra to indicate MCU firmware is ready by polling the firmware ready status.
+1. MCU ROM triggers a reset by writing `0x1` to the MCI `RESET_REQUEST` register. This generates a hardware reset of the MCU core while maintaining power. The MCI hardware automatically sets `RESET_REASON` to `FirmwareBootReset`, causing the MCU to restart and enter the Firmware Boot Reset flow, which will jump to the loaded firmware.
 1. Clear the watchdog timer.
 
 ```mermaid
 sequenceDiagram
     note right of mcu: check reset reason
-    note right of mcu: initialize I3C
+    mcu->>mci: assert Caliptra boot go
     note right of mcu: initialize recovery interface
+    loop wait for ready for fuses
+    mcu->>caliptra: read flow status
+    end
     note right of mcu: SoC-specific init
     opt if required
         mcu->>caliptra: stash
-    end
-    loop wait for ready for fuses
-    mcu->>caliptra: read flow status
     end
     mcu->>otp: read non-secret fuses
     otp->>mcu: non-secret fuses
     mcu->>caliptra: set non-secret fuses
     mcu->>mci: configure MCU mailbox AXI users
+    mcu->>mci: lock MCU mailbox AXI users
     mcu->>mci: set SS_CONFIG_DONE_STICKY
     mcu->>mci: set SS_CONFIG_DONE
     mcu->>mci: verify PK hashes
@@ -75,12 +98,23 @@ sequenceDiagram
     loop wait for NOT ready for fuses
     mcu->>caliptra: read flow status
     end
-    note right of mcu: clear watchdog
-    note right of mcu: wait for reset
+    mcu->>caliptra: RI_DOWNLOAD_FIRMWARE command
+    note right of caliptra: authenticate FW header/TOC
+    note right of caliptra: verify signatures
+    note right of caliptra: load/decrypt Caliptra FW
+    note right of caliptra: derive runtime keys
+    alt encrypted MCU FW
+        note right of caliptra: decrypt and load MCU FW to SRAM
+    else unencrypted MCU FW
+        note right of caliptra: load MCU FW to SRAM
+    end
+    caliptra->>mci: set FW_EXEC_CTL[2]
+    loop wait for firmware ready
+    mcu->>mci: check FW_EXEC_CTL
+    end
+    mcu->>mci: write RESET_REQUEST (0x1)
+    note right of mcu: resets to Firmware Boot flow
 ```
-
-
-The main Caliptra ROM and runtime will continue executing and push the MCU runtime firmware to its SRAM, set the MCI register stating that the firmware is ready, and reset the MCU.
 
 ### Firmware Boot Flow
 
@@ -151,7 +185,6 @@ Warm Reset Flow occurs when the subsystem reset is toggled while `powergood` is 
 1. Check the MCI `RESET_REASON` register for reset status (it should be in warm reset mode `WarmReset`)
 1. Assert Caliptra boot go signal to bring Caliptra out of reset.
 1. Wait for Caliptra to be ready for fuses (even though fuses won't be rewritten)
-1. Configure AXI users for Caliptra SoC interface.
 1. Set `SS_CONFIG_DONE` register to lock MCI configuration until next warm reset.
 1. Signal fuse write done to Caliptra to complete the fuse handshake protocol
 1. Wait for Caliptra to deassert ready for fuses state
@@ -168,6 +201,7 @@ sequenceDiagram
     loop wait for ready for fuses
         mcu->>caliptra: check ready for fuses status
     end
+    mcu->>mci: set SS_CONFIG_DONE
     mcu->>mci: set SS_CONFIG_DONE
     mcu->>caliptra: signal fuse write done
     loop wait for NOT ready for fuses
@@ -212,10 +246,11 @@ The `PROD_DEBUG_UNLOCK_PK_HASH_REG` registers in MCI store the public key hashes
 
 The verification process:
 1. MCU ROM writes PK hash values from fuses to `PROD_DEBUG_UNLOCK_PK_HASH_REG` registers
-2. MCU ROM sets `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` to lock the registers
-3. MCU ROM verifies that both config done registers are actually set
-4. MCU ROM reads back the PK hash register values and compares them against the original fuse values
-5. If any mismatch is detected, MCU ROM reports a fatal error (`ROM_SOC_PK_HASH_VERIFY_FAILED`)
+1. [2.1] MCU ROM writes the [FC_FIPS_ZEROZATION](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.FC_FIPS_ZEROZATION) register
+1. MCU ROM sets `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` to lock the registers
+1. MCU ROM reads back the PK hash register values and compares them against the original fuse values
+1. [2.1] MCU ROM reads back the FC_FIPS_ZEROIZATION register and verifies its value.
+1. If any mismatch is detected, MCU ROM reports a fatal error (`ROM_SOC_PK_HASH_VERIFY_FAILED`)
 
 ### MCU Mailbox AXI User Verification
 
