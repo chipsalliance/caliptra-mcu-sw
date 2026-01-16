@@ -50,20 +50,20 @@ Caveats:
 * Will fail if any of the existing data is 1 but is set to 0 in the input data. Existing data that is 0 but set to 1 will be burned to a 1.
 * Writes to buffered partitions will not take effect until the next reset.
 
-### MC_FUSE_LOCK_PARTITON
+### MC_FUSE_LOCK_PARTITION
 
 Lock a partition.
 
 Command Code: `0x4946_504B` ("IFPK")
 
-*Table: `MC_FUSE_WRITE` input arguments*
+*Table: `MC_FUSE_LOCK_PARTITION` input arguments*
 | **Name**   | **Type**       | **Description**               |
 | ---------- | -------------- | ----------------------------- |
 | chksum     |  u32           |                               |
 | partition  |  u32           | Partition number to lock      |
 
 
-*Table: `MC_FUSE_WRITE` output arguments*
+*Table: `MC_FUSE_LOCK_PARTITION` output arguments*
 | **Name**      | **Type**       | **Description**                         |
 | ------------- | -------------- | --------------------------------------- |
 | chksum        |  u32           |                                         |

@@ -58,7 +58,7 @@ where
     const MIN_SIZE: usize = core::mem::size_of::<Self>();
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct CommandId(pub u32);
 
 impl CommandId {
@@ -86,6 +86,11 @@ impl CommandId {
     pub const MC_IMPORT: Self = Self(0x4D43_494D); // "MCIM"
     pub const MC_DELETE: Self = Self(0x4D43_444C); // "MCDL"
     pub const MC_CM_STATUS: Self = Self(0x4D43_5354); // "MCST"
+
+    // In-Field Fuse Programming commands
+    pub const MC_FUSE_READ: Self = Self(0x4946_5052); // "IFPR"
+    pub const MC_FUSE_WRITE: Self = Self(0x4946_5057); // "IFPW"
+    pub const MC_FUSE_LOCK_PARTITION: Self = Self(0x4946_504B); // "IFPK"
 }
 
 impl From<u32> for CommandId {
@@ -127,6 +132,10 @@ pub enum McuMailboxReq {
     CmStatus(McuCmStatusReq),
     RandomStir(McuRandomStirReq),
     RandomGenerate(McuRandomGenerateReq),
+    // In-Field Fuse Programming
+    FuseRead(FuseReadReq),
+    FuseWrite(FuseWriteReq),
+    FuseLockPartition(FuseLockPartitionReq),
 }
 
 impl McuMailboxReq {
@@ -156,6 +165,9 @@ impl McuMailboxReq {
             McuMailboxReq::CmStatus(req) => Ok(req.as_bytes()),
             McuMailboxReq::RandomStir(req) => req.as_bytes_partial(),
             McuMailboxReq::RandomGenerate(req) => Ok(req.as_bytes()),
+            McuMailboxReq::FuseRead(req) => Ok(req.as_bytes()),
+            McuMailboxReq::FuseWrite(req) => req.as_bytes_partial(),
+            McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -185,6 +197,9 @@ impl McuMailboxReq {
             McuMailboxReq::CmStatus(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::RandomStir(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::RandomGenerate(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::FuseRead(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::FuseWrite(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -214,6 +229,9 @@ impl McuMailboxReq {
             McuMailboxReq::CmStatus(_) => CommandId::MC_CM_STATUS,
             McuMailboxReq::RandomStir(_) => CommandId::MC_RANDOM_STIR,
             McuMailboxReq::RandomGenerate(_) => CommandId::MC_RANDOM_GENERATE,
+            McuMailboxReq::FuseRead(_) => CommandId::MC_FUSE_READ,
+            McuMailboxReq::FuseWrite(_) => CommandId::MC_FUSE_WRITE,
+            McuMailboxReq::FuseLockPartition(_) => CommandId::MC_FUSE_LOCK_PARTITION,
         }
     }
 
@@ -266,6 +284,10 @@ pub enum McuMailboxResp {
     CmStatus(McuCmStatusResp),
     RandomStir(McuRandomStirResp),
     RandomGenerate(McuRandomGenerateResp),
+    // In-Field Fuse Programming
+    FuseRead(FuseReadResp),
+    FuseWrite(FuseWriteResp),
+    FuseLockPartition(FuseLockPartitionResp),
 }
 
 /// A trait for responses with variable size data.
@@ -356,6 +378,9 @@ impl McuMailboxResp {
             McuMailboxResp::CmStatus(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::RandomStir(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::RandomGenerate(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::FuseWrite(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
         }
     }
 
@@ -386,6 +411,9 @@ impl McuMailboxResp {
             McuMailboxResp::CmStatus(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::RandomStir(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::RandomGenerate(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::FuseWrite(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
         }
     }
 
@@ -822,3 +850,301 @@ impl Request for McuRandomGenerateReq {
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct McuRandomGenerateResp(pub CmRandomGenerateResp);
 impl_mcu_response_varsize!(McuRandomGenerateResp, CmRandomGenerateResp);
+
+// ---- In-Field Fuse Programming (IFP) ----
+
+/// Maximum size of fuse data in bytes for read/write operations.
+/// This should accommodate the largest fuse entry (e.g., 768-bit IDevID cert = 96 bytes).
+pub const MAX_FUSE_DATA_SIZE: usize = 128;
+
+/// MC_FUSE_READ request: Read fuse values from a partition entry.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseReadReq {
+    pub hdr: MailboxReqHeader,
+    /// Partition number to read from
+    pub partition: u32,
+    /// Entry index within the partition
+    pub entry: u32,
+}
+impl Request for FuseReadReq {
+    const ID: CommandId = CommandId::MC_FUSE_READ;
+    type Resp = FuseReadResp;
+}
+
+/// MC_FUSE_READ response: Returns fuse data with length in bits.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseReadResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    /// Number of valid bits in the data field
+    pub length_bits: u32,
+    /// Fuse data (variable length, up to MAX_FUSE_DATA_SIZE bytes)
+    pub data: [u8; MAX_FUSE_DATA_SIZE],
+}
+impl McuResponseVarSize for FuseReadResp {}
+
+impl Default for FuseReadResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            length_bits: 0,
+            data: [0u8; MAX_FUSE_DATA_SIZE],
+        }
+    }
+}
+
+/// MC_FUSE_WRITE request: Write fuse values to a partition entry.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseWriteReq {
+    pub hdr: MailboxReqHeader,
+    /// Partition number to write to
+    pub partition: u32,
+    /// Entry index within the partition
+    pub entry: u32,
+    /// Starting bit position (LSB in entry is 0)
+    pub start_bit: u32,
+    /// Number of bits to write
+    pub length_bits: u32,
+    /// Fuse data to write (variable length, up to MAX_FUSE_DATA_SIZE bytes)
+    pub data: [u8; MAX_FUSE_DATA_SIZE],
+}
+
+impl Default for FuseWriteReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            partition: 0,
+            entry: 0,
+            start_bit: 0,
+            length_bits: 0,
+            data: [0u8; MAX_FUSE_DATA_SIZE],
+        }
+    }
+}
+
+impl FuseWriteReq {
+    /// Returns the actual size of the request based on the data length.
+    fn partial_len(&self) -> usize {
+        let data_bytes = (self.length_bits as usize).div_ceil(8);
+        core::mem::size_of::<MailboxReqHeader>()
+            + core::mem::size_of::<u32>() * 4  // partition, entry, start_bit, length_bits
+            + data_bytes
+    }
+}
+
+impl McuRequestVarSize for FuseWriteReq {
+    fn as_bytes_partial(&self) -> McuMboxResult<&[u8]> {
+        self.as_bytes()
+            .get(..self.partial_len())
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+    }
+
+    fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]> {
+        let len = self.partial_len();
+        self.as_mut_bytes()
+            .get_mut(..len)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+    }
+}
+
+impl Request for FuseWriteReq {
+    const ID: CommandId = CommandId::MC_FUSE_WRITE;
+    type Resp = FuseWriteResp;
+}
+
+/// MC_FUSE_WRITE response: Indicates success or failure.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseWriteResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for FuseWriteResp {}
+
+/// MC_FUSE_LOCK_PARTITION request: Lock a partition to prevent further writes.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseLockPartitionReq {
+    pub hdr: MailboxReqHeader,
+    /// Partition number to lock
+    pub partition: u32,
+}
+impl Request for FuseLockPartitionReq {
+    const ID: CommandId = CommandId::MC_FUSE_LOCK_PARTITION;
+    type Resp = FuseLockPartitionResp;
+}
+
+/// MC_FUSE_LOCK_PARTITION response: Indicates success or failure.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseLockPartitionResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for FuseLockPartitionResp {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fuse_command_ids() {
+        // Verify command codes match the spec
+        assert_eq!(CommandId::MC_FUSE_READ.0, 0x4946_5052); // "IFPR"
+        assert_eq!(CommandId::MC_FUSE_WRITE.0, 0x4946_5057); // "IFPW"
+        assert_eq!(CommandId::MC_FUSE_LOCK_PARTITION.0, 0x4946_504B); // "IFPK"
+    }
+
+    #[test]
+    fn test_fuse_read_req_serialization() {
+        let req = FuseReadReq {
+            hdr: MailboxReqHeader { chksum: 0x1234 },
+            partition: 5,
+            entry: 2,
+        };
+
+        let bytes = req.as_bytes();
+        assert_eq!(bytes.len(), core::mem::size_of::<FuseReadReq>());
+
+        // Verify fields are at expected offsets (little-endian)
+        let parsed = FuseReadReq::read_from_bytes(bytes).unwrap();
+        assert_eq!(parsed.hdr.chksum, 0x1234);
+        assert_eq!(parsed.partition, 5);
+        assert_eq!(parsed.entry, 2);
+    }
+
+    #[test]
+    fn test_fuse_read_resp_serialization() {
+        let mut resp = FuseReadResp::default();
+        resp.hdr.hdr.fips_status = 0;
+        resp.hdr.data_len = 8; // 8 bytes of data
+        resp.length_bits = 64;
+        resp.data[0..8].copy_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+
+        let bytes = resp.as_bytes();
+        let parsed = FuseReadResp::read_from_bytes(bytes).unwrap();
+        assert_eq!(parsed.hdr.hdr.fips_status, 0);
+        assert_eq!(parsed.length_bits, 64);
+        assert_eq!(
+            &parsed.data[0..8],
+            &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
+        );
+    }
+
+    #[test]
+    fn test_fuse_write_req_serialization() {
+        let mut req = FuseWriteReq::default();
+        req.partition = 3;
+        req.entry = 1;
+        req.start_bit = 0;
+        req.length_bits = 32;
+        req.data[0..4].copy_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
+
+        let bytes = req.as_bytes();
+        let parsed = FuseWriteReq::read_from_bytes(bytes).unwrap();
+        assert_eq!(parsed.partition, 3);
+        assert_eq!(parsed.entry, 1);
+        assert_eq!(parsed.start_bit, 0);
+        assert_eq!(parsed.length_bits, 32);
+        assert_eq!(&parsed.data[0..4], &[0xAA, 0xBB, 0xCC, 0xDD]);
+    }
+
+    #[test]
+    fn test_fuse_write_req_partial_len() {
+        let mut req = FuseWriteReq::default();
+        req.length_bits = 32; // 4 bytes
+        let expected_len = core::mem::size_of::<MailboxReqHeader>() + 4 * 4 + 4;
+        assert_eq!(req.partial_len(), expected_len);
+
+        req.length_bits = 1; // 1 bit = 1 byte
+        let expected_len = core::mem::size_of::<MailboxReqHeader>() + 4 * 4 + 1;
+        assert_eq!(req.partial_len(), expected_len);
+
+        req.length_bits = 0;
+        let expected_len = core::mem::size_of::<MailboxReqHeader>() + 4 * 4 + 0;
+        assert_eq!(req.partial_len(), expected_len);
+    }
+
+    #[test]
+    fn test_fuse_lock_partition_req_serialization() {
+        let req = FuseLockPartitionReq {
+            hdr: MailboxReqHeader { chksum: 0x5678 },
+            partition: 7,
+        };
+
+        let bytes = req.as_bytes();
+        let parsed = FuseLockPartitionReq::read_from_bytes(bytes).unwrap();
+        assert_eq!(parsed.hdr.chksum, 0x5678);
+        assert_eq!(parsed.partition, 7);
+    }
+
+    #[test]
+    fn test_fuse_req_checksum() {
+        let mut req = McuMailboxReq::FuseRead(FuseReadReq {
+            hdr: MailboxReqHeader::default(),
+            partition: 1,
+            entry: 2,
+        });
+
+        // Populate checksum
+        req.populate_chksum().unwrap();
+
+        // Verify checksum is non-zero after population
+        let bytes = req.as_bytes().unwrap();
+        let hdr = MailboxReqHeader::read_from_prefix(bytes).unwrap().0;
+        assert_ne!(hdr.chksum, 0);
+
+        // Verify command code
+        assert_eq!(req.cmd_code(), CommandId::MC_FUSE_READ);
+    }
+
+    #[test]
+    fn test_fuse_resp_checksum() {
+        let mut resp = McuMailboxResp::FuseWrite(FuseWriteResp {
+            hdr: MailboxRespHeader::default(),
+        });
+
+        // Populate checksum - for an all-zero payload, checksum is 0
+        resp.populate_chksum().unwrap();
+
+        // Verify checksum calculation works (all zeros = zero checksum)
+        let bytes = resp.as_bytes().unwrap();
+        let hdr = MailboxRespHeader::read_from_prefix(bytes).unwrap().0;
+        // Zero checksum is valid for zero payload
+        assert_eq!(hdr.chksum, 0);
+    }
+
+    #[test]
+    fn test_fuse_lock_partition_resp_checksum() {
+        let mut resp = McuMailboxResp::FuseLockPartition(FuseLockPartitionResp {
+            hdr: MailboxRespHeader::default(),
+        });
+
+        resp.populate_chksum().unwrap();
+
+        // Zero checksum is valid for zero payload
+        let bytes = resp.as_bytes().unwrap();
+        let hdr = MailboxRespHeader::read_from_prefix(bytes).unwrap().0;
+        assert_eq!(hdr.chksum, 0);
+    }
+
+    #[test]
+    fn test_fuse_read_resp_checksum_with_data() {
+        let mut resp = FuseReadResp::default();
+        resp.hdr.data_len = 4;
+        resp.length_bits = 32;
+        resp.data[0..4].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+
+        let mut mbox_resp = McuMailboxResp::FuseRead(resp);
+        mbox_resp.populate_chksum().unwrap();
+
+        // With non-zero data, checksum should be non-zero
+        let bytes = mbox_resp.as_bytes().unwrap();
+        let hdr = MailboxRespHeader::read_from_prefix(bytes).unwrap().0;
+        assert_ne!(hdr.chksum, 0);
+
+        // Verify checksum can be validated using verify_checksum
+        let payload = &bytes[core::mem::size_of::<u32>()..];
+        assert!(verify_checksum(hdr.chksum, 0, payload));
+    }
+}
