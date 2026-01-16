@@ -122,10 +122,7 @@ impl<'a> LdGeneration<'a> {
             .as_ref()
             .map(|binary| -> Result<AppLinkerScript> {
                 let mut rom_tracker = self.manifest.platform.rom.clone();
-                // The ROM will have sole access to RAM since it runs before any runtime
-                // applications.  Therfore use a separate copy of the ram tracker from the runtime,
-                // since the ROM can use the whole thing.
-                let mut ram_tracker = self.manifest.platform.ram.clone();
+                let mut dccm_tracker = self.manifest.platform.dccm().clone();
 
                 let instructions = self
                     .get_mem_block(
@@ -135,7 +132,7 @@ impl<'a> LdGeneration<'a> {
                     )
                     .with_context(|| binary_context(&binary.name))?;
                 let data = self
-                    .get_mem_block(binary.ram, binary.ram_alignment, &mut ram_tracker)
+                    .get_mem_block(binary.ram, binary.ram_alignment, &mut dccm_tracker)
                     .with_context(|| binary_context(&binary.name))?;
                 let content = self
                     .rom_linker_content(binary, instructions, data)
@@ -340,7 +337,8 @@ MEMORY
     rom (rx)  : ORIGIN = $KERNEL_START, LENGTH = $KERNEL_LENGTH
     prog (rx) : ORIGIN = $APPS_START, LENGTH = $APPS_LENGTH
     ram (rwx) : ORIGIN = $DATA_RAM_START, LENGTH = $DATA_RAM_LENGTH
-    flash (r) : ORIGIN = 0x0, LENGTH = 0x0
+    dccm (rw) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_LENGTH
+    flash (r) : ORIGIN = $FLASH_OFFSET, LENGTH = $FLASH_LENGTH
 }
 
 $PAGE_SIZE
@@ -370,6 +368,15 @@ INCLUDE $BASE_LD_CONTENTS
 
         sub_map.insert("DATA_RAM_START", format!("{:#x}", data.offset));
         sub_map.insert("DATA_RAM_LENGTH", format!("{:#x}", data.size));
+
+        let dccm = self.manifest.platform.dccm();
+        sub_map.insert("DCCM_OFFSET", format!("{:#x}", dccm.offset));
+        sub_map.insert("DCCM_LENGTH", format!("{:#x}", dccm.size));
+
+        let flash = self.manifest.platform.flash();
+        sub_map.insert("FLASH_OFFSET", format!("{:#x}", flash.offset));
+        sub_map.insert("FLASH_LENGTH", format!("{:#x}", flash.size));
+
         sub_map.insert("STACK_SIZE", format!("{:#x}", binary.stack()));
         sub_map.insert(
             "BASE_LD_CONTENTS",
@@ -379,7 +386,7 @@ INCLUDE $BASE_LD_CONTENTS
             .manifest
             .platform
             .page_size
-            .map(|pg| format!("PAGE_SIZE = {}", pg))
+            .map(|pg| format!("PAGE_SIZE = {};", pg))
             .unwrap_or_default();
         sub_map.insert("PAGE_SIZE", page_size);
 
@@ -434,7 +441,7 @@ mod tests {
 
     /// Create a platform with configurable memory sizes.
     /// All memory regions start at offset 0x0, 0x10000, and 0x20000 respectively.
-    fn test_platform(rom_size: u64, itcm_size: u64, ram_size: u64) -> Platform {
+    fn test_platform(rom_size: u64, itcm_size: u64, ram_size: u64, dccm_size: u64) -> Platform {
         Platform {
             tuple: "riscv32imc-unknown-none-elf".to_string(),
             default_alignment: Some(8),
@@ -451,6 +458,11 @@ mod tests {
                 offset: 0x20000,
                 size: ram_size,
             },
+            dccm: Some(Memory {
+                offset: 0x30000,
+                size: dccm_size,
+            }),
+            flash: None,
         }
     }
 
@@ -490,7 +502,7 @@ mod tests {
     fn kernel_only_fits() {
         let temp = TempDir::new().unwrap();
         let manifest = test_manifest(
-            test_platform(0x1000, 0x1000, 0x1000),
+            test_platform(0x1000, 0x1000, 0x1000, 0x1000),
             None,
             test_binary("kernel", 0x100, 0x100),
             vec![],
@@ -508,7 +520,7 @@ mod tests {
     fn rom_and_kernel_fit() {
         let temp = TempDir::new().unwrap();
         let manifest = test_manifest(
-            test_platform(0x1000, 0x1000, 0x1000),
+            test_platform(0x1000, 0x1000, 0x1000, 0x1000),
             Some(test_binary("rom", 0x100, 0x100)),
             test_binary("kernel", 0x100, 0x100),
             vec![],
@@ -527,7 +539,7 @@ mod tests {
     fn kernel_and_single_app_fit() {
         let temp = TempDir::new().unwrap();
         let manifest = test_manifest(
-            test_platform(0x1000, 0x1000, 0x1000),
+            test_platform(0x1000, 0x1000, 0x1000, 0x1000),
             None,
             test_binary("kernel", 0x100, 0x100),
             vec![test_binary("app1", 0x100, 0x100)],
@@ -546,7 +558,7 @@ mod tests {
     fn kernel_and_multiple_apps_fit() {
         let temp = TempDir::new().unwrap();
         let manifest = test_manifest(
-            test_platform(0x1000, 0x2000, 0x2000),
+            test_platform(0x1000, 0x2000, 0x2000, 0x1000),
             None,
             test_binary("kernel", 0x100, 0x100),
             vec![
@@ -569,7 +581,7 @@ mod tests {
     fn full_manifest_rom_kernel_apps_fit() {
         let temp = TempDir::new().unwrap();
         let manifest = test_manifest(
-            test_platform(0x1000, 0x2000, 0x2000),
+            test_platform(0x1000, 0x2000, 0x2000, 0x1000),
             Some(test_binary("rom", 0x200, 0x200)),
             test_binary("kernel", 0x200, 0x200),
             vec![
@@ -594,7 +606,7 @@ mod tests {
         // ITCM: 0x200 total, kernel 0x100, app 0x100
         // RAM: 0x200 total, kernel 0x100, app 0x100
         let manifest = test_manifest(
-            test_platform(0x1000, 0x200, 0x200),
+            test_platform(0x1000, 0x200, 0x200, 0x1000),
             None,
             test_binary("kernel", 0x100, 0x100),
             vec![test_binary("app1", 0x100, 0x100)],
@@ -611,7 +623,7 @@ mod tests {
     fn linker_scripts_created_on_disk() {
         let temp = TempDir::new().unwrap();
         let manifest = test_manifest(
-            test_platform(0x1000, 0x1000, 0x1000),
+            test_platform(0x1000, 0x1000, 0x1000, 0x1000),
             Some(test_binary("my_rom", 0x100, 0x100)),
             test_binary("my_kernel", 0x100, 0x100),
             vec![test_binary("my_app", 0x100, 0x100)],
@@ -641,7 +653,7 @@ mod tests {
     fn kernel_exceeds_itcm() {
         let temp = TempDir::new().unwrap();
         let manifest = test_manifest(
-            test_platform(0x1000, 0x100, 0x1000), // Small ITCM
+            test_platform(0x1000, 0x100, 0x1000, 0x1000), // Small ITCM
             None,
             test_binary("kernel", 0x200, 0x100), // Kernel exec_mem > ITCM
             vec![],
@@ -654,7 +666,7 @@ mod tests {
     fn kernel_exceeds_ram() {
         let temp = TempDir::new().unwrap();
         let manifest = test_manifest(
-            test_platform(0x1000, 0x1000, 0x100), // Small RAM
+            test_platform(0x1000, 0x1000, 0x100, 0x1000), // Small RAM
             None,
             test_binary("kernel", 0x100, 0x200), // Kernel RAM > platform RAM
             vec![],
@@ -667,8 +679,8 @@ mod tests {
     fn rom_exceeds_rom_memory() {
         let temp = TempDir::new().unwrap();
         let manifest = test_manifest(
-            test_platform(0x100, 0x1000, 0x1000),   // Small ROM
-            Some(test_binary("rom", 0x200, 0x100)), // ROM exec_mem > platform ROM
+            test_platform(0x100, 0x1000, 0x1000, 0x1000), // Small ROM
+            Some(test_binary("rom", 0x200, 0x100)),       // ROM exec_mem > platform ROM
             test_binary("kernel", 0x100, 0x100),
             vec![],
         );
@@ -680,8 +692,8 @@ mod tests {
     fn rom_exceeds_ram() {
         let temp = TempDir::new().unwrap();
         let manifest = test_manifest(
-            test_platform(0x1000, 0x1000, 0x100),   // Small RAM
-            Some(test_binary("rom", 0x100, 0x200)), // ROM RAM > platform RAM
+            test_platform(0x1000, 0x1000, 0x100, 0x100), // Small RAM and DCCM
+            Some(test_binary("rom", 0x100, 0x200)),      // ROM RAM > platform DCCM
             test_binary("kernel", 0x100, 0x100),
             vec![],
         );
@@ -694,7 +706,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         // ITCM: 0x200 total, kernel takes 0x100, only 0x100 left for app
         let manifest = test_manifest(
-            test_platform(0x1000, 0x200, 0x1000),
+            test_platform(0x1000, 0x200, 0x1000, 0x1000),
             None,
             test_binary("kernel", 0x100, 0x100),
             vec![test_binary("app1", 0x200, 0x100)], // App needs 0x200, only 0x100 available
@@ -708,7 +720,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         // RAM: 0x200 total, kernel takes 0x100, only 0x100 left for app
         let manifest = test_manifest(
-            test_platform(0x1000, 0x1000, 0x200),
+            test_platform(0x1000, 0x1000, 0x200, 0x1000),
             None,
             test_binary("kernel", 0x100, 0x100),
             vec![test_binary("app1", 0x100, 0x200)], // App needs 0x200 RAM, only 0x100 available
@@ -723,7 +735,7 @@ mod tests {
         // ITCM: 0x300 total, kernel takes 0x100, leaves 0x200 for apps
         // Three apps each need 0x100, totaling 0x300 - exceeds available 0x200
         let manifest = test_manifest(
-            test_platform(0x1000, 0x300, 0x1000),
+            test_platform(0x1000, 0x300, 0x1000, 0x1000),
             None,
             test_binary("kernel", 0x100, 0x100),
             vec![
@@ -742,7 +754,7 @@ mod tests {
         // RAM: 0x300 total, kernel takes 0x100, leaves 0x200 for apps
         // Three apps each need 0x100 RAM, totaling 0x300 - exceeds available 0x200
         let manifest = test_manifest(
-            test_platform(0x1000, 0x1000, 0x300),
+            test_platform(0x1000, 0x1000, 0x300, 0x1000),
             None,
             test_binary("kernel", 0x100, 0x100),
             vec![
@@ -761,7 +773,7 @@ mod tests {
         // ITCM: 0x280 total, kernel takes 0x100, leaves 0x180 for apps
         // First two apps fit (0x80 each = 0x100), third app (0x100) overflows
         let manifest = test_manifest(
-            test_platform(0x1000, 0x280, 0x1000),
+            test_platform(0x1000, 0x280, 0x1000, 0x1000),
             None,
             test_binary("kernel", 0x100, 0x100),
             vec![
@@ -780,7 +792,7 @@ mod tests {
         // RAM: 0x280 total, kernel takes 0x100, leaves 0x180 for apps
         // First two apps fit (0x80 each = 0x100), third app (0x100) overflows
         let manifest = test_manifest(
-            test_platform(0x1000, 0x1000, 0x280),
+            test_platform(0x1000, 0x1000, 0x280, 0x1000),
             None,
             test_binary("kernel", 0x100, 0x100),
             vec![
@@ -798,7 +810,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         // ITCM has zero size - kernel cannot fit
         let manifest = test_manifest(
-            test_platform(0x1000, 0x0, 0x1000),
+            test_platform(0x1000, 0x0, 0x1000, 0x1000),
             None,
             test_binary("kernel", 0x100, 0x100),
             vec![],
