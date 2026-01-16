@@ -19,6 +19,7 @@ members = [
     "emulator/consts",
     "emulator/periph",
     "error",
+    "firmware-bundler",
     "hw/model",
     "hw/model/test-fw",
     "platforms/common",
@@ -191,6 +192,7 @@ mcu-config = { path = "common/config" }
 mcu-config-emulator = { path = "platforms/emulator/config" }
 mcu-config-fpga = { path = "platforms/fpga/config" }
 mcu-error = { path = "error" }
+mcu-firmware-bundler = { path = "firmware-bundler" }
 mcu-fuses-generator = { path = "registers/fuses" }
 mcu-hw-model = { path = "hw/model" }
 mcu-hw-model-test-fw = { path = "hw/model/test-fw" }

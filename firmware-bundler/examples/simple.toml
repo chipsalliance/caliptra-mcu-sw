@@ -1,0 +1,33 @@
+# Licensed under the Apache-2.0 license
+
+[platform]
+tuple = "riscv32imc-unknown-none-elf"
+page_size = 256
+
+[platform.rom]
+offset = 0x0
+size = 0x10000
+
+[platform.itcm]
+offset = 0x10000
+size = 0x10000
+
+[platform.ram]
+offset = 0x20000
+size = 0x10000
+
+[rom]
+name = "rom"
+exec_mem = { "size" = 0x100 } 
+ram = 0x100
+
+[kernel]
+name = "kernel"
+exec_mem = { "size" = 0x100 }
+ram = 0x100
+
+[[app]]
+name = "app"
+exec_mem = { "size" = 0x100 }
+ram = 0x100
+
