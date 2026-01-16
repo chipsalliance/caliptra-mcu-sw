@@ -140,7 +140,7 @@ impl<'a> LdGeneration<'a> {
                 let content = self
                     .rom_linker_content(binary, instructions, data)
                     .with_context(|| binary_context(&binary.name))?;
-                let path = self.create_ld_file(binary, &content)?;
+                let path = self.output_ld_file(binary, &content)?;
                 Ok(AppLinkerScript {
                     name: binary.name.clone(),
                     linker_script: path,
@@ -189,7 +189,7 @@ impl<'a> LdGeneration<'a> {
             let content = self
                 .app_linker_content(binary, instructions, data)
                 .with_context(|| binary_context(&binary.name))?;
-            let path = self.create_ld_file(binary, &content)?;
+            let path = self.output_ld_file(binary, &content)?;
             app_defs.push(AppLinkerScript {
                 name: binary.name.clone(),
                 linker_script: path,
@@ -200,7 +200,7 @@ impl<'a> LdGeneration<'a> {
         let content = self
             .kernel_linker_content(kernel, instructions, first_app_instructions, data)
             .with_context(|| binary_context(&kernel.name))?;
-        let path = self.create_ld_file(kernel, &content)?;
+        let path = self.output_ld_file(kernel, &content)?;
         let kernel_def = AppLinkerScript {
             name: kernel.name.clone(),
             linker_script: path,
@@ -238,11 +238,52 @@ impl<'a> LdGeneration<'a> {
     }
 
     /// Output a linker file for the application.
-    fn create_ld_file(&self, binary: &Binary, content: &str) -> Result<PathBuf> {
-        let output_file = self.linker_dir.join(format!("{}.ld", binary.name));
+    fn output_ld_file(&self, binary: &Binary, content: &str) -> Result<PathBuf> {
+        // Determine if a linker file has been previously generated.
+        // First read through the linker-script directory
+        let maybe_previous_file = std::fs::read_dir(&self.linker_dir)?
+            .find(|f| {
+                f.as_ref()
+                    .map(|f| {
+                        // Then check if each entry has a name which starts with the same name as
+                        // this linker file.  If so return it as the previous file.
+                        f.file_name()
+                            .to_str()
+                            .map(|n| n.starts_with(&binary.name))
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(false)
+            })
+            .transpose()?;
 
+        // To keep incremental builds fast, only output the linker contents if they differ from the
+        // previously existing file.
+        if let Some(previous_file) = maybe_previous_file {
+            let previous_file = previous_file.path();
+            // If the contents match exactly, just use the previous file, and perhaps the cached
+            // build.
+            if std::fs::read_to_string(&previous_file)
+                .map(|prev| prev == content)
+                .unwrap_or(false)
+            {
+                return Ok(previous_file);
+            } else {
+                // If they are different clean up the old file to avoid confusing multiple entries
+                // within the linker-script directory.
+                std::fs::remove_file(previous_file)?;
+            }
+        }
+
+        // Finally output the linker script file if we need to.  Use a unique UUID with each linker
+        // script generated.  This allows the `rustc` compiler to recognize when different scripts
+        // are used, and thus trigger a new build when memory space allocations change.
+        //
+        // If this is not done, compilation can diverge from the actual status of the Manifest toml
+        // until `cargo clean` is executed which can be quite confusing.
+        let output_file =
+            self.linker_dir
+                .join(format!("{}-{}.ld", binary.name, uuid::Uuid::new_v4()));
         std::fs::write(&output_file, content)?;
-
         Ok(output_file)
     }
 
