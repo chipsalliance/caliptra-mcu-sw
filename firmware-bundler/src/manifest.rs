@@ -33,6 +33,10 @@ impl Manifest {
     pub fn validate(&self) -> Result<()> {
         if let Some(rom) = &self.rom {
             rom.validate()?;
+
+            if self.platform.dccm.is_none() {
+                bail!("ROM Applications require DCCM to be defined");
+            }
         }
         self.kernel.validate()?;
         for app in &self.apps {
@@ -63,6 +67,14 @@ pub struct Platform {
     /// The instruction memory for runtime applications.
     pub itcm: Memory,
 
+    /// Data memory, outside of the RAM used by the application.  This is used for the
+    /// _pic_vector_table on VeeR chips.  Defaults to a size and offset of 0 if not defined.
+    pub dccm: Option<Memory>,
+
+    /// Location of flash memory.  This can be used for persistent storage, e.g. logs.  Defaults to
+    /// a size and offset of 0 if not defined.
+    pub flash: Option<Memory>,
+
     /// The RAM/Data memory for both the ROM and runtime applications.  It is assumed that the ROM
     /// and Runtime applications will not be executed at the same time, and thus can reused between
     /// the two.
@@ -74,6 +86,16 @@ impl Platform {
     /// bytes.
     pub fn default_alignment(&self) -> u64 {
         self.default_alignment.unwrap_or(8)
+    }
+
+    /// Retrieve the dccm memory layout.  If not specified it is empty.
+    pub fn dccm(&self) -> Memory {
+        self.dccm.clone().unwrap_or(Memory { offset: 0, size: 0 })
+    }
+
+    /// Retrieve the dccm memory layout.  If not specified it is empty.
+    pub fn flash(&self) -> Memory {
+        self.flash.clone().unwrap_or(Memory { offset: 0, size: 0 })
     }
 }
 
