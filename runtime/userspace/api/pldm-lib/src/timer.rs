@@ -60,10 +60,8 @@ impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
     }
 
     pub async fn sleep(time: Milliseconds) {
-        // bad things happen if multiple tasks try to use the alarm at once
-        let guard = ALARM_MUTEX.lock().await;
+        // sleep_ticks handles mutex acquisition internally
         let _ = AsyncAlarm::<DefaultSyscalls>::sleep_for(time).await;
-        drop(guard);
     }
 }
 
