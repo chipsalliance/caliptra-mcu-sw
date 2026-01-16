@@ -4,11 +4,57 @@
 
 use std::path::PathBuf;
 
+use anyhow::Result;
 use clap::{Args, Subcommand};
+
+use crate::{manifest::Manifest, utils};
 
 /// Arguments common among all subcommands.
 #[derive(Args, Debug, Clone)]
 pub struct Common {
+    /// The manifest file describing the platform to be deployed to, and which binaries to
+    /// deploy to it.
+    manifest: PathBuf,
+
+    /// The location of the workspace Cargo.toml file for the set of applications being built.
+    /// If not specified the tool will attempt to find the workspace directory by finding the
+    /// directory highest in the stack with a `Cargo.toml` specified.
+    #[arg(long)]
+    pub workspace_dir: Option<PathBuf>,
+}
+
+impl Common {
+    /// Retrieve a validated Manifest instance based on the manifest path passed on the command
+    /// line.
+    pub fn manifest(&self) -> Result<Manifest> {
+        let contents = std::fs::read_to_string(&self.manifest)?;
+        let manifest: Manifest = toml::from_str(&contents)?;
+        manifest.validate()?;
+        Ok(manifest)
+    }
+
+    /// Retrieve the workspace directory, either from the command line specification or
+    /// algorithmically based on the current execution directory.
+    pub fn workspace_dir(&self) -> Result<PathBuf> {
+        match &self.workspace_dir {
+            Some(wd) => Ok(wd.join("target")),
+            None => utils::find_target_directory(),
+        }
+    }
+
+    /// Create a new Common struct for testing purposes.
+    #[cfg(test)]
+    pub fn new_for_test(workspace_dir: PathBuf) -> Self {
+        Common {
+            manifest: workspace_dir.join("manifest.toml"),
+            workspace_dir: Some(workspace_dir),
+        }
+    }
+}
+
+/// Arguments required for commands which execute the LD step of the build process.
+#[derive(Args, Debug, Clone)]
+pub struct LdArgs {
     /// The base ROM linker layout.  This will be customized via individual applications ROM, and
     /// RAM memory usages.  If not specified a generally applicable default file will be utilized.
     #[arg(long)]
@@ -23,12 +69,15 @@ pub struct Common {
     /// usage.  If not specified the default tockOS app layout file will be used.
     #[arg(long)]
     pub app_ld_base: Option<PathBuf>,
+}
 
-    /// The location of the workspace Cargo.toml file for the set of applications being built.
-    /// If not specified the tool will attempt to find the workspace directory by finding the
-    /// directory highest in the stack with a `Cargo.toml` specified.
-    #[arg(long)]
-    pub workspace_dir: Option<PathBuf>,
+/// Arguments required for commands which execute the build step of the bundle process.
+#[derive(Args, Debug, Clone)]
+pub struct BuildArgs {
+    /// If specified the objcopy binary to use.  If not specified the bundler will attempt to use
+    /// `llvm-objcopy` from the rustc compiler.
+    #[arg(long, env = "OBJCOPY")]
+    pub objcopy: Option<PathBuf>,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -36,11 +85,24 @@ pub enum Commands {
     /// Generate the linker files required for a firmware bundled build.  These will be published
     /// to `<workspace>/target/<target-tuple>/linker-scripts`
     Generate {
-        /// The manifest file describing the platform to be deployed to, and which binaries to
-        /// deploy to it.
-        manifest: PathBuf,
-
         #[command(flatten)]
         common: Common,
+
+        #[command(flatten)]
+        ld: LdArgs,
+    },
+
+    /// Build the collection of binaries associated with a firmware bundle.  This will not bundle
+    /// them, only build them.  These will be published to
+    /// `<workspace>/target/<target-tuple>/release`.
+    Build {
+        #[command(flatten)]
+        common: Common,
+
+        #[command(flatten)]
+        ld: LdArgs,
+
+        #[command(flatten)]
+        build: BuildArgs,
     },
 }

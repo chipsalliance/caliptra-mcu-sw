@@ -9,9 +9,8 @@ use std::{collections::HashMap, path::PathBuf};
 use anyhow::{Context, Result};
 
 use crate::{
-    args::Common,
+    args::{Common, LdArgs},
     manifest::{Binary, Manifest, Memory},
-    utils,
 };
 
 // To keep the ld file generation simple, a layout is defined for each type of application, and then
@@ -29,22 +28,18 @@ const BASE_APP_LD_CONTENTS: &str = include_str!("../data/default-app-layout.ld")
 
 /// A pairing of application name to the linker script it should be built with.
 #[derive(Debug, Clone)]
-// TODO: Remove this when the Bundle step is implemented.
-#[allow(dead_code)]
 pub struct AppLinkerScript {
-    name: String,
-    linker_script: PathBuf,
+    pub name: String,
+    pub linker_script: PathBuf,
 }
 
 /// The build definition for a collection of applications.  The ROM and Runtime are both fully
 /// specified with their linker files.  This is the output of the generation step.
 #[derive(Debug, Clone)]
-// TODO: Remove this when the Bundle step is implemented.
-#[allow(dead_code)]
 pub struct BuildDefinition {
-    rom: Option<AppLinkerScript>,
-    kernel: AppLinkerScript,
-    apps: Vec<AppLinkerScript>,
+    pub rom: Option<AppLinkerScript>,
+    pub kernel: AppLinkerScript,
+    pub apps: Vec<AppLinkerScript>,
 }
 
 /// Generate the collection of linker files required to build the set of applications specified in
@@ -55,8 +50,8 @@ pub struct BuildDefinition {
 /// This could fail for a number of reasons, most likely for an incorrectly configured manifest
 /// including the case where the manifest describes an application profile which cannot fit on
 /// the Platform.  This could also fail if unable to write the linker files to the hard drive.
-pub fn generate(manifest: Manifest, common: Common) -> Result<BuildDefinition> {
-    LdGeneration::new(&manifest, common)?.run()
+pub fn generate(manifest: &Manifest, common: &Common, ld: &LdArgs) -> Result<BuildDefinition> {
+    LdGeneration::new(manifest, common, ld)?.run()
 }
 
 /// A helper struct containing the context required to do a linker script generation.
@@ -68,16 +63,14 @@ struct LdGeneration<'a> {
 impl<'a> LdGeneration<'a> {
     /// Create a new LdGeneration.  This will also output the base linker scripts to the target
     /// directory.
-    fn new(manifest: &'a Manifest, common: Common) -> Result<Self> {
+    fn new(manifest: &'a Manifest, common: &Common, ld: &LdArgs) -> Result<Self> {
         // Linker files should exist in the target directory for the platform tuple.  Put them in
         // a unique directory to prevent collisions and simplify inspection for debugging.  If
         // the workspace has not been specified attempt to determine it algorithmically.
-        let linker_dir = match common.workspace_dir {
-            Some(wd) => wd.join("target"),
-            None => utils::find_target_directory()?,
-        }
-        .join(&manifest.platform.tuple)
-        .join("linker-scripts");
+        let linker_dir = common
+            .workspace_dir()?
+            .join(&manifest.platform.tuple)
+            .join("linker-scripts");
 
         // Create all parent directories up to the output directory.
         let _ = std::fs::create_dir_all(&linker_dir);
@@ -85,19 +78,19 @@ impl<'a> LdGeneration<'a> {
         // Go through each layout file.  If the user specified a file to use, copy it into the
         // output linker directory, otherwise copy out the default contents.
         let rom_ld_file = linker_dir.join(BASE_ROM_LD_FILE);
-        match common.rom_ld_base {
+        match &ld.rom_ld_base {
             Some(user_base) => std::fs::copy(user_base, rom_ld_file).map(|_| ())?,
             None => std::fs::write(rom_ld_file, BASE_ROM_LD_CONTENTS)?,
         };
 
         let kernel_ld_file = linker_dir.join(BASE_KERNEL_LD_FILE);
-        match common.kernel_ld_base {
+        match &ld.kernel_ld_base {
             Some(user_base) => std::fs::copy(user_base, kernel_ld_file).map(|_| ())?,
             None => std::fs::write(kernel_ld_file, BASE_KERNEL_LD_CONTENTS)?,
         };
 
         let app_ld_file = linker_dir.join(BASE_APP_LD_FILE);
-        match common.app_ld_base {
+        match &ld.app_ld_base {
             Some(user_base) => std::fs::copy(user_base, app_ld_file).map(|_| ())?,
             None => std::fs::write(app_ld_file, BASE_APP_LD_CONTENTS)?,
         };
@@ -112,8 +105,9 @@ impl<'a> LdGeneration<'a> {
     /// accomadate the application.  Utilizing this allocated memory generate respective linker
     /// files which can be used to build a complete application.
     fn run(&self) -> Result<BuildDefinition> {
-        let binary_context =
-            |name: &str| format!("Linker generation failed for application {name} with error:");
+        let binary_context = |name: &str, stage: &str| {
+            format!("Linker generation failed for application {name} at stage {stage} with error:")
+        };
 
         // First generate the ROM linker script if an application is specified.
         let rom_def = self
@@ -130,13 +124,13 @@ impl<'a> LdGeneration<'a> {
                         binary.exec_mem.alignment,
                         &mut rom_tracker,
                     )
-                    .with_context(|| binary_context(&binary.name))?;
+                    .with_context(|| binary_context(&binary.name, "instruction allocation"))?;
                 let data = self
                     .get_mem_block(binary.ram, binary.ram_alignment, &mut dccm_tracker)
-                    .with_context(|| binary_context(&binary.name))?;
+                    .with_context(|| binary_context(&binary.name, "data allocation"))?;
                 let content = self
                     .rom_linker_content(binary, instructions, data)
-                    .with_context(|| binary_context(&binary.name))?;
+                    .with_context(|| binary_context(&binary.name, "context generation"))?;
                 let path = self.output_ld_file(binary, &content)?;
                 Ok(AppLinkerScript {
                     name: binary.name.clone(),
@@ -159,10 +153,10 @@ impl<'a> LdGeneration<'a> {
                 kernel.exec_mem.alignment,
                 &mut itcm_tracker,
             )
-            .with_context(|| binary_context(&kernel.name))?;
+            .with_context(|| binary_context(&kernel.name, "instruction allocation"))?;
         let data = self
             .get_mem_block(kernel.ram, kernel.ram_alignment, &mut ram_tracker)
-            .with_context(|| binary_context(&kernel.name))?;
+            .with_context(|| binary_context(&kernel.name, "data allocation"))?;
 
         // Now iterate through each application and allocate its ITCM and RAM requirements.
         let mut first_app_instructions = None;
@@ -174,10 +168,10 @@ impl<'a> LdGeneration<'a> {
                     binary.exec_mem.alignment,
                     &mut itcm_tracker,
                 )
-                .with_context(|| binary_context(&binary.name))?;
+                .with_context(|| binary_context(&binary.name, "instruction allocation"))?;
             let data = self
                 .get_mem_block(binary.ram, binary.ram_alignment, &mut ram_tracker)
-                .with_context(|| binary_context(&binary.name))?;
+                .with_context(|| binary_context(&binary.name, "data allocation"))?;
 
             if first_app_instructions.is_none() {
                 first_app_instructions = Some(instructions.clone());
@@ -185,7 +179,7 @@ impl<'a> LdGeneration<'a> {
 
             let content = self
                 .app_linker_content(binary, instructions, data)
-                .with_context(|| binary_context(&binary.name))?;
+                .with_context(|| binary_context(&binary.name, "context generation"))?;
             let path = self.output_ld_file(binary, &content)?;
             app_defs.push(AppLinkerScript {
                 name: binary.name.clone(),
@@ -196,7 +190,7 @@ impl<'a> LdGeneration<'a> {
         // Finally generate the linker file for the kernel.
         let content = self
             .kernel_linker_content(kernel, instructions, first_app_instructions, data)
-            .with_context(|| binary_context(&kernel.name))?;
+            .with_context(|| binary_context(&kernel.name, "context generation"))?;
         let path = self.output_ld_file(kernel, &content)?;
         let kernel_def = AppLinkerScript {
             name: kernel.name.clone(),
@@ -473,11 +467,15 @@ mod tests {
 
     /// Create a Common args struct pointing to a temp directory.
     fn test_common(temp_dir: &TempDir) -> Common {
-        Common {
+        Common::new_for_test(temp_dir.path().to_path_buf())
+    }
+
+    /// Create an LdArgs struct with default values.
+    fn test_ld_args() -> LdArgs {
+        LdArgs {
             rom_ld_base: None,
             kernel_ld_base: None,
             app_ld_base: None,
-            workspace_dir: Some(temp_dir.path().to_path_buf()),
         }
     }
 
@@ -507,7 +505,7 @@ mod tests {
             test_binary("kernel", 0x100, 0x100),
             vec![],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_ok());
 
         let build_def = result.unwrap();
@@ -525,7 +523,7 @@ mod tests {
             test_binary("kernel", 0x100, 0x100),
             vec![],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_ok());
 
         let build_def = result.unwrap();
@@ -544,7 +542,7 @@ mod tests {
             test_binary("kernel", 0x100, 0x100),
             vec![test_binary("app1", 0x100, 0x100)],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_ok());
 
         let build_def = result.unwrap();
@@ -567,7 +565,7 @@ mod tests {
                 test_binary("app3", 0x100, 0x100),
             ],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_ok());
 
         let build_def = result.unwrap();
@@ -589,7 +587,7 @@ mod tests {
                 test_binary("app2", 0x100, 0x100),
             ],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_ok());
 
         let build_def = result.unwrap();
@@ -611,7 +609,7 @@ mod tests {
             test_binary("kernel", 0x100, 0x100),
             vec![test_binary("app1", 0x100, 0x100)],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_ok());
 
         let build_def = result.unwrap();
@@ -628,7 +626,7 @@ mod tests {
             test_binary("my_kernel", 0x100, 0x100),
             vec![test_binary("my_app", 0x100, 0x100)],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_ok());
 
         let build_def = result.unwrap();
@@ -658,7 +656,7 @@ mod tests {
             test_binary("kernel", 0x200, 0x100), // Kernel exec_mem > ITCM
             vec![],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_err());
     }
 
@@ -671,7 +669,7 @@ mod tests {
             test_binary("kernel", 0x100, 0x200), // Kernel RAM > platform RAM
             vec![],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_err());
     }
 
@@ -684,7 +682,7 @@ mod tests {
             test_binary("kernel", 0x100, 0x100),
             vec![],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_err());
     }
 
@@ -697,7 +695,7 @@ mod tests {
             test_binary("kernel", 0x100, 0x100),
             vec![],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_err());
     }
 
@@ -711,7 +709,7 @@ mod tests {
             test_binary("kernel", 0x100, 0x100),
             vec![test_binary("app1", 0x200, 0x100)], // App needs 0x200, only 0x100 available
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_err());
     }
 
@@ -725,7 +723,7 @@ mod tests {
             test_binary("kernel", 0x100, 0x100),
             vec![test_binary("app1", 0x100, 0x200)], // App needs 0x200 RAM, only 0x100 available
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_err());
     }
 
@@ -744,7 +742,7 @@ mod tests {
                 test_binary("app3", 0x100, 0x50), // This one should fail
             ],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_err());
     }
 
@@ -763,7 +761,7 @@ mod tests {
                 test_binary("app3", 0x50, 0x100), // This one should fail
             ],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_err());
     }
 
@@ -782,7 +780,7 @@ mod tests {
                 test_binary("app3", 0x100, 0x50), // Needs 0x100, only 0x80 left
             ],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_err());
     }
 
@@ -801,7 +799,7 @@ mod tests {
                 test_binary("app3", 0x50, 0x100), // Needs 0x100 RAM, only 0x80 left
             ],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_err());
     }
 
@@ -815,7 +813,7 @@ mod tests {
             test_binary("kernel", 0x100, 0x100),
             vec![],
         );
-        let result = generate(manifest, test_common(&temp));
+        let result = generate(&manifest, &test_common(&temp), &test_ld_args());
         assert!(result.is_err());
     }
 }

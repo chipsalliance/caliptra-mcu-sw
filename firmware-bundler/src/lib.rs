@@ -35,11 +35,12 @@ use crate::args::Commands;
 
 pub fn execute(cmd: Commands) -> Result<()> {
     match cmd {
-        Commands::Generate { manifest, common } => {
-            let definition = ld::generate(manifest_from_file(&manifest)?, common)?;
+        Commands::Generate { common, ld } => {
+            let definition = ld::generate(&common.manifest()?, &common, &ld)?;
             println!("Build definition: {definition:?}");
             Ok(())
         }
+        Commands::Build { common, ld, build } => todo!(),
     }
 }
 
