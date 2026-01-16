@@ -2893,6 +2893,7 @@ dependencies = [
  "subst",
  "tempfile",
  "toml 0.8.23",
+ "walkdir",
 ]
 
 [[package]]
@@ -5614,7 +5615,6 @@ dependencies = [
  "clap-num",
  "crc32fast",
  "elf",
- "firmware-bundler",
  "mcu-builder",
  "mcu-config-emulator",
  "mcu-config-fpga",
