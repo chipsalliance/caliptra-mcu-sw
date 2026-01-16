@@ -83,6 +83,11 @@ pub async fn mcu_mbox_responder(
     running: &'static AtomicBool,
 ) {
     let mut msg_buffer = [0; MAX_MCU_MBOX_MSG_SIZE];
+    writeln!(
+        Console::<DefaultSyscalls>::writer(),
+        "mcu_mbox_responder start"
+    )
+    .unwrap();
     while running.load(Ordering::SeqCst) {
         if let Err(e) = cmd_interface.handle_responder_msg(&mut msg_buffer).await {
             // Debug print on error
