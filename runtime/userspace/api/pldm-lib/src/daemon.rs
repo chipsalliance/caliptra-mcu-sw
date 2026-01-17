@@ -146,10 +146,8 @@ pub async fn pldm_initiator(
         let mut msg_buffer = [0; MAX_MCTP_PLDM_MSG_SIZE];
         let mut transport = MctpTransport::new(driver_num::MCTP_PLDM);
 
-        // Create a transfer session for optimized download (captures state once)
-        let mut session = cmd_interface.create_transfer_session().await;
-        let mut in_optimized_download = true;
-
+        // Transfer session for optimized download - created lazily when entering download phase
+        let mut session: Option<TransferSession> = None;
         let mut counter: u32 = 0;
 
         while running.load(Ordering::SeqCst) {
@@ -157,21 +155,16 @@ pub async fn pldm_initiator(
                 break;
             }
 
-            // Use optimized download path when in download phase
-            if in_optimized_download {
-                match run_optimized_download(
-                    cmd_interface,
-                    &mut transport,
-                    &mut msg_buffer,
-                    &mut session,
-                )
-                .await
+            // Use optimized download path when we have an active session
+            if let Some(ref mut sess) = session {
+                match run_optimized_download(cmd_interface, &mut transport, &mut msg_buffer, sess)
+                    .await
                 {
                     Ok(download_complete) => {
                         if download_complete {
                             // Sync session state back to internal state
-                            cmd_interface.sync_transfer_session(&session).await;
-                            in_optimized_download = false;
+                            cmd_interface.sync_transfer_session(sess).await;
+                            session = None;
                             // Fall through to regular handling for TransferComplete/Verify/Apply
                         }
                     }
@@ -183,25 +176,33 @@ pub async fn pldm_initiator(
                         )
                         .unwrap();
                         // Sync and fall back to regular path
-                        cmd_interface.sync_transfer_session(&session).await;
-                        in_optimized_download = false;
+                        cmd_interface.sync_transfer_session(sess).await;
+                        session = None;
                     }
                 }
             }
 
-            if in_optimized_download {
+            if session.is_some() {
                 // yield every so often still so that we handle cancelations
                 counter = counter.wrapping_add(1);
                 if counter % YIELD_EVERY_ITERATIONS == 0 {
                     let _ = AsyncAlarm::<DefaultSyscalls>::sleep_ticks(1).await;
                 }
             } else {
-                // Handle non-download phases (TransferComplete, Verify, Apply) via regular path
+                // Handle phases via regular path, which will properly wait for Download state
                 match cmd_interface
                     .handle_initiator_msg(&mut transport, &mut msg_buffer)
                     .await
                 {
-                    Ok(_) => {}
+                    Ok(_) => {
+                        // After successful handling, check if we should switch to optimized download
+                        // The regular handler will have processed the first chunk; now create session
+                        // for subsequent chunks if we're still in download phase
+                        if cmd_interface.should_start_initiator_mode().await {
+                            session = Some(cmd_interface.create_transfer_session().await);
+                            counter = 0;
+                        }
+                    }
                     Err(e) => {
                         writeln!(
                             console_writer,
