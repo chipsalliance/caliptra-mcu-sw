@@ -17,6 +17,7 @@ mod test {
         PackageHeaderInformation, StringType,
     };
     use pldm_fw_pkg::FirmwareManifest;
+    use random_port::PortPicker;
     use std::env;
     use std::path::PathBuf;
 
@@ -511,7 +512,7 @@ mod test {
             format!("0x{:016x}", mci_base),
         );
 
-        let i3c_port = 65500;
+        let i3c_port = PortPicker::new().pick().unwrap();
         let soc_image_fw_1 = [0x55u8; 512]; // Example firmware data for SOC image 1
         let soc_image_fw_2 = [0xAAu8; 256]; // Example firmware data for SOC image 2
 
