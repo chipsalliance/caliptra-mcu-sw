@@ -618,9 +618,11 @@ pub trait StateMachineActions {
 
     fn on_start_download(
         &mut self,
-        _ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
-        // TODO
+        // Reset transfer tracking for new download
+        ctx.transferred_bytes = 0;
+        ctx.transfer_start_time = None;
         Ok(())
     }
 
@@ -680,11 +682,27 @@ pub trait StateMachineActions {
             );
 
             ctx.transferred_bytes += request.length;
+            // Initialize transfer start time on first chunk
+            if ctx.transfer_start_time.is_none() {
+                ctx.transfer_start_time = Some(Instant::now());
+            }
             if ctx.transferred_bytes % 1024 < request.length {
+                let elapsed = ctx
+                    .transfer_start_time
+                    .map(|t| t.elapsed())
+                    .unwrap_or_default();
+                let elapsed_secs = elapsed.as_secs_f64();
+                let speed_bytes_per_sec = if elapsed_secs > 0.0 {
+                    ctx.transferred_bytes as f64 / elapsed_secs
+                } else {
+                    0.0
+                };
                 info!(
-                    "Transferred {} bytes so far out of {} bytes",
+                    "Transferred {} / {} bytes ({:.1} B/s, {:.1} KB/s)",
                     ctx.transferred_bytes,
-                    data.len()
+                    data.len(),
+                    speed_bytes_per_sec,
+                    speed_bytes_per_sec / 1024.0
                 );
             }
 
@@ -1171,6 +1189,7 @@ pub struct InnerContext<S: PldmSocket> {
     activation_time: Option<Instant>,
 
     transferred_bytes: u32,
+    transfer_start_time: Option<Instant>,
     response_timer: Timer,
     retry_count: Arc<Mutex<u8>>,
     is_initiator: bool,
@@ -1202,6 +1221,7 @@ impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
                 timer: Timer::new(),
                 activation_time: None,
                 transferred_bytes: 0,
+                transfer_start_time: None,
                 response_timer: Timer::new(),
                 retry_count: Arc::new(Mutex::new(0)),
                 is_initiator: true,
