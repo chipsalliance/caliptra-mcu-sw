@@ -1,0 +1,105 @@
+18a19,21
+> // README
+> // TODO: Copying this file from the caliptra-ss repo is bad. Issue to track resolution: https://github.com/chipsalliance/caliptra-mcu-sw/issues/373
+> 
+24a28,31
+> `include "css_mcu0_common_defines.vh"
+> 
+> // Trying to avoid compile error in css_mcu0_el2_param.vh. This worked in caliptra_ss_top but this would be better.
+> `include "css_mcu0_el2_pdef.vh"
+39a47,48
+>     // TODO: Hacking in this i3c clock
+>     input logic cptra_i3c_clk_i,
+895c904,959
+<     
+---
+>     logic i3c_rst_sync;
+>     xpm_cdc_async_rst #(
+>     .DEST_SYNC_FF(4),    // DECIMAL; range: 2-10
+>     .INIT_SYNC_FF(0),    // DECIMAL; 0=disable simulation init values, 1=enable simulation init values
+>     .RST_ACTIVE_HIGH(0)  // DECIMAL; 0=active low reset, 1=active high reset
+>     )
+>     xpm_cdc_i3c_rst (
+>     .dest_arst(i3c_rst_sync), // 1-bit output: src_arst asynchronous reset signal synchronized to destination
+>                             // clock domain. This output is registered. NOTE: Signal asserts asynchronously
+>                             // but deasserts synchronously to dest_clk. Width of the reset signal is at least
+>                             // (DEST_SYNC_FF*dest_clk) period.
+> 
+>     .dest_clk(cptra_i3c_clk_i),   // 1-bit input: Destination clock.
+>     .src_arst(cptra_ss_rst_b_o)    // 1-bit input: Source asynchronous reset signal.
+>     );
+> 
+>     // I3C CLK -> SS CLK
+>     logic cptra_ss_i3c_recovery_payload_available_o_presync;
+>     logic cptra_ss_i3c_recovery_image_activated_o_presync;
+>     logic i3c_peripheral_reset_presync;
+>     logic i3c_escalated_reset_presync;
+>     logic i3c_irq_o_presync;
+>     xpm_cdc_array_single #(
+>     .DEST_SYNC_FF(4),   // DECIMAL; range: 2-10
+>     .INIT_SYNC_FF(0),   // DECIMAL; 0=disable simulation init values, 1=enable simulation init values
+>     .SIM_ASSERT_CHK(0), // DECIMAL; 0=disable simulation messages, 1=enable simulation messages
+>     .SRC_INPUT_REG(1),  // DECIMAL; 0=do not register input, 1=register input
+>     .WIDTH(5)         // DECIMAL; range: 1-1024
+>     )
+>     xpm_cdc_i3c_outputs_inst (
+>     .src_clk(cptra_i3c_clk_i),  // 1-bit input: optional; required when SRC_INPUT_REG = 1
+>     .dest_clk(cptra_ss_clk_i), // 1-bit input: Clock signal for the destination clock domain.
+> 
+>     .src_in(  {cptra_ss_i3c_recovery_payload_available_o_presync, cptra_ss_i3c_recovery_image_activated_o_presync, i3c_peripheral_reset_presync, i3c_escalated_reset_presync, i3c_irq_o_presync}),
+>     .dest_out({cptra_ss_i3c_recovery_payload_available_o,         cptra_ss_i3c_recovery_image_activated_o,         i3c_peripheral_reset,         i3c_escalated_reset,         i3c_irq_o})
+>     );
+> 
+>     // SS CLK -> I3C CLK
+>     logic [31:0]  cptra_ss_strap_caliptra_dma_axi_user_i_synch;
+>     logic [31:0] cptra_ss_strap_mcu_lsu_axi_user_i_synch;
+>     logic disable_id_filtering_i_synch;
+>     xpm_cdc_array_single #(
+>         .DEST_SYNC_FF(4),   // DECIMAL; range: 2-10
+>         .INIT_SYNC_FF(0),   // DECIMAL; 0=disable simulation init values, 1=enable simulation init values
+>         .SIM_ASSERT_CHK(0), // DECIMAL; 0=disable simulation messages, 1=enable simulation messages
+>         .SRC_INPUT_REG(1),  // DECIMAL; 0=do not register input, 1=register input
+>         .WIDTH(65)         // DECIMAL; range: 1-1024
+>     )
+>     xpm_cdc_i3c_inputs_inst (
+>         .src_clk(cptra_ss_clk_i),  // 1-bit input: optional; required when SRC_INPUT_REG = 1
+>         .dest_clk(cptra_i3c_clk_i), // 1-bit input: Clock signal for the destination clock domain.
+> 
+>         .src_in(  {cptra_ss_strap_caliptra_dma_axi_user_i,       cptra_ss_strap_mcu_lsu_axi_user_i,       disable_id_filtering_i}),
+>         .dest_out({cptra_ss_strap_caliptra_dma_axi_user_i_synch, cptra_ss_strap_mcu_lsu_axi_user_i_synch, disable_id_filtering_i_synch})
+>     );
+> 
+898,899c962,963
+<     assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i;
+<     assign priv_ids[3] = cptra_ss_strap_mcu_lsu_axi_user_i;
+---
+>     assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i_synch;
+>     assign priv_ids[3] = cptra_ss_strap_mcu_lsu_axi_user_i_synch;
+909,911c973,975
+<         .clk_i                          (cptra_ss_clk_i),
+<         .rst_ni                         (cptra_ss_rst_b_o),
+<     
+---
+>         .clk_i                          (cptra_i3c_clk_i),
+>         .rst_ni                         (i3c_rst_sync),
+> 
+969,971c1033,1035
+<         .recovery_payload_available_o   (cptra_ss_i3c_recovery_payload_available_o),
+<         .recovery_image_activated_o     (cptra_ss_i3c_recovery_image_activated_o),
+<         .peripheral_reset_o             (i3c_peripheral_reset),
+---
+>         .recovery_payload_available_o   (cptra_ss_i3c_recovery_payload_available_o_presync),
+>         .recovery_image_activated_o     (cptra_ss_i3c_recovery_image_activated_o_presync),
+>         .peripheral_reset_o             (i3c_peripheral_reset_presync),
+973c1037
+<         .escalated_reset_o              (i3c_escalated_reset),
+---
+>         .escalated_reset_o              (i3c_escalated_reset_presync),
+976c1040
+<         .irq_o                          (i3c_irq_o),
+---
+>         .irq_o                          (i3c_irq_o_presync),
+979c1043
+<         .disable_id_filtering_i         (disable_id_filtering_i),
+---
+>         .disable_id_filtering_i         (disable_id_filtering_i_synch),

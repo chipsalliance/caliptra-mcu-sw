@@ -70,8 +70,6 @@ add_files $ssrtlDir/src/fuse_ctrl/data/otp-img.2048.vmem
 set_property file_type {Memory Initialization Files} [get_files $ssrtlDir/src/fuse_ctrl/data/otp-img.2048.vmem]
 # OTP from testbench
 add_files $ssrtlDir/src/integration/testbench/prim_generic_otp.sv
-# MCU VEER sram from testbench
-add_files $ssrtlDir/src/integration/testbench/caliptra_ss_veer_sram_export.sv
 # SS IPs
 add_files [ glob $ssrtlDir/src/*/rtl/*.svh ]
 add_files [ glob $ssrtlDir/src/*/rtl/*.sv ]
@@ -100,7 +98,10 @@ add_files [ glob $fpgaDir/src/*.v]
 remove_files [ glob $caliptrartlDir/src/ecc/rtl/ecc_ram_tdp_file.sv ]
 
 # Replace caliptra_ss_top with version modified with faster I3C clocks
+file copy [ glob $ssrtlDir/src/integration/rtl/caliptra_ss_top.sv ] $outputDir/caliptra_ss_top.sv
+exec patch $outputDir/caliptra_ss_top.sv $fpgaDir/src/caliptra_ss_top.patch
 remove_files [ glob $ssrtlDir/src/integration/rtl/caliptra_ss_top.sv ]
+add_files $outputDir/caliptra_ss_top.sv
 
 # Add missing include
 file copy [ glob $caliptrartlDir/src/ahb_lite_bus/rtl/ahb_lite_address_decoder.sv ] $outputDir/ahb_lite_address_decoder.sv
