@@ -183,7 +183,7 @@ regfile interface_regs {
         field { sw=rw; hw=r; } cptra_ss_lc_ctrl_scan_rst_ni_i = 1'b0;
         field { sw=rw; hw=r; } cptra_ss_lc_esclate_scrap_state0_i = 1'b0;
         field { sw=rw; hw=r; } cptra_ss_lc_esclate_scrap_state1_i = 1'b0;
-        
+
     } mcu_config;
 
     reg {
@@ -204,7 +204,7 @@ regfile interface_regs {
 
         field {} num_of_prod_debug_unlock_auth_pk_hashes[32] = 32'b0;
     } num_of_prod_debug_unlock_auth_pk_hashes;
-    
+
     reg {
         field { sw=rw; hw=r; } value[32] = 32'b0;
     } mci_generic_input_wires[2];
@@ -241,6 +241,105 @@ regfile interface_regs {
     } ocp_lock_key_release_reg[16] @ 0x200;
 };
 
+regfile flash_ctrl_regs {
+    reg {
+        field {
+            sw = rw;
+            hw = na;
+            desc = "Error-related interrupts";
+        } ERROR[0:0] = 1'b0;
+        field {
+            sw = rw;
+            hw = na;
+            desc = "Event-related interrupts";
+        } EVENT[1:1] = 1'b0;
+    } FL_INTERRUPT_STATE @ 0x00;
+
+    reg {
+        field {
+            sw = rw;
+            hw = na;
+            desc = "Enable error interrupt";
+        } ERROR[0:0] = 1'b0;
+        field {
+            sw = rw;
+            hw = na;
+            desc = "Enable event interrupt";
+        } EVENT[1:1] = 1'b0;
+    } FL_INTERRUPT_ENABLE @ 0x04;
+
+    reg {
+        field {
+            sw = rw;
+            hw = na;
+            desc = "Page size in bytes (default 256)";
+        } PAGE_SIZE[31:0] = 32'd256;
+    } PAGE_SIZE @ 0x08;
+
+    reg {
+        field {
+            sw = rw;
+            hw = na;
+            desc = "The page number for read, write, erase operations";
+        } PAGE_NUM[31:0] = 32'b0;
+    } PAGE_NUM @ 0x0C;
+
+    reg {
+        field {
+            sw = rw;
+            hw = na;
+            desc = "The page buffer address for read/write operations (driver-provided memory address)";
+        } PAGE_ADDR[31:0] = 32'b0;
+    } PAGE_ADDR @ 0x10;
+
+    reg {
+        field {
+            sw = rw;
+            hw = na;
+            desc = "\"0\" = Read page, \"1\" = Write Page, \"2\" = Erase Page";
+        } OP[2:1] = 2'b0;
+        field {
+            sw = rw;
+            hw = na;
+            desc = "Start the operation. HW clears when done.";
+        } START[0:0] = 1'b0;
+    } FL_CONTROL @ 0x14;
+
+    reg {
+        field {
+            sw = rw;
+            hw = na;
+            desc = "Flash operation error. \"1\" = Read Error, \"2\" = Write Error, \"4\" = Erase Error";
+        } ERR[3:1] = 3'b0;
+        field {
+            sw = rw;
+            hw = na;
+            desc = "Flash operation done. Set by HW, cleared by SW";
+        } DONE[0:0] = 1'b0;
+    } OP_STATUS @ 0x18;
+
+    reg {
+        field {
+            sw = rw;
+            hw = na;
+            desc = "Control register write enable. 1=unlocked, 0=locked during operation";
+        } EN[0:0] = 1'b1;
+    } CTRL_REGWEN @ 0x1C;
+
+    reg {
+        field {
+            sw = rw;
+            hw = na;
+            desc = "Total flash size in bytes";
+        } FLASH_SIZE[31:0] = 32'h0100_0000;
+    } FLASH_SIZE @ 0x20;
+
+    reg {
+        field { sw=rw; hw=na; } FLASH_BUF[32] = 32'hffffffff;
+        desc = "Flash buffer";
+    } FLASH_BUF[64] @ 0x100;
+};
+
 regfile fifo_regs {
     reg {
         field { sw=r; hw=rw; rd_swacc=true; } next_char[8] = 8'b0;
@@ -255,13 +354,13 @@ regfile fifo_regs {
     reg {
         field { sw=rw; hw=r; wr_swacc=true; } itrng_data[32] = 32'b0;
     } itrng_fifo_data;
-    
+
     reg {
         field { sw=r; hw=rw; } itrng_fifo_empty = 1'b0;
         field { sw=r; hw=rw; } itrng_fifo_full = 1'b0;
         field { sw=rw; hw=r; } itrng_fifo_reset = 1'b0;
     } itrng_fifo_status;
-    
+
     reg {
         field { sw=r; hw=rw; rd_swacc=true; desc = "RSVD in core"; } out_data[32] = 32'b0;
     } dbg_fifo_pop;
@@ -274,7 +373,7 @@ regfile fifo_regs {
         field { sw=r; hw=rw; desc = "RSVD in core"; } dbg_fifo_empty = 1'b0;
         field { sw=r; hw=rw; desc = "RSVD in core"; } dbg_fifo_full = 1'b0;
     } dbg_fifo_status;
-    
+
     reg {
         field { sw=r; hw=rw; rd_swacc=true; desc = "RSVD in core"; } out_data[32] = 32'b0;
     } msg_fifo_pop;
@@ -295,4 +394,6 @@ addrmap caliptra_fpga_realtime_regs {
 
     interface_regs interface_regs @ 0xA4010000;
     fifo_regs fifo_regs @ 0xA4011000;
+    flash_ctrl_regs primary_flash_ctrl_regs @ 0xA4012000;
+    flash_ctrl_regs secondary_flash_ctrl_regs @ 0xA4013000;
 };

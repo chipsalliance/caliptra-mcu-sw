@@ -5,7 +5,7 @@ package caliptra_fpga_realtime_regs_pkg;
 
     localparam CALIPTRA_FPGA_REALTIME_REGS_DATA_WIDTH = 32;
     localparam CALIPTRA_FPGA_REALTIME_REGS_MIN_ADDR_WIDTH = 32;
-    localparam CALIPTRA_FPGA_REALTIME_REGS_SIZE = 'ha4011028;
+    localparam CALIPTRA_FPGA_REALTIME_REGS_SIZE = 'ha4013200;
 
     typedef struct {
         logic [31:0] next;
