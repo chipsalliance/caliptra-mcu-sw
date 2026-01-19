@@ -264,6 +264,30 @@ module caliptra_fpga_realtime_regs (
             logic msg_fifo_push;
             logic msg_fifo_status;
         } fifo_regs;
+        struct {
+            logic FL_INTERRUPT_STATE;
+            logic FL_INTERRUPT_ENABLE;
+            logic PAGE_SIZE;
+            logic PAGE_NUM;
+            logic PAGE_ADDR;
+            logic FL_CONTROL;
+            logic OP_STATUS;
+            logic CTRL_REGWEN;
+            logic FLASH_SIZE;
+            logic FLASH_BUF[64];
+        } primary_flash_ctrl_regs;
+        struct {
+            logic FL_INTERRUPT_STATE;
+            logic FL_INTERRUPT_ENABLE;
+            logic PAGE_SIZE;
+            logic PAGE_NUM;
+            logic PAGE_ADDR;
+            logic FL_CONTROL;
+            logic OP_STATUS;
+            logic CTRL_REGWEN;
+            logic FLASH_SIZE;
+            logic FLASH_BUF[64];
+        } secondary_flash_ctrl_regs;
     } decoded_reg_strb_t;
     decoded_reg_strb_t decoded_reg_strb;
     logic decoded_req;
@@ -334,6 +358,30 @@ module caliptra_fpga_realtime_regs (
         decoded_reg_strb.fifo_regs.msg_fifo_pop = cpuif_req_masked & (cpuif_addr == 32'ha401101c);
         decoded_reg_strb.fifo_regs.msg_fifo_push = cpuif_req_masked & (cpuif_addr == 32'ha4011020);
         decoded_reg_strb.fifo_regs.msg_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha4011024);
+        decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_STATE = cpuif_req_masked & (cpuif_addr == 32'ha4012000);
+        decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE = cpuif_req_masked & (cpuif_addr == 32'ha4012004);
+        decoded_reg_strb.primary_flash_ctrl_regs.PAGE_SIZE = cpuif_req_masked & (cpuif_addr == 32'ha4012008);
+        decoded_reg_strb.primary_flash_ctrl_regs.PAGE_NUM = cpuif_req_masked & (cpuif_addr == 32'ha401200c);
+        decoded_reg_strb.primary_flash_ctrl_regs.PAGE_ADDR = cpuif_req_masked & (cpuif_addr == 32'ha4012010);
+        decoded_reg_strb.primary_flash_ctrl_regs.FL_CONTROL = cpuif_req_masked & (cpuif_addr == 32'ha4012014);
+        decoded_reg_strb.primary_flash_ctrl_regs.OP_STATUS = cpuif_req_masked & (cpuif_addr == 32'ha4012018);
+        decoded_reg_strb.primary_flash_ctrl_regs.CTRL_REGWEN = cpuif_req_masked & (cpuif_addr == 32'ha401201c);
+        decoded_reg_strb.primary_flash_ctrl_regs.FLASH_SIZE = cpuif_req_masked & (cpuif_addr == 32'ha4012020);
+        for(int i0=0; i0<64; i0++) begin
+            decoded_reg_strb.primary_flash_ctrl_regs.FLASH_BUF[i0] = cpuif_req_masked & (cpuif_addr == 32'ha4012100 + (32)'(i0) * 32'h4);
+        end
+        decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE = cpuif_req_masked & (cpuif_addr == 32'ha4013000);
+        decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE = cpuif_req_masked & (cpuif_addr == 32'ha4013004);
+        decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_SIZE = cpuif_req_masked & (cpuif_addr == 32'ha4013008);
+        decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_NUM = cpuif_req_masked & (cpuif_addr == 32'ha401300c);
+        decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_ADDR = cpuif_req_masked & (cpuif_addr == 32'ha4013010);
+        decoded_reg_strb.secondary_flash_ctrl_regs.FL_CONTROL = cpuif_req_masked & (cpuif_addr == 32'ha4013014);
+        decoded_reg_strb.secondary_flash_ctrl_regs.OP_STATUS = cpuif_req_masked & (cpuif_addr == 32'ha4013018);
+        decoded_reg_strb.secondary_flash_ctrl_regs.CTRL_REGWEN = cpuif_req_masked & (cpuif_addr == 32'ha401301c);
+        decoded_reg_strb.secondary_flash_ctrl_regs.FLASH_SIZE = cpuif_req_masked & (cpuif_addr == 32'ha4013020);
+        for(int i0=0; i0<64; i0++) begin
+            decoded_reg_strb.secondary_flash_ctrl_regs.FLASH_BUF[i0] = cpuif_req_masked & (cpuif_addr == 32'ha4013100 + (32)'(i0) * 32'h4);
+        end
     end
 
     // Pass down signals to next stage
@@ -720,6 +768,162 @@ module caliptra_fpga_realtime_regs (
                 } msg_fifo_full;
             } msg_fifo_status;
         } fifo_regs;
+        struct {
+            struct {
+                struct {
+                    logic next;
+                    logic load_next;
+                } ERROR;
+                struct {
+                    logic next;
+                    logic load_next;
+                } EVENT;
+            } FL_INTERRUPT_STATE;
+            struct {
+                struct {
+                    logic next;
+                    logic load_next;
+                } ERROR;
+                struct {
+                    logic next;
+                    logic load_next;
+                } EVENT;
+            } FL_INTERRUPT_ENABLE;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } PAGE_SIZE;
+            } PAGE_SIZE;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } PAGE_NUM;
+            } PAGE_NUM;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } PAGE_ADDR;
+            } PAGE_ADDR;
+            struct {
+                struct {
+                    logic next;
+                    logic load_next;
+                } START;
+                struct {
+                    logic [1:0] next;
+                    logic load_next;
+                } OP;
+            } FL_CONTROL;
+            struct {
+                struct {
+                    logic next;
+                    logic load_next;
+                } DONE;
+                struct {
+                    logic [2:0] next;
+                    logic load_next;
+                } ERR;
+            } OP_STATUS;
+            struct {
+                struct {
+                    logic next;
+                    logic load_next;
+                } EN;
+            } CTRL_REGWEN;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } FLASH_SIZE;
+            } FLASH_SIZE;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } FLASH_BUF;
+            } FLASH_BUF[64];
+        } primary_flash_ctrl_regs;
+        struct {
+            struct {
+                struct {
+                    logic next;
+                    logic load_next;
+                } ERROR;
+                struct {
+                    logic next;
+                    logic load_next;
+                } EVENT;
+            } FL_INTERRUPT_STATE;
+            struct {
+                struct {
+                    logic next;
+                    logic load_next;
+                } ERROR;
+                struct {
+                    logic next;
+                    logic load_next;
+                } EVENT;
+            } FL_INTERRUPT_ENABLE;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } PAGE_SIZE;
+            } PAGE_SIZE;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } PAGE_NUM;
+            } PAGE_NUM;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } PAGE_ADDR;
+            } PAGE_ADDR;
+            struct {
+                struct {
+                    logic next;
+                    logic load_next;
+                } START;
+                struct {
+                    logic [1:0] next;
+                    logic load_next;
+                } OP;
+            } FL_CONTROL;
+            struct {
+                struct {
+                    logic next;
+                    logic load_next;
+                } DONE;
+                struct {
+                    logic [2:0] next;
+                    logic load_next;
+                } ERR;
+            } OP_STATUS;
+            struct {
+                struct {
+                    logic next;
+                    logic load_next;
+                } EN;
+            } CTRL_REGWEN;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } FLASH_SIZE;
+            } FLASH_SIZE;
+            struct {
+                struct {
+                    logic [31:0] next;
+                    logic load_next;
+                } FLASH_BUF;
+            } FLASH_BUF[64];
+        } secondary_flash_ctrl_regs;
     } field_combo_t;
     field_combo_t field_combo;
 
@@ -1026,6 +1230,134 @@ module caliptra_fpga_realtime_regs (
                 } msg_fifo_full;
             } msg_fifo_status;
         } fifo_regs;
+        struct {
+            struct {
+                struct {
+                    logic value;
+                } ERROR;
+                struct {
+                    logic value;
+                } EVENT;
+            } FL_INTERRUPT_STATE;
+            struct {
+                struct {
+                    logic value;
+                } ERROR;
+                struct {
+                    logic value;
+                } EVENT;
+            } FL_INTERRUPT_ENABLE;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } PAGE_SIZE;
+            } PAGE_SIZE;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } PAGE_NUM;
+            } PAGE_NUM;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } PAGE_ADDR;
+            } PAGE_ADDR;
+            struct {
+                struct {
+                    logic value;
+                } START;
+                struct {
+                    logic [1:0] value;
+                } OP;
+            } FL_CONTROL;
+            struct {
+                struct {
+                    logic value;
+                } DONE;
+                struct {
+                    logic [2:0] value;
+                } ERR;
+            } OP_STATUS;
+            struct {
+                struct {
+                    logic value;
+                } EN;
+            } CTRL_REGWEN;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } FLASH_SIZE;
+            } FLASH_SIZE;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } FLASH_BUF;
+            } FLASH_BUF[64];
+        } primary_flash_ctrl_regs;
+        struct {
+            struct {
+                struct {
+                    logic value;
+                } ERROR;
+                struct {
+                    logic value;
+                } EVENT;
+            } FL_INTERRUPT_STATE;
+            struct {
+                struct {
+                    logic value;
+                } ERROR;
+                struct {
+                    logic value;
+                } EVENT;
+            } FL_INTERRUPT_ENABLE;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } PAGE_SIZE;
+            } PAGE_SIZE;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } PAGE_NUM;
+            } PAGE_NUM;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } PAGE_ADDR;
+            } PAGE_ADDR;
+            struct {
+                struct {
+                    logic value;
+                } START;
+                struct {
+                    logic [1:0] value;
+                } OP;
+            } FL_CONTROL;
+            struct {
+                struct {
+                    logic value;
+                } DONE;
+                struct {
+                    logic [2:0] value;
+                } ERR;
+            } OP_STATUS;
+            struct {
+                struct {
+                    logic value;
+                } EN;
+            } CTRL_REGWEN;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } FLASH_SIZE;
+            } FLASH_SIZE;
+            struct {
+                struct {
+                    logic [31:0] value;
+                } FLASH_BUF;
+            } FLASH_BUF[64];
+        } secondary_flash_ctrl_regs;
     } field_storage_t;
     field_storage_t field_storage;
 
@@ -2714,6 +3046,626 @@ module caliptra_fpga_realtime_regs (
         end
     end
     assign hwif_out.fifo_regs.msg_fifo_status.msg_fifo_full.value = field_storage.fifo_regs.msg_fifo_status.msg_fifo_full.value;
+    // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_STATE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+            load_next_c = '1;
+        end
+        field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.next = next_c;
+        field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value <= 1'h0;
+        end else begin
+            if(field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.load_next) begin
+                field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value <= field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_STATE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value & ~decoded_wr_biten[1:1]) | (decoded_wr_data[1:1] & decoded_wr_biten[1:1]);
+            load_next_c = '1;
+        end
+        field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.next = next_c;
+        field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value <= 1'h0;
+        end else begin
+            if(field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.load_next) begin
+                field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value <= field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+            load_next_c = '1;
+        end
+        field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.next = next_c;
+        field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value <= 1'h0;
+        end else begin
+            if(field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.load_next) begin
+                field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value <= field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value & ~decoded_wr_biten[1:1]) | (decoded_wr_data[1:1] & decoded_wr_biten[1:1]);
+            load_next_c = '1;
+        end
+        field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.next = next_c;
+        field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value <= 1'h0;
+        end else begin
+            if(field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.load_next) begin
+                field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value <= field_combo.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.primary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.primary_flash_ctrl_regs.PAGE_SIZE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.primary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            load_next_c = '1;
+        end
+        field_combo.primary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.next = next_c;
+        field_combo.primary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.primary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value <= 32'h100;
+        end else begin
+            if(field_combo.primary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.load_next) begin
+                field_storage.primary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value <= field_combo.primary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.primary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.primary_flash_ctrl_regs.PAGE_NUM && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.primary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            load_next_c = '1;
+        end
+        field_combo.primary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.next = next_c;
+        field_combo.primary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.primary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value <= 32'h0;
+        end else begin
+            if(field_combo.primary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.load_next) begin
+                field_storage.primary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value <= field_combo.primary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.primary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.primary_flash_ctrl_regs.PAGE_ADDR && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.primary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            load_next_c = '1;
+        end
+        field_combo.primary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.next = next_c;
+        field_combo.primary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.primary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value <= 32'h0;
+        end else begin
+            if(field_combo.primary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.load_next) begin
+                field_storage.primary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value <= field_combo.primary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.FL_CONTROL.START
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.primary_flash_ctrl_regs.FL_CONTROL.START.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.primary_flash_ctrl_regs.FL_CONTROL && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.primary_flash_ctrl_regs.FL_CONTROL.START.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+            load_next_c = '1;
+        end
+        field_combo.primary_flash_ctrl_regs.FL_CONTROL.START.next = next_c;
+        field_combo.primary_flash_ctrl_regs.FL_CONTROL.START.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.primary_flash_ctrl_regs.FL_CONTROL.START.value <= 1'h0;
+        end else begin
+            if(field_combo.primary_flash_ctrl_regs.FL_CONTROL.START.load_next) begin
+                field_storage.primary_flash_ctrl_regs.FL_CONTROL.START.value <= field_combo.primary_flash_ctrl_regs.FL_CONTROL.START.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.FL_CONTROL.OP
+    always_comb begin
+        automatic logic [1:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.primary_flash_ctrl_regs.FL_CONTROL.OP.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.primary_flash_ctrl_regs.FL_CONTROL && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.primary_flash_ctrl_regs.FL_CONTROL.OP.value & ~decoded_wr_biten[2:1]) | (decoded_wr_data[2:1] & decoded_wr_biten[2:1]);
+            load_next_c = '1;
+        end
+        field_combo.primary_flash_ctrl_regs.FL_CONTROL.OP.next = next_c;
+        field_combo.primary_flash_ctrl_regs.FL_CONTROL.OP.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.primary_flash_ctrl_regs.FL_CONTROL.OP.value <= 2'h0;
+        end else begin
+            if(field_combo.primary_flash_ctrl_regs.FL_CONTROL.OP.load_next) begin
+                field_storage.primary_flash_ctrl_regs.FL_CONTROL.OP.value <= field_combo.primary_flash_ctrl_regs.FL_CONTROL.OP.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.OP_STATUS.DONE
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.primary_flash_ctrl_regs.OP_STATUS.DONE.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.primary_flash_ctrl_regs.OP_STATUS && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.primary_flash_ctrl_regs.OP_STATUS.DONE.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+            load_next_c = '1;
+        end
+        field_combo.primary_flash_ctrl_regs.OP_STATUS.DONE.next = next_c;
+        field_combo.primary_flash_ctrl_regs.OP_STATUS.DONE.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.primary_flash_ctrl_regs.OP_STATUS.DONE.value <= 1'h0;
+        end else begin
+            if(field_combo.primary_flash_ctrl_regs.OP_STATUS.DONE.load_next) begin
+                field_storage.primary_flash_ctrl_regs.OP_STATUS.DONE.value <= field_combo.primary_flash_ctrl_regs.OP_STATUS.DONE.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.OP_STATUS.ERR
+    always_comb begin
+        automatic logic [2:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.primary_flash_ctrl_regs.OP_STATUS.ERR.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.primary_flash_ctrl_regs.OP_STATUS && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.primary_flash_ctrl_regs.OP_STATUS.ERR.value & ~decoded_wr_biten[3:1]) | (decoded_wr_data[3:1] & decoded_wr_biten[3:1]);
+            load_next_c = '1;
+        end
+        field_combo.primary_flash_ctrl_regs.OP_STATUS.ERR.next = next_c;
+        field_combo.primary_flash_ctrl_regs.OP_STATUS.ERR.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.primary_flash_ctrl_regs.OP_STATUS.ERR.value <= 3'h0;
+        end else begin
+            if(field_combo.primary_flash_ctrl_regs.OP_STATUS.ERR.load_next) begin
+                field_storage.primary_flash_ctrl_regs.OP_STATUS.ERR.value <= field_combo.primary_flash_ctrl_regs.OP_STATUS.ERR.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.CTRL_REGWEN.EN
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.primary_flash_ctrl_regs.CTRL_REGWEN.EN.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.primary_flash_ctrl_regs.CTRL_REGWEN && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.primary_flash_ctrl_regs.CTRL_REGWEN.EN.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+            load_next_c = '1;
+        end
+        field_combo.primary_flash_ctrl_regs.CTRL_REGWEN.EN.next = next_c;
+        field_combo.primary_flash_ctrl_regs.CTRL_REGWEN.EN.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.primary_flash_ctrl_regs.CTRL_REGWEN.EN.value <= 1'h1;
+        end else begin
+            if(field_combo.primary_flash_ctrl_regs.CTRL_REGWEN.EN.load_next) begin
+                field_storage.primary_flash_ctrl_regs.CTRL_REGWEN.EN.value <= field_combo.primary_flash_ctrl_regs.CTRL_REGWEN.EN.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.primary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.primary_flash_ctrl_regs.FLASH_SIZE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.primary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            load_next_c = '1;
+        end
+        field_combo.primary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.next = next_c;
+        field_combo.primary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.primary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value <= 32'h1000000;
+        end else begin
+            if(field_combo.primary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.load_next) begin
+                field_storage.primary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value <= field_combo.primary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.next;
+            end
+        end
+    end
+    for(genvar i0=0; i0<64; i0++) begin
+        // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.FLASH_BUF[].FLASH_BUF
+        always_comb begin
+            automatic logic [31:0] next_c;
+            automatic logic load_next_c;
+            next_c = field_storage.primary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value;
+            load_next_c = '0;
+            if(decoded_reg_strb.primary_flash_ctrl_regs.FLASH_BUF[i0] && decoded_req_is_wr) begin // SW write
+                next_c = (field_storage.primary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+                load_next_c = '1;
+            end
+            field_combo.primary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.next = next_c;
+            field_combo.primary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.load_next = load_next_c;
+        end
+        always_ff @(posedge clk) begin
+            if(rst) begin
+                field_storage.primary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value <= 32'hffffffff;
+            end else begin
+                if(field_combo.primary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.load_next) begin
+                    field_storage.primary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value <= field_combo.primary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.next;
+                end
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+            load_next_c = '1;
+        end
+        field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.next = next_c;
+        field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value <= 1'h0;
+        end else begin
+            if(field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.load_next) begin
+                field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value <= field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value & ~decoded_wr_biten[1:1]) | (decoded_wr_data[1:1] & decoded_wr_biten[1:1]);
+            load_next_c = '1;
+        end
+        field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.next = next_c;
+        field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value <= 1'h0;
+        end else begin
+            if(field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.load_next) begin
+                field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value <= field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+            load_next_c = '1;
+        end
+        field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.next = next_c;
+        field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value <= 1'h0;
+        end else begin
+            if(field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.load_next) begin
+                field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value <= field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value & ~decoded_wr_biten[1:1]) | (decoded_wr_data[1:1] & decoded_wr_biten[1:1]);
+            load_next_c = '1;
+        end
+        field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.next = next_c;
+        field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value <= 1'h0;
+        end else begin
+            if(field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.load_next) begin
+                field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value <= field_combo.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.secondary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_SIZE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.secondary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            load_next_c = '1;
+        end
+        field_combo.secondary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.next = next_c;
+        field_combo.secondary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.secondary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value <= 32'h100;
+        end else begin
+            if(field_combo.secondary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.load_next) begin
+                field_storage.secondary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value <= field_combo.secondary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.secondary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_NUM && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.secondary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            load_next_c = '1;
+        end
+        field_combo.secondary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.next = next_c;
+        field_combo.secondary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.secondary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value <= 32'h0;
+        end else begin
+            if(field_combo.secondary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.load_next) begin
+                field_storage.secondary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value <= field_combo.secondary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.secondary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_ADDR && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.secondary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            load_next_c = '1;
+        end
+        field_combo.secondary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.next = next_c;
+        field_combo.secondary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.secondary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value <= 32'h0;
+        end else begin
+            if(field_combo.secondary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.load_next) begin
+                field_storage.secondary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value <= field_combo.secondary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.FL_CONTROL.START
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.secondary_flash_ctrl_regs.FL_CONTROL.START.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.secondary_flash_ctrl_regs.FL_CONTROL && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.secondary_flash_ctrl_regs.FL_CONTROL.START.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+            load_next_c = '1;
+        end
+        field_combo.secondary_flash_ctrl_regs.FL_CONTROL.START.next = next_c;
+        field_combo.secondary_flash_ctrl_regs.FL_CONTROL.START.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.secondary_flash_ctrl_regs.FL_CONTROL.START.value <= 1'h0;
+        end else begin
+            if(field_combo.secondary_flash_ctrl_regs.FL_CONTROL.START.load_next) begin
+                field_storage.secondary_flash_ctrl_regs.FL_CONTROL.START.value <= field_combo.secondary_flash_ctrl_regs.FL_CONTROL.START.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.FL_CONTROL.OP
+    always_comb begin
+        automatic logic [1:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.secondary_flash_ctrl_regs.FL_CONTROL.OP.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.secondary_flash_ctrl_regs.FL_CONTROL && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.secondary_flash_ctrl_regs.FL_CONTROL.OP.value & ~decoded_wr_biten[2:1]) | (decoded_wr_data[2:1] & decoded_wr_biten[2:1]);
+            load_next_c = '1;
+        end
+        field_combo.secondary_flash_ctrl_regs.FL_CONTROL.OP.next = next_c;
+        field_combo.secondary_flash_ctrl_regs.FL_CONTROL.OP.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.secondary_flash_ctrl_regs.FL_CONTROL.OP.value <= 2'h0;
+        end else begin
+            if(field_combo.secondary_flash_ctrl_regs.FL_CONTROL.OP.load_next) begin
+                field_storage.secondary_flash_ctrl_regs.FL_CONTROL.OP.value <= field_combo.secondary_flash_ctrl_regs.FL_CONTROL.OP.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.OP_STATUS.DONE
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.secondary_flash_ctrl_regs.OP_STATUS.DONE.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.secondary_flash_ctrl_regs.OP_STATUS && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.secondary_flash_ctrl_regs.OP_STATUS.DONE.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+            load_next_c = '1;
+        end
+        field_combo.secondary_flash_ctrl_regs.OP_STATUS.DONE.next = next_c;
+        field_combo.secondary_flash_ctrl_regs.OP_STATUS.DONE.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.secondary_flash_ctrl_regs.OP_STATUS.DONE.value <= 1'h0;
+        end else begin
+            if(field_combo.secondary_flash_ctrl_regs.OP_STATUS.DONE.load_next) begin
+                field_storage.secondary_flash_ctrl_regs.OP_STATUS.DONE.value <= field_combo.secondary_flash_ctrl_regs.OP_STATUS.DONE.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.OP_STATUS.ERR
+    always_comb begin
+        automatic logic [2:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.secondary_flash_ctrl_regs.OP_STATUS.ERR.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.secondary_flash_ctrl_regs.OP_STATUS && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.secondary_flash_ctrl_regs.OP_STATUS.ERR.value & ~decoded_wr_biten[3:1]) | (decoded_wr_data[3:1] & decoded_wr_biten[3:1]);
+            load_next_c = '1;
+        end
+        field_combo.secondary_flash_ctrl_regs.OP_STATUS.ERR.next = next_c;
+        field_combo.secondary_flash_ctrl_regs.OP_STATUS.ERR.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.secondary_flash_ctrl_regs.OP_STATUS.ERR.value <= 3'h0;
+        end else begin
+            if(field_combo.secondary_flash_ctrl_regs.OP_STATUS.ERR.load_next) begin
+                field_storage.secondary_flash_ctrl_regs.OP_STATUS.ERR.value <= field_combo.secondary_flash_ctrl_regs.OP_STATUS.ERR.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.CTRL_REGWEN.EN
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.secondary_flash_ctrl_regs.CTRL_REGWEN.EN.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.secondary_flash_ctrl_regs.CTRL_REGWEN && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.secondary_flash_ctrl_regs.CTRL_REGWEN.EN.value & ~decoded_wr_biten[0:0]) | (decoded_wr_data[0:0] & decoded_wr_biten[0:0]);
+            load_next_c = '1;
+        end
+        field_combo.secondary_flash_ctrl_regs.CTRL_REGWEN.EN.next = next_c;
+        field_combo.secondary_flash_ctrl_regs.CTRL_REGWEN.EN.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.secondary_flash_ctrl_regs.CTRL_REGWEN.EN.value <= 1'h1;
+        end else begin
+            if(field_combo.secondary_flash_ctrl_regs.CTRL_REGWEN.EN.load_next) begin
+                field_storage.secondary_flash_ctrl_regs.CTRL_REGWEN.EN.value <= field_combo.secondary_flash_ctrl_regs.CTRL_REGWEN.EN.next;
+            end
+        end
+    end
+    // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE
+    always_comb begin
+        automatic logic [31:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.secondary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.secondary_flash_ctrl_regs.FLASH_SIZE && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.secondary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+            load_next_c = '1;
+        end
+        field_combo.secondary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.next = next_c;
+        field_combo.secondary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.secondary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value <= 32'h1000000;
+        end else begin
+            if(field_combo.secondary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.load_next) begin
+                field_storage.secondary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value <= field_combo.secondary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.next;
+            end
+        end
+    end
+    for(genvar i0=0; i0<64; i0++) begin
+        // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.FLASH_BUF[].FLASH_BUF
+        always_comb begin
+            automatic logic [31:0] next_c;
+            automatic logic load_next_c;
+            next_c = field_storage.secondary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value;
+            load_next_c = '0;
+            if(decoded_reg_strb.secondary_flash_ctrl_regs.FLASH_BUF[i0] && decoded_req_is_wr) begin // SW write
+                next_c = (field_storage.secondary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value & ~decoded_wr_biten[31:0]) | (decoded_wr_data[31:0] & decoded_wr_biten[31:0]);
+                load_next_c = '1;
+            end
+            field_combo.secondary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.next = next_c;
+            field_combo.secondary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.load_next = load_next_c;
+        end
+        always_ff @(posedge clk) begin
+            if(rst) begin
+                field_storage.secondary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value <= 32'hffffffff;
+            end else begin
+                if(field_combo.secondary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.load_next) begin
+                    field_storage.secondary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value <= field_combo.secondary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.next;
+                end
+            end
+        end
+    end
 
     //--------------------------------------------------------------------------
     // Write response
@@ -2731,7 +3683,7 @@ module caliptra_fpga_realtime_regs (
     logic [31:0] readback_data;
 
     // Assign readback values to a flattened array
-    logic [31:0] readback_array[108];
+    logic [31:0] readback_array[254];
     assign readback_array[0][31:0] = (decoded_reg_strb.interface_regs.fpga_magic && !decoded_req_is_wr) ? 32'h52545043 : '0;
     assign readback_array[1][31:0] = (decoded_reg_strb.interface_regs.fpga_version && !decoded_req_is_wr) ? field_storage.interface_regs.fpga_version.fpga_version.value : '0;
     assign readback_array[2][0:0] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.cptra_pwrgood.value : '0;
@@ -2837,6 +3789,48 @@ module caliptra_fpga_realtime_regs (
     assign readback_array[107][0:0] = (decoded_reg_strb.fifo_regs.msg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.msg_fifo_status.msg_fifo_empty.value : '0;
     assign readback_array[107][1:1] = (decoded_reg_strb.fifo_regs.msg_fifo_status && !decoded_req_is_wr) ? field_storage.fifo_regs.msg_fifo_status.msg_fifo_full.value : '0;
     assign readback_array[107][31:2] = '0;
+    assign readback_array[108][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_STATE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value : '0;
+    assign readback_array[108][1:1] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_STATE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value : '0;
+    assign readback_array[108][31:2] = '0;
+    assign readback_array[109][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value : '0;
+    assign readback_array[109][1:1] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value : '0;
+    assign readback_array[109][31:2] = '0;
+    assign readback_array[110][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.PAGE_SIZE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value : '0;
+    assign readback_array[111][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.PAGE_NUM && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value : '0;
+    assign readback_array[112][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.PAGE_ADDR && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value : '0;
+    assign readback_array[113][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_CONTROL && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_CONTROL.START.value : '0;
+    assign readback_array[113][2:1] = (decoded_reg_strb.primary_flash_ctrl_regs.FL_CONTROL && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FL_CONTROL.OP.value : '0;
+    assign readback_array[113][31:3] = '0;
+    assign readback_array[114][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.OP_STATUS && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.OP_STATUS.DONE.value : '0;
+    assign readback_array[114][3:1] = (decoded_reg_strb.primary_flash_ctrl_regs.OP_STATUS && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.OP_STATUS.ERR.value : '0;
+    assign readback_array[114][31:4] = '0;
+    assign readback_array[115][0:0] = (decoded_reg_strb.primary_flash_ctrl_regs.CTRL_REGWEN && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.CTRL_REGWEN.EN.value : '0;
+    assign readback_array[115][31:1] = '0;
+    assign readback_array[116][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FLASH_SIZE && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value : '0;
+    for(genvar i0=0; i0<64; i0++) begin
+        assign readback_array[i0 * 1 + 117][31:0] = (decoded_reg_strb.primary_flash_ctrl_regs.FLASH_BUF[i0] && !decoded_req_is_wr) ? field_storage.primary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value : '0;
+    end
+    assign readback_array[181][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value : '0;
+    assign readback_array[181][1:1] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value : '0;
+    assign readback_array[181][31:2] = '0;
+    assign readback_array[182][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value : '0;
+    assign readback_array[182][1:1] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value : '0;
+    assign readback_array[182][31:2] = '0;
+    assign readback_array[183][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_SIZE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE.value : '0;
+    assign readback_array[184][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_NUM && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.PAGE_NUM.PAGE_NUM.value : '0;
+    assign readback_array[185][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.PAGE_ADDR && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.PAGE_ADDR.PAGE_ADDR.value : '0;
+    assign readback_array[186][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_CONTROL && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_CONTROL.START.value : '0;
+    assign readback_array[186][2:1] = (decoded_reg_strb.secondary_flash_ctrl_regs.FL_CONTROL && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FL_CONTROL.OP.value : '0;
+    assign readback_array[186][31:3] = '0;
+    assign readback_array[187][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.OP_STATUS && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.OP_STATUS.DONE.value : '0;
+    assign readback_array[187][3:1] = (decoded_reg_strb.secondary_flash_ctrl_regs.OP_STATUS && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.OP_STATUS.ERR.value : '0;
+    assign readback_array[187][31:4] = '0;
+    assign readback_array[188][0:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.CTRL_REGWEN && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.CTRL_REGWEN.EN.value : '0;
+    assign readback_array[188][31:1] = '0;
+    assign readback_array[189][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FLASH_SIZE && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FLASH_SIZE.FLASH_SIZE.value : '0;
+    for(genvar i0=0; i0<64; i0++) begin
+        assign readback_array[i0 * 1 + 190][31:0] = (decoded_reg_strb.secondary_flash_ctrl_regs.FLASH_BUF[i0] && !decoded_req_is_wr) ? field_storage.secondary_flash_ctrl_regs.FLASH_BUF[i0].FLASH_BUF.value : '0;
+    end
 
     // Reduce the array
     always_comb begin
@@ -2844,7 +3838,7 @@ module caliptra_fpga_realtime_regs (
         readback_done = decoded_req & ~decoded_req_is_wr;
         readback_err = '0;
         readback_data_var = '0;
-        for(int i=0; i<108; i++) readback_data_var |= readback_array[i];
+        for(int i=0; i<254; i++) readback_data_var |= readback_array[i];
         readback_data = readback_data_var;
     end
 
