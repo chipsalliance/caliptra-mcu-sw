@@ -9,7 +9,7 @@ use external_cmds_common::UnifiedCommandHandler;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 
-const MAX_MCU_MBOX_MSG_SIZE: usize = 2048; // Adjust as needed
+const MAX_MCU_MBOX_MSG_SIZE: usize = 4096;
 
 #[derive(Debug)]
 pub enum McuMboxServiceError {
