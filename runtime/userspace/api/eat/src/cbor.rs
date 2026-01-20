@@ -1,7 +1,31 @@
 // Licensed under the Apache-2.0 license
 
-// CBOR encoding functionality
-use super::eat::EatError;
+//! Generic CBOR encoding functionality
+//!
+//! This module provides a no_std compatible CBOR encoder with a fixed buffer.
+//! It implements the core CBOR data types according to RFC 8949.
+
+use crate::error::EatError;
+
+/// Trait for types that can be encoded to CBOR format
+pub trait CborEncodable {
+    /// Encode this value into the provided CBOR encoder
+    fn encode(&self, encoder: &mut CborEncoder) -> Result<(), EatError>;
+}
+
+// Allow references to types that are already CborEncodable
+impl<T: CborEncodable + ?Sized> CborEncodable for &T {
+    fn encode(&self, encoder: &mut CborEncoder) -> Result<(), EatError> {
+        (*self).encode(encoder)
+    }
+}
+
+// Optional: allow mutable references too
+impl<T: CborEncodable + ?Sized> CborEncodable for &mut T {
+    fn encode(&self, encoder: &mut CborEncoder) -> Result<(), EatError> {
+        (**self).encode(encoder)
+    }
+}
 
 // CBOR encoder with fixed buffer
 pub struct CborEncoder<'a> {

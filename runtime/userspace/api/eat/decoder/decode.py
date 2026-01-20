@@ -902,7 +902,7 @@ def get_cbor_type_name(major_type):
     return types.get(major_type, f"type_{major_type}")
 
 def get_eat_claim_name(key):
-    """Get the standard name for EAT claim keys (matching eat_encoder.rs constants)"""
+    """Get the standard name for EAT claim keys (matching ocp_profile.rs constants)"""
     eat_claims = {
         # Standard CWT/EAT claims
         1: "iss (Issuer)",
