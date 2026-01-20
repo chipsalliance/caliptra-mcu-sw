@@ -45,13 +45,6 @@ mod test {
         flash_offset: usize,
     }
 
-    macro_rules! run_test {
-        ($func:ident, $($args:expr),*) => {{
-            println!("Running {}...", stringify!($func));
-            $func($($args),*);
-        }};
-    }
-
     fn create_soc_images(soc_images: Vec<Vec<u8>>) -> Vec<PathBuf> {
         let soc_images_paths: Vec<PathBuf> = soc_images
             .iter()
@@ -496,9 +489,8 @@ mod test {
         assert_ne!(0, test);
     }
 
-    // Common test function for both flash-based and streaming boot
-    fn test_firmware_update_common(use_flash: bool) {
-        let lock = TEST_LOCK.lock().unwrap();
+    // Creates test options for firmware update tests
+    fn create_firmware_update_test_options(use_flash: bool) -> TestOptions {
         let feature = if use_flash {
             "test-firmware-update-flash"
         } else {
@@ -622,7 +614,7 @@ mod test {
 
         // These are the options for a successful boot
         // Each test case will override the options to simulate different scenarios
-        let pass_options = TestOptions {
+        TestOptions {
             feature,
             rom: mcu_rom,
             runtime: test_runtime.clone(),
@@ -640,27 +632,127 @@ mod test {
             partition_table: None,
             builder: Some(builder.clone()),
             flash_offset: 0,
-        };
+        }
+    }
 
-        run_test!(test_successful_update, &pass_options.clone());
-        run_test!(test_successful_fast_update, &pass_options.clone());
-        run_test!(test_invalid_caliptra_image, &pass_options.clone());
-        run_test!(test_missing_caliptra_image, &pass_options.clone());
-        run_test!(test_invalid_manifest, &pass_options.clone());
-        run_test!(test_invalid_mcu_image, &pass_options.clone());
-        run_test!(test_invalid_soc_image, &pass_options.clone());
-
+    // Flash-based firmware update tests
+    #[test]
+    fn test_firmware_update_flash_successful() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(true);
+        test_successful_update(&opts);
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     #[test]
-    fn test_firmware_update() {
-        test_firmware_update_common(true);
+    fn test_firmware_update_flash_successful_fast() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(true);
+        test_successful_fast_update(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    #[test]
+    fn test_firmware_update_flash_invalid_caliptra_image() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(true);
+        test_invalid_caliptra_image(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_firmware_update_flash_missing_caliptra_image() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(true);
+        test_missing_caliptra_image(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_firmware_update_flash_invalid_manifest() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(true);
+        test_invalid_manifest(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_firmware_update_flash_invalid_mcu_image() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(true);
+        test_invalid_mcu_image(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_firmware_update_flash_invalid_soc_image() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(true);
+        test_invalid_soc_image(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    // Streaming firmware update tests
+    #[test]
+    fn test_firmware_update_streaming_successful() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(false);
+        test_successful_update(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_firmware_update_streaming_successful_fast() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(false);
+        test_successful_fast_update(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_firmware_update_streaming_invalid_caliptra_image() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(false);
+        test_invalid_caliptra_image(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_firmware_update_streaming_missing_caliptra_image() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(false);
+        test_missing_caliptra_image(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_firmware_update_streaming_invalid_manifest() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(false);
+        test_invalid_manifest(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_firmware_update_streaming_invalid_mcu_image() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(false);
+        test_invalid_mcu_image(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_firmware_update_streaming_invalid_soc_image() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_firmware_update_test_options(false);
+        test_invalid_soc_image(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// FPGA-specific streaming firmware update test that uses cached PLDM_FW_PKG artifacts
     #[cfg(feature = "fpga_realtime")]
     #[test]
-    fn test_firmware_update_streaming() {
+    fn test_firmware_update_streaming_fpga() {
         if env::var("PLDM_FW_PKG").is_err() {
             if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
                 // If PLDM_FW_PKG is not specified, we will use the PLDM firmware package
@@ -679,7 +771,7 @@ mod test {
                     test_pldm_pkg_path.to_string_lossy().to_string(),
                 );
             } else {
-                println!("Skipping test_firmware_update_streaming as PLDM_FW_PKG is not set");
+                println!("Skipping test_firmware_update_streaming_fpga as PLDM_FW_PKG is not set");
                 return;
             }
         }
