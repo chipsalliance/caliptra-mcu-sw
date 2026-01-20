@@ -155,10 +155,12 @@ impl<
                 debug!("Event Loop processing event: {:?}", ev);
                 match ev {
                     PldmEvents::Start => {
-                        // Wait briefly for device-side PLDM service to initialize
+                        // Wait for device-side PLDM service to initialize
                         // This avoids a race condition where discovery requests arrive
-                        // before the device is ready to process them
-                        std::thread::sleep(Duration::from_millis(100));
+                        // before the device is ready to process them.
+                        // The delay needs to be long enough for the MCU to boot,
+                        // start the runtime, and initialize the PLDM service.
+                        std::thread::sleep(Duration::from_secs(2));
 
                         // Start Discovery
                         let discovery_sm = &mut *discovery_sm.lock().unwrap();
