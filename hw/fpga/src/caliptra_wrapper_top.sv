@@ -1357,7 +1357,7 @@ mcu_rom (
         .MEMORY_INIT_PARAM("0"),        // String
         .MEMORY_OPTIMIZATION("false"),  // String
         .MEMORY_PRIMITIVE("auto"),      // String
-        .MEMORY_SIZE(4*1024*8*39/32),   // DECIMAL
+        .MEMORY_SIZE(16*1024*8*39/32),  // DECIMAL
         .MESSAGE_CONTROL(0),            // DECIMAL
         .READ_DATA_WIDTH_A(39),         // DECIMAL
         .READ_LATENCY_A(1),             // DECIMAL
@@ -1401,7 +1401,7 @@ mcu_rom (
         .MEMORY_INIT_PARAM("0"),        // String
         .MEMORY_OPTIMIZATION("false"),  // String
         .MEMORY_PRIMITIVE("auto"),      // String
-        .MEMORY_SIZE(4*1024*8*39/32),   // DECIMAL
+        .MEMORY_SIZE(16*1024*8*39/32),  // DECIMAL
         .MESSAGE_CONTROL(0),            // DECIMAL
         .READ_DATA_WIDTH_A(39),         // DECIMAL
         .READ_LATENCY_A(1),             // DECIMAL
@@ -1973,7 +1973,10 @@ logic i3c_recovery_payload_available;
 logic i3c_recovery_image_activated;
 
 // TODO: Unconnected signals issue: https://github.com/chipsalliance/caliptra-mcu-sw/issues/370
-caliptra_ss_top caliptra_ss_top_0 (
+caliptra_ss_top #(
+    .MCU_MBOX0_SIZE_KB(16),
+    .MCU_MBOX1_SIZE_KB(16)
+) caliptra_ss_top_0 (
 
     .cptra_ss_clk_i(core_clk),
     .cptra_i3c_clk_i(i3c_clk),
