@@ -35,5 +35,7 @@ pub(crate) fn precheckin() -> Result<()> {
         None,
     )?;
     crate::test::test_panic_missing()?;
+    crate::test::e2e_tests()?;
+    crate::test::test_hello_c_emulator()?;
     Ok(())
 }
