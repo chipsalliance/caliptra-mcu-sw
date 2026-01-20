@@ -12,7 +12,13 @@ use libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
     DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, MailboxRespHeader,
-    MailboxRespHeaderVarSize, McuCmDeleteReq, McuCmDeleteResp, McuCmImportReq, McuCmImportResp,
+    MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptInitResp, McuAesDecryptUpdateReq,
+    McuAesDecryptUpdateResp, McuAesEncryptInitReq, McuAesEncryptInitResp, McuAesEncryptUpdateReq,
+    McuAesEncryptUpdateResp, McuAesGcmDecryptFinalReq, McuAesGcmDecryptFinalResp,
+    McuAesGcmDecryptInitReq, McuAesGcmDecryptInitResp, McuAesGcmDecryptUpdateReq,
+    McuAesGcmDecryptUpdateResp, McuAesGcmEncryptFinalReq, McuAesGcmEncryptFinalResp,
+    McuAesGcmEncryptInitReq, McuAesGcmEncryptInitResp, McuAesGcmEncryptUpdateReq,
+    McuAesGcmEncryptUpdateResp, McuCmDeleteReq, McuCmDeleteResp, McuCmImportReq, McuCmImportResp,
     McuCmStatusReq, McuCmStatusResp, McuMailboxResp, McuRandomGenerateReq, McuRandomGenerateResp,
     McuRandomStirReq, McuRandomStirResp, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
     McuShaInitResp, McuShaUpdateReq, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
@@ -172,6 +178,110 @@ impl<'a> CmdInterface<'a> {
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_RANDOM_STIR.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            // Add AES Encrypt commands
+            CommandId::MC_AES_ENCRYPT_INIT => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuAesEncryptInitResp>()];
+                self.handle_crypto_passthrough::<McuAesEncryptInitReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_AES_ENCRYPT_INIT.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_AES_ENCRYPT_UPDATE => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuAesEncryptUpdateResp>()];
+                self.handle_crypto_passthrough::<McuAesEncryptUpdateReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_AES_ENCRYPT_UPDATE.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            // Add AES Decrypt commands
+            CommandId::MC_AES_DECRYPT_INIT => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuAesDecryptInitResp>()];
+                self.handle_crypto_passthrough::<McuAesDecryptInitReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_AES_DECRYPT_INIT.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_AES_DECRYPT_UPDATE => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuAesDecryptUpdateResp>()];
+                self.handle_crypto_passthrough::<McuAesDecryptUpdateReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_AES_DECRYPT_UPDATE.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            // Add AES GCM encrypt commands here.
+            CommandId::MC_AES_GCM_ENCRYPT_INIT => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuAesGcmEncryptInitResp>()];
+                self.handle_crypto_passthrough::<McuAesGcmEncryptInitReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_AES_GCM_ENCRYPT_INIT.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_AES_GCM_ENCRYPT_UPDATE => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuAesGcmEncryptUpdateResp>()];
+                self.handle_crypto_passthrough::<McuAesGcmEncryptUpdateReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_AES_GCM_ENCRYPT_UPDATE.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_AES_GCM_ENCRYPT_FINAL => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuAesGcmEncryptFinalResp>()];
+                self.handle_crypto_passthrough::<McuAesGcmEncryptFinalReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_AES_GCM_ENCRYPT_FINAL.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            // Add AES GCM decrypt commands here.
+            CommandId::MC_AES_GCM_DECRYPT_INIT => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuAesGcmDecryptInitResp>()];
+                self.handle_crypto_passthrough::<McuAesGcmDecryptInitReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_AES_GCM_DECRYPT_INIT.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_AES_GCM_DECRYPT_UPDATE => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuAesGcmDecryptUpdateResp>()];
+                self.handle_crypto_passthrough::<McuAesGcmDecryptUpdateReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_AES_GCM_DECRYPT_UPDATE.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_AES_GCM_DECRYPT_FINAL => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuAesGcmDecryptFinalResp>()];
+                self.handle_crypto_passthrough::<McuAesGcmDecryptFinalReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_AES_GCM_DECRYPT_FINAL.into(),
                     &mut resp_bytes,
                 )
                 .await
