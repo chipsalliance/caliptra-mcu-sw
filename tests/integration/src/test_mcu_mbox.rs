@@ -9,13 +9,22 @@ pub mod test {
     };
     use mcu_hw_model::McuHwModel;
     use mcu_mbox_common::messages::{
-        CmDeleteReq, CmImportReq, CmKeyUsage, CmRandomGenerateReq, CmRandomStirReq, CmShaFinalReq,
-        CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk, DeviceCapsReq, DeviceCapsResp,
-        DeviceIdReq, DeviceIdResp, DeviceInfoReq, DeviceInfoResp, FirmwareVersionReq,
-        FirmwareVersionResp, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
-        McuCmDeleteReq, McuCmImportReq, McuCmImportResp, McuCmStatusReq, McuCmStatusResp,
-        McuMailboxReq, McuMailboxResp, McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq,
-        McuShaFinalResp, McuShaInitReq, McuShaInitResp, McuShaUpdateReq, DEVICE_CAPS_SIZE,
+        CmAesDecryptInitReq, CmAesDecryptUpdateReq, CmAesEncryptInitReq,
+        CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq, CmAesGcmDecryptFinalReq,
+        CmAesGcmDecryptFinalRespHeader, CmAesGcmDecryptInitReq, CmAesGcmDecryptUpdateReq,
+        CmAesGcmDecryptUpdateRespHeader, CmAesGcmEncryptFinalReq, CmAesGcmEncryptFinalRespHeader,
+        CmAesGcmEncryptInitReq, CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateRespHeader,
+        CmAesMode, CmAesRespHeader, CmDeleteReq, CmImportReq, CmKeyUsage, CmRandomGenerateReq,
+        CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk,
+        DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq, DeviceInfoResp,
+        FirmwareVersionReq, FirmwareVersionResp, MailboxReqHeader, MailboxRespHeader,
+        MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
+        McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
+        McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
+        McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
+        McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuMailboxReq, McuMailboxResp,
+        McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
+        McuShaInitResp, McuShaUpdateReq, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, DEVICE_CAPS_SIZE,
         MAX_CMB_DATA_SIZE,
     };
     use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
@@ -25,6 +34,10 @@ pub mod test {
     use std::process::exit;
     use std::sync::atomic::Ordering;
     use zerocopy::{FromBytes, IntoBytes};
+
+    /// Chunk size for splitting large AES-GCM payloads.
+    /// Set to 2048 to ensure total request (headers ~140 bytes + data) fits within 4K SRAM.
+    const AES_GCM_CHUNK_SIZE: usize = 2048;
 
     #[test]
     pub fn test_mcu_mbox_cmds() {
@@ -187,6 +200,8 @@ pub mod test {
                 self.add_import_delete_tests()?;
                 self.add_rng_generate_tests()?;
                 self.add_rng_stir_etrng_not_supported_test()?;
+                self.add_aes_encrypt_decrypt_tests()?;
+                self.add_aes_gcm_encrypt_decrypt_tests()?;
                 Ok(())
             } else {
                 Ok(())
@@ -716,6 +731,647 @@ pub mod test {
             assert_eq!(resp.status_code, MbxCmdStatus::Complete as u32);
 
             Ok(())
+        }
+
+        /// Test AES encrypt and decrypt operations in CBC and CTR modes.
+        /// This performs a round-trip test: encrypt plaintext, then decrypt ciphertext,
+        /// and verify the result matches the original plaintext.
+        fn add_aes_encrypt_decrypt_tests(&mut self) -> Result<(), ()> {
+            println!("Running AES encrypt/decrypt tests");
+
+            // Test both CBC and CTR modes
+            for mode in [CmAesMode::Cbc, CmAesMode::Ctr] {
+                println!("Testing AES mode: {:?}", mode);
+
+                // Import a 256-bit AES key
+                let key = [0xaa; 32];
+                let cmk = self.import_key(&key, CmKeyUsage::Aes)?;
+
+                // Test various plaintext lengths (for CBC, must be multiple of 16)
+                let test_lengths: Vec<usize> = match mode {
+                    CmAesMode::Cbc => vec![16, 32, 64, 128, 256], // CBC requires block-aligned
+                    CmAesMode::Ctr => vec![1, 15, 16, 17, 32, 64, 100, 256], // CTR can be any length
+                    _ => vec![16],
+                };
+
+                for len in test_lengths {
+                    println!("  Testing plaintext length: {}", len);
+
+                    // Create test plaintext
+                    let plaintext: Vec<u8> = (0..len).map(|i| (i % 256) as u8).collect();
+
+                    // Encrypt the plaintext
+                    let (iv, ciphertext) = self.aes_encrypt(&cmk, &plaintext, mode)?;
+                    assert_eq!(
+                        ciphertext.len(),
+                        plaintext.len(),
+                        "Ciphertext length should match plaintext length"
+                    );
+
+                    // Decrypt the ciphertext
+                    let decrypted = self.aes_decrypt(&cmk, &iv, &ciphertext, mode)?;
+                    assert_eq!(
+                        decrypted.len(),
+                        plaintext.len(),
+                        "Decrypted length should match plaintext length"
+                    );
+
+                    // Verify round-trip
+                    assert_eq!(
+                        decrypted, plaintext,
+                        "Decrypted data should match original plaintext"
+                    );
+
+                    println!("    Encrypt/decrypt round-trip successful");
+                }
+
+                // Clean up - delete the key
+                self.delete_key(&cmk)?;
+            }
+
+            println!("AES encrypt/decrypt tests passed");
+            Ok(())
+        }
+
+        /// Perform AES encryption using Init and optionally Update commands.
+        fn aes_encrypt(
+            &mut self,
+            cmk: &Cmk,
+            plaintext: &[u8],
+            mode: CmAesMode,
+        ) -> Result<([u8; 16], Vec<u8>), ()> {
+            let split = MAX_CMB_DATA_SIZE / 2; // Use half the max buffer size for splitting
+            let init_len = plaintext.len().min(split);
+
+            // Build AES Encrypt Init request
+            let mut init_req = CmAesEncryptInitReq {
+                hdr: MailboxReqHeader::default(),
+                cmk: cmk.clone(),
+                mode: mode as u32,
+                plaintext_size: init_len as u32,
+                plaintext: [0u8; MAX_CMB_DATA_SIZE],
+            };
+            init_req.plaintext[..init_len].copy_from_slice(&plaintext[..init_len]);
+
+            let mut mcu_init_req = McuMailboxReq::AesEncryptInit(McuAesEncryptInitReq(init_req));
+            mcu_init_req.populate_chksum().unwrap();
+
+            let init_resp = self
+                .process_message(mcu_init_req.cmd_code().0, mcu_init_req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            // Parse the init response header
+            const INIT_HEADER_SIZE: usize = core::mem::size_of::<CmAesEncryptInitRespHeader>();
+            let init_resp_hdr =
+                CmAesEncryptInitRespHeader::read_from_bytes(&init_resp.data[..INIT_HEADER_SIZE])
+                    .map_err(|_| ())?;
+
+            assert_eq!(
+                init_resp_hdr.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+            assert_eq!(
+                init_resp_hdr.ciphertext_size as usize, init_len,
+                "Init ciphertext size should match input size"
+            );
+
+            // Collect the ciphertext from init response
+            let mut ciphertext = vec![];
+            let ct_len = init_resp_hdr.ciphertext_size as usize;
+            ciphertext
+                .extend_from_slice(&init_resp.data[INIT_HEADER_SIZE..INIT_HEADER_SIZE + ct_len]);
+
+            let iv = init_resp_hdr.iv;
+            let mut context = init_resp_hdr.context;
+            let mut remaining = &plaintext[init_len..];
+
+            // Process remaining plaintext with Update commands
+            while !remaining.is_empty() {
+                let chunk_len = remaining.len().min(split);
+
+                let mut update_req = CmAesEncryptUpdateReq {
+                    hdr: MailboxReqHeader::default(),
+                    context,
+                    plaintext_size: chunk_len as u32,
+                    plaintext: [0u8; MAX_CMB_DATA_SIZE],
+                };
+                update_req.plaintext[..chunk_len].copy_from_slice(&remaining[..chunk_len]);
+
+                let mut mcu_update_req =
+                    McuMailboxReq::AesEncryptUpdate(McuAesEncryptUpdateReq(update_req));
+                mcu_update_req.populate_chksum().unwrap();
+
+                let update_resp = self
+                    .process_message(
+                        mcu_update_req.cmd_code().0,
+                        mcu_update_req.as_bytes().unwrap(),
+                    )
+                    .map_err(|_| ())?;
+
+                // Parse update response header
+                const UPDATE_HEADER_SIZE: usize = core::mem::size_of::<CmAesRespHeader>();
+                let update_resp_hdr =
+                    CmAesRespHeader::read_from_bytes(&update_resp.data[..UPDATE_HEADER_SIZE])
+                        .map_err(|_| ())?;
+
+                assert_eq!(
+                    update_resp_hdr.hdr.fips_status,
+                    MailboxRespHeader::FIPS_STATUS_APPROVED,
+                    "FIPS status should be approved"
+                );
+                assert_eq!(
+                    update_resp_hdr.output_size as usize, chunk_len,
+                    "Update output size should match input size"
+                );
+
+                // Collect ciphertext from update response
+                let out_len = update_resp_hdr.output_size as usize;
+                ciphertext.extend_from_slice(
+                    &update_resp.data[UPDATE_HEADER_SIZE..UPDATE_HEADER_SIZE + out_len],
+                );
+
+                context = update_resp_hdr.context;
+                remaining = &remaining[chunk_len..];
+            }
+
+            Ok((iv, ciphertext))
+        }
+
+        /// Perform AES decryption using Init and optionally Update commands.
+        fn aes_decrypt(
+            &mut self,
+            cmk: &Cmk,
+            iv: &[u8; 16],
+            ciphertext: &[u8],
+            mode: CmAesMode,
+        ) -> Result<Vec<u8>, ()> {
+            let split = MAX_CMB_DATA_SIZE / 2;
+            let init_len = ciphertext.len().min(split);
+
+            // Build AES Decrypt Init request
+            let mut init_req = CmAesDecryptInitReq {
+                hdr: MailboxReqHeader::default(),
+                cmk: cmk.clone(),
+                mode: mode as u32,
+                iv: *iv,
+                ciphertext_size: init_len as u32,
+                ciphertext: [0u8; MAX_CMB_DATA_SIZE],
+            };
+            init_req.ciphertext[..init_len].copy_from_slice(&ciphertext[..init_len]);
+
+            let mut mcu_init_req = McuMailboxReq::AesDecryptInit(McuAesDecryptInitReq(init_req));
+            mcu_init_req.populate_chksum().unwrap();
+
+            let init_resp = self
+                .process_message(mcu_init_req.cmd_code().0, mcu_init_req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            // Parse the init response (decrypt init uses CmAesResp format)
+            const RESP_HEADER_SIZE: usize = core::mem::size_of::<CmAesRespHeader>();
+            let init_resp_hdr =
+                CmAesRespHeader::read_from_bytes(&init_resp.data[..RESP_HEADER_SIZE])
+                    .map_err(|_| ())?;
+
+            assert_eq!(
+                init_resp_hdr.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+            assert_eq!(
+                init_resp_hdr.output_size as usize, init_len,
+                "Init output size should match input size"
+            );
+
+            // Collect the plaintext from init response
+            let mut plaintext = vec![];
+            let pt_len = init_resp_hdr.output_size as usize;
+            plaintext
+                .extend_from_slice(&init_resp.data[RESP_HEADER_SIZE..RESP_HEADER_SIZE + pt_len]);
+
+            let mut context = init_resp_hdr.context;
+            let mut remaining = &ciphertext[init_len..];
+
+            // Process remaining ciphertext with Update commands
+            while !remaining.is_empty() {
+                let chunk_len = remaining.len().min(split);
+
+                let mut update_req = CmAesDecryptUpdateReq {
+                    hdr: MailboxReqHeader::default(),
+                    context,
+                    ciphertext_size: chunk_len as u32,
+                    ciphertext: [0u8; MAX_CMB_DATA_SIZE],
+                };
+                update_req.ciphertext[..chunk_len].copy_from_slice(&remaining[..chunk_len]);
+
+                let mut mcu_update_req =
+                    McuMailboxReq::AesDecryptUpdate(McuAesDecryptUpdateReq(update_req));
+                mcu_update_req.populate_chksum().unwrap();
+
+                let update_resp = self
+                    .process_message(
+                        mcu_update_req.cmd_code().0,
+                        mcu_update_req.as_bytes().unwrap(),
+                    )
+                    .map_err(|_| ())?;
+
+                // Parse update response header
+                let update_resp_hdr =
+                    CmAesRespHeader::read_from_bytes(&update_resp.data[..RESP_HEADER_SIZE])
+                        .map_err(|_| ())?;
+
+                assert_eq!(
+                    update_resp_hdr.hdr.fips_status,
+                    MailboxRespHeader::FIPS_STATUS_APPROVED,
+                    "FIPS status should be approved"
+                );
+                assert_eq!(
+                    update_resp_hdr.output_size as usize, chunk_len,
+                    "Update output size should match input size"
+                );
+
+                // Collect plaintext from update response
+                let out_len = update_resp_hdr.output_size as usize;
+                plaintext.extend_from_slice(
+                    &update_resp.data[RESP_HEADER_SIZE..RESP_HEADER_SIZE + out_len],
+                );
+
+                context = update_resp_hdr.context;
+                remaining = &remaining[chunk_len..];
+            }
+
+            Ok(plaintext)
+        }
+
+        /// Test AES-GCM encrypt and decrypt operations.
+        /// This performs a round-trip test: encrypt plaintext with AAD, then decrypt ciphertext,
+        /// verify the tag, and check the result matches the original plaintext.
+        fn add_aes_gcm_encrypt_decrypt_tests(&mut self) -> Result<(), ()> {
+            println!("Running AES-GCM encrypt/decrypt tests");
+
+            // Import a 256-bit AES key
+            let key = [0xbb; 32];
+            let cmk = self.import_key(&key, CmKeyUsage::Aes)?;
+
+            // Test cases with various plaintext and AAD lengths
+            // Note: MCU mailbox SRAM size is 4K max, so we keep payloads within that limit
+            let test_cases: Vec<(usize, usize)> = vec![
+                (0, 0),      // Empty plaintext, no AAD
+                (16, 0),     // Single block, no AAD
+                (1, 16),     // 1 byte plaintext, 16 byte AAD
+                (32, 32),    // Two blocks each
+                (64, 64),    // Multiple blocks
+                (100, 50),   // Non-block-aligned
+                (256, 128),  // Larger data
+                (512, 256),  // Even larger
+                (1024, 512), // Near half capacity
+                (2048, 256), // Larger plaintext
+            ];
+
+            for (pt_len, aad_len) in test_cases {
+                println!(
+                    "  Testing plaintext length: {}, AAD length: {}",
+                    pt_len, aad_len
+                );
+
+                // Create test plaintext and AAD
+                let plaintext: Vec<u8> = (0..pt_len).map(|i| (i % 256) as u8).collect();
+                let aad: Vec<u8> = (0..aad_len).map(|i| ((i + 128) % 256) as u8).collect();
+
+                // Encrypt the plaintext with AAD
+                let (iv, tag, ciphertext) = self.aes_gcm_encrypt(&cmk, &aad, &plaintext)?;
+
+                assert_eq!(
+                    ciphertext.len(),
+                    plaintext.len(),
+                    "Ciphertext length should match plaintext length"
+                );
+
+                // Decrypt the ciphertext with AAD and verify tag
+                let (tag_verified, decrypted) =
+                    self.aes_gcm_decrypt(&cmk, &iv, &aad, &ciphertext, &tag)?;
+
+                assert!(tag_verified, "Tag verification should succeed");
+                assert_eq!(
+                    decrypted.len(),
+                    plaintext.len(),
+                    "Decrypted length should match plaintext length"
+                );
+                assert_eq!(
+                    decrypted, plaintext,
+                    "Decrypted data should match original plaintext"
+                );
+
+                println!("    Encrypt/decrypt round-trip successful");
+            }
+
+            // Clean up - delete the key
+            self.delete_key(&cmk)?;
+
+            println!("AES-GCM encrypt/decrypt tests passed");
+            Ok(())
+        }
+
+        /// Perform AES-GCM encryption using Init, Update (optional), and Final commands.
+        /// Returns (IV, tag, ciphertext).
+        fn aes_gcm_encrypt(
+            &mut self,
+            cmk: &Cmk,
+            aad: &[u8],
+            plaintext: &[u8],
+        ) -> Result<([u8; 12], [u8; 16], Vec<u8>), ()> {
+            let split = AES_GCM_CHUNK_SIZE;
+
+            // Build AES-GCM Encrypt Init request
+            let mut init_req = CmAesGcmEncryptInitReq {
+                hdr: MailboxReqHeader::default(),
+                flags: 0,
+                cmk: cmk.clone(),
+                aad_size: aad.len() as u32,
+                aad: [0u8; MAX_CMB_DATA_SIZE],
+            };
+            if !aad.is_empty() {
+                init_req.aad[..aad.len()].copy_from_slice(aad);
+            }
+
+            let mut mcu_init_req =
+                McuMailboxReq::AesGcmEncryptInit(McuAesGcmEncryptInitReq(init_req));
+            mcu_init_req.populate_chksum().unwrap();
+
+            let init_resp = self
+                .process_message(mcu_init_req.cmd_code().0, mcu_init_req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            // Parse init response to get context and IV
+            // CmAesGcmEncryptInitResp has: hdr (MailboxRespHeader), context, iv
+            let hdr = MailboxRespHeader::read_from_bytes(
+                &init_resp.data[..core::mem::size_of::<MailboxRespHeader>()],
+            )
+            .map_err(|_| ())?;
+            assert_eq!(
+                hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+
+            let context_start = core::mem::size_of::<MailboxRespHeader>();
+            let context_end = context_start + CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE;
+            let mut context = [0u8; CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE];
+            context.copy_from_slice(&init_resp.data[context_start..context_end]);
+
+            let iv_start = context_end;
+            let mut iv = [0u8; 12];
+            iv.copy_from_slice(&init_resp.data[iv_start..iv_start + 12]);
+
+            let mut ciphertext = vec![];
+            let mut remaining = plaintext;
+
+            // Process plaintext with Update commands if larger than split
+            while remaining.len() > split {
+                let chunk_len = split;
+                let mut update_req = CmAesGcmEncryptUpdateReq {
+                    hdr: MailboxReqHeader::default(),
+                    context,
+                    plaintext_size: chunk_len as u32,
+                    plaintext: [0u8; MAX_CMB_DATA_SIZE],
+                };
+                update_req.plaintext[..chunk_len].copy_from_slice(&remaining[..chunk_len]);
+
+                let mut mcu_update_req =
+                    McuMailboxReq::AesGcmEncryptUpdate(McuAesGcmEncryptUpdateReq(update_req));
+                mcu_update_req.populate_chksum().unwrap();
+
+                let update_resp = self
+                    .process_message(
+                        mcu_update_req.cmd_code().0,
+                        mcu_update_req.as_bytes().unwrap(),
+                    )
+                    .map_err(|_| ())?;
+
+                // Parse update response
+                const UPDATE_HEADER_SIZE: usize =
+                    core::mem::size_of::<CmAesGcmEncryptUpdateRespHeader>();
+                let update_hdr = CmAesGcmEncryptUpdateRespHeader::read_from_bytes(
+                    &update_resp.data[..UPDATE_HEADER_SIZE],
+                )
+                .map_err(|_| ())?;
+
+                assert_eq!(
+                    update_hdr.hdr.fips_status,
+                    MailboxRespHeader::FIPS_STATUS_APPROVED,
+                    "FIPS status should be approved"
+                );
+                assert_eq!(
+                    update_hdr.ciphertext_size as usize, chunk_len,
+                    "Update ciphertext size should match input size"
+                );
+
+                let ct_len = update_hdr.ciphertext_size as usize;
+                ciphertext.extend_from_slice(
+                    &update_resp.data[UPDATE_HEADER_SIZE..UPDATE_HEADER_SIZE + ct_len],
+                );
+
+                context = update_hdr.context;
+                remaining = &remaining[chunk_len..];
+            }
+
+            // Final request with remaining plaintext
+            let mut final_req = CmAesGcmEncryptFinalReq {
+                hdr: MailboxReqHeader::default(),
+                context,
+                plaintext_size: remaining.len() as u32,
+                plaintext: [0u8; MAX_CMB_DATA_SIZE],
+            };
+            if !remaining.is_empty() {
+                final_req.plaintext[..remaining.len()].copy_from_slice(remaining);
+            }
+
+            let mut mcu_final_req =
+                McuMailboxReq::AesGcmEncryptFinal(McuAesGcmEncryptFinalReq(final_req));
+            mcu_final_req.populate_chksum().unwrap();
+
+            let final_resp = self
+                .process_message(
+                    mcu_final_req.cmd_code().0,
+                    mcu_final_req.as_bytes().unwrap(),
+                )
+                .map_err(|_| ())?;
+
+            // Parse final response
+            const FINAL_HEADER_SIZE: usize = core::mem::size_of::<CmAesGcmEncryptFinalRespHeader>();
+            let final_hdr = CmAesGcmEncryptFinalRespHeader::read_from_bytes(
+                &final_resp.data[..FINAL_HEADER_SIZE],
+            )
+            .map_err(|_| ())?;
+
+            assert_eq!(
+                final_hdr.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+            assert_eq!(
+                final_hdr.ciphertext_size as usize,
+                remaining.len(),
+                "Final ciphertext size should match input size"
+            );
+
+            let ct_len = final_hdr.ciphertext_size as usize;
+            ciphertext
+                .extend_from_slice(&final_resp.data[FINAL_HEADER_SIZE..FINAL_HEADER_SIZE + ct_len]);
+
+            Ok((iv, final_hdr.tag, ciphertext))
+        }
+
+        /// Perform AES-GCM decryption using Init, Update (optional), and Final commands.
+        /// Returns (tag_verified, plaintext).
+        fn aes_gcm_decrypt(
+            &mut self,
+            cmk: &Cmk,
+            iv: &[u8; 12],
+            aad: &[u8],
+            ciphertext: &[u8],
+            tag: &[u8; 16],
+        ) -> Result<(bool, Vec<u8>), ()> {
+            let split = AES_GCM_CHUNK_SIZE;
+
+            // Build AES-GCM Decrypt Init request
+            let mut init_req = CmAesGcmDecryptInitReq {
+                hdr: MailboxReqHeader::default(),
+                flags: 0,
+                cmk: cmk.clone(),
+                iv: *iv,
+                aad_size: aad.len() as u32,
+                aad: [0u8; MAX_CMB_DATA_SIZE],
+            };
+            if !aad.is_empty() {
+                init_req.aad[..aad.len()].copy_from_slice(aad);
+            }
+
+            let mut mcu_init_req =
+                McuMailboxReq::AesGcmDecryptInit(McuAesGcmDecryptInitReq(init_req));
+            mcu_init_req.populate_chksum().unwrap();
+
+            let init_resp = self
+                .process_message(mcu_init_req.cmd_code().0, mcu_init_req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            // Parse init response to get context
+            // CmAesGcmDecryptInitResp has: hdr (MailboxRespHeader), context
+            let hdr = MailboxRespHeader::read_from_bytes(
+                &init_resp.data[..core::mem::size_of::<MailboxRespHeader>()],
+            )
+            .map_err(|_| ())?;
+            assert_eq!(
+                hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+
+            let context_start = core::mem::size_of::<MailboxRespHeader>();
+            let context_end = context_start + CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE;
+            let mut context = [0u8; CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE];
+            context.copy_from_slice(&init_resp.data[context_start..context_end]);
+
+            let mut plaintext = vec![];
+            let mut remaining = ciphertext;
+
+            // Process ciphertext with Update commands if larger than split
+            while remaining.len() > split {
+                let chunk_len = split;
+                let mut update_req = CmAesGcmDecryptUpdateReq {
+                    hdr: MailboxReqHeader::default(),
+                    context,
+                    ciphertext_size: chunk_len as u32,
+                    ciphertext: [0u8; MAX_CMB_DATA_SIZE],
+                };
+                update_req.ciphertext[..chunk_len].copy_from_slice(&remaining[..chunk_len]);
+
+                let mut mcu_update_req =
+                    McuMailboxReq::AesGcmDecryptUpdate(McuAesGcmDecryptUpdateReq(update_req));
+                mcu_update_req.populate_chksum().unwrap();
+
+                let update_resp = self
+                    .process_message(
+                        mcu_update_req.cmd_code().0,
+                        mcu_update_req.as_bytes().unwrap(),
+                    )
+                    .map_err(|_| ())?;
+
+                // Parse update response
+                const UPDATE_HEADER_SIZE: usize =
+                    core::mem::size_of::<CmAesGcmDecryptUpdateRespHeader>();
+                let update_hdr = CmAesGcmDecryptUpdateRespHeader::read_from_bytes(
+                    &update_resp.data[..UPDATE_HEADER_SIZE],
+                )
+                .map_err(|_| ())?;
+
+                assert_eq!(
+                    update_hdr.hdr.fips_status,
+                    MailboxRespHeader::FIPS_STATUS_APPROVED,
+                    "FIPS status should be approved"
+                );
+                assert_eq!(
+                    update_hdr.plaintext_size as usize, chunk_len,
+                    "Update plaintext size should match input size"
+                );
+
+                let pt_len = update_hdr.plaintext_size as usize;
+                plaintext.extend_from_slice(
+                    &update_resp.data[UPDATE_HEADER_SIZE..UPDATE_HEADER_SIZE + pt_len],
+                );
+
+                context = update_hdr.context;
+                remaining = &remaining[chunk_len..];
+            }
+
+            // Final request with remaining ciphertext and tag
+            let mut final_req = CmAesGcmDecryptFinalReq {
+                hdr: MailboxReqHeader::default(),
+                context,
+                tag_len: 16,
+                tag: *tag,
+                ciphertext_size: remaining.len() as u32,
+                ciphertext: [0u8; MAX_CMB_DATA_SIZE],
+            };
+            if !remaining.is_empty() {
+                final_req.ciphertext[..remaining.len()].copy_from_slice(remaining);
+            }
+
+            let mut mcu_final_req =
+                McuMailboxReq::AesGcmDecryptFinal(McuAesGcmDecryptFinalReq(final_req));
+            mcu_final_req.populate_chksum().unwrap();
+
+            let final_resp = self
+                .process_message(
+                    mcu_final_req.cmd_code().0,
+                    mcu_final_req.as_bytes().unwrap(),
+                )
+                .map_err(|_| ())?;
+
+            // Parse final response
+            const FINAL_HEADER_SIZE: usize = core::mem::size_of::<CmAesGcmDecryptFinalRespHeader>();
+            let final_hdr = CmAesGcmDecryptFinalRespHeader::read_from_bytes(
+                &final_resp.data[..FINAL_HEADER_SIZE],
+            )
+            .map_err(|_| ())?;
+
+            assert_eq!(
+                final_hdr.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+            assert_eq!(
+                final_hdr.plaintext_size as usize,
+                remaining.len(),
+                "Final plaintext size should match input size"
+            );
+
+            let pt_len = final_hdr.plaintext_size as usize;
+            plaintext
+                .extend_from_slice(&final_resp.data[FINAL_HEADER_SIZE..FINAL_HEADER_SIZE + pt_len]);
+
+            let tag_verified = final_hdr.tag_verified == 1;
+            Ok((tag_verified, plaintext))
         }
     }
 }
