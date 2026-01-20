@@ -572,6 +572,8 @@ pub struct RomParameters<'a> {
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,
+    /// Request flash boot (AXI recovery bypass).
+    pub request_flash_boot: bool,
 }
 
 pub fn rom_start(params: RomParameters) {

@@ -7,7 +7,7 @@ use caliptra_api::{self as api, SocManager};
 use caliptra_api_types as api_types;
 use caliptra_emu_bus::Event;
 pub use caliptra_emu_cpu::{CodeRange, ImageInfo, StackInfo, StackRange};
-use caliptra_hw_model::{BootParams, ExitStatus, ModelCallback, Output};
+use caliptra_hw_model::{ExitStatus, ModelCallback, Output};
 use caliptra_hw_model_types::{
     EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
 };
@@ -24,6 +24,9 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::mpsc;
 pub use vmem::read_otp_vmem_data;
+
+// Re-export flash image builder for creating flash images from firmware bytes
+pub use mcu_builder::flash_image::build_flash_image_bytes;
 
 mod bus_logger;
 #[cfg(feature = "fpga_realtime")]
@@ -98,8 +101,8 @@ pub fn new_unbooted(params: InitParams) -> Result<DefaultHwModel> {
 /// (optionally) uploading firmware. Most test cases that need to construct a
 /// HwModel should use this function over [`HwModel::new()`] and
 /// [`crate::new_unbooted`].
-pub fn new(init_params: InitParams, boot_params: BootParams) -> Result<DefaultHwModel> {
-    DefaultHwModel::new(init_params, boot_params)
+pub fn new(init_params: InitParams) -> Result<DefaultHwModel> {
+    DefaultHwModel::new(init_params)
 }
 
 pub struct InitParams<'a> {
@@ -207,9 +210,14 @@ pub struct InitParams<'a> {
     /// Initial contents of DOT flash.
     pub dot_flash_initial_contents: Option<Vec<u8>>,
 
+    /// Initial contents of the primary flash (for flash-based boot testing).
+    pub primary_flash_initial_contents: Option<Vec<u8>>,
+
     pub check_booted_to_runtime: bool,
 
     pub rom_callback: Option<ModelCallback>,
+
+    pub flash_boot: bool,
 }
 
 impl InitParams<'_> {
@@ -277,8 +285,10 @@ impl Default for InitParams<'_> {
             vendor_pqc_type: None,
             i3c_port: None,
             dot_flash_initial_contents: None,
+            primary_flash_initial_contents: None,
             check_booted_to_runtime: true,
             rom_callback: None,
+            flash_boot: false,
         }
     }
 }
@@ -316,7 +326,7 @@ pub trait McuHwModel {
     /// Create a model, and boot it to the point where CPU execution can
     /// occur. This includes programming the fuses, initializing the
     /// boot_fsm state machine, and (optionally) uploading firmware.
-    fn new(init_params: InitParams, boot_params: BootParams) -> Result<Self>
+    fn new(init_params: InitParams) -> Result<Self>
     where
         Self: Sized,
     {
@@ -326,13 +336,13 @@ pub trait McuHwModel {
         println!("Using hardware-model {}", hw.type_name());
         println!("{init_params_summary:#?}");
 
-        hw.boot(boot_params)?;
+        hw.boot()?;
 
         Ok(hw)
     }
 
     // TODO this should have a common boot function similar to the Caliptra HW model.
-    fn boot(&mut self, boot_params: BootParams) -> Result<()>
+    fn boot(&mut self) -> Result<()>
     where
         Self: Sized;
 
@@ -400,6 +410,13 @@ pub trait McuHwModel {
                     ))
                 }
                 None => {}
+            }
+            // Check for fatal error in MCI register
+            if let Some(fatal_error) = self.mci_fw_fatal_error() {
+                return Err(std::io::Error::new(
+                    ErrorKind::Other,
+                    format!("firmware fatal error: 0x{:08x}", fatal_error),
+                ));
             }
             self.step();
         }
@@ -625,40 +642,41 @@ pub trait McuHwModel {
 #[test]
 fn reg_access_test() {
     let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
-    let mut hw = new(
-        InitParams {
-            fuses: Fuses {
-                fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
-                vendor_pk_hash: {
-                    let mut vendor_pk_hash = [0u32; 12];
-                    binaries
-                        .vendor_pk_hash()
-                        .unwrap()
-                        .chunks(4)
-                        .enumerate()
-                        .for_each(|(i, chunk)| {
-                            let mut array = [0u8; 4];
-                            array.copy_from_slice(chunk);
-                            vendor_pk_hash[i] = u32::from_be_bytes(array);
-                        });
-                    vendor_pk_hash
-                },
-                ..Default::default()
+
+    // Build flash image from firmware binaries
+    let flash_image = build_flash_image_bytes(
+        Some(&binaries.caliptra_fw),
+        Some(&binaries.soc_manifest),
+        Some(&binaries.mcu_runtime),
+    );
+
+    let mut hw = new(InitParams {
+        fuses: Fuses {
+            fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
+            vendor_pk_hash: {
+                let mut vendor_pk_hash = [0u32; 12];
+                binaries
+                    .vendor_pk_hash()
+                    .unwrap()
+                    .chunks(4)
+                    .enumerate()
+                    .for_each(|(i, chunk)| {
+                        let mut array = [0u8; 4];
+                        array.copy_from_slice(chunk);
+                        vendor_pk_hash[i] = u32::from_be_bytes(array);
+                    });
+                vendor_pk_hash
             },
-            caliptra_rom: &binaries.caliptra_rom,
-            mcu_rom: &binaries.mcu_rom,
-            vendor_pk_hash: binaries.vendor_pk_hash(),
-            active_mode: true,
-            vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
             ..Default::default()
         },
-        BootParams {
-            fw_image: Some(&binaries.caliptra_fw),
-            soc_manifest: Some(&binaries.soc_manifest),
-            mcu_fw_image: Some(&binaries.mcu_runtime),
-            ..Default::default()
-        },
-    )
+        caliptra_rom: &binaries.caliptra_rom,
+        mcu_rom: &binaries.mcu_rom,
+        vendor_pk_hash: binaries.vendor_pk_hash(),
+        active_mode: true,
+        vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
+        primary_flash_initial_contents: Some(flash_image),
+        ..Default::default()
+    })
     .unwrap();
 
     assert_eq!(
@@ -715,13 +733,10 @@ mod tests {
             std::fs::read(&rom_file)?
         };
 
-        let mut model = new(
-            InitParams {
-                mcu_rom: &mcu_rom,
-                ..Default::default()
-            },
-            BootParams::default(),
-        )?;
+        let mut model = new(InitParams {
+            mcu_rom: &mcu_rom,
+            ..Default::default()
+        })?;
 
         // Send command that echoes the command and input message
         assert_eq!(

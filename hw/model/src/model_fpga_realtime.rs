@@ -60,6 +60,10 @@ pub struct ModelFpgaRealtime {
     i3c_next_private_read_len: Option<u16>,
     // queue of IBIs to handle, in order
     pending_ibi: VecDeque<u16>,
+    flash_boot: bool,
+    caliptra_firmware: Option<Vec<u8>>,
+    soc_manifest: Option<Vec<u8>>,
+    mcu_firmware: Option<Vec<u8>>,
 }
 
 impl ModelFpgaRealtime {
@@ -315,6 +319,7 @@ impl McuHwModel for ModelFpgaRealtime {
                 rma_or_scrap_ppd: params.rma_or_scrap_ppd,
                 num_prod_dbg_unlock_pk_hashes: params.num_prod_dbg_unlock_pk_hashes,
                 prod_dbg_unlock_pk_hashes_offset: params.prod_dbg_unlock_pk_hashes_offset,
+                primary_flash_initial_contents: params.primary_flash_initial_contents.as_deref(),
                 ..Default::default()
             },
         };
@@ -357,24 +362,51 @@ impl McuHwModel for ModelFpgaRealtime {
             i3c_tx,
             i3c_next_private_read_len: None,
             pending_ibi: VecDeque::new(),
+            flash_boot: params.flash_boot,
+            caliptra_firmware: Some(params.caliptra_firmware.to_vec()).filter(|f| !f.is_empty()),
+            soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
+            mcu_firmware: Some(params.mcu_firmware.to_vec()).filter(|f| !f.is_empty()),
         };
 
         Ok(m)
     }
 
-    fn boot(&mut self, boot_params: caliptra_hw_model::BootParams) -> Result<()>
+    fn boot(&mut self) -> Result<()>
     where
         Self: Sized,
     {
-        let skip_recovery = boot_params.fw_image.is_none();
+        // Notify MCU ROM it can start loading the fuse registers and boot to runtime
+        let gpio1 = 0xc000_0000;
+        // Notify MCU ROM whether or not we are going to flash boot
+        let gpio1 = if self.flash_boot {
+            gpio1 | (1 << 29)
+        } else {
+            gpio1
+        };
+        let mci_generic_input_wires = &[0, gpio1];
+        println!(
+            "Setting: MCI generic input wires: {:08x?}",
+            mci_generic_input_wires
+        );
+        self.set_mcu_generic_input_wires(mci_generic_input_wires);
 
-        self.base
-            .boot(boot_params)
-            .map_err(|e| anyhow::anyhow!("Failed to boot: {e}"))?;
+        let skip_recovery = self.caliptra_firmware.is_none() && !self.flash_boot;
 
         if skip_recovery {
+            println!("Skipping recovery");
             self.base.recovery_started = false;
             return Ok(());
+        } else if !self.flash_boot {
+            println!("Loading firmware for I3C streaming boot");
+
+            // set up for streaming boot
+            self.base
+                .upload_firmware_rri(
+                    self.caliptra_firmware.as_deref().unwrap(),
+                    self.soc_manifest.as_deref(),
+                    self.mcu_firmware.as_deref(),
+                )
+                .unwrap();
         }
 
         // wait until firmware is booted
@@ -643,26 +675,27 @@ mod tests {
     #[cfg(feature = "fpga_realtime")]
     #[test]
     fn test_mctp() {
-        use caliptra_hw_model::BootParams;
+        use mcu_builder::flash_image::build_flash_image_bytes;
 
         use crate::DefaultHwModel;
 
         let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
-        let mut hw = new(
-            InitParams {
-                caliptra_rom: &binaries.caliptra_rom,
-                mcu_rom: &binaries.mcu_rom,
-                vendor_pk_hash: binaries.vendor_pk_hash(),
-                active_mode: true,
-                ..Default::default()
-            },
-            BootParams {
-                fw_image: Some(&binaries.caliptra_fw),
-                soc_manifest: Some(&binaries.soc_manifest),
-                mcu_fw_image: Some(&binaries.mcu_runtime),
-                ..Default::default()
-            },
-        )
+
+        // Build flash image from firmware binaries
+        let flash_image = build_flash_image_bytes(
+            Some(&binaries.caliptra_fw),
+            Some(&binaries.soc_manifest),
+            Some(&binaries.mcu_runtime),
+        );
+
+        let mut hw = new(InitParams {
+            caliptra_rom: &binaries.caliptra_rom,
+            mcu_rom: &binaries.mcu_rom,
+            vendor_pk_hash: binaries.vendor_pk_hash(),
+            active_mode: true,
+            primary_flash_initial_contents: Some(flash_image),
+            ..Default::default()
+        })
         .unwrap();
 
         hw.step_until(|m| m.cycle_count() > 300_000_000);

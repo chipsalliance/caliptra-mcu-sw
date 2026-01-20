@@ -12,6 +12,7 @@ Abstract:
 
 --*/
 
+use crate::flash::flash_drv::{FpgaFlashCtrl, PRIMARY_FLASH_CTRL_BASE};
 use crate::io::{print_to_console, EXITER, FATAL_ERROR_HANDLER, FPGA_WRITER};
 use core::fmt::Write;
 
@@ -19,6 +20,7 @@ use core::fmt::Write;
 core::arch::global_asm!(include_str!("start.s"));
 
 use mcu_config::{McuMemoryMap, McuStraps};
+use mcu_rom_common::flash::flash_partition::FlashPartition;
 use mcu_rom_common::RomParameters;
 use romtime::{LifecycleControllerState, LifecycleHashedToken, LifecycleToken};
 
@@ -47,6 +49,19 @@ pub extern "C" fn rom_entry() -> ! {
     }
 
     romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
+
+    // Initialize the primary flash controller
+    let primary_flash_ctrl = FpgaFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
+
+    // Create a flash partition covering the entire flash
+    // The partition starts at offset 0 and uses the full flash capacity
+    let mut flash_partition = FlashPartition::new(
+        &primary_flash_ctrl,
+        "primary",
+        0,
+        primary_flash_ctrl.capacity(),
+    )
+    .expect("Failed to create flash partition");
 
     // This token is fixed in the FPGA RTL and is specified in LE order.
     let unlock_token: LifecycleToken = 0xF12A5911421748A2ADFC9693EF1FADEAu128.to_le_bytes().into();
@@ -111,6 +126,7 @@ pub extern "C" fn rom_entry() -> ! {
         program_field_entropy: [program_field_entropy; 4],
         otp_enable_integrity_check: true,
         otp_enable_consistency_check: true,
+        flash_partition_driver: Some(&mut flash_partition),
         ..Default::default()
     });
 

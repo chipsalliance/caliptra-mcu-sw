@@ -23,8 +23,8 @@ pub fn platform() -> &'static str {
 
 #[cfg(test)]
 mod test {
-    use caliptra_hw_model::BootParams;
     use caliptra_image_types::FwVerificationPqcKeyType;
+    use mcu_builder::flash_image::build_flash_image_bytes;
     use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg, TARGET};
     use mcu_config::McuMemoryMap;
     use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
@@ -48,6 +48,7 @@ mod test {
         pub i3c_port: Option<u16>,
         pub dot_flash_initial_contents: Option<Vec<u8>>,
         pub rom_only: bool,
+        pub flash_boot: bool,
     }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -95,6 +96,11 @@ mod test {
     }
 
     fn compile_rom(feature: &str) -> PathBuf {
+        let feature = if TEST_HW_REVISION == "2.1.0" && feature.is_empty() {
+            "hw-2-1"
+        } else {
+            feature
+        };
         let output: PathBuf = mcu_builder::rom_build(Some(platform()), feature)
             .expect("ROM build failed")
             .into();
@@ -248,31 +254,43 @@ mod test {
         let vendor_pk_hash: [u32; 12] = vendor_pk_hash.as_slice().try_into().unwrap();
 
         // TODO: read the PQC type
-        mcu_hw_model::new(
-            InitParams {
-                fuses: Fuses {
-                    fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
-                    vendor_pk_hash,
-                    ..Default::default()
-                },
-                caliptra_rom: &caliptra_rom,
-                mcu_rom: &mcu_rom,
-                vendor_pk_hash: Some(vendor_pk_hash_u8.try_into().unwrap()),
-                active_mode: true,
-                vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
-                i3c_port: params.i3c_port,
-                enable_mcu_uart_log: true,
-                dot_flash_initial_contents: params.dot_flash_initial_contents,
-                check_booted_to_runtime: !params.rom_only,
+
+        // Build flash image for flash-based boot, or use individual images for streaming boot
+        let (flash_image, caliptra_firmware, soc_manifest_bytes, mcu_firmware) =
+            if params.flash_boot {
+                let flash = build_flash_image_bytes(
+                    Some(&caliptra_fw),
+                    Some(&soc_manifest),
+                    Some(&mcu_runtime),
+                );
+                (Some(flash), vec![], vec![], vec![])
+            } else {
+                // For streaming boot, pass individual images to BMC
+                (None, caliptra_fw, soc_manifest, mcu_runtime)
+            };
+
+        mcu_hw_model::new(InitParams {
+            fuses: Fuses {
+                fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
+                vendor_pk_hash,
                 ..Default::default()
             },
-            BootParams {
-                fw_image: Some(&caliptra_fw),
-                soc_manifest: Some(&soc_manifest),
-                mcu_fw_image: Some(&mcu_runtime),
-                ..Default::default()
-            },
-        )
+            caliptra_rom: &caliptra_rom,
+            mcu_rom: &mcu_rom,
+            caliptra_firmware: &caliptra_firmware,
+            soc_manifest: &soc_manifest_bytes,
+            mcu_firmware: &mcu_firmware,
+            vendor_pk_hash: Some(vendor_pk_hash_u8.try_into().unwrap()),
+            active_mode: true,
+            vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
+            i3c_port: params.i3c_port,
+            enable_mcu_uart_log: true,
+            dot_flash_initial_contents: params.dot_flash_initial_contents,
+            primary_flash_initial_contents: flash_image,
+            check_booted_to_runtime: !params.rom_only,
+            flash_boot: params.flash_boot,
+            ..Default::default()
+        })
         .unwrap()
     }
 
@@ -448,6 +466,12 @@ mod test {
                 cargo_run_args.push("--primary-flash-image");
                 primary_flash_image = path;
                 cargo_run_args.push(primary_flash_image.to_str().unwrap());
+                // Enable flash-based boot mode only for tests that explicitly use flash-based boot
+                // (test-flash-based-boot feature). Other tests like test-firmware-update-flash
+                // provide a flash image for firmware updates but still use BMC streaming boot.
+                if feature.contains("test-flash-based-boot") {
+                    cargo_run_args.push("--flash-based-boot");
+                }
             }
 
             let secondary_flash_image;

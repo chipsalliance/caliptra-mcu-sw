@@ -3,7 +3,6 @@
 #[cfg(test)]
 mod test {
     use caliptra_builder::firmware as caliptra_firmware;
-    use caliptra_hw_model::BootParams;
     use mcu_builder::firmware;
     use mcu_hw_model::{InitParams, McuHwModel};
 
@@ -22,7 +21,7 @@ mod test {
             enable_mcu_uart_log: true,
             ..Default::default()
         };
-        let mut model = mcu_hw_model::new(init_params, BootParams::default()).unwrap();
+        let mut model = mcu_hw_model::new(init_params).unwrap();
         model.step_until_exit_success().unwrap();
     }
 }

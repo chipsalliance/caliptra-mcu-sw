@@ -40,6 +40,7 @@ pub struct Mci {
     op_mtimecmp_due_action: Option<ActionHandle>,
     mcu_mailbox1: Option<McuMailbox0Internal>,
     soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
+    generic_input_wires: [u32; 2],
 }
 
 impl Mci {
@@ -50,6 +51,7 @@ impl Mci {
         mcu_mailbox0: Option<McuMailbox0Internal>,
         mcu_mailbox1: Option<McuMailbox0Internal>,
         soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
+        generic_input_wires: [u32; 2],
     ) -> Self {
         // Clear the reset status, MCU and Caiptra are out of reset
         ext_mci_regs.regs.borrow_mut().reset_status = 0;
@@ -82,6 +84,7 @@ impl Mci {
             op_mtimecmp_due_action: None,
             mcu_mailbox1,
             soc_regs,
+            generic_input_wires,
         }
     }
 
@@ -114,6 +117,10 @@ impl Mci {
 impl MciPeripheral for Mci {
     fn generated(&mut self) -> Option<&mut MciGenerated> {
         Some(&mut self.generated)
+    }
+
+    fn read_mci_reg_generic_input_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        self.generic_input_wires[index]
     }
 
     fn read_mci_reg_fw_flow_status(&mut self) -> caliptra_emu_types::RvData {
@@ -1022,15 +1029,19 @@ impl MciPeripheral for Mci {
 
         if self.timer.fired(&mut self.op_mcu_reset_request_action) {
             // Handle MCU reset request
+            let reset_reason = self.reset_reason.get();
             let mcu_fw_exec_ctrl = self
                 .soc_regs
                 .as_ref()
                 .map(|regs| regs.ss_generic_fw_exec_ctrl().get(0).unwrap().read());
+            // Only check MCU go bit for hitless updates (reset_reason bit 0 = hitless update)
+            // For other resets, proceed without waiting for Caliptra
+            let is_hitless_update = reset_reason & 0x1 != 0;
             if let Some(val) = mcu_fw_exec_ctrl {
                 // If bit 2 (MCU go bit) of SS_GENERIC_FW_EXEC_CTRL is 0
-                // and reset is requested, hold the MCU in reset
+                // and this is a hitless update, hold the MCU in reset
                 // by scheduling CPU halt action.
-                if val & (1 << 2) == 0 {
+                if is_hitless_update && (val & (1 << 2) == 0) {
                     self.timer.schedule_action_in(1, TimerAction::Halt);
                     self.op_mcu_reset_request_action = Some(self.timer.schedule_poll_in(1000));
                     self.ext_mci_regs.regs.borrow_mut().reset_status |= RESET_STATUS_MCU_RESET_MASK;
@@ -1144,6 +1155,7 @@ mod tests {
             None,
             None,
             None,
+            [0, 0],
         );
         let mut mci_bus = MciBus {
             periph: Box::new(mci_reg),
@@ -1238,6 +1250,7 @@ mod tests {
             Some(McuMailbox0Internal::new(&clock)),
             None,
             None,
+            [0, 0],
         );
         let mut mcu_mailbox = mci_reg.mcu_mailbox0.clone().unwrap();
         let mut mci_bus = MciBus {
@@ -1276,6 +1289,7 @@ mod tests {
             Some(McuMailbox0Internal::new(&clock)),
             None,
             None,
+            [0, 0],
         );
 
         let hi: u32 = 0x0022_3344;
@@ -1305,6 +1319,7 @@ mod tests {
             Some(McuMailbox0Internal::new(&clock)),
             None,
             None,
+            [0, 0],
         );
 
         let lo: u32 = 0x0000_FFFF;
@@ -1334,6 +1349,7 @@ mod tests {
             Some(McuMailbox0Internal::new(&clock)),
             None,
             None,
+            [0, 0],
         );
 
         // Seed a known value.
@@ -1361,6 +1377,7 @@ mod tests {
             Some(McuMailbox0Internal::new(&clock)),
             None,
             None,
+            [0, 0],
         );
 
         // use a safe 48-bit range: 0x0000_DEAD_FFFF_FFFE
@@ -1391,6 +1408,7 @@ mod tests {
             Some(McuMailbox0Internal::new(&clock)),
             None,
             None,
+            [0, 0],
         );
 
         // Initial time is 0
@@ -1417,6 +1435,7 @@ mod tests {
             Some(McuMailbox0Internal::new(&clock)),
             None,
             None,
+            [0, 0],
         );
 
         // Move time to a known value.
@@ -1452,6 +1471,7 @@ mod tests {
             Some(McuMailbox0Internal::new(&clock)),
             None,
             None,
+            [0, 0],
         );
 
         // Advance by 2^32 + 1 -> high = 1, low = 1, as clock start at 0

@@ -136,7 +136,8 @@ jobs:
 
           export MCU_STAGING_ADDR=0xB00C0000
           cargo xtask-fpga all-build --platform fpga \
-            --runtime-features "test-mctp-capsule-loopback,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming" \
+            --rom-features "core_test" \
+            --runtime-features "test-mctp-capsule-loopback,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming,test-exit-immediately" \
             --mcu_cfg mcu,0x0,$MCU_STAGING_ADDR,2,2,test-fpga-flash-ctrl \
             --separate-runtimes
           sccache --show-stats

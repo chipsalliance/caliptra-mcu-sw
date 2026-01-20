@@ -1,11 +1,11 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use caliptra_hw_model::BootParams;
 use caliptra_image_gen::to_hw_format;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use clap::Subcommand;
 use configurations::Configuration;
+use mcu_builder::flash_image::build_flash_image_bytes;
 use mcu_builder::FirmwareBinaries;
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
 use romtime::LifecycleControllerState;
@@ -350,6 +350,14 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
     // If we're doing UDS provisioning, we need to set the bootfsm breakpoint
     // so we can use JTAG/TAP.
     let bootfsm_break = uds;
+
+    // Build flash image from firmware binaries
+    let flash_image = build_flash_image_bytes(
+        Some(binaries.caliptra_fw.as_slice()),
+        Some(binaries.soc_manifest.as_slice()),
+        Some(binaries.mcu_runtime.as_slice()),
+    );
+
     let mut model = ModelFpgaRealtime::new_unbooted(InitParams {
         fuses: caliptra_api_types::Fuses {
             vendor_pk_hash: binaries
@@ -371,15 +379,11 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         lifecycle_controller_state,
         vendor_pk_hash: binaries.vendor_pk_hash(),
         enable_mcu_uart_log: true,
+        primary_flash_initial_contents: Some(flash_image),
         ..Default::default()
     })
     .unwrap();
-    model.boot(BootParams {
-        fw_image: Some(binaries.caliptra_fw.as_slice()),
-        soc_manifest: Some(binaries.soc_manifest.as_slice()),
-        mcu_fw_image: Some(binaries.mcu_runtime.as_slice()),
-        ..Default::default()
-    })?;
+    model.boot()?;
 
     let mut uds_requested = false;
     let mut xi3c_configured = false;

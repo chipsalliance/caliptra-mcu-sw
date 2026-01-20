@@ -26,6 +26,6 @@ riscv-csr.workspace = true
 rv32i.workspace = true
 
 [features]
-default = []   # default is 2.0
+default = ["hw-2-1"]              # default is 2.1
 hw-2-1 = []
 core_test = ["romtime/core_test"]

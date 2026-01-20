@@ -15,6 +15,7 @@ mod test {
         PackageHeaderInformation, StringType,
     };
     use pldm_fw_pkg::FirmwareManifest;
+    use random_port::PortPicker;
     use std::env;
     use std::path::PathBuf;
 
@@ -793,5 +794,31 @@ mod test {
     #[test]
     fn test_streaming_soc_boot() {
         test_soc_boot(false);
+    }
+
+    /// Test case: simple successful boot using McuHwModel trait
+    /// This test uses the hardware model abstraction instead of spawning a subprocess
+    #[test]
+    fn test_successful_boot_hw_model() {
+        use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
+        use std::sync::atomic::Ordering;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, Ordering::Relaxed);
+
+        // Use the exit-immediately feature for a simple boot test
+        let feature = "test-exit-immediately";
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some(feature),
+            i3c_port: PortPicker::new().pick().ok(),
+            flash_boot: true,
+            ..Default::default()
+        });
+
+        let result = finish_runtime_hw_model(&mut hw);
+        assert_eq!(0, result, "Boot should complete successfully");
+
+        lock.fetch_add(1, Ordering::Relaxed);
     }
 }

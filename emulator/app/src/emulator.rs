@@ -790,6 +790,7 @@ impl Emulator {
             Some(mcu_mailbox0),
             Some(mcu_mailbox1),
             Some(soc_ifc),
+            [0, 0],
         );
 
         let mut auto_root_bus = AutoRootBus::new(

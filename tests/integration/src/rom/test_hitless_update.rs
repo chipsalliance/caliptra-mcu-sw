@@ -2,7 +2,6 @@
 
 use crate::platform;
 use anyhow::Result;
-use caliptra_hw_model::BootParams;
 use mcu_hw_model::{new, InitParams, McuHwModel};
 use mcu_rom_common::McuBootMilestones;
 
@@ -24,15 +23,12 @@ fn test_hitless_update_flow() -> Result<()> {
             std::fs::read(&rom_file)?,
         )
     };
-    let mut hw = new(
-        InitParams {
-            caliptra_rom: &caliptra_rom,
-            mcu_rom: &mcu_rom,
-            enable_mcu_uart_log: true,
-            ..Default::default()
-        },
-        BootParams::default(),
-    )?;
+    let mut hw = new(InitParams {
+        caliptra_rom: &caliptra_rom,
+        mcu_rom: &mcu_rom,
+        enable_mcu_uart_log: true,
+        ..Default::default()
+    })?;
 
     println!("Waiting for flow to start");
     hw.step_until(|hw| {

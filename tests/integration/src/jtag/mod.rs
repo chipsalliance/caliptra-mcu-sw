@@ -37,7 +37,10 @@ mod test {
             enable_mcu_uart_log,
             ..Default::default()
         };
-        DefaultHwModel::new_unbooted(init_params).unwrap()
+        let mut m = DefaultHwModel::new_unbooted(init_params).unwrap();
+        // tell the ROM to boot by setting bits 30 and 31
+        m.set_mcu_generic_input_wires(&[0, 0xc000_0000]);
+        m
     }
 
     pub fn debug_is_unlocked(tap: &mut OpenOcdJtagTap) -> Result<bool> {
