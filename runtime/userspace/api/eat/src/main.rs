@@ -4,7 +4,7 @@
 #[cfg(feature = "std")]
 use std::error::Error;
 #[cfg(feature = "std")]
-use std::fs::{File, create_dir_all};
+use std::fs::{create_dir_all, File};
 #[cfg(feature = "std")]
 use std::io::Write;
 #[cfg(feature = "std")]
@@ -12,7 +12,7 @@ use std::path::Path;
 
 // Use the ocp_eat library (defined in lib.rs) instead of recompiling modules
 use ocp_eat::{
-    CborEncoder, CoseHeaderPair, CoseSign1, EatError, ProtectedHeader, cbor_tags, cose_headers,
+    cbor_tags, cose_headers, CborEncoder, CoseHeaderPair, CoseSign1, EatError, ProtectedHeader,
 };
 
 #[cfg(feature = "crypto")]
@@ -24,7 +24,7 @@ use ocp_eat::ocp_profile::{
 
 // Cryptographic imports for signature generation (only available with crypto feature)
 #[cfg(feature = "crypto")]
-use ecdsa::{Signature, SigningKey, signature::Signer};
+use ecdsa::{signature::Signer, Signature, SigningKey};
 #[cfg(feature = "crypto")]
 use p384::elliptic_curve::sec1::ToEncodedPoint;
 #[cfg(feature = "crypto")]

@@ -235,7 +235,7 @@ pub struct EnvironmentMap<'a> {
 impl CborEncodable for EnvironmentMap<'_> {
     fn encode(&self, encoder: &mut CborEncoder) -> Result<(), EatError> {
         encoder.encode_map_header(1)?; // Only class for now
-        // Key 0: class
+                                       // Key 0: class
         encoder.encode_int(0)?;
         self.class.encode(encoder)?;
         Ok(())

@@ -86,12 +86,12 @@ pub use claim_keys::*;
 // Re-export COSE Sign1 signing infrastructure
 // Used to create signed EAT tokens with protected/unprotected headers
 pub use cose::{
+    cose_headers,                  // COSE header key constants
     CoseHeaderPair,                // Key-value pair for unprotected headers
     CoseSign1,                     // COSE Sign1 encoder with default buffer
     CoseSign1WithBuffer,           // COSE Sign1 encoder with custom buffer size
-    DEFAULT_PROTECTED_HEADER_SIZE, // Default protected header buffer size (256 bytes)
     ProtectedHeader,               // Protected header builder
-    cose_headers,                  // COSE header key constants
+    DEFAULT_PROTECTED_HEADER_SIZE, // Default protected header buffer size (256 bytes)
 };
 
 // Re-export OCP Profile EAT types for device attestation
