@@ -655,3 +655,720 @@ impl CborEncodable for ConciseEvidence<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cbor::CborEncoder;
+
+    #[test]
+    fn test_digest_entry_encode() {
+        let digest = [0xAB; 48];
+        let entry = DigestEntry {
+            alg_id: -16, // SHA-384
+            value: &digest,
+        };
+
+        let mut buffer = [0u8; 128];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        entry.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+
+        // Calculate expected size: array(2) + int(-16) + bytes(48)
+        let array_header = CborEncoder::estimate_uint_size(2);
+        let alg_id_size = CborEncoder::estimate_int_size(-16);
+        let value_size = CborEncoder::estimate_bytes_string_size(48);
+
+        let expected_size = array_header + alg_id_size + value_size;
+        assert_eq!(encoded_len, expected_size);
+
+        // Verify array header
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::ARRAY, 2)
+        );
+    }
+
+    #[test]
+    fn test_integrity_register_id_choice_uint() {
+        let id = IntegrityRegisterIdChoice::Uint(42);
+
+        let mut buffer = [0u8; 32];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        id.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+        let expected_size = CborEncoder::estimate_uint_size(42);
+        assert_eq!(encoded_len, expected_size);
+    }
+
+    #[test]
+    fn test_integrity_register_id_choice_text() {
+        let id = IntegrityRegisterIdChoice::Text("register-1");
+
+        let mut buffer = [0u8; 32];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        id.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+        let expected_size = CborEncoder::estimate_text_string_size("register-1".len());
+        assert_eq!(encoded_len, expected_size);
+    }
+
+    #[test]
+    fn test_measurement_value_with_digests() {
+        let digest = [0xCD; 32];
+        let digest_entry = DigestEntry {
+            alg_id: -16,
+            value: &digest,
+        };
+        let digests_array = [digest_entry];
+
+        let measurement = MeasurementValue {
+            version: None,
+            svn: None,
+            digests: Some(&digests_array),
+            integrity_registers: None,
+            raw_value: None,
+            raw_value_mask: None,
+        };
+
+        let mut buffer = [0u8; 256];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        measurement.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+
+        // Calculate expected size: map(1) + key(2) + array(1) + digest_entry
+        let expected_size = CborEncoder::estimate_uint_size(1) + // map header
+                           CborEncoder::estimate_uint_size(2) + // key 2 for digests
+                           CborEncoder::estimate_uint_size(1) + // array header
+                           CborEncoder::estimate_uint_size(2) + // digest array header
+                           CborEncoder::estimate_int_size(-16) + // alg_id
+                           CborEncoder::estimate_bytes_string_size(32); // digest value
+        assert_eq!(encoded_len, expected_size);
+
+        // Verify map header (1 entry for digests)
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+        );
+    }
+
+    #[test]
+    fn test_measurement_value_with_all_fields() {
+        let digest = [0xEF; 32];
+        let digest_entry = DigestEntry {
+            alg_id: -16,
+            value: &digest,
+        };
+        let digests_array = [digest_entry];
+        let raw_value = [0x12; 16];
+        let raw_mask = [0xFF; 16];
+
+        let measurement = MeasurementValue {
+            version: Some("1.0.0"),
+            svn: Some(5),
+            digests: Some(&digests_array),
+            integrity_registers: None,
+            raw_value: Some(&raw_value),
+            raw_value_mask: Some(&raw_mask),
+        };
+
+        let mut buffer = [0u8; 512];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        measurement.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+
+        // Calculate expected size: map(5) + version + svn + digests + raw_value + raw_value_mask
+        let expected_size = CborEncoder::estimate_uint_size(5) + // map header
+                           CborEncoder::estimate_uint_size(0) + CborEncoder::estimate_text_string_size(5) + // version
+                           CborEncoder::estimate_uint_size(1) + CborEncoder::estimate_uint_size(5) + // svn
+                           CborEncoder::estimate_uint_size(2) + CborEncoder::estimate_uint_size(1) + // digests key + array
+                           CborEncoder::estimate_uint_size(2) + CborEncoder::estimate_int_size(-16) + CborEncoder::estimate_bytes_string_size(32) + // digest entry
+                           CborEncoder::estimate_uint_size(4) + CborEncoder::estimate_bytes_string_size(16) + // raw_value
+                           CborEncoder::estimate_uint_size(5) + CborEncoder::estimate_bytes_string_size(16); // raw_value_mask
+        assert_eq!(encoded_len, expected_size);
+
+        // Verify map header (5 entries)
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 5)
+        );
+    }
+
+    #[test]
+    fn test_measurement_map_encode() {
+        let digest = [0x11; 48];
+        let digest_entry = DigestEntry {
+            alg_id: -16,
+            value: &digest,
+        };
+        let digests_array = [digest_entry];
+
+        let measurement_value = MeasurementValue {
+            version: None,
+            svn: Some(10),
+            digests: Some(&digests_array),
+            integrity_registers: None,
+            raw_value: None,
+            raw_value_mask: None,
+        };
+
+        let measurement_map = MeasurementMap {
+            key: 0,
+            mval: measurement_value,
+        };
+
+        let mut buffer = [0u8; 256];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        measurement_map
+            .encode(&mut encoder)
+            .expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+
+        // Calculate expected size: map(2) + mkey + mval
+        let expected_size = CborEncoder::estimate_uint_size(2) + // map header
+                           CborEncoder::estimate_uint_size(0) + CborEncoder::estimate_uint_size(0) + // key 0 + mkey value
+                           CborEncoder::estimate_uint_size(1) + // key 1
+                           CborEncoder::estimate_uint_size(2) + // mval map header
+                           CborEncoder::estimate_uint_size(1) + CborEncoder::estimate_uint_size(10) + // svn
+                           CborEncoder::estimate_uint_size(2) + CborEncoder::estimate_uint_size(1) + // digests key + array
+                           CborEncoder::estimate_uint_size(2) + CborEncoder::estimate_int_size(-16) + CborEncoder::estimate_bytes_string_size(48); // digest entry
+        assert_eq!(encoded_len, expected_size);
+
+        // Verify map header (2 entries: key=0 for mkey, key=1 for mval)
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 2)
+        );
+    }
+
+    #[test]
+    fn test_class_map_minimal() {
+        let class_map = ClassMap {
+            class_id: "1.3.6.1.4.1.9999",
+            vendor: None,
+            model: None,
+        };
+
+        let mut buffer = [0u8; 128];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        class_map.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+
+        // Calculate expected size: map(1) + key(0) + tag(111) + class_id
+        let class_id_bytes = "1.3.6.1.4.1.9999".as_bytes();
+        let expected_size = CborEncoder::estimate_uint_size(1) + // map header
+                           CborEncoder::estimate_uint_size(0) + // key 0
+                           CborEncoder::estimate_uint_size(111) + // tag 111
+                           CborEncoder::estimate_bytes_string_size(class_id_bytes.len()); // class_id as bytes
+        assert_eq!(encoded_len, expected_size);
+
+        // Verify map header (1 entry for class_id only)
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+        );
+    }
+
+    #[test]
+    fn test_class_map_complete() {
+        let class_map = ClassMap {
+            class_id: "1.3.6.1.4.1.9999",
+            vendor: Some("ACME Corp"),
+            model: Some("Model X"),
+        };
+
+        let mut buffer = [0u8; 256];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        class_map.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+
+        // Calculate expected size: map(3) + class_id + vendor + model
+        let class_id_bytes = "1.3.6.1.4.1.9999".as_bytes();
+        let expected_size = CborEncoder::estimate_uint_size(3) + // map header
+                           CborEncoder::estimate_uint_size(0) + CborEncoder::estimate_uint_size(111) + CborEncoder::estimate_bytes_string_size(class_id_bytes.len()) + // class_id
+                           CborEncoder::estimate_uint_size(1) + CborEncoder::estimate_text_string_size(9) + // vendor
+                           CborEncoder::estimate_uint_size(2) + CborEncoder::estimate_text_string_size(7); // model
+        assert_eq!(encoded_len, expected_size);
+
+        // Verify map header (3 entries)
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 3)
+        );
+    }
+
+    #[test]
+    fn test_environment_map_encode() {
+        let class_map = ClassMap {
+            class_id: "1.3.6.1.4.1.8888",
+            vendor: Some("Vendor Inc"),
+            model: None,
+        };
+
+        let environment = EnvironmentMap { class: class_map };
+
+        let mut buffer = [0u8; 256];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        environment.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+
+        // Calculate expected size: map(1) + key(0) + class_map
+        let class_id_bytes = "1.3.6.1.4.1.8888".as_bytes();
+        let expected_size = CborEncoder::estimate_uint_size(1) + // env map header
+                           CborEncoder::estimate_uint_size(0) + // key 0
+                           CborEncoder::estimate_uint_size(2) + // class map header (2 entries)
+                           CborEncoder::estimate_uint_size(0) + CborEncoder::estimate_uint_size(111) + CborEncoder::estimate_bytes_string_size(class_id_bytes.len()) + // class_id
+                           CborEncoder::estimate_uint_size(1) + CborEncoder::estimate_text_string_size(10); // vendor
+        assert_eq!(encoded_len, expected_size);
+
+        // Verify map header (1 entry for class)
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+        );
+    }
+
+    #[test]
+    fn test_evidence_triple_record() {
+        let digest = [0x22; 32];
+        let digest_entry = DigestEntry {
+            alg_id: -16,
+            value: &digest,
+        };
+        let digests_array = [digest_entry];
+
+        let measurement_value = MeasurementValue {
+            version: None,
+            svn: None,
+            digests: Some(&digests_array),
+            integrity_registers: None,
+            raw_value: None,
+            raw_value_mask: None,
+        };
+
+        let measurement_map = MeasurementMap {
+            key: 1,
+            mval: measurement_value,
+        };
+        let measurements_array = [measurement_map];
+
+        let class_map = ClassMap {
+            class_id: "1.3.6.1.4.1.7777",
+            vendor: Some("Test Vendor"),
+            model: Some("Test Model"),
+        };
+
+        let environment = EnvironmentMap { class: class_map };
+
+        let evidence_triple = EvidenceTripleRecord {
+            environment,
+            measurements: &measurements_array,
+        };
+
+        let mut buffer = [0u8; 512];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        evidence_triple
+            .encode(&mut encoder)
+            .expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+
+        // Calculate expected size: array(2) + environment + measurements_array
+        let class_id_bytes = "1.3.6.1.4.1.7777".as_bytes();
+        let expected_size = CborEncoder::estimate_uint_size(2) + // triple array header
+                           CborEncoder::estimate_uint_size(1) + CborEncoder::estimate_uint_size(0) + // env map
+                           CborEncoder::estimate_uint_size(3) + // class map header (3 entries)
+                           CborEncoder::estimate_uint_size(0) + CborEncoder::estimate_uint_size(111) + CborEncoder::estimate_bytes_string_size(class_id_bytes.len()) + // class_id
+                           CborEncoder::estimate_uint_size(1) + CborEncoder::estimate_text_string_size(11) + // vendor
+                           CborEncoder::estimate_uint_size(2) + CborEncoder::estimate_text_string_size(10) + // model
+                           CborEncoder::estimate_uint_size(1) + // measurements array header
+                           CborEncoder::estimate_uint_size(2) + // measurement map header
+                           CborEncoder::estimate_uint_size(0) + CborEncoder::estimate_uint_size(1) + // mkey
+                           CborEncoder::estimate_uint_size(1) + // key 1
+                           CborEncoder::estimate_uint_size(1) + // mval map header
+                           CborEncoder::estimate_uint_size(2) + CborEncoder::estimate_uint_size(1) + // digests key + array
+                           CborEncoder::estimate_uint_size(2) + CborEncoder::estimate_int_size(-16) + CborEncoder::estimate_bytes_string_size(32); // digest
+        assert_eq!(encoded_len, expected_size);
+
+        // Verify array header (2 elements: environment, measurements)
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::ARRAY, 2)
+        );
+    }
+
+    #[test]
+    fn test_ev_triples_map_minimal() {
+        let ev_triples = EvTriplesMap {
+            evidence_triples: None,
+            identity_triples: None,
+            dependency_triples: None,
+            membership_triples: None,
+            coswid_triples: None,
+            attest_key_triples: None,
+        };
+
+        let mut buffer = [0u8; 32];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        ev_triples.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+
+        // Calculate expected size: empty map
+        let expected_size = CborEncoder::estimate_uint_size(0); // map header with 0 entries
+        assert_eq!(encoded_len, expected_size);
+
+        // Verify map header (0 entries)
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 0)
+        );
+    }
+
+    #[test]
+    fn test_ev_triples_map_with_evidence() {
+        let digest = [0x33; 48];
+        let digest_entry = DigestEntry {
+            alg_id: -16,
+            value: &digest,
+        };
+        let digests_array = [digest_entry];
+
+        let measurement_value = MeasurementValue {
+            version: Some("2.0"),
+            svn: None,
+            digests: Some(&digests_array),
+            integrity_registers: None,
+            raw_value: None,
+            raw_value_mask: None,
+        };
+
+        let measurement_map = MeasurementMap {
+            key: 2,
+            mval: measurement_value,
+        };
+        let measurements_array = [measurement_map];
+
+        let class_map = ClassMap {
+            class_id: "1.3.6.1.4.1.6666",
+            vendor: None,
+            model: None,
+        };
+
+        let environment = EnvironmentMap { class: class_map };
+
+        let evidence_triple = EvidenceTripleRecord {
+            environment,
+            measurements: &measurements_array,
+        };
+        let evidence_triples_array = [evidence_triple];
+
+        let ev_triples = EvTriplesMap {
+            evidence_triples: Some(&evidence_triples_array),
+            identity_triples: None,
+            dependency_triples: None,
+            membership_triples: None,
+            coswid_triples: None,
+            attest_key_triples: None,
+        };
+
+        let mut buffer = [0u8; 1024];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        ev_triples.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+
+        // This is a complex nested structure, verify it encodes successfully
+        assert!(encoded_len > 0);
+
+        // Verify map header (1 entry for evidence_triples)
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+        );
+    }
+
+    #[test]
+    fn test_concise_evidence_map_encode() {
+        let digest = [0x44; 32];
+        let digest_entry = DigestEntry {
+            alg_id: -16,
+            value: &digest,
+        };
+        let digests_array = [digest_entry];
+
+        let measurement_value = MeasurementValue {
+            version: None,
+            svn: Some(3),
+            digests: Some(&digests_array),
+            integrity_registers: None,
+            raw_value: None,
+            raw_value_mask: None,
+        };
+
+        let measurement_map = MeasurementMap {
+            key: 0,
+            mval: measurement_value,
+        };
+        let measurements_array = [measurement_map];
+
+        let class_map = ClassMap {
+            class_id: "1.3.6.1.4.1.5555",
+            vendor: Some("Example Vendor"),
+            model: Some("Example Model"),
+        };
+
+        let environment = EnvironmentMap { class: class_map };
+
+        let evidence_triple = EvidenceTripleRecord {
+            environment,
+            measurements: &measurements_array,
+        };
+        let evidence_triples_array = [evidence_triple];
+
+        let ev_triples = EvTriplesMap {
+            evidence_triples: Some(&evidence_triples_array),
+            identity_triples: None,
+            dependency_triples: None,
+            membership_triples: None,
+            coswid_triples: None,
+            attest_key_triples: None,
+        };
+
+        let evidence_map = ConciseEvidenceMap {
+            ev_triples,
+            evidence_id: None,
+            profile: None,
+        };
+
+        let mut buffer = [0u8; 1024];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        evidence_map.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+
+        // This is a complex nested structure, verify it encodes successfully
+        assert!(encoded_len > 0);
+
+        // Verify map header (1 entry for ev_triples)
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+        );
+    }
+
+    #[test]
+    fn test_concise_evidence_map_variant() {
+        let digest = [0x55; 48];
+        let digest_entry = DigestEntry {
+            alg_id: -16,
+            value: &digest,
+        };
+        let digests_array = [digest_entry];
+
+        let measurement_value = MeasurementValue {
+            version: None,
+            svn: None,
+            digests: Some(&digests_array),
+            integrity_registers: None,
+            raw_value: None,
+            raw_value_mask: None,
+        };
+
+        let measurement_map = MeasurementMap {
+            key: 0,
+            mval: measurement_value,
+        };
+        let measurements_array = [measurement_map];
+
+        let class_map = ClassMap {
+            class_id: "1.3.6.1.4.1.4444",
+            vendor: None,
+            model: None,
+        };
+
+        let environment = EnvironmentMap { class: class_map };
+
+        let evidence_triple = EvidenceTripleRecord {
+            environment,
+            measurements: &measurements_array,
+        };
+        let evidence_triples_array = [evidence_triple];
+
+        let ev_triples = EvTriplesMap {
+            evidence_triples: Some(&evidence_triples_array),
+            identity_triples: None,
+            dependency_triples: None,
+            membership_triples: None,
+            coswid_triples: None,
+            attest_key_triples: None,
+        };
+
+        let evidence_map = ConciseEvidenceMap {
+            ev_triples,
+            evidence_id: None,
+            profile: None,
+        };
+
+        let concise_evidence = ConciseEvidence::Map(evidence_map);
+
+        let mut buffer = [0u8; 1024];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        concise_evidence
+            .encode(&mut encoder)
+            .expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+
+        // This is a complex nested structure, verify it encodes successfully
+        assert!(encoded_len > 0);
+
+        // Map variant should not have a tag
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+        );
+    }
+
+    #[test]
+    fn test_concise_evidence_tagged_variant() {
+        let digest = [0x66; 32];
+        let digest_entry = DigestEntry {
+            alg_id: -16,
+            value: &digest,
+        };
+        let digests_array = [digest_entry];
+
+        let measurement_value = MeasurementValue {
+            version: Some("3.0"),
+            svn: Some(7),
+            digests: Some(&digests_array),
+            integrity_registers: None,
+            raw_value: None,
+            raw_value_mask: None,
+        };
+
+        let measurement_map = MeasurementMap {
+            key: 1,
+            mval: measurement_value,
+        };
+        let measurements_array = [measurement_map];
+
+        let class_map = ClassMap {
+            class_id: "1.3.6.1.4.1.3333",
+            vendor: Some("Tagged Vendor"),
+            model: Some("Tagged Model"),
+        };
+
+        let environment = EnvironmentMap { class: class_map };
+
+        let evidence_triple = EvidenceTripleRecord {
+            environment,
+            measurements: &measurements_array,
+        };
+        let evidence_triples_array = [evidence_triple];
+
+        let ev_triples = EvTriplesMap {
+            evidence_triples: Some(&evidence_triples_array),
+            identity_triples: None,
+            dependency_triples: None,
+            membership_triples: None,
+            coswid_triples: None,
+            attest_key_triples: None,
+        };
+
+        let evidence_map = ConciseEvidenceMap {
+            ev_triples,
+            evidence_id: None,
+            profile: None,
+        };
+
+        let tagged = TaggedConciseEvidence {
+            concise_evidence: evidence_map,
+        };
+
+        let concise_evidence = ConciseEvidence::Tagged(tagged);
+
+        let mut buffer = [0u8; 1024];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        concise_evidence
+            .encode(&mut encoder)
+            .expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+
+        // This is a complex nested structure, verify it encodes successfully
+        assert!(encoded_len > 0);
+
+        // Tagged variant should start with a tag (major type 6)
+        assert_eq!(buffer[0] & 0xE0, crate::cbor::major_type::TAG << 5);
+    }
+
+    #[test]
+    fn test_domain_type_choice_uuid() {
+        let uuid = [
+            0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB,
+            0xCD, 0xEF,
+        ];
+        let domain = DomainTypeChoice::Uuid(&uuid);
+
+        let mut buffer = [0u8; 64];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        domain.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+        let expected_size = CborEncoder::estimate_bytes_string_size(16);
+        assert_eq!(encoded_len, expected_size);
+    }
+
+    #[test]
+    fn test_domain_type_choice_uri() {
+        let domain = DomainTypeChoice::Uri("https://example.com/domain");
+
+        let mut buffer = [0u8; 64];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        domain.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+        let expected_size =
+            CborEncoder::estimate_text_string_size("https://example.com/domain".len());
+        assert_eq!(encoded_len, expected_size);
+    }
+
+    #[test]
+    fn test_crypto_key_type_choice_public_key() {
+        let public_key = [0xAB; 64];
+        let key = CryptoKeyTypeChoice::PublicKey(&public_key);
+
+        let mut buffer = [0u8; 128];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        key.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+        let expected_size = CborEncoder::estimate_bytes_string_size(64);
+        assert_eq!(encoded_len, expected_size);
+    }
+
+    #[test]
+    fn test_crypto_key_type_choice_key_id() {
+        let key_id = [0xCD; 16];
+        let key = CryptoKeyTypeChoice::KeyId(&key_id);
+
+        let mut buffer = [0u8; 64];
+        let mut encoder = CborEncoder::new(&mut buffer);
+        key.encode(&mut encoder).expect("Encoding failed");
+
+        let encoded_len = encoder.len();
+        let expected_size = CborEncoder::estimate_bytes_string_size(16);
+        assert_eq!(encoded_len, expected_size);
+    }
+}

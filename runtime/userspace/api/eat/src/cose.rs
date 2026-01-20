@@ -46,33 +46,22 @@ impl ProtectedHeader {
         if self.kid.is_some() {
             entries = entries.saturating_add(1);
         }
-        size += if entries < 24 { 1 } else { 9 };
+        size += CborEncoder::estimate_uint_size(entries);
 
-        // Key 1 (alg): 1 byte + algorithm value (1-5 bytes for i32)
-        size += 1;
-        size += if self.alg >= -24 && self.alg < 24 {
-            1
-        } else {
-            5
-        };
+        // Key 1 (alg): key + algorithm value size
+        size += CborEncoder::estimate_int_size(1); // Key label
+        size += CborEncoder::estimate_int_size(self.alg as i64);
 
-        // Key 3 (content_type): 1 byte + value (1-3 bytes for u16)
+        // Key 3 (content_type): key + value size
         if let Some(content_type) = self.content_type {
-            size += 1; // key
-            size += if content_type < 24 {
-                1
-            } else if content_type < 256 {
-                2
-            } else {
-                3
-            };
+            size += CborEncoder::estimate_int_size(3); // Key label
+            size += CborEncoder::estimate_uint_size(content_type as u64);
         }
 
-        // Key 4 (kid): 1 byte + byte string header + kid length
+        // Key 4 (kid): key + byte string (header + data)
         if let Some(kid) = self.kid {
-            size += 1; // key
-            size += if kid.len() < 24 { 1 } else { 5 }; // byte string header
-            size += kid.len(); // actual kid bytes
+            size += CborEncoder::estimate_int_size(4); // Key label
+            size += CborEncoder::estimate_bytes_string_size(kid.len());
         }
 
         size
@@ -280,5 +269,237 @@ impl<'a, const PROTECTED_SIZE: usize> CoseSign1WithBuffer<'a, PROTECTED_SIZE> {
         self.encoder.encode_bytes(signature)?;
 
         Ok(self.encoder.len())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_estimate_int_size_common_cose_algorithms() {
+        // ES384 (-51) should fit in 2 bytes
+        assert_eq!(CborEncoder::estimate_int_size(-51), 2);
+        // ES256 (-7) should fit in 1 byte
+        assert_eq!(CborEncoder::estimate_int_size(-7), 1);
+        // ES512 (-36) should fit in 2 bytes
+        assert_eq!(CborEncoder::estimate_int_size(-36), 2);
+    }
+
+    #[test]
+    fn test_protected_header_new_es384() {
+        let header = ProtectedHeader::new_es384();
+        assert_eq!(header.alg, -51);
+        assert!(header.content_type.is_none());
+        assert!(header.kid.is_none());
+    }
+
+    #[test]
+    fn test_protected_header_estimate_size_minimal() {
+        let header = ProtectedHeader::new_es384();
+        let estimated = header.estimate_size();
+
+        // Minimal: map header (1) + key (1) + alg value (2 for -51) = 4 bytes
+        assert!(estimated >= 4);
+        assert!(estimated <= 10); // Reasonable upper bound for minimal header
+    }
+
+    #[test]
+    fn test_protected_header_estimate_size_with_content_type() {
+        let header = ProtectedHeader {
+            alg: -51,
+            content_type: Some(100),
+            kid: None,
+        };
+        let estimated = header.estimate_size();
+
+        // Map(2 entries): 1 + Key(1): 1 + alg(-51): 2 + Key(3): 1 + content_type(100): 2 = 7 bytes
+        assert_eq!(estimated, 7);
+    }
+
+    #[test]
+    fn test_protected_header_estimate_size_with_kid() {
+        const KID: &[u8] = b"test-key-id";
+        let header = ProtectedHeader {
+            alg: -51,
+            content_type: None,
+            kid: Some(KID),
+        };
+        let estimated = header.estimate_size();
+
+        // Map(2 entries): 1 + Key(1): 1 + alg(-51): 2 + Key(4): 1 + bstr header: 1 + kid data: 11 = 17 bytes
+        assert_eq!(estimated, 17);
+    }
+
+    #[test]
+    fn test_protected_header_encode_minimal() {
+        let header = ProtectedHeader::new_es384();
+        let mut buffer = [0u8; 64];
+
+        let encoded_len = header.encode(&mut buffer).expect("Encoding failed");
+        // Map(1 entry): 1 + Key(1): 1 + alg(-51): 2 = 4 bytes
+        assert_eq!(encoded_len, 4);
+        assert_eq!(encoded_len, header.estimate_size());
+
+        // Verify CBOR structure: map with 1 entry
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+        );
+    }
+
+    #[test]
+    fn test_protected_header_encode_with_all_fields() {
+        const KID: &[u8] = b"key123";
+        let header = ProtectedHeader {
+            alg: -51,
+            content_type: Some(500),
+            kid: Some(KID),
+        };
+        let mut buffer = [0u8; 128];
+
+        let encoded_len = header.encode(&mut buffer).expect("Encoding failed");
+        // Map(3): 1 + Key(1): 1 + alg(-51): 2 + Key(3): 1 + content_type(500): 3 + Key(4): 1 + bstr header: 1 + kid: 6 = 16 bytes
+        assert_eq!(encoded_len, 16);
+        assert_eq!(encoded_len, header.estimate_size());
+
+        // Verify CBOR structure: map with 3 entries
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 3)
+        );
+    }
+
+    #[test]
+    fn test_protected_header_encode_buffer_too_small() {
+        let header = ProtectedHeader::new_es384();
+        let mut buffer = [0u8; 2]; // Deliberately too small
+
+        let result = header.encode(&mut buffer);
+        assert_eq!(result, Err(EatError::BufferTooSmall));
+    }
+
+    #[test]
+    fn test_cose_sign1_signature_context() {
+        let protected = ProtectedHeader::new_es384();
+        let payload = b"test payload";
+
+        let mut buffer = [0u8; 512];
+        let cose = CoseSign1::new(&mut buffer)
+            .protected_header(&protected)
+            .payload(payload);
+
+        let mut context_buffer = [0u8; 1024];
+        let context_len = cose
+            .get_signature_context(&mut context_buffer)
+            .expect("Failed to get signature context");
+
+        // Array(4): 1 + "Signature1"(10 chars): 11 + protected(4 bytes): 5 + empty AAD: 1 + payload(12 bytes): 13 = 31 bytes
+        assert_eq!(context_len, 31);
+
+        // Verify structure starts with array of 4 items
+        assert_eq!(
+            context_buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::ARRAY, 4)
+        );
+    }
+
+    #[test]
+    fn test_cose_sign1_encode_complete() {
+        let protected = ProtectedHeader::new_es384();
+        let payload = b"test payload"; // 12 bytes
+        let signature = [0xAA; 96]; // Mock P-384 signature (96 bytes)
+
+        let x5chain_header = CoseHeaderPair {
+            key: cose_headers::X5CHAIN,
+            value: b"mock-cert", // Mock certificate data (9 bytes)
+        };
+        let unprotected = [x5chain_header];
+
+        let mut buffer = [0u8; 1024];
+        let encoded_len = CoseSign1::new(&mut buffer)
+            .protected_header(&protected)
+            .unprotected_headers(&unprotected)
+            .payload(payload)
+            .signature(&signature)
+            .encode(None)
+            .expect("Encoding failed");
+
+        // Calculate expected size
+        let tag18_size = 1; // COSE_Sign1 tag (18)
+        let array_header_size = 1; // Array of 4 items
+        let protected_size = CborEncoder::estimate_bytes_string_size(4); // protected header as byte string
+
+        // Unprotected map: map_header(1) + key(33): 2 + value byte string(9 bytes): 10
+        let unprotected_map_header = CborEncoder::estimate_uint_size(1); // 1 entry
+        let unprotected_key = CborEncoder::estimate_int_size(cose_headers::X5CHAIN as i64); // key 33
+        let unprotected_value = CborEncoder::estimate_bytes_string_size(b"mock-cert".len()); // 9 byte string
+        let unprotected_size = unprotected_map_header + unprotected_key + unprotected_value;
+
+        let payload_size = CborEncoder::estimate_bytes_string_size(payload.len()); // 12 byte string
+        let signature_size = CborEncoder::estimate_bytes_string_size(signature.len()); // 96 byte string
+
+        let expected_size = tag18_size
+            + array_header_size
+            + protected_size
+            + unprotected_size
+            + payload_size
+            + signature_size;
+        assert_eq!(encoded_len, expected_size);
+
+        // Verify COSE_Sign1 tag (18)
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::TAG, 18)
+        );
+        // Verify array of 4 items
+        assert_eq!(
+            buffer[1],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::ARRAY, 4)
+        );
+    }
+
+    #[test]
+    fn test_cose_sign1_encode_with_additional_tags() {
+        let protected = ProtectedHeader::new_es384();
+        let payload = b"test";
+        let signature = [0xBB; 96];
+
+        let mut buffer = [0u8; 1024];
+        let additional_tags = [55799u64, 61u64]; // Self-described CBOR + CWT
+        let encoded_len = CoseSign1::new(&mut buffer)
+            .protected_header(&protected)
+            .payload(payload)
+            .signature(&signature)
+            .encode(Some(&additional_tags))
+            .expect("Encoding failed");
+
+        // Calculate expected size
+        let tag_55799_size = CborEncoder::estimate_uint_size(55799); // Self-described CBOR tag
+        let tag_61_size = CborEncoder::estimate_uint_size(61); // CWT tag
+        let tag18_size = 1; // COSE_Sign1 tag (18)
+        let array_header_size = 1; // Array of 4 items
+        let protected_size = CborEncoder::estimate_bytes_string_size(4); // protected header as byte string
+        let unprotected_size = CborEncoder::estimate_uint_size(0); // Empty map (0 entries)
+        let payload_size = CborEncoder::estimate_bytes_string_size(payload.len()); // 4 byte string
+        let signature_size = CborEncoder::estimate_bytes_string_size(signature.len()); // 96 byte string
+
+        let expected_size = tag_55799_size
+            + tag_61_size
+            + tag18_size
+            + array_header_size
+            + protected_size
+            + unprotected_size
+            + payload_size
+            + signature_size;
+        assert_eq!(encoded_len, expected_size);
+
+        // Tag 55799 encodes as: major type 6, additional info 25 (2-byte uint16), value 0xD9F7
+        assert_eq!(
+            buffer[0],
+            crate::cbor::cbor_initial_byte(crate::cbor::major_type::TAG, 25)
+        );
+        assert_eq!(buffer[1], 0xD9);
+        assert_eq!(buffer[2], 0xF7);
     }
 }

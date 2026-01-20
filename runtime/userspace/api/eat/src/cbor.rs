@@ -7,6 +7,24 @@
 
 use crate::error::EatError;
 
+/// CBOR major types (RFC 8949)
+pub mod major_type {
+    pub const UNSIGNED_INT: u8 = 0;
+    pub const NEGATIVE_INT: u8 = 1;
+    pub const BYTE_STRING: u8 = 2;
+    pub const TEXT_STRING: u8 = 3;
+    pub const ARRAY: u8 = 4;
+    pub const MAP: u8 = 5;
+    pub const TAG: u8 = 6;
+    pub const SIMPLE: u8 = 7;
+}
+
+/// Construct a CBOR initial byte from major type and additional info
+#[inline]
+pub const fn cbor_initial_byte(major_type: u8, additional_info: u8) -> u8 {
+    (major_type << 5) | additional_info
+}
+
 /// Trait for types that can be encoded to CBOR format
 pub trait CborEncodable {
     /// Encode this value into the provided CBOR encoder
@@ -171,5 +189,255 @@ impl<'a> CborEncoder<'a> {
     // Encode with COSE_Sign1 tag (18)
     pub fn encode_cose_sign1_tag(&mut self) -> Result<(), EatError> {
         self.encode_tag(18)
+    }
+
+    // Helper function to estimate size based on value (mirrors encode_type_value logic)
+    #[inline]
+    fn estimate_type_value_size(value: u64) -> usize {
+        if value <= 23 {
+            1 // Major type + value in same byte
+        } else if value <= 0xff {
+            2 // Major type + 1 byte
+        } else if value <= 0xffff {
+            3 // Major type + 2 bytes
+        } else if value <= 0xffffffff {
+            5 // Major type + 4 bytes
+        } else {
+            9 // Major type + 8 bytes
+        }
+    }
+
+    /// Estimate the encoded size of a CBOR unsigned integer
+    ///
+    /// This utility function calculates how many bytes will be needed to encode
+    /// an unsigned integer value according to CBOR encoding rules (RFC 8949).
+    ///
+    /// CBOR encoding sizes:
+    /// - 0 to 23: 1 byte (major type + value in lower 5 bits)
+    /// - 24 to 255: 2 bytes (major type + 1 byte value)
+    /// - 256 to 65535: 3 bytes (major type + 2 byte value)
+    /// - 65536 to 4294967295: 5 bytes (major type + 4 byte value)
+    /// - Beyond u32: 9 bytes (major type + 8 byte value)
+    ///
+    /// This mirrors the logic in `encode_type_value` but returns the size
+    /// instead of encoding.
+    #[inline]
+    pub fn estimate_uint_size(value: u64) -> usize {
+        Self::estimate_type_value_size(value)
+    }
+
+    /// Estimate the encoded size of a CBOR integer (positive or negative)
+    ///
+    /// This utility function calculates how many bytes will be needed to encode
+    /// an integer value according to CBOR encoding rules (RFC 8949).
+    ///
+    /// CBOR encoding sizes:
+    /// - -24 to 23: 1 byte (major type + value in lower 5 bits)
+    /// - -256 to -25 or 24 to 255: 2 bytes (major type + 1 byte value)
+    /// - -65536 to -257 or 256 to 65535: 3 bytes (major type + 2 byte value)
+    /// - i32 range: 5 bytes (major type + 4 byte value)
+    /// - Beyond i32: 9 bytes (major type + 8 byte value)
+    ///
+    /// This mirrors the logic in `encode_int` but returns the size
+    /// instead of encoding.
+    #[inline]
+    pub fn estimate_int_size(value: i64) -> usize {
+        // Convert negative values to their CBOR representation
+        let abs_value = if value >= 0 {
+            value as u64
+        } else {
+            // For negative integers, CBOR encodes as (-1 - value)
+            // Safe because value is negative
+            (value.saturating_mul(-1).saturating_sub(1)) as u64
+        };
+
+        Self::estimate_type_value_size(abs_value)
+    }
+
+    /// Estimate the encoded size of a CBOR byte string (major type 2)
+    ///
+    /// This utility function calculates the total bytes needed to encode
+    /// a byte string: the header (major type + length) plus the actual bytes.
+    ///
+    /// Returns: header_size + data_length
+    #[inline]
+    pub fn estimate_bytes_string_size(data_len: usize) -> usize {
+        Self::estimate_uint_size(data_len as u64) + data_len
+    }
+
+    /// Estimate the encoded size of a CBOR text string (major type 3)
+    ///
+    /// This utility function calculates the total bytes needed to encode
+    /// a text string: the header (major type + length) plus the actual bytes.
+    ///
+    /// Returns: header_size + data_length
+    #[inline]
+    pub fn estimate_text_string_size(text_len: usize) -> usize {
+        Self::estimate_uint_size(text_len as u64) + text_len
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_estimate_int_size_single_byte() {
+        // Test range -24 to 23 (fits in 1 byte)
+        assert_eq!(CborEncoder::estimate_int_size(-24), 1);
+        assert_eq!(CborEncoder::estimate_int_size(-1), 1);
+        assert_eq!(CborEncoder::estimate_int_size(0), 1);
+        assert_eq!(CborEncoder::estimate_int_size(23), 1);
+    }
+
+    #[test]
+    fn test_estimate_int_size_two_bytes() {
+        // Test range -256 to -25 and 24 to 255 (fits in 2 bytes)
+        assert_eq!(CborEncoder::estimate_int_size(-256), 2);
+        assert_eq!(CborEncoder::estimate_int_size(-25), 2);
+        assert_eq!(CborEncoder::estimate_int_size(24), 2);
+        assert_eq!(CborEncoder::estimate_int_size(255), 2);
+    }
+
+    #[test]
+    fn test_estimate_int_size_three_bytes() {
+        // Test range -65536 to -257 and 256 to 65535 (fits in 3 bytes)
+        assert_eq!(CborEncoder::estimate_int_size(-65536), 3);
+        assert_eq!(CborEncoder::estimate_int_size(-257), 3);
+        assert_eq!(CborEncoder::estimate_int_size(256), 3);
+        assert_eq!(CborEncoder::estimate_int_size(65535), 3);
+    }
+
+    #[test]
+    fn test_estimate_int_size_five_bytes() {
+        // Test i32 range (fits in 5 bytes)
+        assert_eq!(CborEncoder::estimate_int_size(-2147483648), 5);
+        assert_eq!(CborEncoder::estimate_int_size(-65537), 5);
+        assert_eq!(CborEncoder::estimate_int_size(65536), 5);
+        assert_eq!(CborEncoder::estimate_int_size(2147483647), 5);
+    }
+
+    #[test]
+    fn test_estimate_int_size_nine_bytes() {
+        // Test values beyond u32 range (require 9 bytes)
+        // For negative: need -1 - value > u32::MAX, so value < -4294967296
+        assert_eq!(CborEncoder::estimate_int_size(-4294967297), 9);
+        assert_eq!(CborEncoder::estimate_int_size(4294967296), 9);
+        assert_eq!(CborEncoder::estimate_int_size(i64::MAX), 9);
+        assert_eq!(CborEncoder::estimate_int_size(i64::MIN), 9);
+    }
+
+    #[test]
+    fn test_estimate_uint_size_single_byte() {
+        // Test range 0 to 23 (fits in 1 byte)
+        assert_eq!(CborEncoder::estimate_uint_size(0), 1);
+        assert_eq!(CborEncoder::estimate_uint_size(1), 1);
+        assert_eq!(CborEncoder::estimate_uint_size(23), 1);
+    }
+
+    #[test]
+    fn test_estimate_uint_size_two_bytes() {
+        // Test range 24 to 255 (fits in 2 bytes)
+        assert_eq!(CborEncoder::estimate_uint_size(24), 2);
+        assert_eq!(CborEncoder::estimate_uint_size(100), 2);
+        assert_eq!(CborEncoder::estimate_uint_size(255), 2);
+    }
+
+    #[test]
+    fn test_estimate_uint_size_three_bytes() {
+        // Test range 256 to 65535 (fits in 3 bytes)
+        assert_eq!(CborEncoder::estimate_uint_size(256), 3);
+        assert_eq!(CborEncoder::estimate_uint_size(500), 3);
+        assert_eq!(CborEncoder::estimate_uint_size(65535), 3);
+    }
+
+    #[test]
+    fn test_estimate_uint_size_five_bytes() {
+        // Test u32 range (fits in 5 bytes)
+        assert_eq!(CborEncoder::estimate_uint_size(65536), 5);
+        assert_eq!(CborEncoder::estimate_uint_size(1000000), 5);
+        assert_eq!(CborEncoder::estimate_uint_size(4294967295), 5);
+    }
+
+    #[test]
+    fn test_estimate_uint_size_nine_bytes() {
+        // Test values beyond u32 range (require 9 bytes)
+        assert_eq!(CborEncoder::estimate_uint_size(4294967296), 9);
+        assert_eq!(CborEncoder::estimate_uint_size(u64::MAX), 9);
+    }
+
+    #[test]
+    fn test_estimate_uint_size_common_content_types() {
+        // Common COSE content type values
+        assert_eq!(CborEncoder::estimate_uint_size(0), 1); // content type 0
+        assert_eq!(CborEncoder::estimate_uint_size(50), 2); // content type 50
+        assert_eq!(CborEncoder::estimate_uint_size(100), 2); // content type 100
+        assert_eq!(CborEncoder::estimate_uint_size(500), 3); // content type 500
+    }
+
+    #[test]
+    fn test_estimate_bytes_string_size_small() {
+        // Small byte strings (length 0-23): 1 byte header + data
+        assert_eq!(CborEncoder::estimate_bytes_string_size(0), 1); // header(1) + data(0)
+        assert_eq!(CborEncoder::estimate_bytes_string_size(10), 11); // header(1) + data(10)
+        assert_eq!(CborEncoder::estimate_bytes_string_size(23), 24); // header(1) + data(23)
+    }
+
+    #[test]
+    fn test_estimate_bytes_string_size_medium() {
+        // Medium byte strings (length 24-255): 2 byte header + data
+        assert_eq!(CborEncoder::estimate_bytes_string_size(24), 26); // header(2) + data(24)
+        assert_eq!(CborEncoder::estimate_bytes_string_size(100), 102); // header(2) + data(100)
+        assert_eq!(CborEncoder::estimate_bytes_string_size(255), 257); // header(2) + data(255)
+    }
+
+    #[test]
+    fn test_estimate_bytes_string_size_large() {
+        // Large byte strings (length 256-65535): 3 byte header + data
+        assert_eq!(CborEncoder::estimate_bytes_string_size(256), 259); // header(3) + data(256)
+        assert_eq!(CborEncoder::estimate_bytes_string_size(1024), 1027); // header(3) + data(1024)
+        assert_eq!(CborEncoder::estimate_bytes_string_size(65535), 65538); // header(3) + data(65535)
+    }
+
+    #[test]
+    fn test_estimate_text_string_size_small() {
+        // Small text strings (length 0-23): 1 byte header + data
+        assert_eq!(CborEncoder::estimate_text_string_size(0), 1); // header(1) + data(0)
+        assert_eq!(CborEncoder::estimate_text_string_size(10), 11); // header(1) + data(10)
+        assert_eq!(CborEncoder::estimate_text_string_size(23), 24); // header(1) + data(23)
+    }
+
+    #[test]
+    fn test_estimate_text_string_size_medium() {
+        // Medium text strings (length 24-255): 2 byte header + data
+        assert_eq!(CborEncoder::estimate_text_string_size(24), 26); // header(2) + data(24)
+        assert_eq!(CborEncoder::estimate_text_string_size(100), 102); // header(2) + data(100)
+        assert_eq!(CborEncoder::estimate_text_string_size(255), 257); // header(2) + data(255)
+    }
+
+    #[test]
+    fn test_estimate_text_string_size_large() {
+        // Large text strings (length 256-65535): 3 byte header + data
+        assert_eq!(CborEncoder::estimate_text_string_size(256), 259); // header(3) + data(256)
+        assert_eq!(CborEncoder::estimate_text_string_size(1024), 1027); // header(3) + data(1024)
+        assert_eq!(CborEncoder::estimate_text_string_size(65535), 65538); // header(3) + data(65535)
+    }
+
+    #[test]
+    fn test_estimate_text_string_size_common_strings() {
+        // Common COSE strings
+        assert_eq!(
+            CborEncoder::estimate_text_string_size("Signature1".len()),
+            11
+        ); // "Signature1" = 10 chars
+        assert_eq!(CborEncoder::estimate_text_string_size("test".len()), 5); // "test" = 4 chars
+        assert_eq!(
+            CborEncoder::estimate_text_string_size("application/json".len()),
+            17
+        ); // "application/json" = 16 chars
+        assert_eq!(
+            CborEncoder::estimate_text_string_size("application/cbor-diagnostic".len()),
+            29
+        ); // "application/cbor-diagnostic" = 27 chars (requires 2-byte header)
     }
 }
