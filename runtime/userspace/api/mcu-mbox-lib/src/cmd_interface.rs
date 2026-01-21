@@ -19,7 +19,8 @@ use mcu_mbox_common::messages::{
     McuAesGcmDecryptUpdateResp, McuAesGcmEncryptFinalReq, McuAesGcmEncryptFinalResp,
     McuAesGcmEncryptInitReq, McuAesGcmEncryptInitResp, McuAesGcmEncryptUpdateReq,
     McuAesGcmEncryptUpdateResp, McuCmDeleteReq, McuCmDeleteResp, McuCmImportReq, McuCmImportResp,
-    McuCmStatusReq, McuCmStatusResp, McuMailboxResp, McuRandomGenerateReq, McuRandomGenerateResp,
+    McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq,
+    McuEcdhGenerateResp, McuMailboxResp, McuRandomGenerateReq, McuRandomGenerateResp,
     McuRandomStirReq, McuRandomStirResp, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
     McuShaInitResp, McuShaUpdateReq, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
 };
@@ -282,6 +283,27 @@ impl<'a> CmdInterface<'a> {
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_AES_GCM_DECRYPT_FINAL.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            // Add ECDH commands
+            CommandId::MC_ECDH_GENERATE => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuEcdhGenerateResp>()];
+                self.handle_crypto_passthrough::<McuEcdhGenerateReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_ECDH_GENERATE.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_ECDH_FINISH => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuEcdhFinishResp>()];
+                self.handle_crypto_passthrough::<McuEcdhFinishReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_ECDH_FINISH.into(),
                     &mut resp_bytes,
                 )
                 .await
