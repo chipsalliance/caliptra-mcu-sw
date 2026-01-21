@@ -275,7 +275,7 @@ Offset  Size  Field              Description
 0       1     Message Type       0x83 - Image Chunk
 1       1     Status             0x00=Success, non-zero=Error
 2       2     Sequence Number    For ordered delivery
-4       4     Offset             Current byte offset in image (TBD: Check if needed)
+4       4     Offset             Current byte offset in image
 8       4     Chunk Size         Size of data in this chunk
 12      4     Total Size         Total image size (0 if unknown)
 16      N     Image Data         Chunk payload (size = Chunk Size field)
