@@ -634,7 +634,7 @@ mod test {
         } else {
             "test-pldm-streaming-boot"
         };
-        let i3c_port = 65500;
+        let i3c_port = PortPicker::new().pick().unwrap();
         let soc_image_fw_1 = [0x55u8; 512]; // Example firmware data for SOC image 1
         let soc_image_fw_2 = [0xAAu8; 256]; // Example firmware data for SOC image 2
 
@@ -743,7 +743,7 @@ mod test {
             feature,
             rom: mcu_rom,
             runtime: test_runtime.clone(),
-            i3c_port,
+            i3c_port: i3c_port.into(),
             soc_images: soc_images.clone(),
             soc_images_paths: soc_images_paths.clone(),
             primary_flash_image_path: flash_image_path.clone(),
