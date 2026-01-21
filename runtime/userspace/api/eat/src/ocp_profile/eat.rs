@@ -268,7 +268,6 @@ impl<'a> OcpEatClaims<'a> {
     }
 
     /// Calculate required buffer size for encoding (approximation)
-    #[allow(dead_code)]
     pub fn estimate_buffer_size(&self) -> usize {
         let mut size: usize = 0;
 
@@ -338,48 +337,50 @@ impl<'a> OcpEatClaims<'a> {
     }
 
     /// Count the number of map entries for CBOR encoding
-    fn count_map_entries(&self) -> u64 {
+    fn count_map_entries(&self) -> Result<u64, EatError> {
         let mut count: u64 = 4; // Mandatory claims: nonce, dbgstat, eat_profile, measurements
 
         // Count optional claims
         if self.issuer.is_some() {
-            count = count.saturating_add(1);
+            count = count.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.cti.is_some() {
-            count = count.saturating_add(1);
+            count = count.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.ueid.is_some() {
-            count = count.saturating_add(1);
+            count = count.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.sueid.is_some() {
-            count = count.saturating_add(1);
+            count = count.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.oemid.is_some() {
-            count = count.saturating_add(1);
+            count = count.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.hwmodel.is_some() {
-            count = count.saturating_add(1);
+            count = count.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.uptime.is_some() {
-            count = count.saturating_add(1);
+            count = count.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.bootcount.is_some() {
-            count = count.saturating_add(1);
+            count = count.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.bootseed.is_some() {
-            count = count.saturating_add(1);
+            count = count.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.dloas.is_some() {
-            count = count.saturating_add(1);
+            count = count.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.rim_locators.is_some() {
-            count = count.saturating_add(1);
+            count = count.checked_add(1).ok_or(EatError::EncodingError)?;
         }
 
         // Count private claims (safe cast since len() returns usize which fits in u64)
-        count = count.saturating_add(self.private_claims.len() as u64);
+        count = count
+            .checked_add(self.private_claims.len() as u64)
+            .ok_or(EatError::EncodingError)?;
 
-        count
+        Ok(count)
     }
 
     /// Encode debug status into CBOR encoder
@@ -393,7 +394,7 @@ impl<'a> OcpEatClaims<'a> {
         encoder: &mut CborEncoder,
         evidence_scratch_buffer: &mut [u8],
     ) -> Result<(), EatError> {
-        let claim_count = self.count_map_entries();
+        let claim_count = self.count_map_entries()?;
         encoder.encode_map_header(claim_count)?;
 
         // Encode mandatory claims in deterministic order (by claim key)
@@ -857,7 +858,7 @@ mod tests {
 
         // Minimal claims
         let claims = OcpEatClaims::new(&nonce, DebugStatus::Disabled, &measurements);
-        assert_eq!(claims.count_map_entries(), 4); // nonce, dbgstat, eat_profile, measurements
+        assert_eq!(claims.count_map_entries().unwrap(), 4); // nonce, dbgstat, eat_profile, measurements
 
         // With optional claims
         let claims_with_optional = OcpEatClaims {
@@ -866,7 +867,7 @@ mod tests {
             ueid: Some(&[0x02; 8]),
             ..claims
         };
-        assert_eq!(claims_with_optional.count_map_entries(), 7);
+        assert_eq!(claims_with_optional.count_map_entries().unwrap(), 7);
     }
 
     #[test]

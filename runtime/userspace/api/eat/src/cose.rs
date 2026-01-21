@@ -18,13 +18,13 @@ pub struct CoseHeaderPair<'a> {
 
 /// COSE protected header structure
 #[derive(Debug, Clone, Copy)]
-pub struct ProtectedHeader {
+pub struct ProtectedHeader<'a> {
     pub alg: i32, // Algorithm identifier
     pub content_type: Option<u16>,
-    pub kid: Option<&'static [u8]>, // Key identifier
+    pub kid: Option<&'a [u8]>, // Key identifier
 }
 
-impl ProtectedHeader {
+impl ProtectedHeader<'_> {
     /// Create a new protected header for ES384 (ECDSA with P-384 and SHA-384)
     pub fn new_es384() -> Self {
         Self {
@@ -120,7 +120,7 @@ pub const DEFAULT_PROTECTED_HEADER_SIZE: usize = 256;
 /// COSE Sign1 encoder with builder pattern and configurable protected header buffer
 pub struct CoseSign1WithBuffer<'a, const PROTECTED_SIZE: usize> {
     encoder: CborEncoder<'a>,
-    protected_header: Option<&'a ProtectedHeader>,
+    protected_header: Option<&'a ProtectedHeader<'a>>,
     unprotected_headers: Option<&'a [CoseHeaderPair<'a>]>,
     payload: Option<&'a [u8]>,
     signature: Option<&'a [u8]>,

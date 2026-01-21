@@ -19,6 +19,13 @@ pub mod major_type {
     pub const SIMPLE: u8 = 7;
 }
 
+/// CBOR tag values (RFC 8949)
+pub mod tag {
+    pub const COSE_SIGN1: u64 = 18;
+    pub const CWT: u64 = 61;
+    pub const SELF_DESCRIBED_CBOR: u64 = 55799;
+}
+
 /// Construct a CBOR initial byte from major type and additional info
 #[inline]
 pub const fn cbor_initial_byte(major_type: u8, additional_info: u8) -> u8 {
@@ -66,12 +73,9 @@ impl<'a> CborEncoder<'a> {
     }
 
     fn write_byte(&mut self, byte: u8) -> Result<(), EatError> {
-        if self.pos >= self.buffer.len() {
-            return Err(EatError::BufferTooSmall);
-        }
         if let Some(buf_byte) = self.buffer.get_mut(self.pos) {
             *buf_byte = byte;
-            self.pos = self.pos.saturating_add(1);
+            self.pos = self.pos.checked_add(1).ok_or(EatError::BufferTooSmall)?;
             Ok(())
         } else {
             Err(EatError::BufferTooSmall)
@@ -122,7 +126,7 @@ impl<'a> CborEncoder<'a> {
 
     // Major type 0: Unsigned integer
     pub fn encode_uint(&mut self, value: u64) -> Result<(), EatError> {
-        self.encode_type_value(0, value)
+        self.encode_type_value(major_type::UNSIGNED_INT, value)
     }
 
     // Major type 1: Negative integer (-1 - n)
@@ -134,7 +138,7 @@ impl<'a> CborEncoder<'a> {
         let positive_value = (value.checked_mul(-1).ok_or(EatError::InvalidData)?)
             .checked_sub(1)
             .ok_or(EatError::InvalidData)? as u64;
-        self.encode_type_value(1, positive_value)
+        self.encode_type_value(major_type::NEGATIVE_INT, positive_value)
     }
 
     // Encode integer (automatically choose positive or negative)
@@ -148,7 +152,7 @@ impl<'a> CborEncoder<'a> {
 
     // Major type 2: Byte string
     pub fn encode_bytes(&mut self, bytes: &[u8]) -> Result<(), EatError> {
-        self.encode_type_value(2, bytes.len() as u64)?;
+        self.encode_type_value(major_type::BYTE_STRING, bytes.len() as u64)?;
         self.write_bytes(bytes)?;
         Ok(())
     }
@@ -156,39 +160,39 @@ impl<'a> CborEncoder<'a> {
     // Major type 3: Text string
     pub fn encode_text(&mut self, text: &str) -> Result<(), EatError> {
         let bytes = text.as_bytes();
-        self.encode_type_value(3, bytes.len() as u64)?;
+        self.encode_type_value(major_type::TEXT_STRING, bytes.len() as u64)?;
         self.write_bytes(bytes)?;
         Ok(())
     }
 
     // Major type 4: Array
     pub fn encode_array_header(&mut self, len: u64) -> Result<(), EatError> {
-        self.encode_type_value(4, len)
+        self.encode_type_value(major_type::ARRAY, len)
     }
 
     // Major type 5: Map
     pub fn encode_map_header(&mut self, len: u64) -> Result<(), EatError> {
-        self.encode_type_value(5, len)
+        self.encode_type_value(major_type::MAP, len)
     }
 
     // Major type 6: Tag
     pub fn encode_tag(&mut self, tag: u64) -> Result<(), EatError> {
-        self.encode_type_value(6, tag)
+        self.encode_type_value(major_type::TAG, tag)
     }
 
     // Encode with self-described CBOR tag (55799)
     pub fn encode_self_described_cbor(&mut self) -> Result<(), EatError> {
-        self.encode_tag(55799)
+        self.encode_tag(tag::SELF_DESCRIBED_CBOR)
     }
 
     // Encode with CWT tag (61)
     pub fn encode_cwt_tag(&mut self) -> Result<(), EatError> {
-        self.encode_tag(61)
+        self.encode_tag(tag::CWT)
     }
 
     // Encode with COSE_Sign1 tag (18)
     pub fn encode_cose_sign1_tag(&mut self) -> Result<(), EatError> {
-        self.encode_tag(18)
+        self.encode_tag(tag::COSE_SIGN1)
     }
 
     // Helper function to estimate size based on value (mirrors encode_type_value logic)

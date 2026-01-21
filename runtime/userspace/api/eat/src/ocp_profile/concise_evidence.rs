@@ -94,22 +94,22 @@ impl CborEncodable for MeasurementValue<'_> {
 
         // Count entries
         if self.version.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.svn.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.digests.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.integrity_registers.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.raw_value.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.raw_value_mask.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
 
         encoder.encode_map_header(map_entries)?;
@@ -195,10 +195,10 @@ impl CborEncodable for ClassMap<'_> {
     fn encode(&self, encoder: &mut CborEncoder) -> Result<(), EatError> {
         let mut entries = 1u64; // class-id is mandatory
         if self.vendor.is_some() {
-            entries = entries.saturating_add(1);
+            entries = entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.model.is_some() {
-            entries = entries.saturating_add(1);
+            entries = entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
 
         encoder.encode_map_header(entries)?;
@@ -442,10 +442,10 @@ impl CborEncodable for EvCoswidEvidenceMap<'_> {
     fn encode(&self, encoder: &mut CborEncoder) -> Result<(), EatError> {
         let mut map_entries = 1u64; // coswid_evidence is mandatory
         if self.coswid_tag_id.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.authorized_by.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
 
         encoder.encode_map_header(map_entries)?;
@@ -512,22 +512,22 @@ impl CborEncodable for EvTriplesMap<'_> {
     fn encode(&self, encoder: &mut CborEncoder) -> Result<(), EatError> {
         let mut map_entries = 0u64;
         if self.evidence_triples.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.identity_triples.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.dependency_triples.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.membership_triples.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.coswid_triples.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.attest_key_triples.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
 
         encoder.encode_map_header(map_entries)?;
@@ -602,10 +602,10 @@ impl CborEncodable for ConciseEvidenceMap<'_> {
     fn encode(&self, encoder: &mut CborEncoder) -> Result<(), EatError> {
         let mut map_entries = 1u64; // ev_triples is mandatory
         if self.evidence_id.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
         if self.profile.is_some() {
-            map_entries = map_entries.saturating_add(1);
+            map_entries = map_entries.checked_add(1).ok_or(EatError::EncodingError)?;
         }
 
         encoder.encode_map_header(map_entries)?;
