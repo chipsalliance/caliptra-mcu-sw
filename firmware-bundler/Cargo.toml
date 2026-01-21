@@ -10,6 +10,8 @@ clap.workspace = true
 serde.workspace = true
 subst.workspace = true
 toml.workspace = true
+uuid.workspace = true
+walkdir.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
