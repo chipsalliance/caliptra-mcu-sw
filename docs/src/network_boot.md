@@ -428,7 +428,7 @@ pub struct ImageInfo {
     pub firmware_id: FirmwareId,
     pub size: u64,
     pub checksum: Option<[u8; 32]>,
-    pub version: Option<String>,
+    pub version: Option<u32>,
     pub metadata: Vec<u8>,
 }
 
