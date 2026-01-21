@@ -223,7 +223,7 @@ Offset  Size  Field              Description
 Offset  Size  Field              Description
 ------  ----  -----              -----------
 0       1     Message Type       0x81 - InitiateBoot Response
-1       1     Status             0x00=Started, 0x01=InProgress, non-zero=Error
+1       1     Status             0x00=Started, 0x01=InProgress, 0x02–0xFF=Error code
 2       2     Reserved           Must be 0
 ```
 
