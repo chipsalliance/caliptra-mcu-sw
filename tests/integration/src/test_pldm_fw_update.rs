@@ -12,7 +12,10 @@ pub mod test {
     use log::{error, LevelFilter};
     use mcu_hw_model::McuHwModel;
     use mcu_testing_common::mctp_transport::{MctpPldmSocket, MctpTransport};
-    use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+    use mcu_testing_common::{
+        emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
+        MCU_RUNNING,
+    };
     use pldm_common::protocol::firmware_update::*;
     use pldm_fw_pkg::{
         manifest::{
@@ -29,7 +32,6 @@ pub mod test {
     use simple_logger::SimpleLogger;
     use std::process::exit;
     use std::sync::atomic::Ordering;
-    use std::time::Duration;
     use uuid::Uuid;
 
     pub fn start_pldm_test(feature: &str, debug_level: LevelFilter) {
@@ -147,10 +149,11 @@ pub mod test {
             &self,
             expected_state: update_sm::States,
         ) -> Result<(), ()> {
-            let timeout = Duration::from_secs(1800);
-            let start_time = std::time::Instant::now();
+            // Timeout in emulator ticks (1800 million ticks = 1800 seconds at 1 MHz)
+            let timeout_ticks: u64 = 1_800_000_000;
+            let start_ticks = get_emulator_ticks();
 
-            while start_time.elapsed() < timeout {
+            while !emulator_ticks_elapsed(start_ticks, timeout_ticks) {
                 if let Some(daemon) = &self.daemon {
                     if daemon.get_update_sm_state() == expected_state {
                         return Ok(());
@@ -160,7 +163,8 @@ pub mod test {
                     return Err(());
                 }
 
-                std::thread::sleep(Duration::from_millis(100));
+                // Sleep for 100,000 ticks (100ms at 1 MHz)
+                sleep_emulator_ticks(100_000);
             }
             if let Some(daemon) = &self.daemon {
                 if daemon.get_update_sm_state() != expected_state {
