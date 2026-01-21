@@ -22,30 +22,27 @@
 //! only include the distribution composition support, without the build system integration.
 
 pub mod args;
+pub mod build;
 pub mod ld;
 pub mod manifest;
 pub(crate) mod utils;
 
-use std::path::Path;
-
 use anyhow::Result;
-use manifest::Manifest;
 
 use crate::args::Commands;
 
 pub fn execute(cmd: Commands) -> Result<()> {
     match cmd {
-        Commands::Generate { manifest, common } => {
-            let definition = ld::generate(manifest_from_file(&manifest)?, common)?;
+        Commands::Build { common, ld, build } => {
+            let manifest = &common.manifest()?;
+            let build_definition = ld::generate(manifest, &common, &ld)?;
+            let _ = build::build(&common.manifest()?, &build_definition, &common, &build)?;
+            Ok(())
+        }
+        Commands::Generate { common, ld } => {
+            let definition = ld::generate(&common.manifest()?, &common, &ld)?;
             println!("Build definition: {definition:?}");
             Ok(())
         }
     }
-}
-
-fn manifest_from_file(path: &Path) -> Result<Manifest> {
-    let contents = std::fs::read_to_string(path)?;
-    let manifest: Manifest = toml::from_str(&contents)?;
-    manifest.validate()?;
-    Ok(manifest)
 }
