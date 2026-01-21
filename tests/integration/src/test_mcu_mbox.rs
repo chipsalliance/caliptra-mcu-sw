@@ -37,7 +37,10 @@ pub mod test {
         McuShaInitResp, McuShaUpdateReq, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
         CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
     };
-    use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+    use mcu_testing_common::{
+        emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
+        MCU_RUNNING,
+    };
     use p384::ecdsa::signature::hazmat::PrehashSigner;
     use p384::ecdsa::{Signature, SigningKey};
     use rand::prelude::*;
@@ -87,7 +90,8 @@ pub mod test {
             if !MCU_RUNNING.load(Ordering::Relaxed) {
                 exit(-1);
             }
-            std::thread::sleep(std::time::Duration::from_secs(5));
+            // Wait for firmware to initialize (5 million ticks = 5 seconds at 1 MHz)
+            sleep_emulator_ticks(5_000_000);
             let mci_base = unsafe { romtime::StaticRef::new(mci_ptr as *const mci::regs::Mci) };
             let mbox_transport = McuMailboxTransport::new(mci_base);
             println!("MCU MBOX Test Thread Starting:");
@@ -159,13 +163,14 @@ pub mod test {
         ) -> Result<McuMailboxResponse, McuMailboxError> {
             self.mbox.execute(cmd, request)?;
 
-            let timeout = std::time::Duration::from_secs(20);
-            let start = std::time::Instant::now();
+            // Timeout in emulator ticks (20 million ticks = 20 seconds at 1 MHz)
+            let timeout_ticks: u64 = 20_000_000;
+            let start = get_emulator_ticks();
             loop {
                 match self.mbox.get_execute_response() {
                     Ok(resp) => return Ok(resp),
                     Err(McuMailboxError::Busy) => {
-                        if start.elapsed() > timeout {
+                        if emulator_ticks_elapsed(start, timeout_ticks) {
                             // Print out timeout error and cmd id
                             println!(
                                 "Timeout waiting for response for MCU mailbox cmd: {:#X}",
@@ -173,7 +178,8 @@ pub mod test {
                             );
                             return Err(McuMailboxError::Timeout);
                         }
-                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        // Sleep for 100,000 ticks (100ms at 1 MHz)
+                        sleep_emulator_ticks(100_000);
                     }
                     Err(e) => return Err(e),
                 }
