@@ -109,6 +109,8 @@ pub extern "C" fn rom_entry() -> ! {
         lifecycle_transition,
         burn_lifecycle_tokens,
         program_field_entropy: [program_field_entropy; 4],
+        otp_enable_integrity_check: true,
+        otp_enable_consistency_check: true,
         ..Default::default()
     });
 

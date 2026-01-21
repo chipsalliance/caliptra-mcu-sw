@@ -63,7 +63,7 @@ impl<'a> VeeRDefaultPeripherals<'a> {
         let otp: romtime::StaticRef<otp_ctrl::regs::OtpCtrl> = unsafe {
             romtime::StaticRef::new(memory_map.otp_offset as *const otp_ctrl::regs::OtpCtrl)
         };
-        let otp_driver = romtime::Otp::new(true, false, otp);
+        let otp_driver = romtime::Otp::new(otp);
         Self {
             i3c: i3c_driver::core::I3CCore::new(
                 unsafe { StaticRef::new(memory_map.i3c_offset as *const I3c) },

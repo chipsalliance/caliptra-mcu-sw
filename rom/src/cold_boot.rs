@@ -166,8 +166,12 @@ impl BootFlow for ColdBoot {
             loop {}
         }
 
-        // FPGA has problems with the integrity check, so we disable it
-        if let Err(err) = otp.init() {
+        // Initialize OTP.
+        if let Err(err) = otp.init(
+            params.otp_enable_consistency_check,
+            params.otp_enable_integrity_check,
+            params.otp_check_timeout_override,
+        ) {
             romtime::println!("[mcu-rom] Error initializing OTP: {}", HexWord(err.into()));
             fatal_error(err);
         }

@@ -147,6 +147,8 @@ pub extern "C" fn rom_entry() -> ! {
             mcu_image_verifier: Some(&mcu_image_verifier),
             mcu_image_header_size: core::mem::size_of::<mcu_image_header::McuImageHeader>(),
             dot_flash,
+            otp_enable_integrity_check: true,
+            otp_enable_consistency_check: true,
             ..Default::default()
         };
         mcu_rom_common::rom_start(rom_parameters);

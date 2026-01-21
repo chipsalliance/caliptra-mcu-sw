@@ -569,6 +569,9 @@ pub struct RomParameters<'a> {
     pub dot_stable_key_type: Option<CmStableKeyType>,
     /// Flash storage interface for DOT blob.
     pub dot_flash: Option<&'a dyn FlashStorage>,
+    pub otp_enable_integrity_check: bool,
+    pub otp_enable_consistency_check: bool,
+    pub otp_check_timeout_override: Option<u32>,
 }
 
 pub fn rom_start(params: RomParameters) {

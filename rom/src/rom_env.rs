@@ -61,7 +61,7 @@ impl RomEnv {
             let soc = Soc::new(soc_base);
             let mci = Mci::new(mci_base);
             let lc = Lifecycle::new(lc_base);
-            let otp = Otp::new(true, false, otp_base);
+            let otp = Otp::new(otp_base);
             let i3c = crate::i3c::I3c::new(i3c_base);
 
             Self {
