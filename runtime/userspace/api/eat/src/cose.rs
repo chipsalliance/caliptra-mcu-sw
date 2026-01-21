@@ -9,6 +9,24 @@ use crate::cbor::CborEncoder;
 use crate::error::EatError;
 use arrayvec::ArrayVec;
 
+/// COSE header label constants (RFC 8152)
+pub mod header_params {
+    pub const ALG: i32 = 1;
+    pub const CONTENT_TYPE: i32 = 3;
+    pub const KID: i32 = 4;
+}
+
+/// COSE algorithm identifiers (IANA COSE Algorithms Registry)
+pub mod cose_alg {
+    pub const ESP384: i32 = -51; // ECDSA using P-384 curve and SHA-384
+}
+
+/// COSE content type constants
+pub mod content_type {
+    pub const APPLICATION_EAT_CWT: u16 = 263; // "application/eat+cwt"
+    pub const APPLICATION_CE_CBOR: u16 = 10571; // "application/ce+cbor"
+}
+
 /// COSE header parameter as a key-value pair
 #[derive(Debug, Clone, Copy)]
 pub struct CoseHeaderPair<'a> {
@@ -28,7 +46,7 @@ impl ProtectedHeader<'_> {
     /// Create a new protected header for ES384 (ECDSA with P-384 and SHA-384)
     pub fn new_es384() -> Self {
         Self {
-            alg: -51, // ES384 algorithm ID
+            alg: cose_alg::ESP384,
             content_type: None,
             kid: None,
         }
@@ -41,26 +59,26 @@ impl ProtectedHeader<'_> {
         // Map header (1-9 bytes, typically 1 byte for small maps)
         let mut entries = 1u64; // alg is mandatory
         if self.content_type.is_some() {
-            entries = entries.saturating_add(1);
+            entries += 1;
         }
         if self.kid.is_some() {
-            entries = entries.saturating_add(1);
+            entries += 1;
         }
         size += CborEncoder::estimate_uint_size(entries);
 
         // Key 1 (alg): key + algorithm value size
-        size += CborEncoder::estimate_int_size(1); // Key label
+        size += CborEncoder::estimate_int_size(header_params::ALG as i64); // Key label
         size += CborEncoder::estimate_int_size(self.alg as i64);
 
         // Key 3 (content_type): key + value size
         if let Some(content_type) = self.content_type {
-            size += CborEncoder::estimate_int_size(3); // Key label
+            size += CborEncoder::estimate_int_size(header_params::CONTENT_TYPE as i64); // Key label
             size += CborEncoder::estimate_uint_size(content_type as u64);
         }
 
         // Key 4 (kid): key + byte string (header + data)
         if let Some(kid) = self.kid {
-            size += CborEncoder::estimate_int_size(4); // Key label
+            size += CborEncoder::estimate_int_size(header_params::KID as i64); // Key label
             size += CborEncoder::estimate_bytes_string_size(kid.len());
         }
 
@@ -80,27 +98,27 @@ impl ProtectedHeader<'_> {
         // Calculate number of entries
         let mut entries = 1u64; // alg is mandatory
         if self.content_type.is_some() {
-            entries = entries.saturating_add(1);
+            entries += 1;
         }
         if self.kid.is_some() {
-            entries = entries.saturating_add(1);
+            entries += 1;
         }
 
         encoder.encode_map_header(entries)?;
 
         // alg (label 1): algorithm identifier
-        encoder.encode_int(1)?;
+        encoder.encode_int(header_params::ALG as i64)?;
         encoder.encode_int(self.alg as i64)?;
 
         // content_type (label 3): content type (optional)
         if let Some(content_type) = self.content_type {
-            encoder.encode_int(3)?;
+            encoder.encode_int(header_params::CONTENT_TYPE as i64)?;
             encoder.encode_uint(content_type as u64)?;
         }
 
         // kid (label 4): key identifier (optional)
         if let Some(kid) = self.kid {
-            encoder.encode_int(4)?;
+            encoder.encode_int(header_params::KID as i64)?;
             encoder.encode_bytes(kid)?;
         }
 
