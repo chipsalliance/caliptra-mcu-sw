@@ -46,7 +46,7 @@ source adams-bridge-files.tcl
 add_files [ glob $caliptrartlDir/src/*/rtl/*.svh ]
 add_files [ glob $caliptrartlDir/src/*/rtl/*_pkg.sv ]
 # Add Caliptra sources
-add_files [ glob $caliptrartlDir/src/*/rtl/*.sv ]
+add_files [ lsearch -inline -all -not [ glob $caliptrartlDir/src/*/rtl/*.sv ] *_pkg.sv ]
 add_files [ glob $caliptrartlDir/src/*/rtl/*.v ]
 
 # Add ss RTL
@@ -69,8 +69,6 @@ add_files $ssrtlDir/src/fuse_ctrl/data/otp-img.2048.vmem
 set_property file_type {Memory Initialization Files} [get_files $ssrtlDir/src/fuse_ctrl/data/otp-img.2048.vmem]
 # OTP from testbench
 add_files $ssrtlDir/src/integration/testbench/prim_generic_otp.sv
-# MCU VEER sram from testbench
-add_files $ssrtlDir/src/integration/testbench/caliptra_ss_veer_sram_export.sv
 # SS IPs
 add_files [ glob $ssrtlDir/src/*/rtl/*.svh ]
 add_files [ glob $ssrtlDir/src/*/rtl/*.sv ]
@@ -84,10 +82,9 @@ add_files [ glob $i3cDir/src/*/*/*_pkg.sv ]
 add_files [ glob $i3cDir/src/*/*_pkg.sv ]
 add_files [ glob $i3cDir/src/*_pkg.sv ]
 # Then the rest of the sv files
-#add_files [ glob $i3cDir/src/*/*/*.v ]
-add_files [ glob $i3cDir/src/*/*/*.sv ]
-add_files [ glob $i3cDir/src/*/*.sv ]
-add_files [ glob $i3cDir/src/*.sv ]
+add_files [ lsearch -inline -all -not [ glob $i3cDir/src/*/*/*.sv ] *_pkg.sv ]
+add_files [ lsearch -inline -all -not [ glob $i3cDir/src/*/*.sv ] *_pkg.sv ]
+add_files [ lsearch -inline -all -not [ glob $i3cDir/src/*.sv ] *_pkg.sv ]
 
 # Remove unused spi_host files.
 remove_files [ glob $caliptrartlDir/src/spi_host/rtl/*.sv ]
@@ -100,7 +97,10 @@ add_files [ glob $fpgaDir/src/*.v]
 remove_files [ glob $caliptrartlDir/src/ecc/rtl/ecc_ram_tdp_file.sv ]
 
 # Replace caliptra_ss_top with version modified with faster I3C clocks
+file copy [ glob $ssrtlDir/src/integration/rtl/caliptra_ss_top.sv ] $outputDir/caliptra_ss_top.sv
+exec patch $outputDir/caliptra_ss_top.sv $fpgaDir/src/caliptra_ss_top.patch
 remove_files [ glob $ssrtlDir/src/integration/rtl/caliptra_ss_top.sv ]
+add_files $outputDir/caliptra_ss_top.sv
 
 # TODO: Should the RTL be changed? Copy aes_clp_wrapper.sv to apply workaround: https://github.com/chipsalliance/caliptra-rtl/issues/977
 file copy [ glob $caliptrartlDir/src/aes/rtl/aes_clp_wrapper.sv ] $outputDir/aes_clp_wrapper.sv
