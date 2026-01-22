@@ -75,7 +75,7 @@ impl CommandId {
     pub const MC_SHA_UPDATE: Self = Self(0x4D43_5355); // "MCSU"
     pub const MC_SHA_FINAL: Self = Self(0x4D43_5346); // "MCSF"
     pub const MC_AES_ENCRYPT_INIT: Self = Self(0x4D43_4349); // "MCCI"
-    pub const MC_AES_ENCRYPT_UPDATE: Self = Self(0x4D43_4355); // "MCMU"
+    pub const MC_AES_ENCRYPT_UPDATE: Self = Self(0x4D43_4355); // "MCCU"
     pub const MC_AES_DECRYPT_INIT: Self = Self(0x4D43_414A); // "MCAJ"
     pub const MC_AES_DECRYPT_UPDATE: Self = Self(0x4D43_4155); // "MCAU"
     pub const MC_AES_GCM_ENCRYPT_INIT: Self = Self(0x4D43_4749); // "MCGI"
