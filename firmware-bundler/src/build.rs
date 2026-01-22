@@ -9,11 +9,12 @@
 use std::{path::PathBuf, process::Command};
 
 use anyhow::{anyhow, bail, Result};
+use tbf_header::TbfHeader;
 
 use crate::{
     args::{BuildArgs, Common},
-    ld::{AppLinkerScript, BuildDefinition},
-    manifest::Manifest,
+    ld::{BuildDefinition, LinkerScript},
+    manifest::{Manifest, Memory},
     utils::objcopy,
 };
 
@@ -25,22 +26,26 @@ const APP_OBJCOPY_FLAGS: &str = "--strip-sections --strip-all";
 
 /// A pairing of application name to the linker script it should be built with.
 #[derive(Debug, Clone)]
-// TODO: Remove when used by the bundle phase
-#[allow(dead_code)]
 pub struct BuiltBinary {
-    name: String,
-    binary: PathBuf,
+    pub name: String,
+    pub binary: PathBuf,
+}
+
+/// A built TockOS application.
+#[derive(Debug, Clone)]
+pub struct BuiltApp {
+    pub binary: BuiltBinary,
+    pub header: TbfHeader,
+    pub instruction_block: Memory,
 }
 
 /// The build definition for a collection of applications.  The ROM and Runtime are both fully
 /// specified with their linker files.  This is the output of the generation step.
 #[derive(Debug, Clone)]
-// TODO: Remove when used by the bundle phase
-#[allow(dead_code)]
 pub struct BuildOutput {
-    rom: Option<BuiltBinary>,
-    kernel: BuiltBinary,
-    apps: Vec<BuiltBinary>,
+    pub rom: Option<BuiltBinary>,
+    pub kernel: (BuiltBinary, Memory),
+    pub apps: Vec<BuiltApp>,
 }
 
 /// Execute the `rustc` compiler against the specified packages with the associated linker files.
@@ -64,7 +69,9 @@ pub fn build(
 struct BuildPass<'a> {
     manifest: &'a Manifest,
     build_definition: &'a BuildDefinition,
+    build_args: &'a BuildArgs,
     binary_dir: PathBuf,
+    objcopy: PathBuf,
 }
 
 impl<'a> BuildPass<'a> {
@@ -73,21 +80,28 @@ impl<'a> BuildPass<'a> {
         manifest: &'a Manifest,
         build_definition: &'a BuildDefinition,
         common: &Common,
-        build: &BuildArgs,
+        build_args: &'a BuildArgs,
     ) -> Result<Self> {
         // Determine the release directory which elf files will be placed by `rustc` and where we
         // wish to place binaries.
-        let binary_dir = match &build.objcopy {
+        let binary_dir = match &common.workspace_dir {
             Some(oc) => oc.to_path_buf(),
             None => common.workspace_dir()?,
         }
         .join(&manifest.platform.tuple)
         .join("release");
 
+        let objcopy = match &build_args.objcopy {
+            Some(o) => o.clone(),
+            None => objcopy()?,
+        };
+
         Ok(Self {
             manifest,
             build_definition,
+            build_args,
             binary_dir,
+            objcopy,
         })
     }
 
@@ -101,20 +115,30 @@ impl<'a> BuildPass<'a> {
             .map(|r| self.build_binary(r, ROM_OBJCOPY_FLAGS))
             .transpose()?;
 
-        let kernel = self.build_binary(&self.build_definition.kernel, KERNEL_OBJCOPY_FLAGS)?;
+        let (kernal_linker, kernel_instructions) = &self.build_definition.kernel;
+        let kernel = (
+            self.build_binary(kernal_linker, KERNEL_OBJCOPY_FLAGS)?,
+            kernel_instructions.clone(),
+        );
 
         let apps = self
             .build_definition
             .apps
             .iter()
-            .map(|a| self.build_binary(a, APP_OBJCOPY_FLAGS))
+            .map(|a| {
+                Ok(BuiltApp {
+                    binary: self.build_binary(&a.linker, APP_OBJCOPY_FLAGS)?,
+                    header: a.header.clone(),
+                    instruction_block: a.instruction_block.clone(),
+                })
+            })
             .collect::<Result<_>>()?;
 
         Ok(BuildOutput { rom, kernel, apps })
     }
 
     /// Execute the build step for a single binary.
-    fn build_binary(&self, app: &AppLinkerScript, objcopy_flags: &str) -> Result<BuiltBinary> {
+    fn build_binary(&self, app: &LinkerScript, objcopy_flags: &str) -> Result<BuiltBinary> {
         // Setup the linker args based on the associated path provided by the linker generation
         // phase.
         let linker_args = format!(
@@ -133,9 +157,13 @@ impl<'a> BuildPass<'a> {
             .arg(&app.name)
             .arg("--target")
             .arg(&self.manifest.platform.tuple)
-            .arg("--release")
-            .arg("--")
-            .args(linker_args.split(' '));
+            .arg("--release");
+
+        if let Some(features) = &self.build_args.features {
+            cmd.arg("--features").arg(features);
+        }
+
+        cmd.arg("--").args(linker_args.split(' '));
 
         if !cmd.status()?.success() {
             bail!("cargo failed to build binary (cmd: {cmd:?})");
@@ -144,7 +172,7 @@ impl<'a> BuildPass<'a> {
         // Finally use objcopy to produce a binary from the output elf.
         let elf = self.binary_dir.join(&app.name);
         let binary = elf.with_extension("bin");
-        let mut objcopy_cmd = Command::new(objcopy()?);
+        let mut objcopy_cmd = Command::new(&self.objcopy);
         objcopy_cmd
             .arg("--output-target=binary")
             .args(objcopy_flags.split(' '))

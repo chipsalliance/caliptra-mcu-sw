@@ -14,7 +14,7 @@ use crate::{manifest::Manifest, utils};
 pub struct Common {
     /// The manifest file describing the platform to be deployed to, and which binaries to
     /// deploy to it.
-    manifest: PathBuf,
+    pub manifest: PathBuf,
 
     /// The location of the workspace Cargo.toml file for the set of applications being built.
     /// If not specified the tool will attempt to find the workspace directory by finding the
@@ -53,7 +53,7 @@ impl Common {
 }
 
 /// Arguments required for commands which execute the LD step of the build process.
-#[derive(Args, Debug, Clone)]
+#[derive(Args, Default, Debug, Clone)]
 pub struct LdArgs {
     /// The base ROM linker layout.  This will be customized via individual applications ROM, and
     /// RAM memory usages.  If not specified a generally applicable default file will be utilized.
@@ -72,12 +72,17 @@ pub struct LdArgs {
 }
 
 /// Arguments required for commands which execute the build step of the bundle process.
-#[derive(Args, Debug, Clone)]
+#[derive(Args, Default, Debug, Clone)]
 pub struct BuildArgs {
     /// If specified the objcopy binary to use.  If not specified the bundler will attempt to use
     /// `llvm-objcopy` from the rustc compiler.
     #[arg(long, env = "OBJCOPY")]
     pub objcopy: Option<PathBuf>,
+
+    /// If specified the features to enable for the binaries being compiled.  Multiple features can
+    /// be specified as follows: `feature_a,feature_b,etc...`.
+    #[arg(long)]
+    pub features: Option<String>,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -96,6 +101,19 @@ pub enum Commands {
     /// them, only build them.  These will be published to
     /// `<workspace>/target/<target-tuple>/release`.
     Build {
+        #[command(flatten)]
+        common: Common,
+
+        #[command(flatten)]
+        ld: LdArgs,
+
+        #[command(flatten)]
+        build: BuildArgs,
+    },
+
+    /// Build and bundle the collection of binaries required for a deployment.  The bundles will
+    /// be published to `<workspace>/target/<target-tuple>/release`.
+    Bundle {
         #[command(flatten)]
         common: Common,
 
