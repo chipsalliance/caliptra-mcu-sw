@@ -31,6 +31,8 @@ impl Manifest {
     /// Verify that a manifest matches the semantic patterns exceeding the syntax requirements of
     /// parsing.
     pub fn validate(&self) -> Result<()> {
+        const APP_RAM_ALIGNMENT: u64 = 4096;
+
         if let Some(rom) = &self.rom {
             rom.validate()?;
 
@@ -38,6 +40,23 @@ impl Manifest {
                 bail!("ROM Applications require DCCM to be defined");
             }
         }
+
+        if (self.platform.ram.offset % APP_RAM_ALIGNMENT) != 0 {
+            bail!(
+                "Start of kernel RAM ({}) is not aligned with App memory offset requirement ({})",
+                self.platform.ram.offset,
+                APP_RAM_ALIGNMENT
+            );
+        }
+
+        if (self.kernel.ram % APP_RAM_ALIGNMENT) != 0 {
+            bail!(
+                "Kernel RAM size ({}) is not aligned with App memory offset requirement ({})",
+                self.kernel.ram,
+                APP_RAM_ALIGNMENT
+            );
+        }
+
         self.kernel.validate()?;
         for app in &self.apps {
             app.validate()?;
@@ -50,6 +69,9 @@ impl Manifest {
 /// A description of the platform to deploy applications to.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Platform {
+    /// The name of this platform.  This is used for various artifact names.
+    pub name: String,
+
     /// The rustc target tuple this platform should be built with.
     pub tuple: String,
 

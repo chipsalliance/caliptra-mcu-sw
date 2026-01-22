@@ -189,7 +189,13 @@ impl<'a> LdGeneration<'a> {
 
         // Finally generate the linker file for the kernel.
         let content = self
-            .kernel_linker_content(kernel, instructions, first_app_instructions, data)
+            .kernel_linker_content(
+                kernel,
+                instructions.clone(),
+                first_app_instructions,
+                data,
+                self.manifest.platform.ram.clone(),
+            )
             .with_context(|| binary_context(&kernel.name, "context generation"))?;
         let path = self.output_ld_file(kernel, &content)?;
         let kernel_def = AppLinkerScript {
@@ -316,7 +322,8 @@ INCLUDE $BASE_LD_CONTENTS
         binary: &Binary,
         instructions: Memory,
         first_app_instructions: Option<Memory>,
-        data: Memory,
+        kernel_data: Memory,
+        ram: Memory,
     ) -> Result<String> {
         const KERNEL_LD_TEMPLATE: &str = r#"
 /* Licensed under the Apache-2.0 license. */
@@ -331,6 +338,7 @@ MEMORY
     rom (rx)  : ORIGIN = $KERNEL_START, LENGTH = $KERNEL_LENGTH
     prog (rx) : ORIGIN = $APPS_START, LENGTH = $APPS_LENGTH
     ram (rwx) : ORIGIN = $DATA_RAM_START, LENGTH = $DATA_RAM_LENGTH
+    app_ram(rwx) : ORIGIN = $APP_RAM_START, LENGTH = $APP_RAM_LENGTH
     dccm (rw) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_LENGTH
     flash (r) : ORIGIN = $FLASH_OFFSET, LENGTH = $FLASH_LENGTH
 }
@@ -360,8 +368,13 @@ INCLUDE $BASE_LD_CONTENTS
         sub_map.insert("APPS_START", format!("{apps_start:#x}",));
         sub_map.insert("APPS_LENGTH", format!("{apps_length:#x}",));
 
-        sub_map.insert("DATA_RAM_START", format!("{:#x}", data.offset));
-        sub_map.insert("DATA_RAM_LENGTH", format!("{:#x}", data.size));
+        sub_map.insert("DATA_RAM_START", format!("{:#x}", kernel_data.offset));
+        sub_map.insert("DATA_RAM_LENGTH", format!("{:#x}", ram.size));
+
+        let app_offset = kernel_data.offset + kernel_data.size;
+        let app_length = ram.size - kernel_data.size;
+        sub_map.insert("APP_RAM_START", format!("{:#x}", app_offset));
+        sub_map.insert("APP_RAM_LENGTH", format!("{:#x}", app_length));
 
         let dccm = self.manifest.platform.dccm();
         sub_map.insert("DCCM_OFFSET", format!("{:#x}", dccm.offset));
@@ -437,6 +450,7 @@ mod tests {
     /// All memory regions start at offset 0x0, 0x10000, and 0x20000 respectively.
     fn test_platform(rom_size: u64, itcm_size: u64, ram_size: u64, dccm_size: u64) -> Platform {
         Platform {
+            name: "test".to_string(),
             tuple: "riscv32imc-unknown-none-elf".to_string(),
             default_alignment: Some(8),
             page_size: Some(256),
