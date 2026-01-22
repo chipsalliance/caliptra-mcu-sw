@@ -14,11 +14,13 @@ pub mod header_params {
     pub const ALG: i32 = 1;
     pub const CONTENT_TYPE: i32 = 3;
     pub const KID: i32 = 4;
+    pub const X5CHAIN: i32 = 33; // X.509 Certificate Chain
 }
 
 /// COSE algorithm identifiers (IANA COSE Algorithms Registry)
 pub mod cose_alg {
     pub const ESP384: i32 = -51; // ECDSA using P-384 curve and SHA-384
+    pub const MLDSA87: i32 = -50; // CBOR Object Signing Algorithm for ML-DSA-87
 }
 
 /// COSE content type constants
@@ -124,11 +126,6 @@ impl ProtectedHeader<'_> {
 
         Ok(encoder.len())
     }
-}
-
-/// Constants for common COSE header parameters
-pub mod cose_headers {
-    pub const X5CHAIN: i32 = 33; // X.509 Certificate Chain
 }
 
 /// Default maximum size for the encoded protected header.
@@ -362,7 +359,7 @@ mod tests {
         // Verify CBOR structure: map with 1 entry
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 1)
         );
     }
 
@@ -384,7 +381,7 @@ mod tests {
         // Verify CBOR structure: map with 3 entries
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 3)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 3)
         );
     }
 
@@ -418,7 +415,7 @@ mod tests {
         // Verify structure starts with array of 4 items
         assert_eq!(
             context_buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::ARRAY, 4)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Array, 4)
         );
     }
 
@@ -429,7 +426,7 @@ mod tests {
         let signature = [0xAA; 96]; // Mock P-384 signature (96 bytes)
 
         let x5chain_header = CoseHeaderPair {
-            key: cose_headers::X5CHAIN,
+            key: header_params::X5CHAIN,
             value: b"mock-cert", // Mock certificate data (9 bytes)
         };
         let unprotected = [x5chain_header];
@@ -450,7 +447,7 @@ mod tests {
 
         // Unprotected map: map_header(1) + key(33): 2 + value byte string(9 bytes): 10
         let unprotected_map_header = CborEncoder::estimate_uint_size(1); // 1 entry
-        let unprotected_key = CborEncoder::estimate_int_size(cose_headers::X5CHAIN as i64); // key 33
+        let unprotected_key = CborEncoder::estimate_int_size(header_params::X5CHAIN as i64); // key 33
         let unprotected_value = CborEncoder::estimate_bytes_string_size(b"mock-cert".len()); // 9 byte string
         let unprotected_size = unprotected_map_header + unprotected_key + unprotected_value;
 
@@ -468,12 +465,12 @@ mod tests {
         // Verify COSE_Sign1 tag (18)
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::TAG, 18)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Tag, 18)
         );
         // Verify array of 4 items
         assert_eq!(
             buffer[1],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::ARRAY, 4)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Array, 4)
         );
     }
 
@@ -515,7 +512,7 @@ mod tests {
         // Tag 55799 encodes as: major type 6, additional info 25 (2-byte uint16), value 0xD9F7
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::TAG, 25)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Tag, 25)
         );
         assert_eq!(buffer[1], 0xD9);
         assert_eq!(buffer[2], 0xF7);

@@ -8,15 +8,23 @@
 use crate::error::EatError;
 
 /// CBOR major types (RFC 8949)
-pub mod major_type {
-    pub const UNSIGNED_INT: u8 = 0;
-    pub const NEGATIVE_INT: u8 = 1;
-    pub const BYTE_STRING: u8 = 2;
-    pub const TEXT_STRING: u8 = 3;
-    pub const ARRAY: u8 = 4;
-    pub const MAP: u8 = 5;
-    pub const TAG: u8 = 6;
-    pub const SIMPLE: u8 = 7;
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MajorType {
+    UnsignedInt = 0,
+    NegativeInt = 1,
+    ByteString = 2,
+    TextString = 3,
+    Array = 4,
+    Map = 5,
+    Tag = 6,
+    Simple = 7,
+}
+
+impl From<MajorType> for u8 {
+    fn from(val: MajorType) -> Self {
+        val as u8
+    }
 }
 
 /// CBOR tag values (RFC 8949)
@@ -28,8 +36,8 @@ pub mod tag {
 
 /// Construct a CBOR initial byte from major type and additional info
 #[inline]
-pub const fn cbor_initial_byte(major_type: u8, additional_info: u8) -> u8 {
-    (major_type << 5) | additional_info
+pub const fn cbor_initial_byte(major_type: MajorType, additional_info: u8) -> u8 {
+    ((major_type as u8) << 5) | additional_info
 }
 
 /// Trait for types that can be encoded to CBOR format
@@ -100,8 +108,9 @@ impl<'a> CborEncoder<'a> {
     }
 
     // Encode major type + additional info according to CBOR rules
-    fn encode_type_value(&mut self, major_type: u8, value: u64) -> Result<(), EatError> {
-        let major = major_type << 5;
+    fn encode_type_value(&mut self, major_type: MajorType, value: u64) -> Result<(), EatError> {
+        let major: u8 = major_type.into();
+        let major = major << 5;
 
         if value <= 23 {
             self.write_byte(major | value as u8)?;
@@ -126,7 +135,7 @@ impl<'a> CborEncoder<'a> {
 
     // Major type 0: Unsigned integer
     pub fn encode_uint(&mut self, value: u64) -> Result<(), EatError> {
-        self.encode_type_value(major_type::UNSIGNED_INT, value)
+        self.encode_type_value(MajorType::UnsignedInt, value)
     }
 
     // Major type 1: Negative integer (-1 - n)
@@ -138,7 +147,7 @@ impl<'a> CborEncoder<'a> {
         let positive_value = (value.checked_mul(-1).ok_or(EatError::InvalidData)?)
             .checked_sub(1)
             .ok_or(EatError::InvalidData)? as u64;
-        self.encode_type_value(major_type::NEGATIVE_INT, positive_value)
+        self.encode_type_value(MajorType::NegativeInt, positive_value)
     }
 
     // Encode integer (automatically choose positive or negative)
@@ -152,7 +161,7 @@ impl<'a> CborEncoder<'a> {
 
     // Major type 2: Byte string
     pub fn encode_bytes(&mut self, bytes: &[u8]) -> Result<(), EatError> {
-        self.encode_type_value(major_type::BYTE_STRING, bytes.len() as u64)?;
+        self.encode_type_value(MajorType::ByteString, bytes.len() as u64)?;
         self.write_bytes(bytes)?;
         Ok(())
     }
@@ -160,24 +169,24 @@ impl<'a> CborEncoder<'a> {
     // Major type 3: Text string
     pub fn encode_text(&mut self, text: &str) -> Result<(), EatError> {
         let bytes = text.as_bytes();
-        self.encode_type_value(major_type::TEXT_STRING, bytes.len() as u64)?;
+        self.encode_type_value(MajorType::TextString, bytes.len() as u64)?;
         self.write_bytes(bytes)?;
         Ok(())
     }
 
     // Major type 4: Array
     pub fn encode_array_header(&mut self, len: u64) -> Result<(), EatError> {
-        self.encode_type_value(major_type::ARRAY, len)
+        self.encode_type_value(MajorType::Array, len)
     }
 
     // Major type 5: Map
     pub fn encode_map_header(&mut self, len: u64) -> Result<(), EatError> {
-        self.encode_type_value(major_type::MAP, len)
+        self.encode_type_value(MajorType::Map, len)
     }
 
     // Major type 6: Tag
     pub fn encode_tag(&mut self, tag: u64) -> Result<(), EatError> {
-        self.encode_type_value(major_type::TAG, tag)
+        self.encode_type_value(MajorType::Tag, tag)
     }
 
     // Encode with self-described CBOR tag (55799)

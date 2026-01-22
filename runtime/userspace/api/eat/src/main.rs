@@ -12,7 +12,7 @@ use std::path::Path;
 
 // Use the ocp_eat library (defined in lib.rs) instead of recompiling modules
 use ocp_eat::{
-    cbor_tags, cose_headers, CborEncoder, CoseHeaderPair, CoseSign1, EatError, ProtectedHeader,
+    cbor_tags, header_params, CborEncoder, CoseHeaderPair, CoseSign1, EatError, ProtectedHeader,
 };
 
 #[cfg(feature = "crypto")]
@@ -236,7 +236,7 @@ pub fn create_example_eat(
     // Use P-384 (ES384) for our P-384 key
     let protected_header = ProtectedHeader::new_es384();
     let x5chain_header = CoseHeaderPair {
-        key: cose_headers::X5CHAIN,
+        key: header_params::X5CHAIN,
         value: &device_key.cert_chain,
     };
     let unprotected_headers = [x5chain_header];
