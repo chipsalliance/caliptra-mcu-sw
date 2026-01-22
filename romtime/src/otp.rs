@@ -17,6 +17,7 @@ const OTP_STATUS_ERROR_MASK: u32 = (1 << 22) - 1;
 const OTP_CONSISTENCY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_INTEGRITY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_CHECK_TIMEOUT: u32 = 0x10_0000;
+const OTP_PENDING_CHECK_MAX_ITERATIONS: u32 = 1_000_000;
 
 pub struct Otp {
     registers: StaticRef<otp_ctrl::regs::OtpCtrl>,
@@ -31,12 +32,18 @@ impl Otp {
         self.registers.vendor_pk_hash_volatile_lock.set(1);
     }
 
-    pub fn wait_for_not_pending(&self) {
-        while self
-            .registers
-            .otp_status
-            .is_set(otp_ctrl::bits::OtpStatus::CheckPending)
-        {}
+    pub fn wait_for_not_pending(&self) -> McuResult<()> {
+        for _ in 0..OTP_PENDING_CHECK_MAX_ITERATIONS {
+            if !self
+                .registers
+                .otp_status
+                .is_set(otp_ctrl::bits::OtpStatus::CheckPending)
+            {
+                return Ok(());
+            }
+        }
+        crate::println!("[mcu-rom-otp] OTP pending check exceeded maximum iterations");
+        Err(McuError::ROM_OTP_PENDING_TIMEOUT)
     }
 
     pub fn check_error_and_idle(&self) -> McuResult<()> {
@@ -69,7 +76,7 @@ impl Otp {
     ) -> McuResult<()> {
         crate::println!("[mcu-rom-otp] Initializing OTP controller...");
 
-        self.wait_for_not_pending();
+        self.wait_for_not_pending()?;
         self.check_error_and_idle()?;
 
         let check_timeout = check_timeout_override.unwrap_or(OTP_CHECK_TIMEOUT);
@@ -96,7 +103,7 @@ impl Otp {
             .check_regwen
             .write(otp_ctrl::bits::CheckRegwen::Regwen::CLEAR);
 
-        self.wait_for_not_pending();
+        self.wait_for_not_pending()?;
         self.check_error_and_idle()?;
 
         crate::println!("[mcu-rom-otp] Done init");
