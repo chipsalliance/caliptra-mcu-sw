@@ -5,12 +5,8 @@ use crate::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
 use crate::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::MAX_ECC_CERT_SIZE;
-use ocp_eat::eat_encoder;
-use ocp_eat::eat_encoder::{
-    cose_headers, CborEncoder, CoseHeaderPair, EatEncoder, ProtectedHeader,
-};
+use ocp_eat::{cbor_tags, header_params, CoseHeaderPair, CoseSign1, ProtectedHeader};
 
-const MAX_HEADER_SIZE: usize = 256;
 const MAX_SIG_CONTEXT_SIZE: usize = 2048;
 
 pub struct SignedEat<'a> {
@@ -37,45 +33,40 @@ impl<'a> SignedEat<'a> {
         payload: &[u8],
         eat_buffer: &mut [u8],
     ) -> CaliptraApiResult<usize> {
-        // prepare COSE headers
-
-        // prepare protected header
+        // Prepare protected header
         let protected_header = ProtectedHeader::new_es384();
 
-        // prepare unprotected header
+        // Prepare unprotected header with certificate chain
         let mut ecc_cert: [u8; MAX_ECC_CERT_SIZE] = [0; MAX_ECC_CERT_SIZE];
         let cert_size = self.get_leaf_cert(&mut ecc_cert).await?;
         let x5chain_header = CoseHeaderPair {
-            key: cose_headers::X5CHAIN,
+            key: header_params::X5CHAIN,
             value: &ecc_cert[..cert_size],
         };
         let unprotected_headers = [x5chain_header];
 
-        let mut protected_hdr_buf = [0u8; MAX_HEADER_SIZE];
+        // Initialize COSE_Sign1 encoder with protected header, unprotected headers, and payload
+        let cose_sign1 = CoseSign1::new(eat_buffer)
+            .protected_header(&protected_header)
+            .unprotected_headers(&unprotected_headers)
+            .payload(payload);
 
-        // Encode protected header
-        let protected_hdr_len = {
-            let mut encoder = CborEncoder::new(&mut protected_hdr_buf);
-            encoder
-                .encode_protected_header(&protected_header)
-                .map_err(CaliptraApiError::Eat)?;
-            encoder.len()
-        };
+        // Get signature context for signing
+        let mut sig_context_buffer = [0u8; MAX_SIG_CONTEXT_SIZE];
+        let sig_context_len = cose_sign1
+            .get_signature_context(&mut sig_context_buffer)
+            .map_err(CaliptraApiError::Eat)?;
 
-        // Generate ECC signature
+        // Generate signature from context
         let signature = self
-            .generate_ecc_signature(&protected_hdr_buf[..protected_hdr_len], payload)
+            .sign_context(&sig_context_buffer[..sig_context_len])
             .await?;
 
-        // Now encode the complete COSE Sign1 structure
-        EatEncoder::encode_cose_sign1_eat(
-            eat_buffer,
-            &protected_header,
-            &unprotected_headers,
-            payload,
-            &signature[..],
-        )
-        .map_err(CaliptraApiError::Eat)
+        // Complete encoding with signature and EAT tags
+        cose_sign1
+            .signature(&signature[..])
+            .encode(Some(&[cbor_tags::SELF_DESCRIBED_CBOR, cbor_tags::CWT]))
+            .map_err(CaliptraApiError::Eat)
     }
 
     async fn get_leaf_cert(&self, cert_buf: &mut [u8]) -> CaliptraApiResult<usize> {
@@ -90,27 +81,21 @@ impl<'a> SignedEat<'a> {
         Ok(cert_size)
     }
 
-    async fn generate_ecc_signature(
+    async fn sign_context(
         &self,
-        protected_hdr: &[u8],
-        payload: &[u8],
+        sig_context: &[u8],
     ) -> CaliptraApiResult<[u8; ECC_P384_SIGNATURE_SIZE]> {
         if self.asym_algo != AsymAlgo::EccP384 {
             Err(CaliptraApiError::AsymAlgoUnsupported)?;
         }
 
-        let mut sig_context_buffer = [0u8; MAX_SIG_CONTEXT_SIZE];
-        let sig_context_len =
-            eat_encoder::create_sign1_context(&mut sig_context_buffer, protected_hdr, payload)
-                .map_err(CaliptraApiError::Eat)?;
-
-        let tbs = &sig_context_buffer[..sig_context_len];
-
+        // Hash the signature context
         let mut hash = [0u8; SHA384_HASH_SIZE];
-        HashContext::hash_all(HashAlgoType::SHA384, tbs, &mut hash).await?;
+        HashContext::hash_all(HashAlgoType::SHA384, sig_context, &mut hash).await?;
+
+        // Sign the hash
         let mut cert_context = CertContext::new();
         let mut sig = [0u8; ECC_P384_SIGNATURE_SIZE];
-
         cert_context
             .sign(Some(self.leaf_cert_label), &hash, &mut sig)
             .await?;

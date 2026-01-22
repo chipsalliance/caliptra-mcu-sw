@@ -48,8 +48,13 @@ runtime/userspace/api/eat/
 ├── src/                    # Rust source code
 │   ├── main.rs            # Main binary with CLI (generation & decode modes)
 │   ├── lib.rs             # Library implementation
-│   └── eat_encoder/       # EAT encoding modules
-├── decoder/                # Python decoder scripts
+│   ├── cbor.rs            # CBOR encoding utilities
+│   ├── cose.rs            # COSE signature utilities
+│   ├── claim_key.rs       # EAT claim key definitions
+│   └── error.rs           # Error handling modules
+│   └── ocp_profile/       # OCP profile-specific EAT claims encoding modules for attestation
+│   └── csr_eat.rs         # Envelope Signed CSR EAT claims encoding module
+├── decoder/               # Python decoder scripts
 │   ├── decode.py          # Main decoder script
 │   ├── signature_analysis.py
 │   └── signature_validation.py

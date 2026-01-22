@@ -4,48 +4,33 @@
 #[cfg(feature = "std")]
 use std::error::Error;
 #[cfg(feature = "std")]
-use std::fmt;
-#[cfg(feature = "std")]
-use std::fs::{File, create_dir_all};
+use std::fs::{create_dir_all, File};
 #[cfg(feature = "std")]
 use std::io::Write;
 #[cfg(feature = "std")]
 use std::path::Path;
 
-mod eat_encoder;
-use eat_encoder::EatError;
+// Use the ocp_eat library (defined in lib.rs) instead of recompiling modules
+use ocp_eat::{
+    cbor_tags, header_params, CborEncoder, CoseHeaderPair, CoseSign1, EatError, ProtectedHeader,
+};
+
 #[cfg(feature = "crypto")]
-use eat_encoder::{
-    ConciseEvidence, CoseHeaderPair, DebugStatus, EatEncoder, MeasurementFormat, OcpEatClaims,
-    ProtectedHeader, cose_headers,
+use ocp_eat::ocp_profile::{
+    ClassMap, ConciseEvidence, ConciseEvidenceMap, DebugStatus, DigestEntry, EnvironmentMap,
+    EvTriplesMap, EvidenceTripleRecord, MeasurementFormat, MeasurementMap, MeasurementValue,
+    OcpEatClaims, TaggedConciseEvidence,
 };
 
 // Cryptographic imports for signature generation (only available with crypto feature)
 #[cfg(feature = "crypto")]
-use ecdsa::{Signature, SigningKey, signature::Signer};
+use ecdsa::{signature::Signer, Signature, SigningKey};
 #[cfg(feature = "crypto")]
 use p384::elliptic_curve::sec1::ToEncodedPoint;
 #[cfg(feature = "crypto")]
 use p384::{PublicKey, SecretKey};
 #[cfg(feature = "crypto")]
 use rand::rngs::OsRng;
-
-#[cfg(feature = "std")]
-impl fmt::Display for EatError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            EatError::BufferTooSmall => write!(f, "Buffer too small"),
-            EatError::InvalidData => write!(f, "Invalid data"),
-            EatError::MissingMandatoryClaim => write!(f, "Missing mandatory claim"),
-            EatError::InvalidClaimSize => write!(f, "Invalid claim size"),
-            EatError::EncodingError => write!(f, "Encoding error"),
-            EatError::InvalidUtf8 => write!(f, "Invalid UTF-8"),
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl Error for EatError {}
 
 // Structure to hold signing keys and certificate (only with crypto feature)
 #[cfg(feature = "crypto")]
@@ -244,79 +229,57 @@ pub fn create_example_eat(
     let measurement = MeasurementFormat::new(concise_evidence);
     let measurements_array = [measurement];
 
-    let mut claims = OcpEatClaims::new(
-        &nonce,
-        DebugStatus::Disabled,
-        "1.2.3.4.5",
-        &measurements_array,
-    );
+    let mut claims = OcpEatClaims::new(&nonce, DebugStatus::Disabled, &measurements_array);
     claims.issuer = Some(issuer);
     claims.cti = Some(&cti);
 
     // Use P-384 (ES384) for our P-384 key
     let protected_header = ProtectedHeader::new_es384();
     let x5chain_header = CoseHeaderPair {
-        key: cose_headers::X5CHAIN,
+        key: header_params::X5CHAIN,
         value: &device_key.cert_chain,
     };
     let unprotected_headers = [x5chain_header];
 
-    // First, we need to encode the protected header and payload to create the signature
-    const MAX_HEADER_SIZE: usize = 256;
-    const MAX_PAYLOAD_SIZE: usize = 8192;
-    let mut protected_buffer = [0u8; MAX_HEADER_SIZE];
-    let mut payload_buffer = [0u8; MAX_PAYLOAD_SIZE];
-
-    // Encode protected header
-    let protected_len = {
-        let mut encoder = eat_encoder::CborEncoder::new(&mut protected_buffer);
-        encoder
-            .encode_protected_header(&protected_header)
-            .map_err(|_| EatError::EncodingError)?;
-        encoder.len()
-    };
-
     // Encode payload (claims)
+    const MAX_PAYLOAD_SIZE: usize = 8192;
+    let mut payload_buffer = [0u8; MAX_PAYLOAD_SIZE];
+    let mut evidence_scratch_buf = [0u8; 1024];
     let payload_len = {
-        let mut encoder = eat_encoder::CborEncoder::new(&mut payload_buffer);
-        encoder
-            .encode_ocp_eat_claims(&claims)
+        let mut encoder = CborEncoder::new(&mut payload_buffer);
+        claims
+            .encode(&mut encoder, &mut evidence_scratch_buf)
             .map_err(|_| EatError::EncodingError)?;
         encoder.len()
     };
 
-    // Create COSE Sign1 signature context
-    const MAX_SIG_CONTEXT_SIZE: usize = 16384; // 16KB should be sufficient for signature context
+    // Initialize COSE Sign1 encoder with protected header, unprotected headers, and payload
+    let cose_sign1 = CoseSign1::new(buffer)
+        .protected_header(&protected_header)
+        .unprotected_headers(&unprotected_headers)
+        .payload(&payload_buffer[..payload_len]);
+
+    // Get signature context for signing
+    const MAX_SIG_CONTEXT_SIZE: usize = 16384;
     let mut sig_context_buffer = [0u8; MAX_SIG_CONTEXT_SIZE];
-    let sig_context_len = eat_encoder::create_sign1_context(
-        &mut sig_context_buffer,
-        &protected_buffer[..protected_len],
-        &payload_buffer[..payload_len],
-    )
-    .map_err(|_| EatError::EncodingError)?;
+    let sig_context_len = cose_sign1
+        .get_signature_context(&mut sig_context_buffer)
+        .map_err(|_| EatError::EncodingError)?;
 
     // Generate signature
     let signature = device_key
         .sign(&sig_context_buffer[..sig_context_len])
         .map_err(|_| EatError::EncodingError)?;
 
-    // Now encode the complete COSE Sign1 structure
-    EatEncoder::encode_cose_sign1_eat(
-        buffer,
-        &protected_header,
-        &unprotected_headers,
-        &payload_buffer[..payload_len],
-        &signature,
-    )
+    // Complete encoding with signature and EAT tags [55799, 61] + automatic COSE_Sign1 tag [18]
+    cose_sign1
+        .signature(&signature)
+        .encode(Some(&[cbor_tags::SELF_DESCRIBED_CBOR, cbor_tags::CWT]))
+        .map_err(|_| EatError::EncodingError)
 }
 
 // Create mock structured concise evidence (similar to CBOR version but returns structured data)
-fn create_mock_concise_evidence_structured() -> eat_encoder::ConciseEvidence<'static> {
-    use eat_encoder::{
-        ClassMap, ConciseEvidenceMap, DigestEntry, EnvironmentMap, EvTriplesMap,
-        EvidenceTripleRecord, MeasurementMap, MeasurementValue,
-    };
-
+fn create_mock_concise_evidence_structured() -> ConciseEvidence<'static> {
     // Static data for mock evidence
     static DIGEST_DATA: &[u8; 48] = &[
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -399,7 +362,7 @@ fn create_mock_concise_evidence_structured() -> eat_encoder::ConciseEvidence<'st
         profile: None,
     };
 
-    eat_encoder::ConciseEvidence::Tagged(eat_encoder::TaggedConciseEvidence {
+    ConciseEvidence::Tagged(TaggedConciseEvidence {
         concise_evidence: CONCISE_EVIDENCE_MAP,
     })
 }
@@ -792,12 +755,11 @@ mod tests {
         let measurement = MeasurementFormat::new(&evidence);
         let measurements = [measurement];
 
-        let mut claims =
-            OcpEatClaims::new(&nonce, DebugStatus::Disabled, "1.2.3.4.5", &measurements);
+        let mut claims = OcpEatClaims::new(&nonce, DebugStatus::Disabled, &measurements);
         claims.issuer = Some("Test Issuer");
         claims.cti = Some(&cti);
 
-        let estimated = EatEncoder::estimate_buffer_size(&claims);
+        let estimated = claims.estimate_buffer_size();
         assert!(estimated > 100); // Should be reasonable size
         assert!(estimated < 65536); // Should be within limits
     }
@@ -810,26 +772,21 @@ mod tests {
         let measurement = MeasurementFormat::new(&evidence);
         let measurements = [measurement];
 
-        let mut claims =
-            OcpEatClaims::new(&nonce, DebugStatus::Disabled, "1.2.3.4.5", &measurements);
+        let mut claims = OcpEatClaims::new(&nonce, DebugStatus::Disabled, &measurements);
         claims.issuer = Some("Valid Issuer");
         claims.cti = Some(&cti);
 
-        assert!(EatEncoder::validate_claims(&claims).is_ok());
+        assert!(claims.validate().is_ok());
 
         // Test invalid CTI size
         let short_cti = [0u8; 4]; // Too short
         let invalid_measurement = MeasurementFormat::new(&evidence);
         let invalid_measurements = [invalid_measurement];
-        let mut invalid_claims = OcpEatClaims::new(
-            &nonce,
-            DebugStatus::Disabled,
-            "1.2.3.4.5",
-            &invalid_measurements,
-        );
+        let mut invalid_claims =
+            OcpEatClaims::new(&nonce, DebugStatus::Disabled, &invalid_measurements);
         invalid_claims.issuer = Some("Valid Issuer");
         invalid_claims.cti = Some(&short_cti);
 
-        assert!(EatEncoder::validate_claims(&invalid_claims).is_err());
+        assert!(invalid_claims.validate().is_err());
     }
 }

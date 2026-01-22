@@ -58,47 +58,70 @@
 //! let measurement_format = MeasurementFormat::new(&evidence);
 //! ```
 
-pub mod eat_encoder;
+pub mod cbor;
+pub mod claim_keys;
+pub mod cose;
+pub mod csr_eat;
+pub mod error;
+pub mod ocp_profile;
 
-// Re-export main types for easier usage
-pub use eat_encoder::{
-    CborEncoder,
+/// CBOR tags for EAT tokens (RFC 8949, RFC 8392)
+pub mod cbor_tags {
+    /// Self-described CBOR tag (RFC 8949)
+    pub const SELF_DESCRIBED_CBOR: u64 = 55799;
+    /// CBOR Web Token tag (RFC 8392)
+    pub const CWT: u64 = 61;
+}
 
-    ClassMap,
-    ConciseEvidence,
-    // Core structures
-    ConciseEvidenceMap,
-    CorimLocatorMap,
-    CoseHeaderPair,
+// Re-export error types
+pub use error::EatError;
 
-    // Enums and constants
-    DebugStatus,
-    DigestEntry,
-    DloaType,
-    // Encoder
-    EatEncoder,
-    EatError,
+// Re-export CBOR encoder and trait for custom encoding
+pub use cbor::{CborEncodable, CborEncoder};
 
-    EnvironmentMap,
-    EvTriplesMap,
+// Re-export standard EAT/CWT claim keys (RFC 8392, RFC 9711)
+// These are shared across both OCP Profile EAT and CSR EAT
+pub use claim_keys::*;
 
-    // Evidence triple structures
-    EvidenceTripleRecord,
-    MeasurementFormat,
-    MeasurementMap,
-    MeasurementValue,
-    OcpEatClaims,
-    PrivateClaim,
-
-    // COSE structures
-    ProtectedHeader,
-    // Constants modules
-    cose_headers,
+// Re-export COSE Sign1 signing infrastructure
+// Used to create signed EAT tokens with protected/unprotected headers
+pub use cose::{
+    header_params,  // COSE header parameter constants (ALG, CONTENT_TYPE, KID, X5CHAIN)
+    CoseHeaderPair, // Key-value pair for unprotected headers
+    CoseSign1,      // COSE Sign1 encoder with default buffer
+    CoseSign1WithBuffer, // COSE Sign1 encoder with custom buffer size
+    ProtectedHeader, // Protected header builder
+    DEFAULT_PROTECTED_HEADER_SIZE, // Default protected header buffer size (256 bytes)
 };
 
-// Re-export claim key constants
-pub use eat_encoder::{
-    CLAIM_KEY_BOOTCOUNT, CLAIM_KEY_BOOTSEED, CLAIM_KEY_CTI, CLAIM_KEY_DBGSTAT, CLAIM_KEY_DLOAS,
-    CLAIM_KEY_EAT_PROFILE, CLAIM_KEY_HWMODEL, CLAIM_KEY_ISSUER, CLAIM_KEY_MEASUREMENTS,
-    CLAIM_KEY_NONCE, CLAIM_KEY_OEMID, CLAIM_KEY_RIM_LOCATORS, CLAIM_KEY_UEID, CLAIM_KEY_UPTIME,
+// Re-export OCP Profile EAT types for device attestation
+// Reference: https://opencomputeproject.github.io/Security/ietf-eat-profile/HEAD/
+pub use ocp_profile::{
+    // Evidence structures (RATS CoRIM format)
+    ClassMap,           // Device class identification
+    ConciseEvidence,    // Top-level evidence container (tagged or map)
+    ConciseEvidenceMap, // Evidence map with triples
+    CorimLocatorMap,    // CoRIM reference locator with optional thumbprint
+    DebugStatus,        // Debug state enumeration
+    DigestEntry,        // Cryptographic digest (algorithm + value)
+
+    DloaType,             // Digital Letter of Approval
+    EnvironmentMap,       // Environment description (class info)
+    EvTriplesMap,         // Evidence triples collection
+    EvidenceTripleRecord, // Single evidence triple (environment + measurements)
+
+    // Measurement structures
+    MeasurementFormat, // Measurement with content type
+    MeasurementMap,    // Single measurement entry
+    MeasurementValue,  // Measurement value with digests/raw values
+    // OCP EAT claims and metadata
+    OcpEatClaims, // Complete OCP EAT token payload
+    PrivateClaim, // Custom private claims (keys < -65536)
+};
+
+// Re-export Envelope Signed CSR EAT types for provisioning workflows
+// Reference: https://opencomputeproject.github.io/Security/device-identity-provisioning/
+pub use csr_eat::{
+    CsrEatClaims, // CSR EAT token payload with nonce and attributes
+    TaggedOid,    // CBOR-tagged OID for key attributes
 };

@@ -10,7 +10,7 @@ use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use libapi_caliptra::evidence::device_state::DeviceState;
 use libapi_caliptra::evidence::ocp_eat_claims::generate_eat_claims;
 use libapi_caliptra::evidence::pcr_quote::PcrQuote;
-use ocp_eat::eat_encoder::{
+use ocp_eat::ocp_profile::{
     IntegrityRegisterEntry, IntegrityRegisterIdChoice, TaggedConciseEvidence,
 };
 use ocp_eat::{
