@@ -233,48 +233,31 @@ fn verify_signature_es384(
 
 fn verify_protected_header(protected: &Header) -> OcpEatResult<()> {
     /* ----------------------------------------------------------
-     * Algorithm must be ES384 or ESP384
+     * Algorithm must be ESP384 or ML-DSA-87 (TBD)
      * ---------------------------------------------------------- */
 
-    let alg_ok = matches!(
+    if !matches!(
         protected.alg,
         Some(coset::RegisteredLabelWithPrivate::Assigned(
-            Algorithm::ES384
-        )) | Some(coset::RegisteredLabelWithPrivate::Assigned(
             Algorithm::ESP384
         ))
-    );
-
-    if !alg_ok {
+    ) {
         return Err(OcpEatError::InvalidToken(
             "Unexpected algorithm in protected header",
         ));
     }
 
     /* ----------------------------------------------------------
-     * Content-Type
+     * Content-Type must be EatCwt
      * ---------------------------------------------------------- */
-    match &protected.content_type {
-        None => {
-            // Accept missing content-type
-        }
-        Some(coset::RegisteredLabel::Assigned(coset::iana::CoapContentFormat::EatCwt)) => {
-            // Accept EAT CWT
-        }
-        _other => {
-            return Err(OcpEatError::InvalidToken(
-                "Content format mismatch in protected header",
-            ));
-        }
-    }
-
-    /* ----------------------------------------------------------
-     * Key ID
-     * ---------------------------------------------------------- */
-
-    if protected.key_id != OCP_EAT_CLAIMS_KEY_ID.as_bytes().to_vec() {
+    if !matches!(
+        &protected.content_type,
+        Some(coset::RegisteredLabel::Assigned(
+            coset::iana::CoapContentFormat::EatCwt
+        ))
+    ) {
         return Err(OcpEatError::InvalidToken(
-            "Key ID mismatch in protected header",
+            "Content format mismatch in protected header",
         ));
     }
 
