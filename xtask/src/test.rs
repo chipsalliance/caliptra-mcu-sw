@@ -24,6 +24,7 @@ fn cargo_test() -> Result<()> {
             "--lib",
             "--",
             "test::test_firmware_update",
+            "--nocapture",
         ])
         .status()?;
 
