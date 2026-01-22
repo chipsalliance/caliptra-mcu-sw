@@ -280,12 +280,13 @@ SECTIONS
          * future enhancement may allow the kernel to parcel this memory space
          * dynamically, requiring changes to this section.
          */
-         . = ALIGN(4096); /* align to page boundary due to lld limitation */
-        _sappmem = .;
+        . = ALIGN(4096); /* align to page boundary due to lld limitation */
+        _kernel_ram_done = .;
+        _sappmem = ORIGIN(app_ram);
         *(.app_memory)
     } > ram
 
-    _eappmem = ORIGIN(ram) + LENGTH(ram);
+    _eappmem = ORIGIN(app_ram) + LENGTH(app_ram);
 
 
     /* Place attributes at the end of the kernel ROM region. These will be used
@@ -383,6 +384,12 @@ _pic_vector_table = ORIGIN(dccm) + LENGTH(dccm) - 1024;
 _sstorage = ORIGIN(flash);
 _estorage = ORIGIN(flash) + LENGTH(flash);
 
+
+/*
+ * Ensure the segment of RAM which is used by the kernel is placed prior to the beginning of the
+ * application memory.
+ */
+ASSERT(_kernel_ram_done <= _sappmem, "Kernel ram exceeds budget");
 
 /* This.. this is a dirty, not-fully-understood, hack. In some way, linking is
  * a multi-pass process. i.e., if you were to ASSERT(0, "how many links")
