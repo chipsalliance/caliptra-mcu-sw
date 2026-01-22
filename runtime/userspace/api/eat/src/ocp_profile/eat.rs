@@ -529,7 +529,7 @@ mod tests {
         // Verify array header
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::ARRAY, 2)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Array, 2)
         );
     }
 
@@ -561,7 +561,7 @@ mod tests {
         // Verify array header
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::ARRAY, 3)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Array, 3)
         );
     }
 
@@ -589,7 +589,7 @@ mod tests {
         // Verify map header
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 1)
         );
     }
 
@@ -620,7 +620,7 @@ mod tests {
         // Verify map header
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 2)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 2)
         );
     }
 

@@ -686,7 +686,7 @@ mod tests {
         // Verify array header
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::ARRAY, 2)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Array, 2)
         );
     }
 
@@ -752,7 +752,7 @@ mod tests {
         // Verify map header (1 entry for digests)
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 1)
         );
     }
 
@@ -795,7 +795,7 @@ mod tests {
         // Verify map header (5 entries)
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 5)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 5)
         );
     }
 
@@ -843,7 +843,7 @@ mod tests {
         // Verify map header (2 entries: key=0 for mkey, key=1 for mval)
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 2)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 2)
         );
     }
 
@@ -872,7 +872,7 @@ mod tests {
         // Verify map header (1 entry for class_id only)
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 1)
         );
     }
 
@@ -901,7 +901,7 @@ mod tests {
         // Verify map header (3 entries)
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 3)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 3)
         );
     }
 
@@ -933,7 +933,7 @@ mod tests {
         // Verify map header (1 entry for class)
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 1)
         );
     }
 
@@ -1002,7 +1002,7 @@ mod tests {
         // Verify array header (2 elements: environment, measurements)
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::ARRAY, 2)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Array, 2)
         );
     }
 
@@ -1030,7 +1030,7 @@ mod tests {
         // Verify map header (0 entries)
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 0)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 0)
         );
     }
 
@@ -1093,7 +1093,7 @@ mod tests {
         // Verify map header (1 entry for evidence_triples)
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 1)
         );
     }
 
@@ -1162,7 +1162,7 @@ mod tests {
         // Verify map header (1 entry for ev_triples)
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 1)
         );
     }
 
@@ -1235,7 +1235,7 @@ mod tests {
         // Map variant should not have a tag
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::major_type::MAP, 1)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 1)
         );
     }
 
@@ -1310,7 +1310,7 @@ mod tests {
         assert!(encoded_len > 0);
 
         // Tagged variant should start with a tag (major type 6)
-        assert_eq!(buffer[0] & 0xE0, crate::cbor::major_type::TAG << 5);
+        assert_eq!(buffer[0] & 0xE0, u8::from(crate::cbor::MajorType::Tag) << 5);
     }
 
     #[test]
