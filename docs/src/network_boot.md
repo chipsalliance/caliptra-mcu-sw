@@ -20,7 +20,7 @@ The network boot coprocessor acts as an intermediary between remote image server
 - Secure image retrieval
 - Resilient fallback path
 
-### Final Solution
+### Solution
 - Use a **dedicated co-processor** with a lightweight network stack
 - Automatically configure networking via **DHCP**
 - Securely download **Caliptra early firmware images** into the Caliptra subsystem
