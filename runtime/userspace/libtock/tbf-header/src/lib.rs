@@ -122,7 +122,7 @@ struct TbfHeaderDriverPermission {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct TbfHeaderPermissions {
     base: TbfHeaderTlv,
     length: u16,
@@ -130,7 +130,7 @@ struct TbfHeaderPermissions {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct TbfHeaderPersistentAcl {
     base: TbfHeaderTlv,
     write_id: u32,
@@ -303,6 +303,7 @@ impl fmt::Display for TbfHeaderKernelVersion {
 
 const FLAGS_ENABLE: u32 = 0x0000_0001;
 
+#[derive(Debug, Clone)]
 pub struct TbfHeader {
     hdr_base: TbfHeaderBase,
     hdr_main: Option<TbfHeaderMain>,
@@ -750,6 +751,12 @@ impl TbfHeader {
         header_buf.seek(io::SeekFrom::Start(0))?;
 
         Ok(header_buf)
+    }
+}
+
+impl Default for TbfHeader {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
