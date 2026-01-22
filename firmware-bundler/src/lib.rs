@@ -42,9 +42,9 @@ pub fn execute(cmd: Commands) -> Result<()> {
             Ok(())
         }
         Commands::Bundle { common, ld, build } => {
-            let manifest = &common.manifest()?;
-            let build_definition = ld::generate(manifest, &common, &ld)?;
-            let output = build::build(&common.manifest()?, &build_definition, &common, &build)?;
+            let manifest = common.manifest()?;
+            let build_definition = ld::generate(&manifest, &common, &ld)?;
+            let output = build::build(&manifest, &build_definition, &common, &build)?;
             bundle::bundle(&manifest, &output, &common)?;
             Ok(())
         }

@@ -1,5 +1,9 @@
+// Licensed under the Apache-2.0 license
+
 //! A module to combine the outputs of the build process into a single binary which can be loaded
 //! into an embedded execution environment.
+
+use std::cmp::Ordering;
 
 use anyhow::{bail, Result};
 
@@ -31,14 +35,14 @@ pub fn bundle(manifest: &Manifest, output: &BuildOutput, common: &Common) -> Res
         // Find the location the the binary should occupy in the blob.  There could be padding
         // between the end of one application and the beginning of the next.
         let app_start: usize = (app.instruction_block.offset - base_addr).try_into()?;
-        if runtime.len() > app_start {
-            bail!(
+        match runtime.len().cmp(&app_start) {
+            Ordering::Less => runtime.resize(app_start, 0),
+            Ordering::Greater => bail!(
                 "Error in bundling, binary already exceeds app {} start offset",
                 &app.binary.name
-            );
-        } else if runtime.len() < app_start {
-            runtime.resize(app_start, 0);
-        }
+            ),
+            Ordering::Equal => { /* no op */ }
+        };
 
         let elf = app.binary.binary.with_extension("");
         let header_bytes = generate_tbf_header(
