@@ -49,10 +49,10 @@ impl Manifest {
             );
         }
 
-        if (self.kernel.ram % APP_RAM_ALIGNMENT) != 0 {
+        if (self.kernel.data_mem.size % APP_RAM_ALIGNMENT) != 0 {
             bail!(
                 "Kernel RAM size ({}) is not aligned with App memory offset requirement ({})",
-                self.kernel.ram,
+                self.kernel.data_mem.size,
                 APP_RAM_ALIGNMENT
             );
         }
@@ -172,7 +172,7 @@ pub struct Binary {
 
     /// The amount of RAM the code should be able to allocate for uses like the data, bss, stack,
     /// grant, and other arbitrary code blocks.
-    pub ram: u64,
+    pub data_mem: AllocationRequest,
 
     /// The amount of stack the application should have.  This memory will exist in the ram segment
     /// and thus must be equal to or smaller, than that value.
@@ -186,18 +186,13 @@ pub struct Binary {
     /// Default: 0
     #[serde(default)]
     pub exception_stack: u64,
-
-    /// The alignment in bytes the ram offset should match.  The previous offset in memory space
-    /// will be padded, and left unused, until this alignment is matched.  Defaults to platform's
-    /// alignment if not defined.
-    pub ram_alignment: Option<u64>,
 }
 
 impl Binary {
     /// Retrieve the stack field of the `Binary` structure.  If not defined the default is
     /// equivalent to the specified RAM value.
     pub fn stack(&self) -> u64 {
-        self.stack.unwrap_or(self.ram)
+        self.stack.unwrap_or(self.data_mem.size)
     }
 
     /// Verify that a `Binary` matches its semantic requirements.
@@ -205,11 +200,11 @@ impl Binary {
     /// This could fail if the binary is misconfigured for any of the following reasons:
     ///     * The stack/estack exceed the RAM specification.
     pub fn validate(&self) -> Result<()> {
-        if self.stack() + self.exception_stack > self.ram {
+        if self.stack() + self.exception_stack > self.data_mem.size {
             bail!(
                 "Binary {} ram ({:#x}) is exceeded by stack ({:#x}) and exception stack ({:#x})",
                 self.name,
-                self.ram,
+                self.data_mem.size,
                 self.stack(),
                 self.exception_stack
             );
@@ -233,10 +228,12 @@ impl Binary {
                 size: exec_size,
                 alignment: None,
             },
-            ram,
+            data_mem: AllocationRequest {
+                size: ram,
+                alignment: None,
+            },
             stack,
             exception_stack,
-            ram_alignment: None,
         }
     }
 }

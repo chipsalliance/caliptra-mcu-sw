@@ -136,7 +136,11 @@ impl<'a> LdGeneration<'a> {
                     )
                     .with_context(|| binary_context(&binary.name, "instruction allocation"))?;
                 let data = self
-                    .get_mem_block(binary.ram, binary.ram_alignment, &mut dccm_tracker)
+                    .get_mem_block(
+                        binary.data_mem.size,
+                        binary.data_mem.alignment,
+                        &mut dccm_tracker,
+                    )
                     .with_context(|| binary_context(&binary.name, "data allocation"))?;
                 let content = self
                     .rom_linker_content(binary, instructions, data)
@@ -165,7 +169,11 @@ impl<'a> LdGeneration<'a> {
             )
             .with_context(|| binary_context(&kernel.name, "instruction allocation"))?;
         let data = self
-            .get_mem_block(kernel.ram, kernel.ram_alignment, &mut ram_tracker)
+            .get_mem_block(
+                kernel.data_mem.size,
+                kernel.data_mem.alignment,
+                &mut ram_tracker,
+            )
             .with_context(|| binary_context(&kernel.name, "data allocation"))?;
 
         // Now iterate through each application and allocate its ITCM and RAM requirements.
@@ -182,7 +190,11 @@ impl<'a> LdGeneration<'a> {
                 )
                 .with_context(|| binary_context(&binary.name, "instruction allocation"))?;
             let data = self
-                .get_mem_block(binary.ram, binary.ram_alignment, &mut ram_tracker)
+                .get_mem_block(
+                    binary.data_mem.size,
+                    binary.data_mem.alignment,
+                    &mut ram_tracker,
+                )
                 .with_context(|| binary_context(&binary.name, "data allocation"))?;
 
             if first_app_instructions.is_none() {
