@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use crate::error::{OcpEatError, OcpEatResult};
-use coset::{cbor::value::Value, iana::Algorithm, CborSerializable, CoseSign1, Header};
-
+use ciborium::value::Value;
+use coset::{iana::Algorithm, CborSerializable, CoseSign1, Header, TaggedCborSerializable};
 use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint},
@@ -12,6 +12,9 @@ use openssl::{
 };
 
 pub const OCP_EAT_CLAIMS_KEY_ID: &str = "";
+pub const CBOR_TAG_COSE: u64 = 55799;
+pub const CBOR_TAG_CWT: u64 = 61;
+pub const CBOR_TAG_COSE_SIGN1: u64 = 18;
 
 /// COSE header parameter: x5chain (label 33)
 const COSE_HDR_PARAM_X5CHAIN: i64 = 33;
@@ -38,15 +41,9 @@ impl Evidence {
     /// (Steps 1–3)
     pub fn decode(slice: &[u8]) -> OcpEatResult<Self> {
         /* ==========================================================
-         *  Skip CBOR tags / bstr
+         *  Verify tags & decode COSE_Sign1
          * ========================================================== */
-        let value = skip_cbor_tags(slice)?;
-        let cose_bytes = value.to_vec().map_err(OcpEatError::CoseSign1)?;
-
-        /* ==========================================================
-         *  Strict COSE decode
-         * ========================================================== */
-        let cose = CoseSign1::from_slice(&cose_bytes).map_err(OcpEatError::CoseSign1)?;
+        let cose = verify_tags(slice)?;
 
         /* ==========================================================
          *  Verify protected header
@@ -87,25 +84,40 @@ impl Evidence {
 /*                               Helper functions                              */
 /* -------------------------------------------------------------------------- */
 
-fn skip_cbor_tags(slice: &[u8]) -> OcpEatResult<Value> {
+fn verify_tags(slice: &[u8]) -> OcpEatResult<CoseSign1> {
     let mut value = Value::from_slice(slice).map_err(OcpEatError::CoseSign1)?;
 
     loop {
         match value {
-            Value::Tag(_, boxed) => value = *boxed,
-            Value::Bytes(bytes) => {
-                value = Value::from_slice(&bytes).map_err(OcpEatError::CoseSign1)?
+            // Verify allowed CBOR tags
+            Value::Tag(tag, boxed)
+                if tag == CBOR_TAG_COSE || tag == CBOR_TAG_CWT || tag == CBOR_TAG_COSE_SIGN1 =>
+            {
+                value = *boxed;
             }
-            Value::Array(_) => break,
+
+            // h'CoseSign1'bytes
+            Value::Bytes(bytes) => {
+                return CoseSign1::from_tagged_slice(&bytes).map_err(OcpEatError::CoseSign1);
+            }
+
+            // Direct COSE_Sign1 array 
+                let bytes = value.to_vec().map_err(OcpEatError::CoseSign1)?;
+
+                return CoseSign1::from_slice(&bytes).map_err(OcpEatError::CoseSign1);
+            }
+
+            Value::Tag(_tag, _) => {
+                return Err(OcpEatError::InvalidToken("Unexpected CBOR tag"));
+            }
+
             _ => {
                 return Err(OcpEatError::InvalidToken(
-                    "Invalid COSE_Sign1 structure: expected CBOR tag, byte string, or array",
+                    "Invalid COSE_Sign1 structure".into(),
                 ));
             }
         }
     }
-
-    Ok(value)
 }
 
 /// Extract leaf certificate DER from x5chain (label 33)
