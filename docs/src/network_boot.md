@@ -6,22 +6,17 @@ The network boot coprocessor acts as an intermediary between remote image server
 
 ## Motivation
 
-### Flash Dependency Risk
-- Boot failure if **both flashes are corrupted**
-
-### Recovery Challenge
-- Physical intervention is costly in **hyperscale environments**
-
-### Design Goals
-- Minimal **MCU ROM** footprint
-- Consistent with **OCP streaming boot model** for early firmware (Caliptra FMC + RT, SoC Manifest, MCU RT)
-- Secure image retrieval
-- Resilient fallback path
-
-### Solution
-- Use a **dedicated co-processor** with a lightweight network stack
-- Automatically configure networking via **DHCP**
-- Securely download **Caliptra early firmware images** into the Caliptra subsystem
+- **Flash Dependency Risk**: Boot failure if both flashes are corrupted
+- **Recovery Challenge**: Physical intervention is costly in hyperscale environments
+- **Design Goals**:
+  - Minimal MCU ROM footprint
+  - Consistent with OCP streaming boot model for early firmware (Caliptra FMC + RT, SoC Manifest, MCU RT)
+  - Secure image retrieval
+  - Resilient fallback path
+- **Solution**:
+  - Use a dedicated co-processor with a lightweight network stack
+  - Automatically configure networking via DHCP
+  - Securely download Caliptra early firmware images into the Caliptra subsystem
 
 ## System Architecture
 
@@ -58,8 +53,8 @@ sequenceDiagram
     participant IMG as Image Server
 
     MCU->>NET: Initiate boot request
-    NET->>IMG: DHCP Discovery
-    IMG-->>NET: DHCP Offer
+    NET->>IMG: Network Configuration Request (DHCPv4/DHCPv6 Discovery)
+    IMG-->>NET: Network Configuration Response (DHCPv4/DHCPv6 Offer)
     NET->>IMG: TFTP GET config file (TOC)
     IMG-->>NET: TOC (FW ID mappings)
     NET->>NET: Store FW ID to filename mappings
@@ -557,258 +552,69 @@ fn load_image_stream(mut stream: ImageStream, dest: ImageDestination) -> Result<
 
 The network boot coprocessor downloads a configuration file (TOC) that maps firmware IDs to filenames and metadata:
 
-```json
-{
-  "firmware_mappings": {
-    "0": { "filename": "caliptra-fmc-rt.bin", "size": 1048576 },
-    "1": { "filename": "soc-manifest.bin", "size": 65536 },
-    "2": { "filename": "mcu-runtime.bin", "size": 262144 },
-    "268435456": { "filename": "soc-pci-device.bin", "size": 524288 },
-    "268435457": { "filename": "soc-nvme-device.bin", "size": 262144 },
-    "268435458": { "filename": "soc-security-engine.bin", "size": 131072 }
-  }
-}
-```
+| TOC File Layout |
+| ------------ |
+| Header       |
+| Payload      |
 
-**Notes**:
-- The `filename` field specifies the TFTP path relative to the TFTP server root
+#### Header
+
+The Header section contains the metadata for the images stored in the flash.
+
+| Field          | Size (bytes) | Description                                                                                                                                |
+| -------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Magic Number   | 4            | A unique identifier to mark the start of the header.<br />The value must be `0x54465450` (`"TFTP"` in ASCII)                               |
+| Header Version | 2            | The header version format, allowing for backward compatibility if the package format changes over time.<br />(Current version is `0x0001`) |
+| Image Count    | 2            | The number of images.<br />Each image will have its own image information section.                                      |
+| Payload Offset | 4            | Offset in bytes of the header to where the first byte of the Payload is located.  |
+| Header Checksum | 4            | CRC-32 checksum calculated for the header excluding this field  |
+
+#### Payload
+
+The Payload contains the following fields:
+
+| Payload                        |
+| ------------------------------ |
+| Image Metadata (Caliptra FMC + RT) |
+| Image Metadata (SoC Manifest)      |
+| Image Metadata (MCU RT)            |
+| Image Metadata (SoC Image 1)       |
+| ...                            |
+| Image Metadata (SoC Image N)       |
+| Data(Caliptra FMC + RT)      |
+| Data(SoC Manifest)                   |
+| Data(MCU RT)                         |
+| Data(SoC Image 1)                    |
+| ...                            |
+| Data(SoC Image N)                    |
+
+##### Image Metadata
+
+The Image Metadata section is repeated for each image and provides detailed manifest data specific to that image.
+
+| Field               | Size (bytes) | Descr                                                                                  |
+| ------------------- | ------------ | -------------------------------------------------------------------------------------- |
+| Identifier          | 4            | Vendor selected unique value to distinguish between images.                            |
+|                     |              | `0x0001`: Caliptra FMC+RT                                                              |
+|                     |              | `0x0002`: SoC Manifest:                                                                |
+|                     |              | `0x0003`: MCU RT<br />`0x1000`-`0xFFFF` - Reserved for other Vendor-defined SoC images |
+| DataOffset          | 4            | Offset in bytes from byte 0 of the header to where the data begins.           |
+| Size                | 4            | Size in bytes of the data. This is the actual size of the data without padding.      |
+|                     |              | The data itself  should be 4-byte aligned and additional       |
+|                     |              | padding will be required to guarantee alignment.                                       |
+| Image Checksum      | 4            | CRC-32 checksum calculated for the binary image located at `DataOffset` |
+| Image Metadata Checksum | 4            | CRC-32 checksum calculated for the header excluding this field  |
+
+##### Data
+
+The data are appended after the Image Metadata section, and should be in the same order as their corresponding Image Metadata.
+
+| Field | Size (bytes) | Description                                                           |
+| ----- | ------------ | --------------------------------------------------------------------- |
+| Filename  | 64            | Specifies the TFTP path relative to the TFTP server root                                                        |
 
 ## Network Stack Implementation
 
-For the Network Boot Coprocessor implementation, **lwIP (Lightweight IP)** will be used with Rust bindings/wrappers to support DHCP and TFTP
+**lwIP (Lightweight IP)** will be used with Rust bindings/wrappers to support DHCP and TFTP
 
 **Repository**: https://git.savannah.nongnu.org/cgit/lwip.git
-
-## MCU and Network ROM Interface
-
-The interface between the MCU and Network ROM is integrator defined.
-
-For emulation purposes, a sample interprocess communication interface will be provided that uses a **shared external memory** and **memory-mapped registers** for synchronization. This section defines a generic message-passing interface that allows the MCU and Network ROM to exchange arbitrary messages.
-
-### Architecture Overview
-
-The MCU and Network ROM share a contiguous region of external memory organized as follows:
-
-```
-┌────────────────────────────────────────────┐
-│ Shared External Memory (MCU ↔ Network ROM) │
-├────────────────────────────────────────────┤
-│ Synchronization Registers (256 bytes)      │ ← Memory-mapped control registers
-├────────────────────────────────────────────┤
-│ Shared Message Buffer (8 KB)               │ ← Bidirectional message buffer
-├────────────────────────────────────────────┤
-│ Reserved for Future Use                    │
-└────────────────────────────────────────────┘
-```
-
-**Note**: Since communication is one-way at a time (either MCU → Network ROM or Network ROM → MCU), a single message buffer is sufficient. The LOCK bit in the control register ensures exclusive access.
-
-### Synchronization Registers
-
-Memory-mapped registers enable notification and handshaking between MCU and Network ROM. The LOCK bit provides mutual exclusion similar to mailbox designs.
-
-**Synchronization Register Layout (at base address `SHM_BASE`):**
-
-```
-Offset  Size  Name                          Description
-------  ----  ----                          -----------
-0x00    4     CTRL                          Control and status flags
-0x04    4     MSG_SIZE                      Size of message payload in bytes
-0x08    4     MSG_OFFSET                    Offset of message in shared buffer (typically 0)
-0x0C    4     SEQUENCE                      Sequence counter for message ordering
-0x10    4     INTERRUPT_ENABLE              Interrupt enable bits
-0x14    4     INTERRUPT_STATUS              Interrupt/event status bits
-0x18    4     ERROR_CODE                    Last error code (if applicable)
-0x1C    4     RESERVED                      For future use
-0x20    4     RESERVED                      For future use
-0x24    4     RESERVED                      For future use
-```
-
-**Control Register (CTRL) Bit Fields:**
-
-```
-Bit     Name                Description
----     ----                -----------
-[0]     LOCK                Mailbox lock (1=locked, 0=unlocked)
-                            - Sender acquires lock before writing message
-                            - Receiver releases lock after reading message
-[1]     DATA_READY          Message ready to process (set by sender after lock acquired)
-[2]     ERROR               Error occurred during processing
-[3]     DIRECTION           Message direction (0=MCU→Network ROM, 1=Network ROM→MCU)
-[4:31]  RESERVED            Reserved for future use
-```
-
-### Message Passing Protocol
-
-The protocol uses a LOCK-based mechanism for mutual exclusion, similar to mailbox designs. Since communication is one-way at a time, a single shared buffer serves both directions.
-
-#### Sending a Message
-
-**Sender Side (MCU or Network ROM):**
-1. Acquire lock: Write `1` to `CTRL[LOCK]` and verify it reads back as `1`
-   - If lock acquisition fails (reads `0`), retry or wait
-2. Set direction bit: `CTRL[DIRECTION]` = `0` (MCU→Network ROM) or `1` (Network ROM→MCU)
-3. Write message to shared buffer at offset `MSG_OFFSET` (typically 0)
-4. Update `MSG_SIZE` with actual message size in bytes
-5. Increment `SEQUENCE` counter for message ordering
-6. Set `CTRL[DATA_READY]` to `1` to signal message is ready
-7. Generate interrupt/notification (optional, implementation-dependent)
-8. Keep lock held until receiver acknowledges
-
-**Receiver Side (Network ROM or MCU):**
-1. Poll or wait for `CTRL[DATA_READY]` to be set
-2. Verify `CTRL[DIRECTION]` matches expected direction
-3. Read message size from `MSG_SIZE`
-4. Read message from shared buffer at offset `MSG_OFFSET`
-5. Process message
-6. Clear `CTRL[DATA_READY]` to acknowledge receipt
-7. Release lock: Write `0` to `CTRL[LOCK]`
-
-#### Request-Response Pattern
-
-For request-response communication:
-
-1. **Request**: Sender acquires lock, sends request, waits for response with lock held
-2. **Response**: Receiver processes request, writes response to same buffer, sets `DATA_READY`, releases lock
-3. **Completion**: Original sender reads response, clears `DATA_READY`, releases lock
-
-**Alternative (Lock Handoff)**:
-1. **Request**: Sender acquires lock, sends request, releases lock
-2. **Response**: Receiver waits for lock, acquires it, sends response
-3. **Completion**: Original sender waits for lock, reads response, releases lock
-
-### Example: Full MCU Message Handler
-
-```rust
-use portable_atomic::{AtomicU32, Ordering};
-use heapless::Vec;
-
-const SHM_BASE: usize = 0x50000000;
-const MSG_BUFFER_OFFSET: usize = 0x100;  // Offset to shared message buffer
-const BUFFER_SIZE: usize = 8192;          // 8 KB shared buffer
-
-// Register offsets
-const CTRL_REG: usize = 0x00;
-const MSG_SIZE_REG: usize = 0x04;
-const MSG_OFFSET_REG: usize = 0x08;
-const SEQUENCE_REG: usize = 0x0C;
-
-// Control register bit masks
-const CTRL_LOCK: u32 = 1 << 0;
-const CTRL_DATA_READY: u32 = 1 << 1;
-const CTRL_ERROR: u32 = 1 << 2;
-const CTRL_DIRECTION: u32 = 1 << 3;  // 0=MCU→Net, 1=Net→MCU
-
-pub struct NetworkRomInterface {
-    base: *const u32,
-}
-
-unsafe impl Send for NetworkRomInterface {}
-unsafe impl Sync for NetworkRomInterface {}
-
-impl NetworkRomInterface {
-    pub fn new(base: usize) -> Self {
-        Self {
-            base: base as *const u32,
-        }
-    }
-
-    fn read_register(&self, offset: usize) -> u32 {
-        unsafe { core::ptr::read_volatile(self.base.add(offset / 4)) }
-    }
-
-    fn write_register(&self, offset: usize, value: u32) {
-        unsafe { core::ptr::write_volatile(self.base.add(offset / 4) as *mut u32, value) }
-    }
-
-    /// Acquire the mailbox lock
-    fn acquire_lock(&self) -> Result<(), &'static str> {
-        // Attempt to acquire lock
-        self.write_register(CTRL_REG, CTRL_LOCK);
-
-        // Verify lock was acquired
-        let ctrl = self.read_register(CTRL_REG);
-        if ctrl & CTRL_LOCK != 0 {
-            Ok(())
-        } else {
-            Err("Failed to acquire lock")
-        }
-    }
-
-    /// Release the mailbox lock
-    fn release_lock(&self) {
-        let ctrl = self.read_register(CTRL_REG);
-        self.write_register(CTRL_REG, ctrl & !CTRL_LOCK);
-    }
-
-    /// Send a message to the Network ROM
-    pub fn send_message(&self, msg: &[u8]) -> Result<(), &'static str> {
-        // Acquire lock with retry
-        loop {
-            if self.acquire_lock().is_ok() {
-                break;
-            }
-            core::hint::spin_loop();
-        }
-
-        // Set direction: MCU → Network ROM
-        let mut ctrl = self.read_register(CTRL_REG);
-        ctrl &= !CTRL_DIRECTION;  // Clear direction bit
-        self.write_register(CTRL_REG, ctrl);
-
-        // Write message to shared buffer
-        let base_ptr = (SHM_BASE + MSG_BUFFER_OFFSET) as *mut u8;
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                msg.as_ptr(),
-                base_ptr,
-                msg.len().min(BUFFER_SIZE),
-            );
-        }
-
-        // Update message size and sequence
-        self.write_register(MSG_SIZE_REG, msg.len() as u32);
-        let seq = self.read_register(SEQUENCE_REG);
-        self.write_register(SEQUENCE_REG, seq.wrapping_add(1));
-
-        // Signal data ready
-        ctrl = self.read_register(CTRL_REG);
-        self.write_register(CTRL_REG, ctrl | CTRL_DATA_READY);
-
-        Ok(())
-    }
-
-    /// Receive a message from the Network ROM
-    pub fn receive_message(&self) -> Result<Vec<u8, 8192>, &'static str> {
-        // Wait for data ready with expected direction (Network ROM → MCU)
-        loop {
-            let ctrl = self.read_register(CTRL_REG);
-            if (ctrl & CTRL_DATA_READY != 0) && (ctrl & CTRL_DIRECTION != 0) {
-                break;
-            }
-            core::hint::spin_loop();
-        }
-
-        // Read message size
-        let size = self.read_register(MSG_SIZE_REG) as usize;
-
-        // Read message from shared buffer
-        let base_ptr = (SHM_BASE + MSG_BUFFER_OFFSET) as *const u8;
-        let mut msg = Vec::new();
-        unsafe {
-            let slice = core::slice::from_raw_parts(base_ptr, size);
-            msg.extend_from_slice(slice).map_err(|_| "Buffer overflow")?;
-        }
-
-        // Clear data ready flag
-        let ctrl = self.read_register(CTRL_REG);
-        self.write_register(CTRL_REG, ctrl & !CTRL_DATA_READY);
-
-        // Release lock
-        self.release_lock();
-
-        Ok(msg)
-    }
-}
-```
-
