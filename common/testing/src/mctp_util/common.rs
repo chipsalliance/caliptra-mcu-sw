@@ -324,6 +324,10 @@ impl MctpUtil {
                             pkts.clear();
                             break;
                         }
+                    } else {
+                        // No retry limit (waiting indefinitely) - sleep to avoid busy-wait
+                        // which can starve other threads and cause non-deterministic timing
+                        sleep_emulator_ticks(100_000);
                     }
                 }
                 I3cControllerState::ReceivePrivateRead => {
