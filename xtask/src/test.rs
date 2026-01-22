@@ -14,35 +14,16 @@ pub(crate) fn test() -> Result<()> {
 
 fn cargo_test() -> Result<()> {
     // Run all tests with nextest for proper sequencing, excluding ROM packages that don't have tests
-    println!("Running: cargo nextest run");
+    println!("Running: cargo test --package tests-integration");
     let nextest_status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
         .args([
-            "nextest",
-            "run",
-            "--workspace",
-            "--exclude",
-            "mcu-rom-emulator",
-            "--exclude",
-            "mcu-rom-fpga",
-            "--exclude",
-            "mcu-runtime-emulator",
-            "--exclude",
-            "mcu-runtime-fpga",
-            "--exclude",
-            "emulator",
-            "--exclude",
-            "test-hello",
-            "--exclude",
-            "user-app",
-            "--exclude",
-            "example-app",
-            "--exclude",
-            "libtock_unittest",
-            "--exclude",
-            "syscalls_tests",
-            "--test-threads=1",
-            "--profile=nightly-emulator",
+            "test",
+            "--package",
+            "tests-integration",
+            "--lib",
+            "--",
+            "test::test_firmware_update",
         ])
         .status()?;
 
