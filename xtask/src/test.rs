@@ -18,7 +18,8 @@ fn cargo_test() -> Result<()> {
     let nextest_status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
         .args([
-            "test",
+            "nextest",
+            "run",
             "--package",
             "tests-integration",
             "--lib",
