@@ -23,6 +23,7 @@ pub static TICK_LOCK: Mutex<()> = Mutex::new(());
 pub static TICK_COND: Condvar = Condvar::new();
 
 // Condition variable for I3C data availability - signaled when socket server writes data
+pub static I3C_DATA_LOCK: Mutex<bool> = Mutex::new(false);
 pub static I3C_DATA_COND: Condvar = Condvar::new();
 
 pub fn wait_for_runtime_start() {
@@ -88,6 +89,9 @@ pub fn update_ticks(ticks: u64) {
 /// Notify that I3C data is available. Called by the I3C socket server when
 /// it writes data to the socket.
 pub fn notify_i3c_data() {
+    // Set the flag to indicate data is available
+    let mut data_ready = I3C_DATA_LOCK.lock().unwrap();
+    *data_ready = true;
     I3C_DATA_COND.notify_all();
 }
 
@@ -108,27 +112,46 @@ pub enum WaitResult {
 /// - If `timeout_ticks` is `None`, waits indefinitely for data notification.
 /// - Returns immediately if emulator stops running.
 pub fn wait_for_i3c_data(timeout_ticks: Option<u64>) -> WaitResult {
-    let start = MCU_TICKS.load(Ordering::Relaxed);
+    let start_ticks = MCU_TICKS.load(Ordering::Relaxed);
 
     // Check if emulator is still running
     if !MCU_RUNNING.load(Ordering::Relaxed) {
         return WaitResult::EmulatorStopped;
     }
 
-    // Check timeout if specified
+    // Acquire the I3C data lock
+    let mut data_ready = I3C_DATA_LOCK.lock().unwrap();
+
+    // Check if data is already available (notification happened before we started waiting)
+    if *data_ready {
+        *data_ready = false;
+        return WaitResult::DataNotified;
+    }
+
+    // Wait on I3C data notification with a short wall-clock timeout
+    // The short timeout allows us to periodically check the emulator tick-based timeout
+    let (mut guard, _timeout_result) =
+        I3C_DATA_COND.wait_timeout(data_ready, Duration::from_millis(10)).unwrap();
+
+    // Check if data was notified
+    if *guard {
+        *guard = false;
+        return WaitResult::DataNotified;
+    }
+
+    // Check if emulator stopped
+    if !MCU_RUNNING.load(Ordering::Relaxed) {
+        return WaitResult::EmulatorStopped;
+    }
+
+    // Check if we've exceeded the emulator tick-based timeout
     if let Some(timeout) = timeout_ticks {
-        let now = MCU_TICKS.load(Ordering::Relaxed);
-        if now.saturating_sub(start) >= timeout {
+        let elapsed = MCU_TICKS.load(Ordering::Relaxed).saturating_sub(start_ticks);
+        if elapsed >= timeout {
             return WaitResult::Timeout;
         }
     }
 
-    // Wait on I3C data notification with a short wall-clock timeout
-    // This handles the case where we might miss a notification
-    let lock = TICK_LOCK.lock().unwrap();
-    let _ = I3C_DATA_COND.wait_timeout(lock, Duration::from_millis(10));
-
-    // After waking up, return to let caller check for data
-    // The caller will call us again if no data is available
+    // No data yet, but no timeout either - caller should retry
     WaitResult::DataNotified
 }
