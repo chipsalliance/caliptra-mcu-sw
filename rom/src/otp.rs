@@ -12,36 +12,41 @@ use crate::{LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_OFFSET};
 
 // TODO: use the Lifecycle controller to read the Lifecycle state
 
+// TODO: this error mask is dependent on the specific fuse map
 const OTP_STATUS_ERROR_MASK: u32 = (1 << 22) - 1;
 const OTP_CONSISTENCY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_INTEGRITY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_CHECK_TIMEOUT: u32 = 0x10_0000;
+const OTP_PENDING_CHECK_MAX_ITERATIONS: u32 = 1_000_000;
 
 pub struct Otp {
-    enable_consistency_check: bool,
-    enable_integrity_check: bool,
     registers: StaticRef<otp_ctrl::regs::OtpCtrl>,
 }
 
 impl Otp {
-    pub const fn new(
-        enable_consistency_check: bool,
-        enable_integrity_check: bool,
-        registers: StaticRef<otp_ctrl::regs::OtpCtrl>,
-    ) -> Self {
-        Otp {
-            enable_consistency_check,
-            enable_integrity_check,
-            registers,
-        }
+    pub const fn new(registers: StaticRef<otp_ctrl::regs::OtpCtrl>) -> Self {
+        Otp { registers }
     }
 
     pub fn volatile_lock(&self) {
         self.registers.vendor_pk_hash_volatile_lock.set(1);
     }
 
-    pub fn init(&self) -> McuResult<()> {
-        romtime::println!("[mcu-rom-otp] Initializing OTP controller...");
+    pub fn wait_for_not_pending(&self) -> McuResult<()> {
+        for _ in 0..OTP_PENDING_CHECK_MAX_ITERATIONS {
+            if !self
+                .registers
+                .otp_status
+                .is_set(otp_ctrl::bits::OtpStatus::CheckPending)
+            {
+                return Ok(());
+            }
+        }
+        romtime::println!("[mcu-rom-otp] OTP pending check exceeded maximum iterations");
+        Err(McuError::ROM_OTP_PENDING_TIMEOUT)
+    }
+
+    pub fn check_error_and_idle(&self) -> McuResult<()> {
         if self.registers.otp_status.get() & OTP_STATUS_ERROR_MASK != 0 {
             romtime::println!(
                 "[mcu-rom-otp] OTP error: {}",
@@ -60,27 +65,47 @@ impl Otp {
             return Err(McuError::ROM_OTP_INIT_NOT_IDLE);
         }
 
+        Ok(())
+    }
+
+    pub fn init(
+        &self,
+        enable_consistency_check: bool,
+        enable_integrity_check: bool,
+        check_timeout_override: Option<u32>,
+    ) -> McuResult<()> {
+        romtime::println!("[mcu-rom-otp] Initializing OTP controller...");
+
+        self.wait_for_not_pending()?;
+        self.check_error_and_idle()?;
+
+        let check_timeout = check_timeout_override.unwrap_or(OTP_CHECK_TIMEOUT);
+        romtime::println!("[mcu-rom-otp] Setting check timeout to {}", check_timeout);
+        self.registers.check_timeout.set(check_timeout);
+
         // Enable periodic background checks
-        if self.enable_consistency_check {
+        if enable_consistency_check {
             romtime::println!("[mcu-rom-otp] Enabling consistency check period");
             self.registers
                 .consistency_check_period
                 .set(OTP_CONSISTENCY_CHECK_PERIOD_MASK);
         }
-        if self.enable_integrity_check {
-            romtime::println!("mcu-rom-otp] Enabling integrity check period");
+        if enable_integrity_check {
+            romtime::println!("[mcu-rom-otp] Enabling integrity check period");
             self.registers
                 .integrity_check_period
                 .set(OTP_INTEGRITY_CHECK_PERIOD_MASK);
         }
-        romtime::println!("mcu-rom-otp] Enabling check timeout");
-        self.registers.check_timeout.set(OTP_CHECK_TIMEOUT);
 
         // Disable modifications to the background checks
         romtime::println!("[mcu-rom-otp] Disabling check modifications");
         self.registers
             .check_regwen
             .write(otp_ctrl::bits::CheckRegwen::Regwen::CLEAR);
+
+        self.wait_for_not_pending()?;
+        self.check_error_and_idle()?;
+
         romtime::println!("[mcu-rom-otp] Done init");
         Ok(())
     }
