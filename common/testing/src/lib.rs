@@ -130,8 +130,9 @@ pub fn wait_for_i3c_data(timeout_ticks: Option<u64>) -> WaitResult {
 
     // Wait on I3C data notification with a short wall-clock timeout
     // The short timeout allows us to periodically check the emulator tick-based timeout
-    let (mut guard, _timeout_result) =
-        I3C_DATA_COND.wait_timeout(data_ready, Duration::from_millis(10)).unwrap();
+    let (mut guard, _timeout_result) = I3C_DATA_COND
+        .wait_timeout(data_ready, Duration::from_millis(10))
+        .unwrap();
 
     // Check if data was notified
     if *guard {
@@ -146,7 +147,9 @@ pub fn wait_for_i3c_data(timeout_ticks: Option<u64>) -> WaitResult {
 
     // Check if we've exceeded the emulator tick-based timeout
     if let Some(timeout) = timeout_ticks {
-        let elapsed = MCU_TICKS.load(Ordering::Relaxed).saturating_sub(start_ticks);
+        let elapsed = MCU_TICKS
+            .load(Ordering::Relaxed)
+            .saturating_sub(start_ticks);
         if elapsed >= timeout {
             return WaitResult::Timeout;
         }
