@@ -56,9 +56,9 @@ The Image Information section is repeated for each image and provides detailed m
 | Field               | Size (bytes) | Descr                                                                                  |
 | ------------------- | ------------ | -------------------------------------------------------------------------------------- |
 | Identifier          | 4            | Vendor selected unique value to distinguish between images.                            |
-|                     |              | `0x0001`: Caliptra FMC+RT                                                              |
-|                     |              | `0x0002`: SoC Manifest:                                                                |
-|                     |              | `0x0003`: MCU RT<br />`0x1000`-`0xFFFF` - Reserved for other Vendor-defined SoC images |
+|                     |              | `0x00000001`: Caliptra FMC+RT                                                              |
+|                     |              | `0x00000002`: SoC Manifest                                                                |
+|                     |              | `0x00000003`: MCU RT<br />`0x00001000`-`0xFFFFFFFF` - Reserved for other Vendor-defined SoC images |
 | ImageLocationOffset | 4            | Offset in bytes from byte 0 of the header to where the image content begins.           |
 | Size                | 4            | Size in bytes of the image. This is the actual size of the image without padding.      |
 |                     |              | The image itself as written to the flash should be 4-byte aligned and additional       |
