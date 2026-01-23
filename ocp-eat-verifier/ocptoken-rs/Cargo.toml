@@ -7,7 +7,7 @@ edition = "2021"
 authors = ["Caliptra Contributors"]
 
 [dependencies]
-ciborium = "0.2"
+ciborium.workspace = true
 coset.workspace = true
 hex.workspace = true
 thiserror.workspace = true
