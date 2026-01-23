@@ -47,7 +47,7 @@ These commands support a wide range of functionalities, including querying devic
 | MC_SHA_UPDATE                     | 0x4D43_5355 ("MCSU") | Continues a SHA computation started by `MC_SHA_INIT` or another `MC_SHA_UPDATE`.                   |
 | MC_SHA_FINAL                      | 0x4D43_5346 ("MCSF") | Finalizes the computation of a SHA and produces the hash of all the data.                          |
 | MC_HMAC                           | 0x4D43_484D ("MCHM") | Computes an HMAC according to RFC 2104.                                                            |
-| MC_HMAC_KDF_COUNTER               | 0x4D43_4B43 ("MCKC") | Computes HMAC KDF in Counter Mode (RFC 5869, NIST SP800-108).                                      |
+| MC_HMAC_KDF_COUNTER               | 0x4D43_4B43 ("MCKC") | Computes HMAC KDF in Counter Mode as specified in NIST SP800-108.                                  |
 | MC_HKDF_EXTRACT                   | 0x4D43_4B54 ("MCKT") | Implements HKDF-Extract as specified in RFC 5869.                                                  |
 | MC_HKDF_EXPAND                    | 0x4D43_4B50 ("MCKP") | Implements HKDF-Expand as specified in RFC 5869.                                                   |
 | MC_AES_ENCRYPT_INIT               | 0x4D43_4349 ("MCCI") | Starts an AES encryption operation.                                                                |

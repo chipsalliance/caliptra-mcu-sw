@@ -4611,6 +4611,8 @@ dependencies = [
  "fips204",
  "flash-image",
  "hex",
+ "hkdf",
+ "hmac",
  "lazy_static",
  "log",
  "mcu-builder",
