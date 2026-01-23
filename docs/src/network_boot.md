@@ -1,8 +1,8 @@
 # Network Recovery Boot
 
-This document outlines the design for a lightweight network recovery boot utility for the Caliptra subsystem. The system enables the Caliptra SS to download firmware images over the network through a dedicated Network Boot Coprocessor within a ROM environment, providing a resilient fallback path when flash memory is corrupted.
+This document outlines the design for a lightweight network recovery boot mechanism for the Caliptra subsystem. The system enables the Caliptra SS to download firmware images over the network through a dedicated Network Boot Coprocessor within a ROM environment, providing a resilient fallback path when flash memory is corrupted.
 
-The network boot coprocessor acts as an intermediary between remote image servers and the Caliptra SS, handling network communications including DHCP configuration, TFTP server discovery, and firmware image downloads. The system supports downloading multiple firmware components including Caliptra FMC+RT images, SoC manifests, and MCU runtime images through a firmware ID-based mapping system.
+The network boot coprocessor acts as an intermediary between remote image servers and the Caliptra SS, handling network communications including DHCP configuration, TFTP server discovery, and firmware image downloads. The system supports downloading multiple firmware components that includes the Caliptra SS and SoC images through a firmware ID-based mapping system.
 
 ## Motivation
 
@@ -35,9 +35,9 @@ flowchart LR
         Mailbox <--> MCU_RT
     end
 
-    MCU_ROM <--> Network_ROM["Network ROM<br/>- DHCP<br/>- TFTP Client<br/>- FW ID Mapping"]
+    MCU_ROM <--> Network_ROM["Network ROM<br/>- DHCP Client<br/>- TFTP Client<br/>- FW ID Mapping"]
     MCU_RT <--> Network_ROM
-    Network_ROM <--> Image_Server["Image Server<br/>- Image Store<br/>- DHCP<br/>- TFTP Server<br/>- Config File"]
+    Network_ROM <--> Image_Server["Image Server<br/>- Image Store<br/>- DHCP Server<br/>- TFTP Server<br/>- Config File"]
 ```
 
 ## Network Recovery Boot Flow
@@ -47,7 +47,6 @@ The following diagram illustrates the high-level flow using the `BootSourceProvi
 
 ```mermaid
 sequenceDiagram
-    participant CRIF as Caliptra Recovery I/F
     participant MCU as MCU ROM
     participant NET as Network ROM<br>(BootSourceProvider)
     participant IMG as Image Server
@@ -62,6 +61,7 @@ sequenceDiagram
 ```
 
 - **Early firmware image transfer**
+
 Once the boot source is initialized, the MCU ROM uses the `BootSourceProvider` methods to fetch each firmware component:
 
 ```mermaid
@@ -102,7 +102,6 @@ This section describes the flow for loading and authenticating SoC images at run
 
 ```mermaid
 sequenceDiagram
-    participant CORE as Caliptra RT
     participant MCURT as MCU RT
     participant NET as Network ROM<br>(BootSourceProvider)
     participant IMG as Image Server
@@ -184,7 +183,7 @@ The boot source provider supports a minimal set of protocols optimized for the C
     - Option 67: Bootfile name (path to TOC or image)
     - Optional: Option 43 (Vendor-Specific) for custom parameters
 - **DHCPv6 (RFC 5970)**
-    - Option 59: Bootfile URL (e.g., `tftp://server/path/to/toc.json`)
+    - Option 59: Bootfile URL (e.g., `tftp://server/path/to/toc.bin`)
     - Option 60: Bootfile Parameters (optional, for additional metadata)
     - Note: DHCPv6 does not define a separate TFTP server option; use Bootfile URL
 
@@ -194,7 +193,7 @@ The Boot Source Provider Interface defines a generic contract for boot image pro
 
 ### Messaging Protocol
 
-The boot source provider communication uses a simple request-response messaging protocol. The following section defines the message types, packet formats, and field definitions.
+The boot source provider communication uses a simple request-response messaging protocol, with the MCU ROM initiating requests and the `BootSourceProvider` responding. The following section defines the message types, packet formats, and field definitions.
 
 ### Message Types and Packet Formats
 
@@ -202,117 +201,104 @@ The boot source provider communication uses a simple request-response messaging 
 Initiates the boot source discovery process.
 
 **Request Packet:**
-```
-Offset  Size  Field              Description
-------  ----  -----              -----------
-0       1     Message Type       0x01 - InitiateBoot
-1       3     Reserved           Must be 0
-4       4     Protocol Version   Version of the messaging protocol
-8       N     Source Specific    Source-specific initialization parameters
-```
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | Message Type | 0x01 - InitiateBoot |
+| 1 | 3 | Reserved | Must be 0 |
+| 4 | 4 | Protocol Version | Version of the messaging protocol |
+| 8 | N | Source Specific | Source-specific initialization parameters |
 
 **Response Packet:**
-```
-Offset  Size  Field              Description
-------  ----  -----              -----------
-0       1     Message Type       0x81 - InitiateBoot Response
-1       1     Status             0x00=Started, 0x01=InProgress, 0x02–0xFF=Error code
-2       2     Reserved           Must be 0
-```
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | Message Type | 0x81 - InitiateBoot Response |
+| 1 | 1 | Status | 0x00=Started, 0x01=InProgress, 0x02–0xFF=Error code |
+| 2 | 2 | Reserved | Must be 0 |
 
 #### 2. Get Image Metadata Request
 Queries metadata about a specific firmware image.
 
 **Request Packet:**
-```
-Offset  Size  Field              Description
-------  ----  -----              -----------
-0       1     Message Type       0x02 - Image Info Request
-1       1     Firmware ID        0=CaliptraFmcRt, 1=SocManifest, 2=McuRt, 3..-SoC
-2       2     Reserved           Must be 0
-```
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | Message Type | 0x02 - Image Info Request |
+| 1 | 1 | Firmware ID | 0=CaliptraFmcRt, 1=SocManifest, 2=McuRt, 0x10000000..-SoC |
+| 2 | 2 | Reserved | Must be 0 |
 
 **Response Packet:**
-```
-Offset  Size  Field              Description
-------  ----  -----              -----------
-0       1     Message Type       0x82 - Image Info Response
-1       1     Status             0x00=Success, non-zero=Error
-2       2     Reserved           Must be 0
-4       4     Image Size         Total size in bytes
-8       4     Checksum Type      0=None, 1=SHA256, 2=Other
-12      32    Checksum           Checksum/hash of the image
-44      4     Version            Image version number
-48      4     Flags              Bit 0: Compressed, Bit 1: Signed, etc.
-52      4     Reserved           For future use
-```
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | Message Type | 0x82 - Image Info Response |
+| 1 | 1 | Status | 0x00=Success, non-zero=Error |
+| 2 | 2 | Reserved | Must be 0 |
+| 4 | 4 | Image Size | Total size in bytes |
+| 8 | 32 | Checksum | Checksum of the image |
+| 40 | 4 | Version | Image version number |
+| 44 | 4 | Flags | Bit 0: Compressed, Bit 1: Signed, etc. |
+| 48 | 4 | Reserved | For future use |
 
 #### 3. Image Download Request
-Initiates download of a firmware image.
+Initiates download of a firmware image. The image is transferred in chunks. The MCU ROM and BootSourceProvider should share a fixed CHUNK_SIZE configuration to indicate the maximum number of bytes that can be transferred in a chunk.
 
 **Request Packet:**
-```
-Offset  Size  Field              Description
-------  ----  -----              -----------
-0       1     Message Type       0x03 - Image Download Request
-1       1     Firmware ID        0=CaliptraFmcRt, 1=SocManifest, 2=McuRt
-2       2     Reserved           Must be 0
-4       4     Reserved           Can be extended to support flash-based boot
-8       4     Reserved           Can be extended to support flash-based boot
-```
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | Message Type | 0x03 - Image Download Request |
+| 1 | 1 | Firmware ID | 0=CaliptraFmcRt, 1=SocManifest, 2=McuRt, 0x10000000..-SoC |
+| 2 | 2 | Reserved | Must be 0 |
+| 4 | 4 | Reserved | Can be extended to support flash-based boot |
+| 8 | 4 | Reserved | Can be extended to support flash-based boot |
 
 **Response Packet (per chunk):**
-```
-Offset  Size  Field              Description
-------  ----  -----              -----------
-0       1     Message Type       0x83 - Image Chunk
-1       1     Status             0x00=Success, non-zero=Error
-2       2     Sequence Number    For ordered delivery
-4       4     Offset             Current byte offset in image
-8       4     Chunk Size         Size of data in this chunk
-12      4     Total Size         Total image size (0 if unknown)
-16      N     Image Data         Chunk payload (size = Chunk Size field)
-```
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | Message Type | 0x83 - Image Chunk |
+| 1 | 1 | Status | 0x00=Success, non-zero=Error |
+| 2 | 2 | Sequence Number | For ordered delivery |
+| 4 | 4 | Offset | Current byte offset in image |
+| 8 | 4 | Chunk Size | Size of data in this chunk. If value is less than CHUNK_SIZE, then this is the last chunk. |
+| 12 | N | Image Data | Chunk payload (size = Chunk Size field) |
 
 #### 4. Chunk Acknowledgment
 Acknowledges receipt of an image chunk and provides flow control.
 
 **Request Packet:**
-```
-Offset  Size  Field              Description
-------  ----  -----              -----------
-0       1     Message Type       0x04 - Chunk ACK
-1       1     Firmware ID        Firmware being transferred
-2       2     Sequence Number    Sequence number to be acknowledged
-4       4     Reserved
-8       4     Flags              Bit 0: Ready for next, Bit 1: Error detected
-```
 
-
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | Message Type | 0x04 - Chunk ACK |
+| 1 | 1 | Firmware ID | Firmware being transferred |
+| 2 | 2 | Sequence Number | Sequence number to be acknowledged |
+| 4 | 4 | Reserved | |
+| 8 | 4 | Flags | Bit 0: Ready for next, Bit 1: Error detected |
 
 #### 5. Finalize
-Notifies the boot source of recovery completion or error.
+Notifies the boot source of recovery completion or error. This allows the `BootSourceProvider` to free up any allocated resources, terminate connections and stop services (if any).
 
 **Request Packet:**
-```
-Offset  Size  Field              Description
-------  ----  -----              -----------
-0       1     Message Type       0x05 - Finalize
-1       1     Status             0x00=Success, non-zero=Error
-2       2     Error Code         Specific error code if Status != 0
-4       4     Reserved           For future use
-```
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | Message Type | 0x05 - Finalize |
+| 1 | 1 | Status | 0x00=Success, non-zero=Error |
+| 2 | 2 | Error Code | Specific error code if Status != 0 |
+| 4 | 4 | Reserved | For future use |
 
 **Response Packet:**
-```
-Offset  Size  Field              Description
-------  ----  -----              -----------
-0       1     Message Type       0x85 - Finalize ACK
-1       1     Status             0x00=Acknowledged, non-zero=Error
-2       2     Reserved           Must be 0
-4       4     Cleanup Flags      Bit 0: Clear TOC, Bit 1: Reset connection
-8       4     Reserved           For future use
-```
+
+| Offset | Size | Field | Description |
+|--------|------|-------|-------------|
+| 0 | 1 | Message Type | 0x85 - Finalize ACK |
+| 1 | 1 | Status | 0x00=Acknowledged, non-zero=Error |
+| 2 | 2 | Reserved | Must be 0 |
+| 4 | 4 | Cleanup Flags | Bit 0: Clear TOC, Bit 1: Reset connection |
+| 8 | 4 | Reserved | For future use |
 
 ### Message Summary Table
 
@@ -567,7 +553,7 @@ The Header section contains the metadata for the images stored in the flash.
 | Header Version | 2            | The header version format, allowing for backward compatibility if the package format changes over time.<br />(Current version is `0x0001`) |
 | Image Count    | 2            | The number of images.<br />Each image will have its own image information section.                                      |
 | Payload Offset | 4            | Offset in bytes of the header to where the first byte of the Payload is located.  |
-| Header Checksum | 4            | CRC-32 checksum calculated for the header excluding this field  |
+| Header Checksum | 4            | Checksum calculated for the header excluding this field  |
 
 #### Payload
 
@@ -602,8 +588,8 @@ The Image Metadata section is repeated for each image and provides detailed mani
 | Size                | 4            | Size in bytes of the data. This is the actual size of the data without padding.      |
 |                     |              | The data itself  should be 4-byte aligned and additional       |
 |                     |              | padding will be required to guarantee alignment.                                       |
-| Image Checksum      | 4            | CRC-32 checksum calculated for the binary image located at `DataOffset` |
-| Image Metadata Checksum | 4            | CRC-32 checksum calculated for the header excluding this field  |
+| Image Checksum      | 4            | Checksum calculated for the binary image located at `DataOffset` |
+| Image Metadata Checksum | 4            | Checksum calculated for the header excluding this field  |
 
 ##### Data
 
