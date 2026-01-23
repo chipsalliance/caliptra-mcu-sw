@@ -4628,6 +4628,7 @@ dependencies = [
  "pldm-common",
  "pldm-fw-pkg",
  "pldm-ua",
+ "rand 0.8.5",
  "random-port",
  "registers-generated",
  "romtime",
