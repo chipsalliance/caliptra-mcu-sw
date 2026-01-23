@@ -1,8 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::error::{OcpEatError, OcpEatResult};
-use ciborium::value::Value;
-use coset::{iana::Algorithm, CborSerializable, CoseSign1, Header, TaggedCborSerializable};
+use coset::{
+    cbor::value::Value, iana::Algorithm, CborSerializable, CoseSign1, Header,
+    TaggedCborSerializable,
+};
 use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint},
@@ -43,7 +45,7 @@ impl Evidence {
         /* ==========================================================
          *  Verify tags & decode COSE_Sign1
          * ========================================================== */
-        let cose = verify_tags(slice)?;
+        let cose = parse_tagged_evidence(slice)?;
 
         /* ==========================================================
          *  Verify protected header
@@ -84,36 +86,43 @@ impl Evidence {
 /*                               Helper functions                              */
 /* -------------------------------------------------------------------------- */
 
-fn verify_tags(slice: &[u8]) -> OcpEatResult<CoseSign1> {
+fn parse_tagged_evidence(slice: &[u8]) -> OcpEatResult<CoseSign1> {
     let mut value = Value::from_slice(slice).map_err(OcpEatError::CoseSign1)?;
+
+    // Expected tag order
+    let mut expected_tags = [CBOR_TAG_COSE, CBOR_TAG_CWT, CBOR_TAG_COSE_SIGN1].into_iter();
 
     loop {
         match value {
-            // Verify allowed CBOR tags
-            Value::Tag(tag, boxed)
-                if tag == CBOR_TAG_COSE || tag == CBOR_TAG_CWT || tag == CBOR_TAG_COSE_SIGN1 =>
-            {
+            Value::Tag(tag, boxed) => {
+                let expected = expected_tags
+                    .next()
+                    .ok_or(OcpEatError::InvalidToken("Unexpected extra CBOR tag"))?;
+
+                if tag != expected {
+                    return Err(OcpEatError::InvalidToken(
+                        "CBOR tags are not in required order (55799 → 61 → 18)",
+                    ));
+                }
+
                 value = *boxed;
             }
 
-            // h'CoseSign1'bytes
+            // Tagged COSE_Sign1
             Value::Bytes(bytes) => {
                 return CoseSign1::from_tagged_slice(&bytes).map_err(OcpEatError::CoseSign1);
             }
 
-            // Direct COSE_Sign1 array 
+            // Bare COSE_Sign1 array
+            Value::Array(_) => {
                 let bytes = value.to_vec().map_err(OcpEatError::CoseSign1)?;
 
                 return CoseSign1::from_slice(&bytes).map_err(OcpEatError::CoseSign1);
             }
 
-            Value::Tag(_tag, _) => {
-                return Err(OcpEatError::InvalidToken("Unexpected CBOR tag"));
-            }
-
             _ => {
                 return Err(OcpEatError::InvalidToken(
-                    "Invalid COSE_Sign1 structure".into(),
+                    "Invalid tagged COSE_Sign1 structure",
                 ));
             }
         }
