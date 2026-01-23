@@ -3000,6 +3000,7 @@ name = "mcu-mbox-common"
 version = "0.1.0"
 dependencies = [
  "caliptra-api",
+ "caliptra-image-types",
  "zerocopy",
 ]
 

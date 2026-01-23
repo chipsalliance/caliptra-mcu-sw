@@ -22,9 +22,10 @@ use mcu_mbox_common::messages::{
     McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq,
     McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
     McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuMailboxResp,
-    McuRandomGenerateReq, McuRandomGenerateResp, McuRandomStirReq, McuRandomStirResp,
-    McuShaFinalReq, McuShaFinalResp, McuShaInitReq, McuShaInitResp, McuShaUpdateReq,
-    DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
+    McuMldsaCmkPublicKeyReq, McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp,
+    McuMldsaCmkVerifyReq, McuMldsaCmkVerifyResp, McuRandomGenerateReq, McuRandomGenerateResp,
+    McuRandomStirReq, McuRandomStirResp, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
+    McuShaInitResp, McuShaUpdateReq, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
 };
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -337,6 +338,37 @@ impl<'a> CmdInterface<'a> {
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_ECDSA_VERIFY.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            // Add MLDSA CMK commands
+            CommandId::MC_MLDSA_CMK_PUBLIC_KEY => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuMldsaCmkPublicKeyResp>()];
+                self.handle_crypto_passthrough::<McuMldsaCmkPublicKeyReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_MLDSA_PUBLIC_KEY.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_MLDSA_CMK_SIGN => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuMldsaCmkSignResp>()];
+                self.handle_crypto_passthrough::<McuMldsaCmkSignReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_MLDSA_SIGN.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_MLDSA_CMK_VERIFY => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuMldsaCmkVerifyResp>()];
+                self.handle_crypto_passthrough::<McuMldsaCmkVerifyReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_MLDSA_VERIFY.into(),
                     &mut resp_bytes,
                 )
                 .await

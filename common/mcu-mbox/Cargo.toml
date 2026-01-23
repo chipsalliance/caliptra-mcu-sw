@@ -8,4 +8,5 @@ authors.workspace = true
 
 [dependencies]
 caliptra-api.workspace = true
+caliptra-image-types = { workspace = true, default-features = false }
 zerocopy.workspace = true

@@ -5,6 +5,8 @@
 pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use aes_gcm::{aead::AeadMutInPlace, Aes256Gcm, Key, KeyInit};
+    use fips204::ml_dsa_87;
+    use fips204::traits::Signer;
     use mcu_hw_model::mcu_mbox_transport::{
         McuMailboxError, McuMailboxResponse, McuMailboxTransport,
     };
@@ -17,26 +19,30 @@ pub mod test {
         CmAesGcmEncryptInitReq, CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateRespHeader,
         CmAesMode, CmAesRespHeader, CmDeleteReq, CmEcdhFinishReq, CmEcdhGenerateReq,
         CmEcdhGenerateResp, CmEcdsaPublicKeyReq, CmEcdsaSignReq, CmEcdsaVerifyReq, CmImportReq,
-        CmKeyUsage, CmRandomGenerateReq, CmRandomStirReq, CmShaFinalReq, CmShaFinalResp,
-        CmShaInitReq, CmShaUpdateReq, Cmk, DeviceCapsReq, DeviceCapsResp, DeviceIdReq,
-        DeviceIdResp, DeviceInfoReq, DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp,
-        MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq,
-        McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq,
-        McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq,
-        McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq,
-        McuCmDeleteReq, McuCmImportReq, McuCmImportResp, McuCmStatusReq, McuCmStatusResp,
-        McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
-        McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq, McuEcdsaCmkSignResp,
-        McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuMailboxReq, McuMailboxResp,
+        CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, CmRandomGenerateReq,
+        CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk,
+        DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq, DeviceInfoResp,
+        FirmwareVersionReq, FirmwareVersionResp, MailboxReqHeader, MailboxRespHeader,
+        MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
+        McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
+        McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
+        McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
+        McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp,
+        McuEcdhGenerateReq, McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp,
+        McuEcdsaCmkSignReq, McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp,
+        McuMailboxReq, McuMailboxResp, McuMldsaCmkPublicKeyReq, McuMldsaCmkPublicKeyResp,
+        McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq, McuMldsaCmkVerifyResp,
         McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
         McuShaInitResp, McuShaUpdateReq, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
         CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
+        MLDSA87_PUB_KEY_BYTE_SIZE, MLDSA87_SIGNATURE_BYTE_SIZE,
     };
     use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
     use p384::ecdsa::signature::hazmat::PrehashSigner;
     use p384::ecdsa::{Signature, SigningKey};
     use rand::prelude::*;
     use rand::rngs::StdRng;
+    use rand::{CryptoRng, RngCore};
     use random_port::PortPicker;
     use registers_generated::mci;
     use sha2::{Digest, Sha384, Sha512};
@@ -56,6 +62,11 @@ pub mod test {
     #[test]
     pub fn test_mcu_mbox_usermode() {
         start_mcu_mbox_tests("test-mcu-mbox-usermode");
+    }
+
+    #[test]
+    pub fn test_mcu_mbox_mldsa() {
+        start_mcu_mbox_tests("test-mcu-mbox-mldsa");
     }
 
     fn start_mcu_mbox_tests(feature: &str) {
@@ -213,6 +224,9 @@ pub mod test {
                 self.add_aes_gcm_encrypt_decrypt_tests()?;
                 self.add_ecdh_tests()?;
                 self.add_ecdsa_tests()?;
+                Ok(())
+            } else if feature == "test-mcu-mbox-mldsa" {
+                self.add_mldsa_tests()?;
                 Ok(())
             } else {
                 Ok(())
@@ -1739,6 +1753,194 @@ pub mod test {
                 Err(_) => Err(()), // Verification failed (signature mismatch)
             }
         }
+
+        /// Test MLDSA operations: public key extraction, sign, and verify.
+        /// Similar to ECDSA tests but using ML-DSA (FIPS 204).
+        /// 1. Import an MLDSA key
+        /// 2. Get the public key and verify it matches expected value
+        /// 3. Sign random messages via mailbox
+        /// 4. Verify signature matches fips204 crate signature
+        /// 5. Verify via mailbox with correct message (should succeed)
+        /// 6. Verify via mailbox with modified message (should fail)
+        fn add_mldsa_tests(&mut self) -> Result<(), ()> {
+            println!("Running MLDSA tests");
+
+            // Import a 32-byte seed for MLDSA
+            let seed_bytes: [u8; 32] = [
+                0x63, 0x1a, 0xfc, 0x2a, 0x36, 0xa5, 0x7e, 0x1d, 0x09, 0x0d, 0xad, 0xc2, 0x79, 0x1d,
+                0x48, 0x6d, 0x72, 0xc6, 0x9a, 0x9a, 0xab, 0xf9, 0x79, 0x90, 0xc5, 0x73, 0x21, 0x48,
+                0x46, 0xfe, 0x5b, 0x64,
+            ];
+            let cmk = self.import_key(&seed_bytes, CmKeyUsage::Mldsa)?;
+            println!("  Imported MLDSA key");
+
+            // Generate private key using fips204 for comparison
+            let mut rng = SeedOnlyRng::new(seed_bytes);
+            let (_, privkey) = ml_dsa_87::try_keygen_with_rng(&mut rng).unwrap();
+
+            // Get public key
+            let pub_key = self.mldsa_public_key(&cmk)?;
+            println!("  Got public key: first 8 bytes={:02x?}", &pub_key[..8]);
+
+            // Expected public key first bytes (from the seed used above)
+            let expected_first_bytes: [u8; 8] = [0x57, 0x34, 0x49, 0xae, 0x17, 0x72, 0x43, 0x0d];
+            assert_eq!(
+                &pub_key[..8],
+                &expected_first_bytes,
+                "Public key first bytes should match"
+            );
+
+            // Seed RNG for random test messages
+            let seed_rng_bytes = [1u8; 32];
+            let mut seeded_rng = StdRng::from_seed(seed_rng_bytes);
+
+            // Use fewer iterations than caliptra-sw due to larger signature sizes
+            for i in 0..5 {
+                // Generate random message length and data (smaller than MAX_CMB_DATA_SIZE)
+                let len = seeded_rng.gen_range(1..MAX_CMB_DATA_SIZE / 4);
+                let mut data = vec![0u8; len];
+                seeded_rng.fill_bytes(&mut data);
+
+                println!(
+                    "  Testing MLDSA sign/verify iteration {} with message length: {}",
+                    i, len
+                );
+
+                // Sign the message via mailbox
+                let signature = self.mldsa_sign(&cmk, &data)?;
+                println!("    Mailbox signed: first 8 bytes={:02x?}", &signature[..8]);
+
+                // Sign with fips204 to verify
+                let sign_seed = [0u8; 32];
+                let fips204_sig = privkey.try_sign_with_seed(&sign_seed, &data, &[]).unwrap();
+
+                // Verify signatures match between mailbox and fips204
+                assert_eq!(
+                    &signature[..fips204_sig.len()],
+                    &fips204_sig[..],
+                    "Signature should match fips204"
+                );
+                println!("    Signatures match between mailbox and fips204");
+
+                // Verify via mailbox with correct message (should succeed)
+                let verify_result = self.mldsa_verify(&cmk, &data, &signature)?;
+                assert!(
+                    verify_result,
+                    "Signature verification should succeed with correct message"
+                );
+                println!("    Mailbox verification with correct message succeeded");
+
+                // Verify with modified message (should fail)
+                let mut modified_data = data.clone();
+                let modify_idx = seeded_rng.gen_range(0..len);
+                modified_data[modify_idx] ^= seeded_rng.gen_range(1..=255u8);
+
+                let verify_fail_result = self.mldsa_verify(&cmk, &modified_data, &signature);
+                assert!(
+                    verify_fail_result.is_err(),
+                    "Signature verification should fail with modified message"
+                );
+                println!("    Mailbox verification with modified message failed as expected");
+            }
+
+            // Clean up
+            self.delete_key(&cmk)?;
+            println!("MLDSA tests passed");
+            Ok(())
+        }
+
+        /// Get the public key for an MLDSA CMK.
+        fn mldsa_public_key(&mut self, cmk: &Cmk) -> Result<[u8; MLDSA87_PUB_KEY_BYTE_SIZE], ()> {
+            let mut req =
+                McuMailboxReq::MldsaCmkPublicKey(McuMldsaCmkPublicKeyReq(CmMldsaPublicKeyReq {
+                    hdr: MailboxReqHeader::default(),
+                    cmk: cmk.clone(),
+                }));
+            req.populate_chksum().unwrap();
+
+            let resp = self
+                .process_message(req.cmd_code().0, req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            let pub_key_resp =
+                McuMldsaCmkPublicKeyResp::read_from_bytes(&resp.data).map_err(|_| ())?;
+
+            assert_eq!(
+                pub_key_resp.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+
+            Ok(pub_key_resp.0.public_key)
+        }
+
+        /// Sign a message using an MLDSA CMK.
+        fn mldsa_sign(
+            &mut self,
+            cmk: &Cmk,
+            message: &[u8],
+        ) -> Result<[u8; MLDSA87_SIGNATURE_BYTE_SIZE], ()> {
+            let mut sign_req = CmMldsaSignReq {
+                hdr: MailboxReqHeader::default(),
+                cmk: cmk.clone(),
+                message_size: message.len() as u32,
+                ..Default::default()
+            };
+            sign_req.message[..message.len()].copy_from_slice(message);
+
+            let mut req = McuMailboxReq::MldsaCmkSign(McuMldsaCmkSignReq(sign_req));
+            req.populate_chksum().unwrap();
+
+            let resp = self
+                .process_message(req.cmd_code().0, req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            let sign_resp = McuMldsaCmkSignResp::read_from_bytes(&resp.data).map_err(|_| ())?;
+
+            assert_eq!(
+                sign_resp.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+
+            Ok(sign_resp.0.signature)
+        }
+
+        /// Verify a signature using an MLDSA CMK.
+        fn mldsa_verify(
+            &mut self,
+            cmk: &Cmk,
+            message: &[u8],
+            signature: &[u8; MLDSA87_SIGNATURE_BYTE_SIZE],
+        ) -> Result<bool, ()> {
+            let mut verify_req = CmMldsaVerifyReq {
+                hdr: MailboxReqHeader::default(),
+                cmk: cmk.clone(),
+                signature: *signature,
+                message_size: message.len() as u32,
+                ..Default::default()
+            };
+            verify_req.message[..message.len()].copy_from_slice(message);
+
+            let mut req = McuMailboxReq::MldsaCmkVerify(McuMldsaCmkVerifyReq(verify_req));
+            req.populate_chksum().unwrap();
+
+            let result = self.process_message(req.cmd_code().0, req.as_bytes().unwrap());
+
+            match result {
+                Ok(resp) => {
+                    let verify_resp =
+                        McuMldsaCmkVerifyResp::read_from_bytes(&resp.data).map_err(|_| ())?;
+                    assert_eq!(
+                        verify_resp.0.fips_status,
+                        MailboxRespHeader::FIPS_STATUS_APPROVED,
+                        "FIPS status should be approved"
+                    );
+                    Ok(true)
+                }
+                Err(_) => Err(()), // Verification failed (signature mismatch)
+            }
+        }
     }
 
     /// Helper function to perform ECDSA signing using RustCrypto.
@@ -1768,4 +1970,46 @@ pub mod test {
             .expect("Encryption failed");
         (tag.into(), buffer)
     }
+
+    /// Helper RNG that only provides the seed once for MLDSA key generation.
+    /// This matches the pattern used in caliptra-sw runtime tests.
+    struct SeedOnlyRng {
+        seed: [u8; 32],
+        called: bool,
+    }
+
+    impl SeedOnlyRng {
+        fn new(seed: [u8; 32]) -> Self {
+            Self {
+                seed,
+                called: false,
+            }
+        }
+    }
+
+    impl RngCore for SeedOnlyRng {
+        fn next_u32(&mut self) -> u32 {
+            unimplemented!()
+        }
+
+        fn next_u64(&mut self) -> u64 {
+            unimplemented!()
+        }
+
+        fn fill_bytes(&mut self, out: &mut [u8]) {
+            if self.called {
+                panic!("Can only call fill_bytes once");
+            }
+            assert_eq!(out.len(), 32);
+            out.copy_from_slice(&self.seed[..32]);
+            self.called = true;
+        }
+
+        fn try_fill_bytes(&mut self, out: &mut [u8]) -> Result<(), rand::Error> {
+            self.fill_bytes(out);
+            Ok(())
+        }
+    }
+
+    impl CryptoRng for SeedOnlyRng {}
 }
