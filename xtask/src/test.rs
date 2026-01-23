@@ -24,7 +24,7 @@ fn cargo_test() -> Result<()> {
             "tests-integration",
             "--lib",
             "--",
-            "test::test_firmware_update"
+            "test::test_firmware_update",
         ])
         .status()?;
 
