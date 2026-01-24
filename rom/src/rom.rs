@@ -694,6 +694,7 @@ pub struct RomParameters<'a> {
     pub otp_check_timeout_override: Option<u32>,
 }
 
+#[inline(always)]
 pub fn rom_start(params: RomParameters) {
     romtime::println!("[mcu-rom] Hello from ROM");
 
