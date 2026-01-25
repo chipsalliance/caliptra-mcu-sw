@@ -1022,15 +1022,19 @@ impl MciPeripheral for Mci {
 
         if self.timer.fired(&mut self.op_mcu_reset_request_action) {
             // Handle MCU reset request
+            let reset_reason = self.reset_reason.get();
             let mcu_fw_exec_ctrl = self
                 .soc_regs
                 .as_ref()
                 .map(|regs| regs.ss_generic_fw_exec_ctrl().get(0).unwrap().read());
+            // Only check MCU go bit for hitless updates (reset_reason bit 0 = hitless update)
+            // For other resets, proceed without waiting for Caliptra
+            let is_hitless_update = reset_reason & 0x1 != 0;
             if let Some(val) = mcu_fw_exec_ctrl {
                 // If bit 2 (MCU go bit) of SS_GENERIC_FW_EXEC_CTRL is 0
-                // and reset is requested, hold the MCU in reset
+                // and this is a hitless update, hold the MCU in reset
                 // by scheduling CPU halt action.
-                if val & (1 << 2) == 0 {
+                if is_hitless_update && (val & (1 << 2) == 0) {
                     self.timer.schedule_action_in(1, TimerAction::Halt);
                     self.op_mcu_reset_request_action = Some(self.timer.schedule_poll_in(1000));
                     self.ext_mci_regs.regs.borrow_mut().reset_status |= RESET_STATUS_MCU_RESET_MASK;
