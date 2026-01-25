@@ -4803,6 +4803,7 @@ version = "0.1.0"
 name = "tests-integration"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
  "caliptra-api",
  "caliptra-api-types",
@@ -4828,6 +4829,7 @@ dependencies = [
  "mcu-mbox-common",
  "mcu-rom-common",
  "mcu-testing-common",
+ "openssl",
  "p384",
  "pldm-common",
  "pldm-fw-pkg",

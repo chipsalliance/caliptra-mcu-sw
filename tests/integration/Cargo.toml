@@ -13,6 +13,7 @@ itrng = []
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+aes-gcm.workspace = true
 anyhow.workspace = true
 caliptra-api.workspace = true
 caliptra-api-types.workspace = true
@@ -38,6 +39,7 @@ mcu-image-header.workspace = true
 mcu-mbox-common.workspace = true
 mcu-rom-common.workspace = true
 mcu-testing-common.workspace = true
+openssl.workspace = true
 p384.workspace = true
 pldm-common.workspace = true
 pldm-fw-pkg.workspace = true

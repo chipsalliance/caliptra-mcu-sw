@@ -8,11 +8,12 @@ pub use caliptra_api::mailbox::{
     CmAesGcmDecryptUpdateRespHeader, CmAesGcmEncryptFinalReq, CmAesGcmEncryptFinalResp,
     CmAesGcmEncryptFinalRespHeader, CmAesGcmEncryptInitReq, CmAesGcmEncryptInitResp,
     CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateResp, CmAesGcmEncryptUpdateRespHeader,
-    CmAesMode, CmAesResp, CmAesRespHeader, CmDeleteReq, CmEcdhGenerateReq, CmImportReq,
-    CmImportResp, CmKeyUsage, CmRandomGenerateReq, CmRandomGenerateResp, CmRandomStirReq,
-    CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq, CmStatusResp, Cmk,
-    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, ResponseVarSize,
-    CMB_AES_ENCRYPTED_CONTEXT_SIZE, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
+    CmAesMode, CmAesResp, CmAesRespHeader, CmDeleteReq, CmEcdhFinishReq, CmEcdhFinishResp,
+    CmEcdhGenerateReq, CmEcdhGenerateResp, CmImportReq, CmImportResp, CmKeyUsage,
+    CmRandomGenerateReq, CmRandomGenerateResp, CmRandomStirReq, CmShaFinalReq, CmShaFinalResp,
+    CmShaInitReq, CmShaInitResp, CmShaUpdateReq, CmStatusResp, Cmk, MailboxReqHeader,
+    MailboxRespHeader, MailboxRespHeaderVarSize, ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE,
+    CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, MAX_CMB_DATA_SIZE,
 };
 pub use caliptra_api::{calc_checksum, verify_checksum};
 use core::convert::From;
@@ -88,6 +89,8 @@ impl CommandId {
     pub const MC_IMPORT: Self = Self(0x4D43_494D); // "MCIM"
     pub const MC_DELETE: Self = Self(0x4D43_444C); // "MCDL"
     pub const MC_CM_STATUS: Self = Self(0x4D43_5354); // "MCST"
+    pub const MC_ECDH_GENERATE: Self = Self(0x4D43_4547); // "MCEG"
+    pub const MC_ECDH_FINISH: Self = Self(0x4D43_4546); // "MCEF"
 
     // In-Field Fuse Programming commands
     pub const MC_FUSE_READ: Self = Self(0x4946_5052); // "IFPR"
@@ -134,6 +137,8 @@ pub enum McuMailboxReq {
     CmStatus(McuCmStatusReq),
     RandomStir(McuRandomStirReq),
     RandomGenerate(McuRandomGenerateReq),
+    EcdhGenerate(McuEcdhGenerateReq),
+    EcdhFinish(McuEcdhFinishReq),
     // In-Field Fuse Programming
     FuseRead(FuseReadReq),
     FuseWrite(FuseWriteReq),
@@ -167,6 +172,8 @@ impl McuMailboxReq {
             McuMailboxReq::CmStatus(req) => Ok(req.as_bytes()),
             McuMailboxReq::RandomStir(req) => req.as_bytes_partial(),
             McuMailboxReq::RandomGenerate(req) => Ok(req.as_bytes()),
+            McuMailboxReq::EcdhGenerate(req) => Ok(req.as_bytes()),
+            McuMailboxReq::EcdhFinish(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRead(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
@@ -199,6 +206,8 @@ impl McuMailboxReq {
             McuMailboxReq::CmStatus(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::RandomStir(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::RandomGenerate(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::EcdhGenerate(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::EcdhFinish(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRead(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
@@ -231,6 +240,8 @@ impl McuMailboxReq {
             McuMailboxReq::CmStatus(_) => CommandId::MC_CM_STATUS,
             McuMailboxReq::RandomStir(_) => CommandId::MC_RANDOM_STIR,
             McuMailboxReq::RandomGenerate(_) => CommandId::MC_RANDOM_GENERATE,
+            McuMailboxReq::EcdhGenerate(_) => CommandId::MC_ECDH_GENERATE,
+            McuMailboxReq::EcdhFinish(_) => CommandId::MC_ECDH_FINISH,
             McuMailboxReq::FuseRead(_) => CommandId::MC_FUSE_READ,
             McuMailboxReq::FuseWrite(_) => CommandId::MC_FUSE_WRITE,
             McuMailboxReq::FuseLockPartition(_) => CommandId::MC_FUSE_LOCK_PARTITION,
@@ -286,6 +297,8 @@ pub enum McuMailboxResp {
     CmStatus(McuCmStatusResp),
     RandomStir(McuRandomStirResp),
     RandomGenerate(McuRandomGenerateResp),
+    EcdhGenerate(McuEcdhGenerateResp),
+    EcdhFinish(McuEcdhFinishResp),
     // In-Field Fuse Programming
     FuseRead(FuseReadResp),
     FuseWrite(FuseWriteResp),
@@ -380,6 +393,8 @@ impl McuMailboxResp {
             McuMailboxResp::CmStatus(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::RandomStir(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::RandomGenerate(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::EcdhGenerate(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::EcdhFinish(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
@@ -413,6 +428,8 @@ impl McuMailboxResp {
             McuMailboxResp::CmStatus(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::RandomStir(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::RandomGenerate(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::EcdhGenerate(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::EcdhFinish(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
@@ -852,6 +869,33 @@ impl Request for McuRandomGenerateReq {
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct McuRandomGenerateResp(pub CmRandomGenerateResp);
 impl_mcu_response_varsize!(McuRandomGenerateResp, CmRandomGenerateResp);
+
+// ---- ECDH wrappers ----
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdhGenerateReq(pub CmEcdhGenerateReq);
+impl Request for McuEcdhGenerateReq {
+    const ID: CommandId = CommandId::MC_ECDH_GENERATE;
+    type Resp = McuEcdhGenerateResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdhGenerateResp(pub CmEcdhGenerateResp);
+impl Response for McuEcdhGenerateResp {}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdhFinishReq(pub CmEcdhFinishReq);
+impl Request for McuEcdhFinishReq {
+    const ID: CommandId = CommandId::MC_ECDH_FINISH;
+    type Resp = McuEcdhFinishResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdhFinishResp(pub CmEcdhFinishResp);
+impl Response for McuEcdhFinishResp {}
 
 // ---- In-Field Fuse Programming (IFP) ----
 
