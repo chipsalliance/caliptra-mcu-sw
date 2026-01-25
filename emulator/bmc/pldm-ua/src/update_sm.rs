@@ -217,7 +217,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::request_update::RequestUpdateResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
         if response.fixed.completion_code == PldmBaseCompletionCode::Success as u8 {
             debug!("RequestUpdate response success");
             ctx.event_queue
@@ -376,7 +376,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::update_component::UpdateComponentResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
         if response.completion_code == PldmBaseCompletionCode::Success as u8
             && response.comp_compatibility_resp
                 == ComponentCompatibilityResponse::CompCanBeUpdated as u8
@@ -537,7 +537,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::get_fw_params::GetFirmwareParametersResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
         for i in 0..response.parms.params_fixed.comp_count {
             if let Ok(comp_idx) = Self::find_component_in_package(
                 &ctx.pldm_fw_pkg.component_image_information,
@@ -591,8 +591,8 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::pass_component::PassComponentTableResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
-                              // If unsuccessful, stop the update
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
+                                                           // If unsuccessful, stop the update
         if response.completion_code != PldmBaseCompletionCode::Success as u8 {
             error!("PassComponent response failed");
             ctx.event_queue
@@ -795,7 +795,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::get_status::GetStatusResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
         if response.completion_code == PldmBaseCompletionCode::Success as u8 {
             debug!("GetStatus response success");
 
@@ -989,7 +989,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::activate_fw::ActivateFirmwareResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
         if response.completion_code == PldmBaseCompletionCode::Success as u8 {
             info!("ActivateFirmware response success");
 
@@ -1042,7 +1042,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::request_cancel::CancelUpdateComponentResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
         ctx.response_timer.cancel();
         if response.completion_code == PldmBaseCompletionCode::Success as u8 {
             info!("CancelUpdateComponent response success");
