@@ -46,8 +46,12 @@ These commands support a wide range of functionalities, including querying devic
 | MC_SHA_INIT                       | 0x4D43_5349 ("MCSI") | Starts the computation of a SHA hash of data.                                                      |
 | MC_SHA_UPDATE                     | 0x4D43_5355 ("MCSU") | Continues a SHA computation started by `MC_SHA_INIT` or another `MC_SHA_UPDATE`.                   |
 | MC_SHA_FINAL                      | 0x4D43_5346 ("MCSF") | Finalizes the computation of a SHA and produces the hash of all the data.                          |
+| MC_HMAC                           | 0x4D43_484D ("MCHM") | Computes an HMAC according to RFC 2104.                                                            |
+| MC_HMAC_KDF_COUNTER               | 0x4D43_4B43 ("MCKC") | Computes HMAC KDF in Counter Mode as specified in NIST SP800-108.                                  |
+| MC_HKDF_EXTRACT                   | 0x4D43_4B54 ("MCKT") | Implements HKDF-Extract as specified in RFC 5869.                                                  |
+| MC_HKDF_EXPAND                    | 0x4D43_4B50 ("MCKP") | Implements HKDF-Expand as specified in RFC 5869.                                                   |
 | MC_AES_ENCRYPT_INIT               | 0x4D43_4349 ("MCCI") | Starts an AES encryption operation.                                                                |
-| MC_AES_ENCRYPT_UPDATE             | 0x4D43_4355 ("MCMU") | Continues an AES encryption operation started by `MC_AES_ENCRYPT_INIT`.                            |
+| MC_AES_ENCRYPT_UPDATE             | 0x4D43_4355 ("MCCU") | Continues an AES encryption operation started by `MC_AES_ENCRYPT_INIT`.                            |
 | MC_AES_DECRYPT_INIT               | 0x4D43_414A ("MCAJ") | Starts an AES-256 decryption operation.                                                            |
 | MC_AES_DECRYPT_UPDATE             | 0x4D43_4155 ("MCAU") | Continues an AES decryption operation started by `MC_AES_DECRYPT_INIT`.                            |
 | MC_AES_GCM_ENCRYPT_INIT           | 0x4D43_4749 ("MCGI") | Starts an AES-256-GCM encryption operation.                                                        |
@@ -417,6 +421,10 @@ The MCI mailbox cryptographic commands are mapped to their corresponding Caliptr
 | `MC_SHA_INIT`                 | `CM_SHA_INIT`                               |
 | `MC_SHA_UPDATE`               | `CM_SHA_UPDATE`                             |
 | `MC_SHA_FINAL`                | `CM_SHA_FINAL`                              |
+| `MC_HMAC`                     | `CM_HMAC`                                   |
+| `MC_HMAC_KDF_COUNTER`         | `CM_HMAC_KDF_COUNTER`                       |
+| `MC_HKDF_EXTRACT`             | `CM_HKDF_EXTRACT`                           |
+| `MC_HKDF_EXPAND`              | `CM_HKDF_EXPAND`                            |
 | `MC_AES_ENCRYPT_INIT`         | `CM_AES_ENCRYPT_INIT`                       |
 | `MC_AES_ENCRYPT_UPDATE`       | `CM_AES_ENCRYPT_UPDATE`                     |
 | `MC_AES_DECRYPT_INIT`         | `CM_AES_DECRYPT_INIT`                       |

@@ -9,11 +9,13 @@ pub use caliptra_api::mailbox::{
     CmAesGcmEncryptFinalRespHeader, CmAesGcmEncryptInitReq, CmAesGcmEncryptInitResp,
     CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateResp, CmAesGcmEncryptUpdateRespHeader,
     CmAesMode, CmAesResp, CmAesRespHeader, CmDeleteReq, CmEcdhFinishReq, CmEcdhFinishResp,
-    CmEcdhGenerateReq, CmEcdhGenerateResp, CmImportReq, CmImportResp, CmKeyUsage,
-    CmRandomGenerateReq, CmRandomGenerateResp, CmRandomStirReq, CmShaFinalReq, CmShaFinalResp,
-    CmShaInitReq, CmShaInitResp, CmShaUpdateReq, CmStatusResp, Cmk, MailboxReqHeader,
-    MailboxRespHeader, MailboxRespHeaderVarSize, ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE,
-    CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, MAX_CMB_DATA_SIZE,
+    CmEcdhGenerateReq, CmEcdhGenerateResp, CmHkdfExpandReq, CmHkdfExpandResp, CmHkdfExtractReq,
+    CmHkdfExtractResp, CmHmacKdfCounterReq, CmHmacKdfCounterResp, CmHmacReq, CmHmacResp,
+    CmImportReq, CmImportResp, CmKeyUsage, CmRandomGenerateReq, CmRandomGenerateResp,
+    CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq,
+    CmStatusResp, Cmk, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
+    ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
+    CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE, MAX_CMB_DATA_SIZE,
 };
 pub use caliptra_api::{calc_checksum, verify_checksum};
 use core::convert::From;
@@ -74,8 +76,12 @@ impl CommandId {
     pub const MC_SHA_INIT: Self = Self(0x4D43_5349); // "MCSI"
     pub const MC_SHA_UPDATE: Self = Self(0x4D43_5355); // "MCSU"
     pub const MC_SHA_FINAL: Self = Self(0x4D43_5346); // "MCSF"
+    pub const MC_HMAC: Self = Self(0x4D43_484D); // "MCHM"
+    pub const MC_HMAC_KDF_COUNTER: Self = Self(0x4D43_4B43); // "MCKC"
+    pub const MC_HKDF_EXTRACT: Self = Self(0x4D43_4B54); // "MCKT"
+    pub const MC_HKDF_EXPAND: Self = Self(0x4D43_4B50); // "MCKP"
     pub const MC_AES_ENCRYPT_INIT: Self = Self(0x4D43_4349); // "MCCI"
-    pub const MC_AES_ENCRYPT_UPDATE: Self = Self(0x4D43_4355); // "MCMU"
+    pub const MC_AES_ENCRYPT_UPDATE: Self = Self(0x4D43_4355); // "MCCU"
     pub const MC_AES_DECRYPT_INIT: Self = Self(0x4D43_414A); // "MCAJ"
     pub const MC_AES_DECRYPT_UPDATE: Self = Self(0x4D43_4155); // "MCAU"
     pub const MC_AES_GCM_ENCRYPT_INIT: Self = Self(0x4D43_4749); // "MCGI"
@@ -122,6 +128,10 @@ pub enum McuMailboxReq {
     ShaInit(McuShaInitReq),
     ShaUpdate(McuShaUpdateReq),
     ShaFinal(McuShaFinalReq),
+    Hmac(McuHmacReq),
+    HmacKdfCounter(McuHmacKdfCounterReq),
+    HkdfExtract(McuHkdfExtractReq),
+    HkdfExpand(McuHkdfExpandReq),
     AesEncryptInit(McuAesEncryptInitReq),
     AesEncryptUpdate(McuAesEncryptUpdateReq),
     AesDecryptInit(McuAesDecryptInitReq),
@@ -157,6 +167,10 @@ impl McuMailboxReq {
             McuMailboxReq::ShaInit(req) => req.as_bytes_partial(),
             McuMailboxReq::ShaUpdate(req) => req.as_bytes_partial(),
             McuMailboxReq::ShaFinal(req) => req.as_bytes_partial(),
+            McuMailboxReq::Hmac(req) => req.as_bytes_partial(),
+            McuMailboxReq::HmacKdfCounter(req) => req.as_bytes_partial(),
+            McuMailboxReq::HkdfExtract(req) => Ok(req.as_bytes()),
+            McuMailboxReq::HkdfExpand(req) => req.as_bytes_partial(),
             McuMailboxReq::AesEncryptInit(req) => req.as_bytes_partial(),
             McuMailboxReq::AesEncryptUpdate(req) => req.as_bytes_partial(),
             McuMailboxReq::AesDecryptInit(req) => req.as_bytes_partial(),
@@ -191,6 +205,10 @@ impl McuMailboxReq {
             McuMailboxReq::ShaInit(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::ShaUpdate(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::ShaFinal(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::Hmac(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::HmacKdfCounter(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::HkdfExtract(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::HkdfExpand(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::AesEncryptInit(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::AesEncryptUpdate(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::AesDecryptInit(req) => req.as_bytes_partial_mut(),
@@ -225,6 +243,10 @@ impl McuMailboxReq {
             McuMailboxReq::ShaInit(_) => CommandId::MC_SHA_INIT,
             McuMailboxReq::ShaUpdate(_) => CommandId::MC_SHA_UPDATE,
             McuMailboxReq::ShaFinal(_) => CommandId::MC_SHA_FINAL,
+            McuMailboxReq::Hmac(_) => CommandId::MC_HMAC,
+            McuMailboxReq::HmacKdfCounter(_) => CommandId::MC_HMAC_KDF_COUNTER,
+            McuMailboxReq::HkdfExtract(_) => CommandId::MC_HKDF_EXTRACT,
+            McuMailboxReq::HkdfExpand(_) => CommandId::MC_HKDF_EXPAND,
             McuMailboxReq::AesEncryptInit(_) => CommandId::MC_AES_ENCRYPT_INIT,
             McuMailboxReq::AesEncryptUpdate(_) => CommandId::MC_AES_ENCRYPT_UPDATE,
             McuMailboxReq::AesDecryptInit(_) => CommandId::MC_AES_DECRYPT_INIT,
@@ -282,6 +304,10 @@ pub enum McuMailboxResp {
     ShaInit(McuShaInitResp),
     ShaUpdate(McuShaInitResp),
     ShaFinal(McuShaFinalResp),
+    Hmac(McuHmacResp),
+    HmacKdfCounter(McuHmacKdfCounterResp),
+    HkdfExtract(McuHkdfExtractResp),
+    HkdfExpand(McuHkdfExpandResp),
     AesEncryptInit(McuAesEncryptInitResp),
     AesEncryptUpdate(McuAesEncryptUpdateResp),
     AesDecryptInit(McuAesDecryptInitResp),
@@ -378,6 +404,10 @@ impl McuMailboxResp {
             McuMailboxResp::ShaInit(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ShaUpdate(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ShaFinal(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::Hmac(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::HmacKdfCounter(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::HkdfExtract(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::HkdfExpand(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::AesEncryptInit(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::AesEncryptUpdate(resp) => resp.as_bytes_partial(),
             McuMailboxResp::AesDecryptInit(resp) => Ok(resp.as_bytes()),
@@ -413,6 +443,10 @@ impl McuMailboxResp {
             McuMailboxResp::ShaInit(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ShaUpdate(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ShaFinal(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::Hmac(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::HmacKdfCounter(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::HkdfExtract(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::HkdfExpand(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::AesEncryptInit(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::AesEncryptUpdate(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::AesDecryptInit(resp) => Ok(resp.as_mut_bytes()),
@@ -658,6 +692,65 @@ impl_mcu_request_varsize!(McuShaFinalReq, CmShaFinalReq);
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct McuShaFinalResp(pub CmShaFinalResp);
 impl_mcu_response_varsize!(McuShaFinalResp, CmShaFinalResp);
+
+// ---- HMAC wrappers ----
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuHmacReq(pub CmHmacReq);
+impl Request for McuHmacReq {
+    const ID: CommandId = CommandId::MC_HMAC;
+    type Resp = McuHmacResp;
+}
+impl_mcu_request_varsize!(McuHmacReq, CmHmacReq);
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuHmacResp(pub CmHmacResp);
+impl_mcu_response_varsize!(McuHmacResp, CmHmacResp);
+
+// ---- HMAC KDF Counter wrappers ----
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuHmacKdfCounterReq(pub CmHmacKdfCounterReq);
+impl Request for McuHmacKdfCounterReq {
+    const ID: CommandId = CommandId::MC_HMAC_KDF_COUNTER;
+    type Resp = McuHmacKdfCounterResp;
+}
+impl_mcu_request_varsize!(McuHmacKdfCounterReq, CmHmacKdfCounterReq);
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuHmacKdfCounterResp(pub CmHmacKdfCounterResp);
+impl Response for McuHmacKdfCounterResp {}
+
+// ---- HKDF Extract wrappers ----
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuHkdfExtractReq(pub CmHkdfExtractReq);
+impl Request for McuHkdfExtractReq {
+    const ID: CommandId = CommandId::MC_HKDF_EXTRACT;
+    type Resp = McuHkdfExtractResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuHkdfExtractResp(pub CmHkdfExtractResp);
+impl Response for McuHkdfExtractResp {}
+
+// ---- HKDF Expand wrappers ----
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuHkdfExpandReq(pub CmHkdfExpandReq);
+impl Request for McuHkdfExpandReq {
+    const ID: CommandId = CommandId::MC_HKDF_EXPAND;
+    type Resp = McuHkdfExpandResp;
+}
+impl_mcu_request_varsize!(McuHkdfExpandReq, CmHkdfExpandReq);
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuHkdfExpandResp(pub CmHkdfExpandResp);
+impl Response for McuHkdfExpandResp {}
 
 // ---- AES Encrypt/Decrypt wrappers ----
 #[repr(C)]

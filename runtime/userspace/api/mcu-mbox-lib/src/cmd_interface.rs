@@ -20,9 +20,11 @@ use mcu_mbox_common::messages::{
     McuAesGcmEncryptInitReq, McuAesGcmEncryptInitResp, McuAesGcmEncryptUpdateReq,
     McuAesGcmEncryptUpdateResp, McuCmDeleteReq, McuCmDeleteResp, McuCmImportReq, McuCmImportResp,
     McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq,
-    McuEcdhGenerateResp, McuMailboxResp, McuRandomGenerateReq, McuRandomGenerateResp,
-    McuRandomStirReq, McuRandomStirResp, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
-    McuShaInitResp, McuShaUpdateReq, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
+    McuEcdhGenerateResp, McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq,
+    McuHkdfExtractResp, McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuHmacResp,
+    McuMailboxResp, McuRandomGenerateReq, McuRandomGenerateResp, McuRandomStirReq,
+    McuRandomStirResp, McuShaFinalReq, McuShaFinalResp, McuShaInitReq, McuShaInitResp,
+    McuShaUpdateReq, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
 };
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -129,6 +131,50 @@ impl<'a> CmdInterface<'a> {
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_SHA_FINAL.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            // Add HMAC command
+            CommandId::MC_HMAC => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuHmacResp>()];
+                self.handle_crypto_passthrough::<McuHmacReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_HMAC.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            // Add HMAC KDF Counter command
+            CommandId::MC_HMAC_KDF_COUNTER => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuHmacKdfCounterResp>()];
+                self.handle_crypto_passthrough::<McuHmacKdfCounterReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_HMAC_KDF_COUNTER.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            // Add HKDF Extract command
+            CommandId::MC_HKDF_EXTRACT => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuHkdfExtractResp>()];
+                self.handle_crypto_passthrough::<McuHkdfExtractReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_HKDF_EXTRACT.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            // Add HKDF Expand command
+            CommandId::MC_HKDF_EXPAND => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuHkdfExpandResp>()];
+                self.handle_crypto_passthrough::<McuHkdfExpandReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::CM_HKDF_EXPAND.into(),
                     &mut resp_bytes,
                 )
                 .await
