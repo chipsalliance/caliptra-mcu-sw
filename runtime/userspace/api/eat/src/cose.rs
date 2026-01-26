@@ -39,17 +39,18 @@ pub struct CoseHeaderPair<'a> {
 /// COSE protected header structure
 #[derive(Debug, Clone, Copy)]
 pub struct ProtectedHeader<'a> {
-    pub alg: i32, // Algorithm identifier
-    pub content_type: Option<u16>,
+    pub alg: i32,              // Algorithm identifier
+    pub content_type: u16,     // Content type
     pub kid: Option<&'a [u8]>, // Key identifier
 }
 
 impl ProtectedHeader<'_> {
     /// Create a new protected header for ES384 (ECDSA with P-384 and SHA-384)
+    /// with default content type APPLICATION_EAT_CWT and no key ID.
     pub fn new_es384() -> Self {
         Self {
             alg: cose_alg::ESP384,
-            content_type: None,
+            content_type: content_type::APPLICATION_EAT_CWT,
             kid: None,
         }
     }
@@ -59,10 +60,7 @@ impl ProtectedHeader<'_> {
         let mut size = 0;
 
         // Map header (1-9 bytes, typically 1 byte for small maps)
-        let mut entries = 1u64; // alg is mandatory
-        if self.content_type.is_some() {
-            entries += 1;
-        }
+        let mut entries = 2u64; // alg and content_type are mandatory
         if self.kid.is_some() {
             entries += 1;
         }
@@ -73,10 +71,8 @@ impl ProtectedHeader<'_> {
         size += CborEncoder::estimate_int_size(self.alg as i64);
 
         // Key 3 (content_type): key + value size
-        if let Some(content_type) = self.content_type {
-            size += CborEncoder::estimate_int_size(header_params::CONTENT_TYPE as i64); // Key label
-            size += CborEncoder::estimate_uint_size(content_type as u64);
-        }
+        size += CborEncoder::estimate_int_size(header_params::CONTENT_TYPE as i64); // Key label
+        size += CborEncoder::estimate_uint_size(self.content_type as u64);
 
         // Key 4 (kid): key + byte string (header + data)
         if let Some(kid) = self.kid {
@@ -98,10 +94,7 @@ impl ProtectedHeader<'_> {
         let mut encoder = CborEncoder::new(buffer);
 
         // Calculate number of entries
-        let mut entries = 1u64; // alg is mandatory
-        if self.content_type.is_some() {
-            entries += 1;
-        }
+        let mut entries = 2u64; // alg and content_type are mandatory
         if self.kid.is_some() {
             entries += 1;
         }
@@ -112,11 +105,9 @@ impl ProtectedHeader<'_> {
         encoder.encode_int(header_params::ALG as i64)?;
         encoder.encode_int(self.alg as i64)?;
 
-        // content_type (label 3): content type (optional)
-        if let Some(content_type) = self.content_type {
-            encoder.encode_int(header_params::CONTENT_TYPE as i64)?;
-            encoder.encode_uint(content_type as u64)?;
-        }
+        // content_type (label 3): content type
+        encoder.encode_int(header_params::CONTENT_TYPE as i64)?;
+        encoder.encode_uint(self.content_type as u64)?;
 
         // kid (label 4): key identifier (optional)
         if let Some(kid) = self.kid {
@@ -293,8 +284,8 @@ mod tests {
 
     #[test]
     fn test_estimate_int_size_common_cose_algorithms() {
-        // ES384 (-51) should fit in 2 bytes
-        assert_eq!(CborEncoder::estimate_int_size(-51), 2);
+        // ESP384 (-51) should fit in 2 bytes
+        assert_eq!(CborEncoder::estimate_int_size(cose_alg::ESP384 as i64), 2);
         // ES256 (-7) should fit in 1 byte
         assert_eq!(CborEncoder::estimate_int_size(-7), 1);
         // ES512 (-36) should fit in 2 bytes
@@ -304,8 +295,8 @@ mod tests {
     #[test]
     fn test_protected_header_new_es384() {
         let header = ProtectedHeader::new_es384();
-        assert_eq!(header.alg, -51);
-        assert!(header.content_type.is_none());
+        assert_eq!(header.alg, cose_alg::ESP384);
+        assert_eq!(header.content_type, content_type::APPLICATION_EAT_CWT);
         assert!(header.kid.is_none());
     }
 
@@ -314,16 +305,15 @@ mod tests {
         let header = ProtectedHeader::new_es384();
         let estimated = header.estimate_size();
 
-        // Minimal: map header (1) + key (1) + alg value (2 for -51) = 4 bytes
-        assert!(estimated >= 4);
-        assert!(estimated <= 10); // Reasonable upper bound for minimal header
+        // Map(2): 1 + Key(1): 1 + alg(-51): 2 + Key(3): 1 + content_type(263): 3 = 8 bytes
+        assert_eq!(estimated, 8);
     }
 
     #[test]
-    fn test_protected_header_estimate_size_with_content_type() {
+    fn test_protected_header_estimate_size_with_custom_content_type() {
         let header = ProtectedHeader {
-            alg: -51,
-            content_type: Some(100),
+            alg: cose_alg::ESP384,
+            content_type: 100,
             kid: None,
         };
         let estimated = header.estimate_size();
@@ -336,14 +326,14 @@ mod tests {
     fn test_protected_header_estimate_size_with_kid() {
         const KID: &[u8] = b"test-key-id";
         let header = ProtectedHeader {
-            alg: -51,
-            content_type: None,
+            alg: cose_alg::ESP384,
+            content_type: content_type::APPLICATION_EAT_CWT,
             kid: Some(KID),
         };
         let estimated = header.estimate_size();
 
-        // Map(2 entries): 1 + Key(1): 1 + alg(-51): 2 + Key(4): 1 + bstr header: 1 + kid data: 11 = 17 bytes
-        assert_eq!(estimated, 17);
+        // Map(3 entries): 1 + Key(1): 1 + alg(-51): 2 + Key(3): 1 + content_type(263): 3 + Key(4): 1 + bstr header: 1 + kid data: 11 = 21 bytes
+        assert_eq!(estimated, 21);
     }
 
     #[test]
@@ -352,14 +342,14 @@ mod tests {
         let mut buffer = [0u8; 64];
 
         let encoded_len = header.encode(&mut buffer).expect("Encoding failed");
-        // Map(1 entry): 1 + Key(1): 1 + alg(-51): 2 = 4 bytes
-        assert_eq!(encoded_len, 4);
+        // Map(2 entries): 1 + Key(1): 1 + alg(-51): 2 + Key(3): 1 + content_type(263): 3 = 8 bytes
+        assert_eq!(encoded_len, 8);
         assert_eq!(encoded_len, header.estimate_size());
 
-        // Verify CBOR structure: map with 1 entry
+        // Verify CBOR structure: map with 2 entries
         assert_eq!(
             buffer[0],
-            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 1)
+            crate::cbor::cbor_initial_byte(crate::cbor::MajorType::Map, 2)
         );
     }
 
@@ -367,8 +357,8 @@ mod tests {
     fn test_protected_header_encode_with_all_fields() {
         const KID: &[u8] = b"key123";
         let header = ProtectedHeader {
-            alg: -51,
-            content_type: Some(500),
+            alg: cose_alg::ESP384,
+            content_type: 500,
             kid: Some(KID),
         };
         let mut buffer = [0u8; 128];
@@ -409,8 +399,8 @@ mod tests {
             .get_signature_context(&mut context_buffer)
             .expect("Failed to get signature context");
 
-        // Array(4): 1 + "Signature1"(10 chars): 11 + protected(4 bytes): 5 + empty AAD: 1 + payload(12 bytes): 13 = 31 bytes
-        assert_eq!(context_len, 31);
+        // Array(4): 1 + "Signature1"(10 chars): 11 + protected(8 bytes): 9 + empty AAD: 1 + payload(12 bytes): 13 = 35 bytes
+        assert_eq!(context_len, 35);
 
         // Verify structure starts with array of 4 items
         assert_eq!(
@@ -443,7 +433,7 @@ mod tests {
         // Calculate expected size
         let tag18_size = 1; // COSE_Sign1 tag (18)
         let array_header_size = 1; // Array of 4 items
-        let protected_size = CborEncoder::estimate_bytes_string_size(4); // protected header as byte string
+        let protected_size = CborEncoder::estimate_bytes_string_size(8); // protected header as byte string
 
         // Unprotected map: map_header(1) + key(33): 2 + value byte string(9 bytes): 10
         let unprotected_map_header = CborEncoder::estimate_uint_size(1); // 1 entry
@@ -494,7 +484,7 @@ mod tests {
         let tag_61_size = CborEncoder::estimate_uint_size(61); // CWT tag
         let tag18_size = 1; // COSE_Sign1 tag (18)
         let array_header_size = 1; // Array of 4 items
-        let protected_size = CborEncoder::estimate_bytes_string_size(4); // protected header as byte string
+        let protected_size = CborEncoder::estimate_bytes_string_size(8); // protected header as byte string
         let unprotected_size = CborEncoder::estimate_uint_size(0); // Empty map (0 entries)
         let payload_size = CborEncoder::estimate_bytes_string_size(payload.len()); // 4 byte string
         let signature_size = CborEncoder::estimate_bytes_string_size(signature.len()); // 96 byte string
