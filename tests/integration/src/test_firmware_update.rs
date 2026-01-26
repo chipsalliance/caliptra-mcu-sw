@@ -641,7 +641,14 @@ mod test {
             builder: Some(builder.clone()),
             flash_offset: 0,
         };
+
+        run_test!(test_successful_update, &pass_options.clone());
         run_test!(test_successful_fast_update, &pass_options.clone());
+        run_test!(test_invalid_caliptra_image, &pass_options.clone());
+        run_test!(test_missing_caliptra_image, &pass_options.clone());
+        run_test!(test_invalid_manifest, &pass_options.clone());
+        run_test!(test_invalid_mcu_image, &pass_options.clone());
+        run_test!(test_invalid_soc_image, &pass_options.clone());
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
