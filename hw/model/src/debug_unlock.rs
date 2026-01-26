@@ -3,10 +3,7 @@
 use std::thread;
 use std::time::Duration;
 
-use crate::jtag::{
-    jtag_get_caliptra_mailbox_resp, jtag_send_caliptra_mailbox_cmd,
-    jtag_wait_for_caliptra_mailbox_resp,
-};
+use crate::jtag::{jtag_get_caliptra_mailbox_resp, jtag_send_caliptra_mailbox_cmd};
 use crate::DefaultHwModel;
 
 use caliptra_api::mailbox::{
@@ -77,7 +74,6 @@ pub fn prod_debug_unlock_send_token(
 pub fn prod_debug_unlock_get_challenge(
     tap: &mut OpenOcdJtagTap,
 ) -> Result<ProductionAuthDebugUnlockChallenge> {
-    jtag_wait_for_caliptra_mailbox_resp(tap)?;
     let rsp_bytes = jtag_get_caliptra_mailbox_resp(tap)?;
     let du_challenge = ProductionAuthDebugUnlockChallenge::read_from_bytes(rsp_bytes.as_slice())
         .ok()

@@ -9,7 +9,17 @@ use caliptra_hw_model::jtag::CaliptraCoreReg;
 use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
 
 use anyhow::{anyhow, Context, Result};
+use int_enum::IntEnum;
 use zerocopy::{FromBytes, IntoBytes};
+
+#[repr(u32)]
+#[derive(Debug, PartialEq, IntEnum)]
+pub enum CoreMailboxStatus {
+    CoreMailboxStatusCmdBusy = 0x0,
+    CoreMailboxStatusDataReady = 0x1,
+    CoreMailboxStatusCmdComplete = 0x2,
+    CoreMailboxStatusCmdFailure = 0x3,
+}
 
 /// Acquire Caliptra Core mailbox lock over JTAG TAP.
 ///
@@ -60,12 +70,13 @@ pub fn jtag_send_caliptra_mailbox_cmd(
 /// Wait for Caliptra Core mailbox response over JTAG TAP.
 ///
 /// Returns the mbox_status.status bit field.
-pub fn jtag_wait_for_caliptra_mailbox_resp(tap: &mut OpenOcdJtagTap) -> Result<u32> {
+pub fn jtag_wait_for_caliptra_mailbox_resp(tap: &mut OpenOcdJtagTap) -> Result<CoreMailboxStatus> {
     loop {
-        let mbox_status = tap.read_reg(&CaliptraCoreReg::MboxStatus)?;
-        if (mbox_status & 0xf) != 0x0 {
-            let status = mbox_status & 0xf;
-            return Ok(status);
+        let mbox_status =
+            CoreMailboxStatus::try_from(tap.read_reg(&CaliptraCoreReg::MboxStatus)? & 0xf)
+                .expect("Invalid Caliptra Core mailbox status.");
+        if mbox_status != CoreMailboxStatus::CoreMailboxStatusCmdBusy {
+            return Ok(mbox_status);
         }
         thread::sleep(Duration::from_millis(100));
     }
@@ -79,10 +90,10 @@ pub fn jtag_wait_for_caliptra_mailbox_resp(tap: &mut OpenOcdJtagTap) -> Result<u
 ///
 /// Returns the response as a vector of bytes.
 pub fn jtag_get_caliptra_mailbox_resp(tap: &mut OpenOcdJtagTap) -> Result<Vec<u8>> {
-    let mbox_status = tap.read_reg(&CaliptraCoreReg::MboxStatus)?;
-    if (mbox_status & 0xf) != 0x1 {
+    let mbox_status = jtag_wait_for_caliptra_mailbox_resp(tap)?;
+    if mbox_status != CoreMailboxStatus::CoreMailboxStatusDataReady {
         return Err(anyhow!(
-            "No response data in the mailbox (status = 0x{:08x}).",
+            "No response data in the mailbox (status = {:?}).",
             mbox_status
         ));
     }
