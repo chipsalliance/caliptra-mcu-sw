@@ -11,7 +11,7 @@ members = [
     "common/testing",
     "emulator/app",
     "emulator/app/mcu-mbox",
-    "emulator/bmc/pldm-fw-pkg",
+    "common/pldm-fw-pkg",
     "emulator/bmc/pldm-ua",
     "emulator/caliptra",
     "emulator/cbinding",
@@ -207,7 +207,7 @@ mcu-testing-common = { path = "common/testing" }
 mcu-tock-veer = { path = "runtime/kernel/veer" }
 ocp-eat = { path = "runtime/userspace/api/eat", default-features = false }
 pldm-common = { path = "common/pldm"}
-pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
+pldm-fw-pkg = { path = "common/pldm-fw-pkg" }
 pldm-ua = { path = "emulator/bmc/pldm-ua"}
 poll-common = { path = "common/poll"}
 registers-generated = { path = "registers/generated-firmware" }
