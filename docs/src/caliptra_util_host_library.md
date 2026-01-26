@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Caliptra Utility host library is a modular, extensible and transport-agnostic C library designed to enable the development of utility tools that can run on both BMC and host systems. These utilities facilitate both in-band and out-of-band communication with the Caliptra subsystem on the device, supporting a variety of transport interfaces such as MCU mailbox and MCTP VDM etc. The library provides a unified API for all supported Caliptra commands, making it easy to build robust management, provisioning, and diagnostic tools for diverse deployment environments.
+The Caliptra Utility host library is a modular, extensible, and transport-agnostic Rust library designed to enable the development of utility tools that can run on both BMC and host systems. These utilities facilitate both in-band and out-of-band communication with the Caliptra subsystem on the device, supporting a variety of transport interfaces such as MCU mailbox and MCTP VDM. The library provides a unified API for all supported Caliptra commands, along with C bindings for integration with C/C++ applications, making it easy to build robust management, provisioning, and diagnostic tools for diverse deployment environments.
 
 ### Design Goals
 
@@ -100,15 +100,369 @@ flowchart TD
 
 ## Interface Design
 
-### Transport Implementation Layer
+The library is organized into several Rust crates, each providing specific functionality:
 
-Each transport implementation shall provide these functions:
+| Crate | Description |
+|-------|-------------|
+| `caliptra-util-host-transport` | Transport trait and implementations (Mailbox, etc.) |
+| `caliptra-util-host-session` | Session management and command execution |
+| `caliptra-util-host-command-types` | Command/response type definitions with zerocopy support |
+| `caliptra-util-host-commands` | High-level command API functions |
+| `caliptra-util-host-osal` | OS abstraction layer for portability |
+| `caliptra-util-host-cbinding` | C bindings for the library |
+
+### Transport Layer
+
+The transport layer provides an abstraction for device communication through the `Transport` trait:
+
+```rust
+/// Transport trait for device communication
+pub trait Transport: Send + Sync {
+    /// Connect to the device
+    fn connect(&mut self) -> TransportResult<()>;
+
+    /// Disconnect from the device
+    fn disconnect(&mut self) -> TransportResult<()>;
+
+    /// Send a command with the given command ID and payload
+    fn send(&mut self, command_id: u32, data: &[u8]) -> TransportResult<()>;
+
+    /// Receive response data into the provided buffer
+    fn receive(&mut self, buffer: &mut [u8]) -> TransportResult<usize>;
+
+    /// Check if the transport is connected
+    fn is_connected(&self) -> bool;
+}
+
+/// Transport error types
+pub enum TransportError {
+    ConnectionFailed(Option<&'static str>),
+    SendFailed(Option<&'static str>),
+    ReceiveFailed(Option<&'static str>),
+    Timeout,
+    NotSupported(&'static str),
+    InvalidMessage,
+    Disconnected,
+    ConfigurationError(&'static str),
+    IoError(&'static str),
+    BufferError(&'static str),
+    // ... additional error variants
+}
+
+/// Transport configuration
+pub struct TransportConfig {
+    pub max_message_size: usize,
+    pub timeout_ms: u32,
+}
+```
+
+#### Mailbox Transport Implementation
+
+The `Mailbox` transport provides communication through a mailbox driver:
+
+```rust
+/// Trait for hardware mailbox communication
+pub trait MailboxDriver: Send + Sync {
+    /// Send a command and return response data
+    fn send_command(&mut self, external_cmd: u32, payload: &[u8]) -> Result<&[u8], MailboxError>;
+
+    /// Check if mailbox is ready
+    fn is_ready(&self) -> bool;
+
+    /// Connect to mailbox
+    fn connect(&mut self) -> Result<(), MailboxError>;
+
+    /// Disconnect from mailbox
+    fn disconnect(&mut self) -> Result<(), MailboxError>;
+}
+
+/// Mailbox error types
+pub enum MailboxError {
+    NotReady,
+    Timeout,
+    InvalidCommand,
+    CommunicationError,
+    BufferOverflow,
+    DeviceError(u32),
+}
+
+/// Mailbox Transport using dynamic dispatch
+pub struct Mailbox<'a> { mailbox: &'a mut dyn MailboxDriver,
+
+    // internal state...
+}
+
+impl<'a> Mailbox<'a> {
+    /// Create a new mailbox transport with the given driver
+    pub fn new(mailbox: &'a mut dyn MailboxDriver) -> Self;
+}
+
+impl Transport for Mailbox<'_> {
+    // Transport trait implementation...
+}
+```
+
+### Session Layer
+
+The session layer manages device connections and command execution:
+
+```rust
+/// Session state enumeration
+#[repr(u32)]
+pub enum SessionState {
+    Disconnected = 0,
+    Connecting = 1,
+    Connected = 2,
+    Authenticated = 3,
+    Error = 4,
+}
+
+/// Session configuration
+pub struct SessionConfig {
+    pub connection_timeout_ms: u32,
+    pub command_timeout_ms: u32,
+    pub max_retries: u8,
+    pub keepalive_interval_ms: u32,
+    pub auto_reconnect: bool,
+}
+
+/// Session statistics
+pub struct SessionStatistics {
+    pub commands_sent: u64,
+    pub commands_succeeded: u64,
+    pub commands_failed: u64,
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub reconnect_count: u32,
+    pub last_error_count: u32,
+}
+
+/// Session error enumeration
+pub enum SessionError {
+    SessionNotFound(u32),
+    InvalidState { current: SessionState, expected: SessionState },
+    TransportError(&'static str),
+    OsalError(&'static str),
+    ConfigurationError(&'static str),
+    AuthenticationError(&'static str),
+    ResourceError(&'static str),
+    SerializationError(&'static str),
+    MaxRetriesExceeded,
+    InternalError(&'static str),
+    Custom(&'static str),
+}
+
+/// Device session context using dynamic dispatch
+pub struct CaliptraSession<'t> {
+    pub session_id: u32,
+    pub state: SessionState,
+    pub config: SessionConfig,
+    pub stats: SessionStatistics,
+    // internal fields...
+}
+
+impl<'t> CaliptraSession<'t> {
+    /// Create a new session with the given transport
+    pub fn new(session_id: u32, transport: &'t mut dyn Transport) -> SessionResult<Self>;
+
+    /// Create session with custom configuration
+    pub fn with_config(
+        session_id: u32,
+        transport: &'t mut dyn Transport,
+        config: SessionConfig,
+    ) -> SessionResult<Self>;
+
+    /// Connect to the device
+    pub fn connect(&mut self) -> SessionResult<()>;
+
+    /// Disconnect from device
+    pub fn disconnect(&mut self) -> SessionResult<()>;
+
+    /// Check if session is connected and ready
+    pub fn is_ready(&self) -> bool;
+
+    /// Execute a structured command through the session
+    pub fn execute_command<Req, Resp>(&mut self, command: &Req) -> SessionResult<Resp>
+    where
+        Req: CommandRequest,
+        Resp: CommandResponse;
+
+    /// Execute a command with explicit command ID
+    pub fn execute_command_with_id<Req>(
+        &mut self,
+        command_id: CaliptraCommandId,
+        request: &Req,
+    ) -> SessionResult<Req::Response>
+    where
+        Req: CommandRequest + IntoBytes,
+        Req::Response: FromBytes + Immutable;
+
+    /// Get session info
+    pub fn get_info(&self) -> SessionInfo;
+
+    /// Handle session errors and recovery
+    pub fn handle_error(&mut self, error: SessionError) -> SessionResult<()>;
+}
+```
+
+### Command Types Layer
+
+Command and response structures are defined using zerocopy for efficient serialization:
+
+```rust
+/// Caliptra command IDs
+#[repr(u32)]
+pub enum CaliptraCommandId {
+    // Device Info Commands (0x0001-0x000F)
+    GetFirmwareVersion = 0x0001,
+    GetDeviceCapabilities = 0x0002,
+    GetDeviceId = 0x0003,
+    GetDeviceInfo = 0x0004,
+
+    // Certificate Commands (0x1001-0x101F)
+    GetIdevidCert = 0x1001,
+    GetLdevidCert = 0x1002,
+    GetFmcAliasCert = 0x1003,
+    GetRtAliasCert = 0x1004,
+    GetCertChain = 0x1010,
+    StoreCertificate = 0x1011,
+
+    // Hash Commands (0x2001-0x201F)
+    HashInit = 0x2001,
+    HashUpdate = 0x2002,
+    HashFinalize = 0x2003,
+    HashOneShot = 0x2004,
+
+    // Symmetric Crypto Commands (0x3001-0x302F)
+    AesInit = 0x3001,
+    AesUpdate = 0x3002,
+    AesFinalize = 0x3003,
+
+    // Asymmetric Crypto Commands (0x4001-0x402F)
+    EcdsaSign = 0x4001,
+    EcdsaVerify = 0x4002,
+    EcdhDerive = 0x4003,
+
+    // Debug Commands (0x7001-0x701F)
+    DebugEcho = 0x7001,
+    DebugGetStatus = 0x7002,
+    DebugGetLog = 0x7005,
+
+    // Fuse Commands (0x8001-0x801F)
+    FuseRead = 0x8001,
+    FuseWrite = 0x8002,
+    FuseLock = 0x8003,
+}
+
+/// Command processing errors
+pub enum CommandError {
+    InvalidCommand,
+    InvalidRequest,
+    InvalidResponse,
+    InvalidResponseLength,
+    ResponseTooLong,
+    SerializationError,
+    DeserializationError,
+    ChecksumMismatch,
+    Unsupported,
+    BufferTooSmall,
+    Custom(&'static str),
+}
+```
+
+#### Example Command Types
+
+```rust
+/// Get device ID request
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct GetDeviceIdRequest {
+    // Empty request - no parameters needed
+}
+
+/// Get device ID response
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct GetDeviceIdResponse {
+    pub vendor_id: u16,
+    pub device_id: u16,
+    pub subsystem_vendor_id: u16,
+    pub subsystem_id: u16,
+}
+
+impl CommandRequest for GetDeviceIdRequest {
+    type Response = GetDeviceIdResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::GetDeviceId;
+}
+
+/// Get firmware version request
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct GetFirmwareVersionRequest {
+    pub index: u32, // 0 = ROM, 1 = Runtime
+}
+
+/// Firmware version response
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct GetFirmwareVersionResponse {
+    pub common: CommonResponse,
+    pub version: [u32; 4],   // Major, minor, patch, build
+    ...
+}
+```
+
+### Command API Layer
+
+The command API provides high-level functions for interacting with Caliptra devices:
+
+```rust
+/// High-level result type for API functions
+pub type CaliptraResult<T> = Result<T, CaliptraApiError>;
+
+/// API-specific error types
+pub enum CaliptraApiError {
+    Osal(OsalError),
+    InvalidParameter(&'static str),
+    SessionNotInitialized,
+    TransportNotAvailable,
+    CommandFailed(&'static str),
+    SessionError(&'static str),
+}
+
+// ============================================================================
+// Device Information Commands
+// ============================================================================
+
+/// Get device identification information
+pub fn caliptra_cmd_get_device_id(
+    session: &mut CaliptraSession,
+) -> CaliptraResult<GetDeviceIdResponse>;
+
+/// Get device information
+pub fn caliptra_cmd_get_device_info(
+    session: &mut CaliptraSession,
+    info_type: u32,
+) -> CaliptraResult<GetDeviceInfoResponse>;
+
+/// Get device capabilities
+pub fn caliptra_cmd_get_device_capabilities(
+    session: &mut CaliptraSession,
+) -> CaliptraResult<GetDeviceCapabilitiesResponse>;
+
+/// Get firmware version
+pub fn caliptra_cmd_get_firmware_version(
+    session: &mut CaliptraSession,
+    index: u32,  // 0 = ROM, 1 = Runtime
+) -> CaliptraResult<GetFirmwareVersionResponse>;
+```
+
+### C Bindings
+
+The library provides C bindings through the `cbinding` crate for integration with C/C++ applications:
 
 ```c
-// Transport implementation context (opaque, transport-specific)
-typedef void* caliptra_transport_impl_context_t;
-
-// Error code type for all Caliptra APIs
+// Error code type for C API
 typedef enum {
     CALIPTRA_SUCCESS = 0,
     CALIPTRA_ERROR_UNKNOWN = 1,
@@ -122,349 +476,89 @@ typedef enum {
     CALIPTRA_ERROR_BUSY = 9,
     CALIPTRA_ERROR_STATE = 10,
     CALIPTRA_ERROR_IO = 11,
-    // ... add more as needed
-} caliptra_error_t;
+} CaliptraError;
 
-// Transport implementation operations
-typedef struct {
-    // Initialize the transport implementation context with parameters
-    caliptra_error_t (*init)(caliptra_transport_impl_context_t* context, const char* params);
+// Protocol types
+typedef enum {
+    CALIPTRA_PROTOCOL_MAILBOX = 0,
+    CALIPTRA_PROTOCOL_MCTP_VDM = 1,
+    CALIPTRA_PROTOCOL_CUSTOM = 2,
+} CaliptraProtocolType;
 
-    // Clean up and release resources for the transport context
-    caliptra_error_t (*cleanup)(caliptra_transport_impl_context_t context);
-
-    // Send data over the transport
-    caliptra_error_t (*send)(caliptra_transport_impl_context_t context, const uint8_t* data, size_t len);
-
-    // Receive data from the transport with timeout
-    caliptra_error_t (*receive)(caliptra_transport_impl_context_t context, uint8_t* buffer, size_t* buffer_len, uint32_t timeout_ms);
-
-    // Flush any pending data or buffers in the transport
-    caliptra_error_t (*flush)(caliptra_transport_impl_context_t context);
-
-    // Check if the transport is ready for communication
-    bool (*is_ready)(caliptra_transport_impl_context_t context);
-
-    // Get the maximum payload size supported by the transport
-    size_t (*get_max_payload_size)(caliptra_transport_impl_context_t context);
-} caliptra_transport_impl_ops_t;
-
-// Transport implementation descriptor
-typedef struct {
-    const char* name;
-    const char* description;
-    size_t context_size;
-    const caliptra_transport_impl_ops_t* ops;
-} caliptra_transport_impl_t;
-```
-
-### Transport Abstraction Layer
-
-```c
 // Opaque transport handle
-typedef struct caliptra_transport caliptra_transport_t;
+typedef struct CaliptraTransport CaliptraTransport;
 
-// Transport operations interface
-typedef struct {
-    // Send data over the transport
-    caliptra_error_t (*send)(caliptra_transport_t* transport, const uint8_t* data, size_t len);
-
-    // Receive data from the transport
-    caliptra_error_t (*receive)(caliptra_transport_t* transport, uint8_t* buffer, size_t* buffer_len, uint32_t timeout_ms);
-
-    // Check if the transport is ready for communication
-    bool (*is_ready)(caliptra_transport_t* transport);
-
-    // Flush any pending data or buffers
-    caliptra_error_t (*flush)(caliptra_transport_t* transport);
-
-    // Get the maximum payload size supported by the transport
-    size_t (*get_max_payload_size)(caliptra_transport_t* transport);
-} caliptra_transport_ops_t;
-
-// Transport descriptor
-typedef struct {
-    const char* name;
-    const char* description;
-    const caliptra_transport_ops_t* ops;
-    void* impl_context;
-} caliptra_transport_desc_t;
-
-// Register a transport implementation
-caliptra_error_t caliptra_transport_register(const caliptra_transport_impl_t* impl);
-
-// Unregister a transport implementation
-caliptra_error_t caliptra_transport_unregister(const char* transport_name);
-
-// List registered transports
-caliptra_error_t caliptra_transport_list(const char** names, size_t* count);
-
-// Create transport instance
-caliptra_error_t caliptra_transport_create(const char* transport_name, const char* params, caliptra_transport_t** transport);
-
-// Destroy transport instance
-caliptra_error_t caliptra_transport_destroy(caliptra_transport_t* transport);
-
-// Get transport descriptor (including ops)
-const caliptra_transport_desc_t* caliptra_transport_get_descriptor(caliptra_transport_t* transport);
-```
-
-### Core Layer
-
-```c
-// Session handle (opaque)
-typedef struct caliptra_session caliptra_session_t;
-
-// Protocol types supported by the core layer
-typedef enum {
-    CALIPTRA_PROTOCOL_MAILBOX,
-    CALIPTRA_PROTOCOL_MCTP_VDM,
-    CALIPTRA_PROTOCOL_CUSTOM
-} caliptra_protocol_type_t;
-
-// Session configuration options
-typedef enum {
-    CALIPTRA_SESSION_OPT_TIMEOUT_MS,
-    CALIPTRA_SESSION_OPT_MAX_RETRIES,
-    CALIPTRA_SESSION_OPT_VALIDATE_CHECKSUM,
-    CALIPTRA_SESSION_OPT_LOG_COMMANDS,
-} caliptra_session_option_t;
-
-// Create session with protocol type
-caliptra_error_t caliptra_session_create_with_protocol(caliptra_transport_t* transport, caliptra_protocol_type_t protocol_type, caliptra_session_t** session);
-
-// Destroy session
-caliptra_error_t caliptra_session_destroy(caliptra_session_t* session);
-
-// Configure session options
-caliptra_error_t caliptra_session_set_option(caliptra_session_t* session, caliptra_session_option_t option, const void* value);
-
-// Get session options
-caliptra_error_t caliptra_session_get_option(caliptra_session_t* session, caliptra_session_option_t option, void* value);
-
-// Generic command IDs (protocol-agnostic)
-typedef enum {
-    // Caliptra FIPS self test command
-    CALIPTRA_CMD_FIPS_SELF_TEST = 0x0000,
-
-    // Device Information Commands (0x0001 - 0x00FF)
-    CALIPTRA_CMD_GET_FIRMWARE_VERSION    = 0x0001,
-    CALIPTRA_CMD_GET_DEVICE_CAPABILITIES = 0x0002,
-    CALIPTRA_CMD_GET_DEVICE_ID          = 0x0003,
-    CALIPTRA_CMD_GET_DEVICE_INFO        = 0x0004,
-
-    // Certificate Management Commands (0x0100 - 0x01FF)
-    CALIPTRA_CMD_EXPORT_CSR             = 0x0101,
-    CALIPTRA_CMD_IMPORT_CERTIFICATE     = 0x0102,
-
-    // SHA Commands (0x0200 - 0x020F)
-    CALIPTRA_CMD_SHA_INIT               = 0x0201,
-    CALIPTRA_CMD_SHA_UPDATE             = 0x0202,
-    CALIPTRA_CMD_SHA_FINAL              = 0x0203,
-
-    // AES Basic Commands (0x0210 - 0x021F)
-    CALIPTRA_CMD_AES_ENCRYPT_INIT       = 0x0211,
-    CALIPTRA_CMD_AES_ENCRYPT_UPDATE     = 0x0212,
-    CALIPTRA_CMD_AES_DECRYPT_INIT       = 0x0213,
-    CALIPTRA_CMD_AES_DECRYPT_UPDATE     = 0x0214,
-
-    // AES GCM Commands (0x0220 - 0x022F)
-    CALIPTRA_CMD_AES_GCM_ENCRYPT_INIT   = 0x0221,
-    CALIPTRA_CMD_AES_GCM_ENCRYPT_UPDATE = 0x0222,
-    CALIPTRA_CMD_AES_GCM_ENCRYPT_FINAL  = 0x0223,
-    CALIPTRA_CMD_AES_GCM_DECRYPT_INIT   = 0x0224,
-    CALIPTRA_CMD_AES_GCM_DECRYPT_UPDATE = 0x0225,
-    CALIPTRA_CMD_AES_GCM_DECRYPT_FINAL  = 0x0226,
-
-    // Random Number Commands (0x0230 - 0x023F)
-    CALIPTRA_CMD_RANDOM_STIR            = 0x0231,
-    CALIPTRA_CMD_RANDOM_GENERATE        = 0x0232,
-
-    // Key Exchange Commands (0x0240 - 0x024F)
-    CALIPTRA_CMD_ECDH_GENERATE          = 0x0241,
-    CALIPTRA_CMD_ECDH_FINISH            = 0x0242,
-
-    // Signature Commands (0x0250 - 0x025F)
-    CALIPTRA_CMD_ECDSA384_SIG_VERIFY    = 0x0251,
-    CALIPTRA_CMD_LMS_SIG_VERIFY         = 0x0252,
-    CALIPTRA_CMD_ECDSA_SIGN             = 0x0253,
-    CALIPTRA_CMD_MLDSA_SIGN             = 0x0254,
-
-    // Key Management Commands (0x0260 - 0x026F)
-    CALIPTRA_CMD_IMPORT                 = 0x0261,
-    CALIPTRA_CMD_DELETE                 = 0x0262,
-
-    // Debug Commands (0x0300 - 0x03FF)
-    CALIPTRA_CMD_GET_LOG                = 0x0301,
-    CALIPTRA_CMD_CLEAR_LOG              = 0x0302,
-    CALIPTRA_CMD_PRODUCTION_DEBUG_UNLOCK_REQ   = 0x0303,
-    CALIPTRA_CMD_PRODUCTION_DEBUG_UNLOCK_TOKEN = 0x0304,
-
-    // Fuse Commands (0x0400 - 0x04FF)
-    CALIPTRA_CMD_FUSE_READ              = 0x0401,
-    CALIPTRA_CMD_FUSE_WRITE             = 0x0402,
-    CALIPTRA_CMD_FUSE_LOCK_PARTITION    = 0x0403,
-
-    // Custom command range
-    CALIPTRA_CMD_CUSTOM_BASE            = 0x8000
-} caliptra_command_id_t;
-
-// Core command execution (used by Command Layer)
-caliptra_error_t caliptra_core_execute_command(
-    caliptra_session_t* session,
-    caliptra_command_id_t command_id,  // Generic command ID
-    const void* request,
-    size_t request_size,
-    void* response,
-    size_t* response_size
+// Session management
+CaliptraError caliptra_session_create_with_protocol(
+    CaliptraTransport* transport,
+    CaliptraProtocolType protocol_type,
+    CaliptraSession** session
 );
 
-// Protocol handler interface for custom protocol support.
+CaliptraError caliptra_session_connect(CaliptraSession* session);
+CaliptraError caliptra_session_disconnect(CaliptraSession* session);
+CaliptraError caliptra_session_destroy(CaliptraSession* session);
+
+// Transport management
+CaliptraError caliptra_transport_destroy(CaliptraTransport* transport);
+
+// Device ID structure (C-compatible)
 typedef struct {
-    // Format generic command into protocol-specific packet.
-    caliptra_error_t (*format_packet)(caliptra_command_id_t command_id, const void* request, size_t request_size, uint8_t* packet, size_t* packet_size);
+    uint16_t vendor_id;
+    uint16_t device_id;
+    uint16_t subsystem_vendor_id;
+    uint16_t subsystem_id;
+} CaliptraDeviceId;
 
-    // Parse protocol-specific packet into generic response.
-    caliptra_error_t (*parse_packet)(const uint8_t* packet, size_t packet_size, uint32_t* fips_status, void* response, size_t* response_size);
-
-    // Get protocol-specific command code.
-    uint32_t (*get_command_code)(caliptra_command_id_t command_id);
-
-    // Validate packet integrity.
-    caliptra_error_t (*validate_packet)(const uint8_t* packet, size_t packet_size);
-} caliptra_protocol_handler_t;
-
-// Register custom protocol handler.
-caliptra_error_t caliptra_register_protocol_handler(caliptra_protocol_type_t protocol_type, const caliptra_protocol_handler_t* handler);
-
-// Session statistics structure.
-typedef struct {
-    uint64_t commands_sent;
-    uint64_t commands_successful;
-    uint64_t commands_failed;
-    uint64_t retries;
-    uint64_t checksum_errors;
-    uint64_t transport_errors;
-    uint64_t protocol_errors;
-} caliptra_session_stats_t;
-
-// Get session statistics.
-caliptra_error_t caliptra_session_get_stats(caliptra_session_t* session, caliptra_session_stats_t* stats);
-
-// Reset session statistics.
-caliptra_error_t caliptra_session_reset_stats(caliptra_session_t* session);
-
-// Error context with extended information.
-typedef struct {
-    caliptra_error_t error_code;
-    caliptra_command_id_t command_id;      // Generic command that failed
-    uint32_t protocol_command_code;        // Protocol-specific code
-    const char* error_message;
-    uint32_t device_error;
-    uint32_t transport_error;
-    struct {
-        const char* file;
-        int line;
-        const char* function;
-    } location;
-} caliptra_error_context_t;
-
-// Get last error context for the session.
-caliptra_error_t caliptra_session_get_last_error(caliptra_session_t* session, caliptra_error_context_t* error_context);
-
-// Session state enumeration.
-typedef enum {
-    CALIPTRA_SESSION_STATE_IDLE,
-    CALIPTRA_SESSION_STATE_BUSY,
-    CALIPTRA_SESSION_STATE_ERROR,
-    CALIPTRA_SESSION_STATE_RECOVERING
-} caliptra_session_state_t;
-
-// Get current session state.
-caliptra_session_state_t caliptra_session_get_state(caliptra_session_t* session);
-
-// Reset session to clear error state.
-caliptra_error_t caliptra_session_reset(caliptra_session_t* session);
-
-// Get session protocol type.
-caliptra_protocol_type_t caliptra_session_get_protocol_type(caliptra_session_t* session);
-
-// Get transport associated with session.
-caliptra_transport_t* caliptra_session_get_transport(caliptra_session_t* session);
-```
-### Command Layer
-
-#### Device Information Commands
-
-```c
-// Get firmware version
-caliptra_error_t caliptra_cmd_get_firmware_version(caliptra_session_t* session, caliptra_fw_index_t index, caliptra_fw_version_t* version);
-
-// Get device capabilities
-caliptra_error_t caliptra_cmd_get_device_capabilities(caliptra_session_t* session, caliptra_capabilities_t* caps);
-
-// Get device ID
-caliptra_error_t caliptra_cmd_get_device_id(caliptra_session_t* session, caliptra_device_id_t* device_id);
-
-// Get device info
-caliptra_error_t caliptra_cmd_get_device_info(caliptra_session_t* session, uint32_t info_index, uint8_t* buffer, size_t* buffer_size);
+// Command APIs
+CaliptraError caliptra_cmd_get_device_id(
+    CaliptraSession* session,
+    CaliptraDeviceId* device_id
+);
 ```
 
-#### Certificate Management Commands
+### Usage Example (Rust)
 
-```c
-// Export CSR
-caliptra_error_t caliptra_cmd_export_csr(caliptra_session_t* session, caliptra_csr_type_t csr_type, uint8_t* csr_buffer, size_t* csr_size);
+```rust
+use caliptra_util_host_transport::{Mailbox, MailboxDriver};
+use caliptra_util_host_session::CaliptraSession;
+use caliptra_util_host_commands::api::caliptra_cmd_get_device_id;
 
-// Import certificate
-caliptra_error_t caliptra_cmd_import_certificate(caliptra_session_t* session, caliptra_csr_type_t cert_type, const uint8_t* cert_data, size_t cert_size);
-```
+// Implement MailboxDriver for your hardware
+struct MyMailboxDriver { /* ... */ }
 
-#### Cryptographic Commands
+impl MailboxDriver for MyMailboxDriver {
+    fn send_command(&mut self, cmd: u32, payload: &[u8]) -> Result<&[u8], MailboxError> {
+        // Hardware-specific implementation
+    }
+    fn is_ready(&self) -> bool { true }
+    fn connect(&mut self) -> Result<(), MailboxError> { Ok(()) }
+    fn disconnect(&mut self) -> Result<(), MailboxError> { Ok(()) }
+}
 
-```c
-// Initialize SHA context
-caliptra_error_t caliptra_cmd_sha_init(caliptra_session_t* session, caliptra_sha_type_t sha_type, caliptra_sha_ctx_t** ctx);
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create mailbox driver
+    let mut driver = MyMailboxDriver::new();
 
-// Update SHA context with data
-caliptra_error_t caliptra_cmd_sha_update(caliptra_sha_ctx_t* ctx, const uint8_t* data, size_t data_len);
+    // Create transport
+    let mut transport = Mailbox::new(&mut driver);
 
-// Finalize SHA and get hash
-caliptra_error_t caliptra_cmd_sha_final(caliptra_sha_ctx_t* ctx, uint8_t* hash, size_t* hash_len);
+    // Create session
+    let mut session = CaliptraSession::new(1, &mut transport)?;
 
-// Destroy SHA context
-caliptra_error_t caliptra_cmd_sha_destroy(caliptra_sha_ctx_t* ctx);
+    // Connect
+    session.connect()?;
 
-// Initialize AES context
-caliptra_error_t caliptra_cmd_aes_init(caliptra_session_t* session, caliptra_aes_mode_t mode, bool encrypt, const uint8_t* key, size_t key_len, const uint8_t* iv, size_t iv_len, caliptra_aes_ctx_t** ctx);
+    // Get device ID
+    let device_id = caliptra_cmd_get_device_id(&mut session)?;
+    println!("Vendor ID: 0x{:04x}", device_id.vendor_id);
+    println!("Device ID: 0x{:04x}", device_id.device_id);
 
-// Update AES context with input data
-caliptra_error_t caliptra_cmd_aes_update(caliptra_aes_ctx_t* ctx, const uint8_t* input, size_t input_len, uint8_t* output, size_t* output_len);
+    // Disconnect
+    session.disconnect()?;
 
-// Finalize AES and get output/tag
-caliptra_error_t caliptra_cmd_aes_final(caliptra_aes_ctx_t* ctx, uint8_t* output, size_t* output_len, uint8_t* tag, size_t tag_len);
-
-// Destroy AES context
-caliptra_error_t caliptra_cmd_aes_destroy(caliptra_aes_ctx_t* ctx);
-
-// Get random bytes
-caliptra_error_t caliptra_cmd_get_random(caliptra_session_t* session, uint8_t* buffer, size_t len);
-
-// Verify ECDSA signature
-caliptra_error_t caliptra_cmd_ecdsa_verify(caliptra_session_t* session, const caliptra_ecdsa_pubkey_t* pubkey, const uint8_t* hash, size_t hash_len, const caliptra_ecdsa_signature_t* signature);
-
-// Sign hash with ECDSA
-caliptra_error_t caliptra_cmd_ecdsa_sign(caliptra_session_t* session, const uint8_t* hash, size_t hash_len, caliptra_ecdsa_signature_t* signature, caliptra_ecdsa_pubkey_t* pubkey);
-```
-
-#### Telemetry Commands (WIP)
-
-```c
-// Get log data
-caliptra_error_t caliptra_cmd_get_log(caliptra_session_t* session, caliptra_log_type_t log_type, uint8_t* buffer, size_t* buffer_size);
-
-// Clear log data
-caliptra_error_t caliptra_cmd_clear_log(caliptra_session_t* session, caliptra_log_type_t log_type);
+    Ok(())
+}
 ```
 
 ## Extensibility with Plugin Architecture
@@ -502,52 +596,210 @@ flowchart TD
 ### How Plugins Work
 
 1. **Plugin Interface**
-   Each plugin implements a standard interface and exports a descriptor structure. For example:
-   ```c
-   typedef struct {
-       const char* name;
-       const char* version;
-       caliptra_error_t (*register_plugin)(void);
-   } caliptra_plugin_descriptor_t;
+
+   Each plugin implements a standard interface and exports a descriptor structure.
+
+   ```rust
+   /// Plugin descriptor containing metadata and registration function
+   pub struct PluginDescriptor {
+       /// Plugin name identifier
+       pub name: &'static str,
+       /// Plugin version string
+       pub version: &'static str,
+       /// Registration function called by the core library
+       pub register: fn() -> CaliptraResult<()>,
+       /// Optional cleanup function called on unload
+       pub unregister: Option<fn() -> CaliptraResult<()>>,
+   }
+
+   /// Macro to export a plugin descriptor from a shared library
+   #[macro_export]
+   macro_rules! export_plugin {
+       ($descriptor:expr) => {
+           #[no_mangle]
+           pub static CALIPTRA_PLUGIN_DESCRIPTOR: PluginDescriptor = $descriptor;
+       };
+   }
    ```
-   The plugin’s `register_plugin` function is called by the core library to register new commands, transports, or protocol handlers.
+
+   The plugin's `register` function is called by the core library to register new commands, transports, or protocol handlers.
 
 2. **Dynamic Loading**
-   The core library provides APIs such as:
 
-   ```c
-   caliptra_error_t caliptra_plugin_load(const char* path);
-   caliptra_error_t caliptra_plugin_unload(const char* name);
+   The core library provides APIs to load and unload plugins at runtime.
+
+   ```rust
+   /// Plugin manager for loading and managing plugins
+   pub struct PluginManager {
+       // Internal state...
+   }
+
+   impl PluginManager {
+       /// Create a new plugin manager
+       pub fn new() -> Self;
+
+       /// Load a plugin from the specified path
+       pub fn load(&mut self, path: &Path) -> CaliptraResult<PluginHandle>;
+
+       /// Unload a plugin by name
+       pub fn unload(&mut self, name: &str) -> CaliptraResult<()>;
+
+       /// Get a list of loaded plugins
+       pub fn loaded_plugins(&self) -> &[PluginInfo];
+   }
+
+   /// Handle to a loaded plugin
+   pub struct PluginHandle {
+       pub name: String,
+       pub version: String,
+   }
+
+   /// Information about a loaded plugin
+   pub struct PluginInfo {
+       pub name: String,
+       pub version: String,
+       pub path: PathBuf,
+   }
    ```
+
    These use platform mechanisms (`dlopen`/`dlsym` on Linux, `LoadLibrary` on Windows) to load plugins at runtime.
 
 3. **Dynamic Registration**
 
-Plugins use registration and unregistration APIs to add or remove features:
+   Plugins use registration and unregistration APIs to add or remove features.
 
-```c
-// Register new features
-caliptra_error_t caliptra_command_register(const caliptra_command_desc_t* desc);
-caliptra_error_t caliptra_transport_register(const caliptra_transport_impl_t* impl);
-caliptra_error_t caliptra_register_protocol_handler(
-    caliptra_protocol_type_t protocol_type,
-    const caliptra_protocol_handler_t* handler
-);
+   ```rust
+   /// Command descriptor for plugin-provided commands
+   pub struct CommandDescriptor {
+       /// Command name
+       pub name: &'static str,
+       /// Command ID
+       pub command_id: u32,
+       /// Command execution function
+       pub execute: fn(&mut CaliptraSession, &[u8]) -> CaliptraResult<Vec<u8>>,
+       /// Human-readable description
+       pub description: &'static str,
+   }
 
-// Unregister features when plugin is unloaded
-caliptra_error_t caliptra_command_unregister(const char* command_name);
-caliptra_error_t caliptra_transport_unregister(const char* transport_name);
-caliptra_error_t caliptra_unregister_protocol_handler(
-    caliptra_protocol_type_t protocol_type
-);
-```
+   /// Transport factory for plugin-provided transports
+   pub trait TransportFactory: Send + Sync {
+       /// Transport type name
+       fn name(&self) -> &str;
 
-The library maintains internal registries of available commands, transports, and protocol handlers. When a plugin is unloaded, it should call the appropriate unregister functions to cleanly remove its features and release resources.
+       /// Create a new transport instance
+       fn create(&self, config: &TransportConfig) -> CaliptraResult<Box<dyn Transport>>;
+
+       /// Human-readable description
+       fn description(&self) -> &str;
+   }
+
+   /// Protocol handler for plugin-provided protocol implementations
+   pub trait ProtocolHandler: Send + Sync {
+       /// Protocol type this handler supports
+       fn protocol_type(&self) -> ProtocolType;
+
+       /// Process an incoming message
+       fn handle_message(&mut self, message: &[u8]) -> CaliptraResult<Vec<u8>>;
+   }
+
+   // Registration functions
+   /// Register a new command
+   pub fn register_command(desc: CommandDescriptor) -> CaliptraResult<()>;
+
+   /// Unregister a command by name
+   pub fn unregister_command(name: &str) -> CaliptraResult<()>;
+
+   /// Register a new transport factory
+   pub fn register_transport(factory: Box<dyn TransportFactory>) -> CaliptraResult<()>;
+
+   /// Unregister a transport by name
+   pub fn unregister_transport(name: &str) -> CaliptraResult<()>;
+
+   /// Register a protocol handler
+   pub fn register_protocol_handler(handler: Box<dyn ProtocolHandler>) -> CaliptraResult<()>;
+
+   /// Unregister a protocol handler
+   pub fn unregister_protocol_handler(protocol_type: ProtocolType) -> CaliptraResult<()>;
+   ```
+
+   The library maintains internal registries of available commands, transports, and protocol handlers. When a plugin is unloaded, it should call the appropriate unregister functions to cleanly remove its features and release resources.
 
 4. **Discovery and Usage**
-   Applications can enumerate available commands and transports at runtime:
-   ```c
-   size_t caliptra_command_list(const caliptra_command_desc_t** out_array);
-   size_t caliptra_transport_list(const caliptra_transport_impl_t** out_array);
+
+   Applications can enumerate available commands and transports at runtime.
+
+   ```rust
+   /// Get a list of registered commands
+   pub fn list_commands() -> Vec<&'static CommandDescriptor>;
+
+   /// Get a list of registered transport factories
+   pub fn list_transports() -> Vec<&'static str>;
+
+   /// Get a command descriptor by name
+   pub fn get_command(name: &str) -> Option<&'static CommandDescriptor>;
+
+   /// Create a transport instance by name
+   pub fn create_transport(name: &str, config: &TransportConfig) -> CaliptraResult<Box<dyn Transport>>;
    ```
+
    This enables dynamic feature discovery and flexible application logic.
+
+## Extensibility for SPDM and PLDM Support
+
+The Caliptra Utility host library architecture is designed to accommodate future extensions for industry-standard security and firmware management protocols. Specifically, the library can be extended to support **SPDM (Security Protocol and Data Model)** for device attestation and **PLDM (Platform Level Data Model)** for firmware updates by leveraging DMTF open source libraries.
+
+### Design Approach: Transport Adapter Pattern
+
+Rather than implementing SPDM and PLDM protocols directly, the library adopts a transport adapter pattern that aligns with how DMTF libraries are designed:
+
+- **libspdm** expects the application to provide transport send/receive callbacks
+- **libpldm** is primarily a message encoding/decoding library that needs a transport mechanism
+
+The host library's core value is providing transport abstraction. By providing transport adapters, the library enables applications to use libspdm and libpldm directly while leveraging the library's transport infrastructure.
+
+### Integration Architecture
+
+```mermaid
+flowchart TB
+    subgraph Host["Host"]
+        direction TB
+        subgraph App["Application"]
+            CAL_APP["Caliptra Commands"]
+            SPDM_APP["SPDM Attestation"]
+            PLDM_APP["PLDM Firmware Update"]
+        end
+        subgraph DMTF["Open Source Libraries"]
+            LSPDM["DMTF/libspdm"]
+            LPLDM["libpldm"]
+        end
+        subgraph HostLib["Caliptra Utility Host Library"]
+            direction TB
+            CMD["Command Layer"]
+            CORE["Core Layer"]
+            ADAPTER["Protocol Transport Adapters"]
+            TAL["Transport Abstraction Layer"]
+        end
+    end
+
+    CAL_APP --> CMD
+    SPDM_APP --> LSPDM
+    PLDM_APP --> LPLDM
+    LSPDM -->|"transport callbacks"| ADAPTER
+    LPLDM -->|"send/receive"| ADAPTER
+    CMD --> CORE
+    CORE --> TAL
+    ADAPTER --> TAL
+```
+
+### OpenBMC Integration
+
+For out-of-band management scenarios, the host library is eligible to integrate with OpenBMC:
+
+- **libpldm**: OpenBMC already includes libpldm as a core component, enabling seamless integration for PLDM firmware update workflows
+- **DMTF/libspdm**: Can be integrated into OpenBMC for SPDM attestation services
+- **D-Bus Services**: The library's C bindings enable integration with OpenBMC D-Bus services for system management
+- **MCTP Transport**: Leverages OpenBMC's MCTP infrastructure for device communication
+
+### Future Work
+
+> **Note**: The SPDM and PLDM transport adapter implementations are not provided in the current release. The architecture described above outlines the extensibility path for future integration. Third-party developers and system integrators can implement these adapters using the documented transport interfaces and DMTF open source libraries.
