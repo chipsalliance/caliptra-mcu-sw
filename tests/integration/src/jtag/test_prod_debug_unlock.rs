@@ -23,7 +23,6 @@ mod test {
         prod_debug_unlock_send_request, prod_debug_unlock_send_token,
         prod_debug_unlock_wait_for_in_progress,
     };
-    use mcu_hw_model::jtag::jtag_wait_for_caliptra_mailbox_resp;
     use romtime::LifecycleControllerState;
 
     use fips204::ml_dsa_87::PrivateKey as MldsaPrivateKey;
@@ -103,13 +102,9 @@ mod test {
             .expect("Failed to send prod debug unlock request.");
         model.base.step();
         println!("Request sent.");
-        println!("Waiting for the challenge response ...");
-        let status = jtag_wait_for_caliptra_mailbox_resp(&mut *tap)
-            .expect("Never received challenge in mailbox.");
-        assert_eq!(status, 0x1);
-        model.base.step();
         let du_challenge = prod_debug_unlock_get_challenge(&mut *tap)
             .expect("Unable to read challenge in mailbox.");
+        model.base.step();
         println!("Challenge received.");
 
         // Load the ECDSA private key to sign the token with.

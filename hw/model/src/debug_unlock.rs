@@ -3,7 +3,10 @@
 use std::thread;
 use std::time::Duration;
 
-use crate::jtag::jtag_send_caliptra_mailbox_cmd;
+use crate::jtag::{
+    jtag_get_caliptra_mailbox_resp, jtag_send_caliptra_mailbox_cmd,
+    jtag_wait_for_caliptra_mailbox_resp,
+};
 use crate::DefaultHwModel;
 
 use caliptra_api::mailbox::{
@@ -74,24 +77,11 @@ pub fn prod_debug_unlock_send_token(
 pub fn prod_debug_unlock_get_challenge(
     tap: &mut OpenOcdJtagTap,
 ) -> Result<ProductionAuthDebugUnlockChallenge> {
-    // Read the number of bytes to RX.
-    let num_rsp_bytes = tap
-        .read_reg(&CaliptraCoreReg::MboxDlen)
-        .expect("Failed to read response length.") as usize;
-    let mut rsp_bytes = vec![0; num_rsp_bytes];
-    // RX the mailbox data bytes.
-    for i in 0..num_rsp_bytes / 4 {
-        let word = tap
-            .read_reg(&CaliptraCoreReg::MboxDout)
-            .expect("Failed to read response value.");
-        rsp_bytes[i * 4..i * 4 + 4].copy_from_slice(word.as_bytes());
-    }
+    jtag_wait_for_caliptra_mailbox_resp(tap)?;
+    let rsp_bytes = jtag_get_caliptra_mailbox_resp(tap)?;
     let du_challenge = ProductionAuthDebugUnlockChallenge::read_from_bytes(rsp_bytes.as_slice())
         .ok()
         .context("Failed to read challenge from bytes")?;
-    // Write 0 to execute to indicate done receiving.
-    tap.write_reg(&CaliptraCoreReg::MboxExecute, 0x0)
-        .context("Unable to write to MboxExecute register.")?;
     Ok(du_challenge)
 }
 

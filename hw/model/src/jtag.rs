@@ -8,22 +8,8 @@ use caliptra_api::mailbox::CommandId;
 use caliptra_hw_model::jtag::CaliptraCoreReg;
 use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use zerocopy::{FromBytes, IntoBytes};
-
-/// Wait for Caliptra Core mailbox response over JTAG TAP.
-///
-/// Returns the mbox_status.status bit field.
-pub fn jtag_wait_for_caliptra_mailbox_resp(tap: &mut OpenOcdJtagTap) -> Result<u32> {
-    loop {
-        let mbox_status = tap.read_reg(&CaliptraCoreReg::MboxStatus)?;
-        if (mbox_status & 0xf) != 0x0 {
-            let status = mbox_status & 0xf;
-            return Ok(status);
-        }
-        thread::sleep(Duration::from_millis(100));
-    }
-}
 
 /// Acquire Caliptra Core mailbox lock over JTAG TAP.
 ///
@@ -36,6 +22,8 @@ pub fn jtag_acquire_caliptra_mailbox_lock(tap: &mut OpenOcdJtagTap) -> Result<()
         }
         thread::sleep(Duration::from_millis(100));
     }
+
+    // TODO: add timeout handling
 }
 
 /// Send a mailbox command to Caliptra Core over JTAG TAP.
@@ -64,16 +52,40 @@ pub fn jtag_send_caliptra_mailbox_cmd(
             .context("Unable to write to MboxDin register.")?;
     }
     tap.write_reg(&CaliptraCoreReg::MboxExecute, 0x1)
-        .context("Unable to write to MboxExecute register.")?;
-
-    // TODO: read the status, read the response, and clear the execute register.
+        .context("Unable to set MboxExecute.")?;
 
     Ok(())
 }
 
+/// Wait for Caliptra Core mailbox response over JTAG TAP.
+///
+/// Returns the mbox_status.status bit field.
+pub fn jtag_wait_for_caliptra_mailbox_resp(tap: &mut OpenOcdJtagTap) -> Result<u32> {
+    loop {
+        let mbox_status = tap.read_reg(&CaliptraCoreReg::MboxStatus)?;
+        if (mbox_status & 0xf) != 0x0 {
+            let status = mbox_status & 0xf;
+            return Ok(status);
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    // TODO: add timeout handling
+}
+
 /// Get Caliptra Core mailbox response over JTAG TAP.
+///
+/// Also clears the MboxExecute bit after reading the response.
+///
+/// Returns the response as a vector of bytes.
 pub fn jtag_get_caliptra_mailbox_resp(tap: &mut OpenOcdJtagTap) -> Result<Vec<u8>> {
-    jtag_wait_for_caliptra_mailbox_resp(tap)?;
+    let mbox_status = tap.read_reg(&CaliptraCoreReg::MboxStatus)?;
+    if (mbox_status & 0xf) != 0x1 {
+        return Err(anyhow!(
+            "No response data in the mailbox (status = 0x{:08x}).",
+            mbox_status
+        ));
+    }
     let num_rsp_bytes = tap.read_reg(&CaliptraCoreReg::MboxDlen)? as usize;
     let mut rsp_bytes = vec![0; num_rsp_bytes];
     for i in 0..num_rsp_bytes / 4 {
@@ -82,5 +94,7 @@ pub fn jtag_get_caliptra_mailbox_resp(tap: &mut OpenOcdJtagTap) -> Result<Vec<u8
             .expect("Failed to read response value.");
         rsp_bytes[i * 4..i * 4 + 4].copy_from_slice(word.as_bytes());
     }
+    tap.write_reg(&CaliptraCoreReg::MboxExecute, 0x0)
+        .context("Unable to clear MboxExecute.")?;
     Ok(rsp_bytes)
 }
