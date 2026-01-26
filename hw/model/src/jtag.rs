@@ -9,7 +9,7 @@ use caliptra_hw_model::jtag::CaliptraCoreReg;
 use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
 
 use anyhow::{Context, Result};
-use zerocopy::FromBytes;
+use zerocopy::{FromBytes, IntoBytes};
 
 /// Wait for Caliptra Core mailbox response over JTAG TAP.
 ///
@@ -66,5 +66,21 @@ pub fn jtag_send_caliptra_mailbox_cmd(
     tap.write_reg(&CaliptraCoreReg::MboxExecute, 0x1)
         .context("Unable to write to MboxExecute register.")?;
 
+    // TODO: read the status, read the response, and clear the execute register.
+
     Ok(())
+}
+
+/// Get Caliptra Core mailbox response over JTAG TAP.
+pub fn jtag_get_caliptra_mailbox_resp(tap: &mut OpenOcdJtagTap) -> Result<Vec<u8>> {
+    jtag_wait_for_caliptra_mailbox_resp(tap)?;
+    let num_rsp_bytes = tap.read_reg(&CaliptraCoreReg::MboxDlen)? as usize;
+    let mut rsp_bytes = vec![0; num_rsp_bytes];
+    for i in 0..num_rsp_bytes / 4 {
+        let word = tap
+            .read_reg(&CaliptraCoreReg::MboxDout)
+            .expect("Failed to read response value.");
+        rsp_bytes[i * 4..i * 4 + 4].copy_from_slice(word.as_bytes());
+    }
+    Ok(rsp_bytes)
 }
