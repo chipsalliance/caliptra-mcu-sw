@@ -96,7 +96,7 @@ impl ResetReasonEmulator {
         let reg = ReadWriteRegister::<u32, ResetReason::Register>::new(self.get());
         reg.reg
             .modify(ResetReason::FwBootUpdReset::CLEAR + ResetReason::FwHitlessUpdReset::CLEAR);
-        self.set(reg.reg.get())
+        self.set(reg.reg.get());
     }
 }
 
