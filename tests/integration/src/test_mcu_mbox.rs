@@ -4,6 +4,7 @@
 #[cfg(test)]
 pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
+    use aes_gcm::{aead::AeadMutInPlace, Aes256Gcm, Key, KeyInit};
     use mcu_hw_model::mcu_mbox_transport::{
         McuMailboxError, McuMailboxResponse, McuMailboxTransport,
     };
@@ -14,18 +15,20 @@ pub mod test {
         CmAesGcmDecryptFinalRespHeader, CmAesGcmDecryptInitReq, CmAesGcmDecryptUpdateReq,
         CmAesGcmDecryptUpdateRespHeader, CmAesGcmEncryptFinalReq, CmAesGcmEncryptFinalRespHeader,
         CmAesGcmEncryptInitReq, CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateRespHeader,
-        CmAesMode, CmAesRespHeader, CmDeleteReq, CmImportReq, CmKeyUsage, CmRandomGenerateReq,
-        CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk,
-        DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq, DeviceInfoResp,
+        CmAesMode, CmAesRespHeader, CmDeleteReq, CmEcdhFinishReq, CmEcdhGenerateReq,
+        CmEcdhGenerateResp, CmImportReq, CmKeyUsage, CmRandomGenerateReq, CmRandomStirReq,
+        CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk, DeviceCapsReq,
+        DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq, DeviceInfoResp,
         FirmwareVersionReq, FirmwareVersionResp, MailboxReqHeader, MailboxRespHeader,
         MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
         McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
         McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
         McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
-        McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuMailboxReq, McuMailboxResp,
+        McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp,
+        McuEcdhGenerateReq, McuEcdhGenerateResp, McuMailboxReq, McuMailboxResp,
         McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
-        McuShaInitResp, McuShaUpdateReq, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, DEVICE_CAPS_SIZE,
-        MAX_CMB_DATA_SIZE,
+        McuShaInitResp, McuShaUpdateReq, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
+        CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
     };
     use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
     use random_port::PortPicker;
@@ -202,6 +205,7 @@ pub mod test {
                 self.add_rng_stir_etrng_not_supported_test()?;
                 self.add_aes_encrypt_decrypt_tests()?;
                 self.add_aes_gcm_encrypt_decrypt_tests()?;
+                self.add_ecdh_tests()?;
                 Ok(())
             } else {
                 Ok(())
@@ -1373,5 +1377,161 @@ pub mod test {
             let tag_verified = final_hdr.tag_verified == 1;
             Ok((tag_verified, plaintext))
         }
+
+        /// Test ECDH key exchange operations.
+        /// 1. Generate an ECDH key pair via the MCU mailbox
+        /// 2. Generate a separate key pair using OpenSSL (simulating peer)
+        /// 3. Compute shared secret on both sides
+        /// 4. Verify by comparing AES-GCM encryption outputs
+        fn add_ecdh_tests(&mut self) -> Result<(), ()> {
+            println!("Running ECDH tests");
+
+            // Step 1: Generate ECDH key pair via MCU mailbox
+            let resp = self.ecdh_generate()?;
+            println!("  Generated ECDH key pair via mailbox");
+
+            // Step 2: Calculate our side of the exchange using OpenSSL
+            // Based on the flow in https://wiki.openssl.org/index.php/Elliptic_Curve_Diffie_Hellman
+            let mut bn_ctx = openssl::bn::BigNumContext::new().unwrap();
+            let curve =
+                openssl::ec::EcGroup::from_curve_name(openssl::nid::Nid::SECP384R1).unwrap();
+
+            // Parse the mailbox's public key (exchange_data is x||y coordinates)
+            let mut a_exchange_data = vec![4]; // Uncompressed point format prefix
+            a_exchange_data.extend_from_slice(&resp.exchange_data);
+            let a_public_point =
+                openssl::ec::EcPoint::from_bytes(&curve, &a_exchange_data, &mut bn_ctx).unwrap();
+            let a_key = openssl::ec::EcKey::from_public_key(&curve, &a_public_point).unwrap();
+
+            // Generate our own key pair
+            let b_key = openssl::ec::EcKey::generate(&curve).unwrap();
+            let b_exchange_data = &b_key
+                .public_key()
+                .to_bytes(
+                    &curve,
+                    openssl::ec::PointConversionForm::UNCOMPRESSED,
+                    &mut bn_ctx,
+                )
+                .unwrap()[1..]; // Skip the 0x04 prefix
+
+            // Derive the shared secret using OpenSSL
+            let a_pkey = openssl::pkey::PKey::from_ec_key(a_key).unwrap();
+            let b_pkey = openssl::pkey::PKey::from_ec_key(b_key).unwrap();
+            let mut deriver = openssl::derive::Deriver::new(&b_pkey).unwrap();
+            deriver.set_peer(&a_pkey).unwrap();
+            let shared_secret = deriver.derive_to_vec().unwrap();
+            println!("  Computed shared secret via OpenSSL");
+
+            // Step 3: Calculate the shared secret using the MCU mailbox
+            let mut send_exchange_data = [0u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE];
+            send_exchange_data[..b_exchange_data.len()].copy_from_slice(b_exchange_data);
+            let cmk = self.ecdh_finish(&resp, &send_exchange_data, CmKeyUsage::Aes)?;
+            println!("  Derived shared key via mailbox");
+
+            // Step 4: Verify by comparing AES-GCM encryption
+            // Use the CMK to encrypt a known plaintext via mailbox
+            let plaintext = [0u8; 16];
+            let (iv, tag, ciphertext) = self.aes_gcm_encrypt(&cmk, &[], &plaintext)?;
+            println!("  Encrypted test data via mailbox");
+
+            // Encrypt the same plaintext using RustCrypto with OpenSSL-derived shared secret
+            let (rtag, rciphertext) =
+                rustcrypto_gcm_encrypt(&shared_secret[..32], &iv, &[], &plaintext);
+
+            // Compare results - if they match, both sides derived the same shared secret
+            assert_eq!(
+                ciphertext, rciphertext,
+                "Ciphertext should match between mailbox and OpenSSL"
+            );
+            assert_eq!(
+                tag, rtag,
+                "AES-GCM tag should match between mailbox and OpenSSL"
+            );
+            println!("  Verified: ciphertext and tags match!");
+
+            println!("ECDH tests passed");
+            Ok(())
+        }
+
+        /// Perform ECDH generate to create an ephemeral key pair.
+        /// Returns the generate response containing context and exchange_data (public key).
+        fn ecdh_generate(&mut self) -> Result<CmEcdhGenerateResp, ()> {
+            let mut ecdh_generate_req =
+                McuMailboxReq::EcdhGenerate(McuEcdhGenerateReq(CmEcdhGenerateReq {
+                    hdr: MailboxReqHeader::default(),
+                }));
+            ecdh_generate_req.populate_chksum().unwrap();
+
+            let resp = self
+                .process_message(
+                    ecdh_generate_req.cmd_code().0,
+                    ecdh_generate_req.as_bytes().unwrap(),
+                )
+                .map_err(|_| ())?;
+
+            let ecdh_resp = McuEcdhGenerateResp::read_from_bytes(&resp.data).map_err(|_| ())?;
+
+            assert_eq!(
+                ecdh_resp.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+
+            Ok(ecdh_resp.0)
+        }
+
+        /// Perform ECDH finish to derive a shared secret key.
+        /// Takes the generate response (containing context) and the peer's exchange data.
+        /// Returns the derived key (Cmk).
+        fn ecdh_finish(
+            &mut self,
+            generate_resp: &CmEcdhGenerateResp,
+            incoming_exchange_data: &[u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE],
+            key_usage: CmKeyUsage,
+        ) -> Result<Cmk, ()> {
+            let mut ecdh_finish_req =
+                McuMailboxReq::EcdhFinish(McuEcdhFinishReq(CmEcdhFinishReq {
+                    hdr: MailboxReqHeader::default(),
+                    context: generate_resp.context,
+                    key_usage: key_usage.into(),
+                    incoming_exchange_data: *incoming_exchange_data,
+                }));
+            ecdh_finish_req.populate_chksum().unwrap();
+
+            let resp = self
+                .process_message(
+                    ecdh_finish_req.cmd_code().0,
+                    ecdh_finish_req.as_bytes().unwrap(),
+                )
+                .map_err(|_| ())?;
+
+            let ecdh_finish_resp =
+                McuEcdhFinishResp::read_from_bytes(&resp.data).map_err(|_| ())?;
+
+            assert_eq!(
+                ecdh_finish_resp.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+
+            Ok(ecdh_finish_resp.0.output.clone())
+        }
+    }
+
+    /// Helper function to perform AES-GCM encryption using RustCrypto.
+    /// Used for verifying shared secrets derived via ECDH.
+    fn rustcrypto_gcm_encrypt(
+        key: &[u8],
+        iv: &[u8],
+        aad: &[u8],
+        plaintext: &[u8],
+    ) -> ([u8; 16], Vec<u8>) {
+        let key: &Key<Aes256Gcm> = key.into();
+        let mut cipher = Aes256Gcm::new(key);
+        let mut buffer = plaintext.to_vec();
+        let tag = cipher
+            .encrypt_in_place_detached(iv.into(), aad, &mut buffer)
+            .expect("Encryption failed");
+        (tag.into(), buffer)
     }
 }
