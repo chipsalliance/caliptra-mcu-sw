@@ -14,7 +14,7 @@ use openssl::{
 };
 
 pub const OCP_EAT_CLAIMS_KEY_ID: &str = "";
-pub const CBOR_TAG_COSE: u64 = 55799;
+pub const CBOR_TAG_CBOR: u64 = 55799;
 pub const CBOR_TAG_CWT: u64 = 61;
 pub const CBOR_TAG_COSE_SIGN1: u64 = 18;
 
@@ -90,7 +90,7 @@ fn parse_tagged_evidence(slice: &[u8]) -> OcpEatResult<CoseSign1> {
     let mut value = Value::from_slice(slice).map_err(OcpEatError::CoseSign1)?;
 
     // Expected tag order
-    let mut expected_tags = [CBOR_TAG_COSE, CBOR_TAG_CWT, CBOR_TAG_COSE_SIGN1].into_iter();
+    let mut expected_tags = [CBOR_TAG_CBOR, CBOR_TAG_CWT, CBOR_TAG_COSE_SIGN1].into_iter();
 
     loop {
         match value {
