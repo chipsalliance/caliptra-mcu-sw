@@ -1046,7 +1046,6 @@ impl MciPeripheral for Mci {
                     return;
                 }
             }
-
             self.timer.schedule_action_in(100, TimerAction::UpdateReset);
             self.op_wdt_timer2_expired_action = None;
             // Allow enough time for MCU to reset before asserting RESET_STATUS_MCU_RESET
