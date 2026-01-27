@@ -64,6 +64,24 @@ pub fn generate(manifest: &Manifest, common: &Common, ld: &LdArgs) -> Result<Bui
     LdGeneration::new(manifest, common, ld)?.run()
 }
 
+/// Generate a collection of linker files where every application is given the entirety of the
+/// device's memory for both instructions and data.  While the resulting applications cannot be
+/// deployed to the device (as their memory overlaps), it can be used to determine the size of
+/// each binary as part of a two-pass build process.
+///
+/// Since the ROM application always has complete access to its memory hierarchy, skip generating an
+/// ld file for it, since it would not be interesting for a sizing pass.
+///
+/// This could fail if an application exceeds the memory bounds of the entire device, or a hard
+/// drive operation fails.
+pub fn generate_maximal_link_scripts(
+    manifest: &Manifest,
+    common: &Common,
+    ld: &LdArgs,
+) -> Result<BuildDefinition> {
+    LdGeneration::new(manifest, common, ld)?.maximal()
+}
+
 /// A helper struct containing the context required to do a linker script generation.
 struct LdGeneration<'a> {
     manifest: &'a Manifest,
@@ -111,6 +129,62 @@ impl<'a> LdGeneration<'a> {
         })
     }
 
+    /// Generate the maximal linker scripts for each application.
+    fn maximal(&self) -> Result<BuildDefinition> {
+        let binary_context = |name: &str, stage: &str| {
+            format!("Linker generation failed for application {name} at stage {stage} with error:")
+        };
+
+        // Skip generating a ROM linker script.  The ROM always has full access to its memory space,
+        // and is thus not interesting for generating a maximal script for sizing purposes.
+
+        // Iterate through each application providing it with the entirety of ITCM and DTCM space.
+        let mut app_defs = Vec::new();
+        for binary in &self.manifest.apps {
+            // This is a sizing build, so the header values don't matter.
+            let header = TbfHeader::default();
+
+            let itcm = self.manifest.platform.itcm.clone();
+            let ram = self.manifest.platform.ram.clone();
+
+            let content = self
+                .app_linker_content(binary, &header, itcm.clone(), ram)
+                .with_context(|| binary_context(&binary.name, "context generation"))?;
+            let path = self.output_ld_file(binary, &content)?;
+            app_defs.push(App {
+                linker: LinkerScript {
+                    name: binary.name.clone(),
+                    linker_script: path,
+                },
+                header,
+                instruction_block: itcm,
+            });
+        }
+
+        // Then generate a kernel linker file with the entirety of ITCM and DTCM space.
+        let kernel = &self.manifest.kernel;
+        let content = self
+            .kernel_linker_content(
+                kernel,
+                self.manifest.platform.itcm.clone(),
+                None,
+                self.manifest.platform.ram.clone(),
+                self.manifest.platform.ram.clone(),
+            )
+            .with_context(|| binary_context(&kernel.name, "context generation"))?;
+        let path = self.output_ld_file(kernel, &content)?;
+        let kernel_def = LinkerScript {
+            name: kernel.name.clone(),
+            linker_script: path,
+        };
+
+        Ok(BuildDefinition {
+            rom: None,
+            kernel: (kernel_def, self.manifest.platform.itcm.clone()),
+            apps: app_defs,
+        })
+    }
+
     /// Execute an Ld Generation pass.  This includes allocting memory from the various spaces to
     /// accomadate the application.  Utilizing this allocated memory generate respective linker
     /// files which can be used to build a complete application.
@@ -128,19 +202,13 @@ impl<'a> LdGeneration<'a> {
                 let mut rom_tracker = self.manifest.platform.rom.clone();
                 let mut dccm_tracker = self.manifest.platform.dccm().clone();
 
+                let exec_mem = binary.exec_mem()?;
                 let instructions = self
-                    .get_mem_block(
-                        binary.exec_mem.size,
-                        binary.exec_mem.alignment,
-                        &mut rom_tracker,
-                    )
+                    .get_mem_block(exec_mem.size, exec_mem.alignment, &mut rom_tracker)
                     .with_context(|| binary_context(&binary.name, "instruction allocation"))?;
+                let data_mem = binary.data_mem()?;
                 let data = self
-                    .get_mem_block(
-                        binary.data_mem.size,
-                        binary.data_mem.alignment,
-                        &mut dccm_tracker,
-                    )
+                    .get_mem_block(data_mem.size, data_mem.alignment, &mut dccm_tracker)
                     .with_context(|| binary_context(&binary.name, "data allocation"))?;
                 let content = self
                     .rom_linker_content(binary, instructions, data)
@@ -161,17 +229,19 @@ impl<'a> LdGeneration<'a> {
         // before creating the LD file, as application alignment can effect the value of some LD
         // variables.
         let kernel = &self.manifest.kernel;
+        let kernel_exec_mem = kernel.exec_mem()?;
         let instructions = self
             .get_mem_block(
-                kernel.exec_mem.size,
-                kernel.exec_mem.alignment,
+                kernel_exec_mem.size,
+                kernel_exec_mem.alignment,
                 &mut itcm_tracker,
             )
             .with_context(|| binary_context(&kernel.name, "instruction allocation"))?;
+        let kernel_data_mem = kernel.data_mem()?;
         let data = self
             .get_mem_block(
-                kernel.data_mem.size,
-                kernel.data_mem.alignment,
+                kernel_data_mem.size,
+                kernel_data_mem.alignment,
                 &mut ram_tracker,
             )
             .with_context(|| binary_context(&kernel.name, "data allocation"))?;
@@ -182,19 +252,13 @@ impl<'a> LdGeneration<'a> {
         for binary in &self.manifest.apps {
             let header = create_tbf_header(binary)?;
 
+            let exec_mem = binary.exec_mem()?;
             let instructions = self
-                .get_mem_block(
-                    binary.exec_mem.size,
-                    binary.exec_mem.alignment,
-                    &mut itcm_tracker,
-                )
+                .get_mem_block(exec_mem.size, exec_mem.alignment, &mut itcm_tracker)
                 .with_context(|| binary_context(&binary.name, "instruction allocation"))?;
+            let data_mem = binary.data_mem()?;
             let data = self
-                .get_mem_block(
-                    binary.data_mem.size,
-                    binary.data_mem.alignment,
-                    &mut ram_tracker,
-                )
+                .get_mem_block(data_mem.size, data_mem.alignment, &mut ram_tracker)
                 .with_context(|| binary_context(&binary.name, "data allocation"))?;
 
             if first_app_instructions.is_none() {
@@ -335,7 +399,12 @@ INCLUDE $BASE_LD_CONTENTS
         sub_map.insert("ROM_LENGTH", format!("{:#x}", instructions.size));
         sub_map.insert("RAM_START", format!("{:#x}", data.offset));
         sub_map.insert("RAM_LENGTH", format!("{:#x}", data.size));
-        sub_map.insert("STACK_SIZE", format!("{:#x}", binary.stack()));
+        // If the stack isn't specified we are in a sizing build, and it doesnt matter.  Therefore
+        // default to 0.
+        sub_map.insert(
+            "STACK_SIZE",
+            format!("{:#x}", binary.stack().unwrap_or_default()),
+        );
         sub_map.insert("ESTACK_SIZE", format!("{:#x}", binary.exception_stack));
         sub_map.insert(
             "BASE_LD_CONTENTS",
@@ -412,7 +481,12 @@ INCLUDE $BASE_LD_CONTENTS
         sub_map.insert("FLASH_OFFSET", format!("{:#x}", flash.offset));
         sub_map.insert("FLASH_LENGTH", format!("{:#x}", flash.size));
 
-        sub_map.insert("STACK_SIZE", format!("{:#x}", binary.stack()));
+        // If the stack isn't specified we are in a sizing build, and it doesnt matter.  Therefore
+        // default to 0.
+        sub_map.insert(
+            "STACK_SIZE",
+            format!("{:#x}", binary.stack().unwrap_or_default()),
+        );
         sub_map.insert(
             "BASE_LD_CONTENTS",
             base_ld_file.to_string_lossy().to_string(),
@@ -461,7 +535,12 @@ INCLUDE $BASE_LD_CONTENTS
         sub_map.insert("FLASH_LENGTH", format!("{:#x}", instructions.size));
         sub_map.insert("RAM_START", format!("{:#x}", data.offset));
         sub_map.insert("RAM_LENGTH", format!("{:#x}", data.size));
-        sub_map.insert("STACK_SIZE", format!("{:#x}", binary.stack()));
+        // If the stack isn't specified we are in a sizing build, and it doesnt matter.  Therefore
+        // default to 0.
+        sub_map.insert(
+            "STACK_SIZE",
+            format!("{:#x}", binary.stack().unwrap_or_default()),
+        );
         sub_map.insert(
             "BASE_LD_CONTENTS",
             base_ld_file.to_string_lossy().to_string(),
@@ -483,6 +562,7 @@ mod tests {
         Platform {
             name: "test".to_string(),
             tuple: "riscv32imc-unknown-none-elf".to_string(),
+            dynamic_sizing: Some(false),
             default_alignment: Some(8),
             page_size: Some(256),
             rom: Memory {
