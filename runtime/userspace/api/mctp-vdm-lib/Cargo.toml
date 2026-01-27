@@ -1,0 +1,28 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mctp-vdm-lib"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+embassy-executor.workspace = true
+embassy-sync.workspace = true
+external-cmds-common.workspace = true
+libsyscall-caliptra.workspace = true
+libtockasync.workspace = true
+libtock_alarm.workspace = true
+libtock_console.workspace = true
+libtock_platform.workspace = true
+libtock_runtime.workspace = true
+mctp-vdm-common.workspace = true
+zerocopy.workspace = true
+
+[target.'cfg(not(target_arch = "riscv32"))'.dependencies]
+libtock_unittest.workspace = true
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
+embedded-alloc.workspace = true
