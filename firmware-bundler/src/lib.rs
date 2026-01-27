@@ -48,10 +48,5 @@ pub fn execute(cmd: Commands) -> Result<()> {
             bundle::bundle(&manifest, &output, &common)?;
             Ok(())
         }
-        Commands::Generate { common, ld } => {
-            let definition = ld::generate(&common.manifest()?, &common, &ld)?;
-            println!("Build definition: {definition:?}");
-            Ok(())
-        }
     }
 }
