@@ -2802,6 +2802,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
+name = "mctp-vdm-common"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "zerocopy",
+]
+
+[[package]]
+name = "mctp-vdm-lib"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "embassy-executor",
+ "embassy-sync",
+ "embedded-alloc",
+ "external-cmds-common",
+ "libsyscall-caliptra",
+ "libtock_alarm",
+ "libtock_console",
+ "libtock_platform",
+ "libtock_runtime",
+ "libtock_unittest",
+ "libtockasync",
+ "mctp-vdm-common",
+ "zerocopy",
+]
+
+[[package]]
 name = "mcu-builder"
 version = "0.0.0"
 dependencies = [
@@ -3195,6 +3223,7 @@ dependencies = [
  "caliptra-api-types",
  "crc",
  "hex",
+ "mctp-vdm-common",
  "pldm-common",
  "pldm-ua",
  "rand 0.8.5",
@@ -4616,6 +4645,7 @@ dependencies = [
  "hmac",
  "lazy_static",
  "log",
+ "mctp-vdm-common",
  "mcu-builder",
  "mcu-config",
  "mcu-config-emulator",
@@ -5153,6 +5183,8 @@ dependencies = [
  "libtock_runtime",
  "libtock_unittest",
  "libtockasync",
+ "mctp-vdm-common",
+ "mctp-vdm-lib",
  "mcu-config",
  "mcu-config-emulator",
  "mcu-config-fpga",
