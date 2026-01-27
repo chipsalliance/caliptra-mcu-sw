@@ -238,31 +238,31 @@ libtock_small_panic = { path = "runtime/userspace/libtock/panic_handlers/small_p
 libtock_unittest = { path = "runtime/userspace/libtock/unittest" }
 
 # caliptra dependencies; keep git revs in sync
-caliptra-api = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-api-types = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-auth-man-gen = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-auth-man-types = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-bitstream-downloader = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-builder = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-drivers = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-emu-bus = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-emu-cpu = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-emu-derive = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-emu-periph = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-emu-types = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-error = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82", default-features = false }
-caliptra-hw-model = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-hw-model-types = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-image-crypto = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82", default-features = false, features = ["rustcrypto"] }
-caliptra-image-fake-keys = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-image-gen = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-image-types = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-registers = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-test = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-test-harness = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-caliptra-test-harness-types = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-ureg = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82" }
-dpe = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "87325cc91a702c9e59bedf6bcdfa4079979f6c82", default-features = false, features = ["dpe_profile_p384_sha384"] }
+caliptra-api = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-api-types = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-auth-man-gen = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-auth-man-types = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-bitstream-downloader = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-builder = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-drivers = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-emu-bus = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-emu-cpu = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-emu-derive = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-emu-periph = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-emu-types = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-error = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776", default-features = false }
+caliptra-hw-model = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-hw-model-types = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-image-crypto = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776", default-features = false, features = ["rustcrypto"] }
+caliptra-image-fake-keys = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-image-gen = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-image-types = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-registers = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-test = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-test-harness = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+caliptra-test-harness-types = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+ureg = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776" }
+dpe = { git = "https://github.com/mlvisaya/mvisaya-caliptra-sw", rev = "f4b093c5fb871607fa8357bebe32753dffce8776", default-features = false, features = ["dpe_profile_p384_sha384"] }
 
 # local caliptra dependency; useful when developing
 # caliptra-api = { path = "../caliptra-sw/api" }
