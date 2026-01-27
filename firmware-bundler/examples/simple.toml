@@ -3,6 +3,7 @@
 [platform]
 name = "test-flash-based-boot-emulator"
 tuple = "riscv32imc-unknown-none-elf"
+dynamic_sizing = true
 page_size = 256
 
 [platform.rom]
@@ -35,13 +36,13 @@ size = 0x2_0000
 
 [kernel]
 name = "mcu-runtime-emulator"
-exec_mem = { "size" = 0x1_d000 }
-data_mem = { "size" = 0x0_9000 }
+# exec_mem = { "size" = 0x1_d000 }
+# data_mem = { "size" = 0x0_9000 }
 stack = 0x0_7000
 
 [[app]]
 name = "user-app"
-exec_mem = { "size" = 0x3_2000 }
-data_mem = { "size" = 0x1_6800 }
+# exec_mem = { "size" = 0x3_2000 }
+# data_mem = { "size" = 0x1_6800 }
 stack = 0xae00
 
