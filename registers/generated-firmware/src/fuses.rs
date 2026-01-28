@@ -176,7 +176,7 @@ impl Fuses {
         &self.svn_partition[36..40]
     }
     pub fn vendor_test(&self) -> &[u8] {
-        &self.vendor_test_partition[0..56]
+        &self.vendor_test_partition[0..32]
     }
     pub fn cptra_core_vendor_pk_hash_0(&self) -> &[u8] {
         &self.vendor_hashes_manuf_partition[0..48]
