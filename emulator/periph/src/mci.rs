@@ -51,10 +51,10 @@ impl Mci {
         mcu_mailbox1: Option<McuMailbox0Internal>,
         soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
     ) -> Self {
-        // Note: Do NOT clear reset_status here. The caliptra-sw MciRegs::new() initializes
-        // reset_status to MCU_RESET_MASK (0x2), indicating MCU is in reset. This value must
-        // be preserved for the hitless update handshake to work correctly - Caliptra polls
-        // reset_status expecting to see MCU_RESET_MASK before proceeding with the update.
+        // Clear reset_status at power-up. The caliptra-sw MciRegs::new() initializes it to
+        // MCU_RESET_MASK (0x2), but at initial boot MCU is not in reset. For hitless updates,
+        // reset_status gets set via the timer handlers when processing the reset request.
+        ext_mci_regs.regs.borrow_mut().reset_status = 0;
 
         let mut reset_reason = ResetReasonEmulator::new(ext_mci_regs.clone());
         reset_reason.handle_power_up();
