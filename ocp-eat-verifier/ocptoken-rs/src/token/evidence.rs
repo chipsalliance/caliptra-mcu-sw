@@ -151,7 +151,7 @@ fn extract_leaf_cert_der(unprotected: &Header) -> OcpEatResult<Vec<u8>> {
         _ => None,
     }
     .and_then(|v| match v {
-        Value::Bytes(bytes) => Some(bytes.clone()), // 👈 CLONE
+        Value::Bytes(bytes) => Some(bytes.clone()),
         _ => None,
     })
     .ok_or(OcpEatError::InvalidToken(
