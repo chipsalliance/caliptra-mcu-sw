@@ -115,7 +115,10 @@ pub async fn image_loading_task() {
 #[allow(unused_variables)]
 async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
+    #[cfg(not(feature = "test-pldm-streaming-boot"))]
     writeln!(console_writer, "IMAGE_LOADER_APP: Hello async world!").unwrap();
+    #[cfg(feature = "test-flash-based-boot")]
+    writeln!(console_writer, "IMAGE_LOADER_APP2: Hello async world!").unwrap();
     #[cfg(feature = "test-pldm-streaming-boot")]
     {
         let fw_params = PldmFirmwareDeviceParams {
