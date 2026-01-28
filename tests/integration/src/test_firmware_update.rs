@@ -502,11 +502,9 @@ mod test {
         } else {
             "test-firmware-update-streaming"
         };
-        // Set an arbitrary MCI base address
-        let mci_base: u64 = 0xA800_0000;
         env::set_var(
             "CPTRA_EMULATOR_SS_MCI_OFFSET",
-            format!("0x{:016x}", mci_base),
+            format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
         );
 
         let i3c_port = PortPicker::new().pick().unwrap().into();
@@ -606,25 +604,22 @@ mod test {
             })
             .collect();
 
-        // Set an arbitrary MCI base address
-        let mci_base: u64 = 0xA800_0000;
-        const MCU_SRAM_OFFSET: u64 = 0x800000;
-        const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
-
         // Create SOC image metadata
         let soc_images = vec![
             ImageCfg {
                 path: soc_images_paths[0].clone(),
-                load_addr: mci_base + MCU_MBOX_SRAM1_OFFSET,
-                staging_addr: mci_base + MCU_MBOX_SRAM1_OFFSET + (512 * 1024),
+                load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
+                staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024),
                 image_id: SOC_IMAGES_BASE_IDENTIFIER,
                 exec_bit: 3,
                 ..Default::default()
             },
             ImageCfg {
                 path: soc_images_paths[1].clone(),
-                load_addr: mci_base + MCU_MBOX_SRAM1_OFFSET + soc_image_fw_1.len() as u64,
-                staging_addr: mci_base
+                load_addr: MCI_BASE_AXI_ADDRESS
+                    + MCU_MBOX_SRAM1_OFFSET
+                    + soc_image_fw_1.len() as u64,
+                staging_addr: MCI_BASE_AXI_ADDRESS
                     + MCU_MBOX_SRAM1_OFFSET
                     + (512 * 1024)
                     + soc_image_fw_1.len() as u64,
@@ -637,7 +632,7 @@ mod test {
         let mcu_cfg = ImageCfg {
             path: test_runtime.clone(),
             load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
-            staging_addr: mci_base + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
+            staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
             image_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
             feature: feature.to_string(),

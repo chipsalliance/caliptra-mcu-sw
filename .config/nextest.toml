@@ -14,7 +14,7 @@ store-failure-output = true
 failure-output = "immediate-final"
 fail-fast = false
 slow-timeout = { period = "35m", terminate-after = 2 }
-retries = 3 # firmware update is flaky
+retries = 3
 
 [profile.nightly-emulator.junit]
 path = "/tmp/junit.xml"

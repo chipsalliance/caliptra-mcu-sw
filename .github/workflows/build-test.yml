@@ -14,7 +14,6 @@ jobs:
 
     env:
       CARGO_INCREMENTAL: 0
-      # Compiler warnings should fail to compile
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
     steps:
@@ -47,7 +46,6 @@ jobs:
       SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
       # Change this to a new random value if you suspect the cache is corrupted
       SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b63a6e70ec4
-      # Compiler warnings should fail to compile
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
     steps:
@@ -116,7 +114,6 @@ jobs:
       SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
       # Change this to a new random value if you suspect the cache is corrupted
       SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b63a6e70ec4
-      # Compiler warnings should fail to compile
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
     steps:
@@ -184,7 +181,6 @@ jobs:
       SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
       # Change this to a new random value if you suspect the cache is corrupted
       SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b63a6e70ec4
-      # Compiler warnings should fail to compile
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
     steps:
@@ -258,8 +254,7 @@ jobs:
           path: /tmp/nextest-archive.tar.zst
           retention-days: 1
 
-  # name preserved so as not to break all existing PRs
-  build_and_test:
+  test_emulator:
     runs-on: e2-standard-2
     needs: [precheckin, build-firmware, build-emulators, build-tests]
     timeout-minutes: 90
@@ -270,7 +265,6 @@ jobs:
 
     env:
       CARGO_INCREMENTAL: 0
-      # Compiler warnings should fail to compile
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
     steps:
@@ -316,5 +310,4 @@ jobs:
             --workspace-remap . \
             --test-threads=1 \
             --profile=nightly-emulator \
-            --no-capture \
             --partition hash:${{ matrix.shard }}/6
