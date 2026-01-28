@@ -678,9 +678,17 @@ mod test {
             Some(path)
         };
 
-        // Build feature-specific ROM - the prebuilt bundle only has a generic ROM,
-        // but soc_boot tests require ROMs built with feature-specific flags
-        let mcu_rom = get_rom_with_feature(feature);
+        // Get prebuilt MCU ROM - use the generic ROM from the bundle
+        // (the feature-specific behavior comes from the runtime, not the ROM)
+        let mcu_rom_path = std::env::temp_dir().join(format!("soc-boot-mcu-rom-{}.bin", feature));
+        std::fs::write(&mcu_rom_path, &binaries.mcu_rom).expect("Failed to write MCU ROM");
+        let mcu_rom = mcu_rom_path;
+
+        // Get prebuilt Caliptra ROM (needed for CaliptraBuilder)
+        let caliptra_rom_path =
+            std::env::temp_dir().join(format!("soc-boot-caliptra-rom-{}.bin", feature));
+        std::fs::write(&caliptra_rom_path, &binaries.caliptra_rom)
+            .expect("Failed to write Caliptra ROM");
 
         // Get prebuilt Caliptra firmware (needed for CaliptraBuilder)
         let caliptra_fw_path =
@@ -740,7 +748,7 @@ mod test {
         // Build the Caliptra builder with prebuilt paths (needed for tests that modify manifest)
         let builder = CaliptraBuilder::new(
             false,
-            None,
+            Some(caliptra_rom_path),
             Some(caliptra_fw_path.clone()),
             Some(soc_manifest_path.clone()),
             Some(vendor_pk_hash),
