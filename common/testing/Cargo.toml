@@ -10,6 +10,7 @@ authors.workspace = true
 caliptra-api-types.workspace = true
 bitfield.workspace = true
 crc.workspace = true
+mctp-vdm-common.workspace = true
 pldm-common.workspace = true
 pldm-ua.workspace = true
 zerocopy.workspace = true

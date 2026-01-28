@@ -20,6 +20,7 @@ mod image_loader;
 mod mcu_mbox;
 mod soc_env;
 mod spdm;
+mod vdm;
 
 #[cfg(target_arch = "riscv32")]
 mod riscv;
@@ -99,6 +100,9 @@ pub(crate) async fn async_main() {
         .spawner()
         .spawn(mcu_mbox::mcu_mbox_task())
         .unwrap();
+
+    #[cfg(feature = "test-mctp-vdm-cmds")]
+    EXECUTOR.get().spawner().spawn(vdm::vdm_task()).unwrap();
 
     loop {
         EXECUTOR.get().poll();
