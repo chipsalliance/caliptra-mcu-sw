@@ -12,7 +12,6 @@ use crate::pmp::{VeeRPMP, VeeRProtectionMMLEPMP};
 use crate::timers::{InternalTimers, TimerInterrupts};
 use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
 use core::fmt::Write;
-use core::ptr::addr_of;
 use kernel::debug;
 use kernel::platform::chip::{Chip, InterruptService};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
@@ -35,9 +34,9 @@ pub const MCI_IRQ: u8 = 0x1;
 pub const I3C_IRQ: u8 = 0x2;
 pub const LSB_IRG: u8 = 0x3;
 
-pub struct VeeR<'a, I: InterruptService + 'a> {
+pub struct VeeR<'a, I: InterruptService + 'a, const USED_CELLS: usize = 1> {
     userspace_kernel_boundary: SysCall,
-    pic: &'static Pic,
+    pic: &'static Pic<USED_CELLS>,
     timers: &'static InternalTimers<'static>,
     pub peripherals: &'a I,
     pmp: VeeRPMP,
@@ -99,14 +98,18 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
     }
 }
 
-impl<'a, I: InterruptService + 'a> VeeR<'a, I> {
+impl<'a, I: InterruptService + 'a, const USED_CELLS: usize> VeeR<'a, I, USED_CELLS> {
     /// # Safety
     /// Accesses memory-mapped registers.
-    pub unsafe fn new(pic_interrupt_service: &'a I, epmp: VeeRProtectionMMLEPMP) -> Self {
+    pub unsafe fn new(
+        pic: &'static Pic<USED_CELLS>,
+        pic_interrupt_service: &'a I,
+        epmp: VeeRProtectionMMLEPMP,
+    ) -> Self {
         Self {
             userspace_kernel_boundary: SysCall::new(),
-            pic: &*addr_of!(PIC),
-            timers: &*addr_of!(TIMERS),
+            pic,
+            timers: &*core::ptr::addr_of!(TIMERS),
             peripherals: pic_interrupt_service,
             pmp: rv32i::pmp::PMPUserMPU::new(epmp),
         }
@@ -141,7 +144,9 @@ impl<'a, I: InterruptService + 'a> VeeR<'a, I> {
     }
 }
 
-impl<'a, I: InterruptService + 'a> kernel::platform::chip::Chip for VeeR<'a, I> {
+impl<'a, I: InterruptService + 'a, const USED_CELLS: usize> kernel::platform::chip::Chip
+    for VeeR<'a, I, USED_CELLS>
+{
     type MPU = VeeRPMP;
     type UserspaceKernelBoundary = SysCall;
 

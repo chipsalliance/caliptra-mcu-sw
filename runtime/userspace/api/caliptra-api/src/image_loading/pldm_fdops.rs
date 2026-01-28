@@ -11,7 +11,6 @@ use libsyscall_caliptra::dma::{AXIAddr, DMAMapping, DMASource, DMATransaction, D
 use pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::message::firmware_update::get_status::ProgressPercent;
-use pldm_common::message::firmware_update::request_fw_data::RequestFirmwareDataResponseFixed;
 use pldm_common::message::firmware_update::transfer_complete::TransferResult;
 use pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use pldm_common::protocol::firmware_update::{
@@ -19,7 +18,10 @@ use pldm_common::protocol::firmware_update::{
 };
 use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
-const MAX_PLDM_TRANSFER_SIZE: usize = core::mem::size_of::<RequestFirmwareDataResponseFixed>();
+
+// Maximum firmware data bytes per packet
+// Note: 196 bytes is the legacy value that fits within I3C constraints
+const MAX_PLDM_TRANSFER_SIZE: usize = 196;
 
 pub struct StreamingFdOps<'a, D: DMAMapping> {
     descriptors: &'a [Descriptor],
@@ -117,8 +119,8 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
     }
 
     async fn get_xfer_size(&self, ua_transfer_size: usize) -> Result<usize, FdOpsError> {
-        // Return the minimum of requested and baseline transfer size
-        let size = core::cmp::min(ua_transfer_size, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
+        // Return the minimum of UA's request and our maximum supported size
+        let size = core::cmp::min(ua_transfer_size, MAX_PLDM_TRANSFER_SIZE);
         Ok(size)
     }
 
@@ -169,10 +171,8 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
                 PLDM_FWUP_BASELINE_TRANSFER_SIZE
             } else {
                 let remaining = ctx.total_length - ctx.total_downloaded;
-                core::cmp::max(
-                    core::cmp::min(remaining, MAX_PLDM_TRANSFER_SIZE),
-                    PLDM_FWUP_BASELINE_TRANSFER_SIZE,
-                )
+                // clamp(min, max): ensure at least baseline, at most max transfer size
+                remaining.clamp(PLDM_FWUP_BASELINE_TRANSFER_SIZE, MAX_PLDM_TRANSFER_SIZE)
             };
 
             ctx.last_requested_length = length;

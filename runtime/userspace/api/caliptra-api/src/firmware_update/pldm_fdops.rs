@@ -18,7 +18,7 @@ use pldm_common::protocol::firmware_update::{
 use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
 
-const MAX_PLDM_TRANSFER_SIZE: usize = 196; // This should be smaller than I3C MAX_READ_WRITE_SIZE
+const MAX_PLDM_TRANSFER_SIZE: usize = 196; // Maximum firmware data bytes per packet
 const ESTIMATED_ACTIVATION_TIME_SECS: u16 = 300; // 5 minutes estimated activation time including reset
 
 pub struct UpdateFdOps {}

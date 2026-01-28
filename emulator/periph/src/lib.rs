@@ -18,7 +18,7 @@ mod doe_mbox;
 mod emu_ctrl;
 mod flash_ctrl;
 mod i3c;
-pub(crate) mod i3c_protocol;
+pub mod i3c_protocol;
 mod lc_ctrl;
 mod mci;
 mod mcu_mbox0;

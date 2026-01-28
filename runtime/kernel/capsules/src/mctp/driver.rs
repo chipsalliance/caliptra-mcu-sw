@@ -124,6 +124,8 @@ pub struct App {
     pending_rx_request: Option<OpContext>,
     pending_rx_response: Option<OpContext>,
     pending_tx: Option<OpContext>,
+    /// When true, automatically register to receive response after send completes
+    auto_receive_after_send: bool,
 }
 
 pub struct MCTPDriver<'a> {
@@ -477,6 +479,10 @@ impl SyscallDriver for MCTPDriver<'_> {
     ///   will return Ok(()) and the pending tx operation context is updated. Otherwise, the result is returned immediately.
     ///
     /// - `5`: Get the maximum message size supported by the MCTP driver.
+    ///
+    /// - `6`: Send MCTP request and auto-receive response (combined syscall).
+    ///   Combines send_request with receive_response to reduce syscalls.
+    ///   After the send completes, the driver automatically registers to receive the response.
     fn command(
         &self,
         command_num: usize,
@@ -560,6 +566,37 @@ impl SyscallDriver for MCTPDriver<'_> {
                 }
             }
             5 => CommandReturn::success_u32(self.max_msg_size as u32),
+            // 6: Send Request and auto-register to receive response
+            // This combines send_request (3) with receive_response (2) to reduce syscalls.
+            // After the send completes, the driver automatically registers to receive the response.
+            // Userspace only needs to wait for the RECEIVED_RESPONSE callback.
+            // arg1: peer_eid
+            6 => {
+                let peer_eid = arg1 as u8;
+                if !valid_eid(peer_eid) {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+                let msg_tag = MCTP_TAG_OWNER; // Request always uses tag owner
+
+                let result = self
+                    .apps
+                    .enter(process_id, |app, kernel_data| {
+                        if app.pending_tx.is_some() {
+                            return Err(ErrorCode::BUSY);
+                        }
+
+                        // Set flag to auto-register receive after send completes
+                        app.auto_receive_after_send = true;
+
+                        self.send_msg_payload(process_id, app, kernel_data, peer_eid, msg_tag)
+                    })
+                    .unwrap_or_else(|err| Err(err.into()));
+
+                match result {
+                    Ok(()) => CommandReturn::success(),
+                    Err(e) => CommandReturn::failure(e),
+                }
+            }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }
@@ -604,6 +641,25 @@ impl MCTPTxClient for MCTPDriver<'_> {
             }
 
             app.pending_tx = None;
+
+            // If auto-receive is enabled, register to receive response instead of notifying send completion
+            if app.auto_receive_after_send {
+                app.auto_receive_after_send = false;
+                // Register to receive response with the msg_tag from the send
+                let rsp_rx_ctx = OpContext {
+                    msg_tag: msg_tag & MCTP_TAG_MASK, // Remove MCTP_TAG_OWNER if set
+                    peer_eid: dest_eid,
+                    op_type: OpType::Rx,
+                };
+                // Check if we already have a buffered response
+                if self.check_buffered_message(&rsp_rx_ctx) {
+                    self.deferred_call.set();
+                }
+                app.pending_rx_response = Some(rsp_rx_ctx);
+                // Don't notify userspace yet - wait for response
+                return;
+            }
+
             let msg_info = ((msg_type as usize) << 8) | ((msg_tag & MCTP_TAG_MASK) as usize);
             up_calls
                 .schedule_upcall(

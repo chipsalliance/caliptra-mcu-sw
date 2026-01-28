@@ -3,6 +3,16 @@
 // Copyright Tock Contributors 2022.
 
 //! Platform Level Interrupt Control peripheral driver for VeeR.
+//!
+//! The `Pic` struct has a fixed-size array of 8 cells (supporting up to 256 interrupts),
+//! but the `USED_CELLS` const generic controls how many cells are actually scanned
+//! when checking for pending interrupts. This allows the compiler to optimize out
+//! unnecessary loop iterations while keeping the struct size constant for FFI compatibility.
+//!
+//! - `USED_CELLS = 1` → scans 32 interrupts
+//! - `USED_CELLS = 2` → scans 64 interrupts
+//! - ...
+//! - `USED_CELLS = 8` → scans all 256 interrupts
 
 use core::cell::Cell;
 use core::ptr::write_volatile;
@@ -36,9 +46,19 @@ register_bitfields![usize,
     ],
 ];
 
-pub struct Pic {
+/// Total number of cells in the saved interrupt array (fixed for FFI compatibility).
+const TOTAL_CELLS: usize = 8;
+
+/// Programmable Interrupt Controller for VeeR.
+///
+/// The `USED_CELLS` const generic controls how many cells are scanned when
+/// checking for pending interrupts. The struct always has 8 cells (256 interrupts max)
+/// for consistent size, but only `USED_CELLS` are checked in the hot path.
+///
+/// Valid values are 1 through 8.
+pub struct Pic<const USED_CELLS: usize = 8> {
     registers: StaticRef<El2PicCtrl>,
-    saved: [Cell<u32>; 8],
+    saved: [Cell<u32>; TOTAL_CELLS],
     meivt: ReadWriteRiscvCsr<usize, MEIVT::Register, 0xBC8>,
     meipt: ReadWriteRiscvCsr<usize, MEIPT::Register, 0xBC9>,
     meicidpl: ReadWriteRiscvCsr<usize, MEICIDPL::Register, 0xBCB>,
@@ -46,20 +66,22 @@ pub struct Pic {
     meihap: ReadWriteRiscvCsr<usize, MEIHAP::Register, 0xFC8>,
 }
 
-impl Pic {
+impl<const USED_CELLS: usize> Pic<USED_CELLS> {
+    /// Compile-time check that USED_CELLS is a valid value (1-8).
+    const CHECK_USED_CELLS: () = {
+        assert!(
+            USED_CELLS >= 1 && USED_CELLS <= 8,
+            "USED_CELLS must be between 1 and 8 (supporting 32 to 256 interrupts)"
+        );
+    };
+
     pub const fn new(pic_addr: u32) -> Self {
+        // Trigger compile-time check
+        let _ = Self::CHECK_USED_CELLS;
+
         Pic {
             registers: unsafe { StaticRef::new(pic_addr as *const El2PicCtrl) },
-            saved: [
-                Cell::new(0),
-                Cell::new(0),
-                Cell::new(0),
-                Cell::new(0),
-                Cell::new(0),
-                Cell::new(0),
-                Cell::new(0),
-                Cell::new(0),
-            ],
+            saved: [const { Cell::new(0) }; TOTAL_CELLS],
             meivt: ReadWriteRiscvCsr::new(),
             meipt: ReadWriteRiscvCsr::new(),
             meicidpl: ReadWriteRiscvCsr::new(),
@@ -175,14 +197,16 @@ impl Pic {
     /// The `next_pending()` function will only return enabled interrupts.
     /// This function will return a pending interrupt that has been disabled by
     /// `save_interrupt()`.
+    ///
+    /// Only scans the first `USED_CELLS` cells, allowing the compiler to
+    /// optimize out unnecessary iterations when fewer interrupts are needed.
     pub fn get_saved_interrupts(&self) -> Option<u32> {
-        for (i, pending) in self.saved.iter().enumerate() {
-            let saved = pending.get();
+        for i in 0..USED_CELLS {
+            let saved = self.saved[i].get();
             if saved != 0 {
                 return Some(saved.trailing_zeros() + (i as u32 * 32));
             }
         }
-
         None
     }
 

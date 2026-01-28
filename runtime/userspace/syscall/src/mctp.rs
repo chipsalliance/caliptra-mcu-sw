@@ -229,6 +229,64 @@ impl<S: Syscalls> Mctp<S> {
         Ok((recv_len, info.into()))
     }
 
+    /// Send a request and receive the response in a single operation.
+    ///
+    /// This combines send_request and receive_response to reduce syscall overhead.
+    /// The kernel will automatically register to receive the response after the
+    /// send completes, eliminating one syscall round-trip.
+    ///
+    /// # Arguments
+    /// * `dest_eid` - The destination EID to which the request is to be sent
+    /// * `req` - The payload to be sent in the request
+    /// * `resp` - The buffer to store the received response
+    ///
+    /// # Returns
+    /// * `(u32, u32, MessageInfo)` - On success, returns tuple containing length of the response, recv_time, and message info
+    /// * `ErrorCode` - The error code on failure
+    pub async fn send_request_and_receive(
+        &self,
+        dest_eid: u8,
+        req: &[u8],
+        resp: &mut [u8],
+    ) -> Result<(u32, u32, MessageInfo), ErrorCode> {
+        let max_size = self.max_message_size()? as usize;
+
+        if req.is_empty() || req.len() > max_size || resp.is_empty() {
+            Err(ErrorCode::Invalid)?;
+        }
+
+        // We need to set up both the send buffer and receive buffer, then send the combined command.
+        // The kernel will: 1) send the request, 2) auto-register receive, 3) notify when response arrives
+        let (recv_len, recv_time, info) = share::scope::<(), _, _>(|_handle| {
+            // Subscribe for the response callback and set up both buffers
+            let mut sub = TockSubscribe::subscribe_allow_ro_rw::<S, DefaultConfig>(
+                self.driver_num,
+                subscribe::RECEIVED_RESPONSE,
+                allow_ro::MESSAGE_WRITE,
+                req,
+                allow_rw::READ_RESPONSE,
+                resp,
+            );
+
+            if let Err(e) = S::command(
+                self.driver_num,
+                command::SEND_REQUEST_AND_RECEIVE,
+                dest_eid as u32,
+                0,
+            )
+            .to_result::<(), ErrorCode>()
+            {
+                sub.cancel();
+                Err(e)?;
+            }
+
+            Ok(TockSubscribe::subscribe_finish(sub))
+        })?
+        .await?;
+
+        Ok((recv_len, recv_time, info.into()))
+    }
+
     pub fn max_message_size(&self) -> Result<u32, ErrorCode> {
         S::command(self.driver_num, command::GET_MAX_MESSAGE_SIZE, 0, 0).to_result()
     }
@@ -262,6 +320,7 @@ pub mod driver_num {
 /// - `3` - Send MCTP request
 /// - `4` - Send MCTP response
 /// - `5` - Get maximum message size supported by the MCTP driver
+/// - `6` - Send MCTP request and auto-receive response (combined syscall)
 mod command {
     pub const EXISTS: u32 = 0;
     pub const RECEIVE_REQUEST: u32 = 1;
@@ -269,6 +328,7 @@ mod command {
     pub const SEND_REQUEST: u32 = 3;
     pub const SEND_RESPONSE: u32 = 4;
     pub const GET_MAX_MESSAGE_SIZE: u32 = 5;
+    pub const SEND_REQUEST_AND_RECEIVE: u32 = 6;
 }
 
 mod subscribe {
