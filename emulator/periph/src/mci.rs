@@ -18,6 +18,13 @@ use tock_registers::interfaces::{ReadWriteable, Readable};
 const RESET_STATUS_MCU_RESET_MASK: u32 = 0x2;
 const RESET_REQUEST_MCU_REQ_MASK: u32 = 0x1; // McuReq bit (bit 0)
 
+/// Clamp a timer period to i64::MAX to avoid overflow in the timer scheduler.
+/// This can happen when software writes timer registers in two halves,
+/// creating a temporary very large value.
+fn clamp_timer_period(period: u64) -> u64 {
+    period.min(i64::MAX as u64)
+}
+
 pub struct Mci {
     ext_mci_regs: caliptra_emu_periph::mci::Mci,
     generated: MciGenerated,
@@ -225,7 +232,10 @@ impl MciPeripheral for Mci {
                 ((self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[0] as u64;
 
-            self.op_wdt_timer1_expired_action = Some(self.timer.schedule_poll_in(timer_period));
+            self.op_wdt_timer1_expired_action = Some(
+                self.timer
+                    .schedule_poll_in(clamp_timer_period(timer_period)),
+            );
         } else {
             self.op_wdt_timer1_expired_action = None;
         }
@@ -253,7 +263,10 @@ impl MciPeripheral for Mci {
                 ((self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[0] as u64;
 
-            self.op_wdt_timer1_expired_action = Some(self.timer.schedule_poll_in(timer_period));
+            self.op_wdt_timer1_expired_action = Some(
+                self.timer
+                    .schedule_poll_in(clamp_timer_period(timer_period)),
+            );
         }
     }
 
@@ -282,7 +295,10 @@ impl MciPeripheral for Mci {
                 ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
-            self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
+            self.op_wdt_timer2_expired_action = Some(
+                self.timer
+                    .schedule_poll_in(clamp_timer_period(timer_period)),
+            );
         } else {
             self.op_wdt_timer2_expired_action = None;
         }
@@ -308,7 +324,10 @@ impl MciPeripheral for Mci {
                 ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
-            self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
+            self.op_wdt_timer2_expired_action = Some(
+                self.timer
+                    .schedule_poll_in(clamp_timer_period(timer_period)),
+            );
         }
     }
 
@@ -986,7 +1005,10 @@ impl MciPeripheral for Mci {
                     ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                         | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
-                self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
+                self.op_wdt_timer2_expired_action = Some(
+                    self.timer
+                        .schedule_poll_in(clamp_timer_period(timer_period)),
+                );
             }
         }
 
