@@ -254,33 +254,39 @@ fn verify_signature_es384(
 
 fn verify_protected_header(protected: &Header) -> OcpEatResult<()> {
     /* ----------------------------------------------------------
-     * Algorithm must be ESP384 or ML-DSA-87 (TBD)
+     *  * Algorithm must be ES384 or ESP384
      * ---------------------------------------------------------- */
 
-    if !matches!(
+    let alg_ok = matches!(
         protected.alg,
         Some(coset::RegisteredLabelWithPrivate::Assigned(
+            Algorithm::ES384
+        )) | Some(coset::RegisteredLabelWithPrivate::Assigned(
             Algorithm::ESP384
         ))
-    ) {
+    );
+    if !alg_ok {
         return Err(OcpEatError::InvalidToken(
             "Unexpected algorithm in protected header",
         ));
     }
 
     /* ----------------------------------------------------------
-     * Content-Type must be EatCwt
+     * Content-Type
      * ---------------------------------------------------------- */
-    if !matches!(
-        &protected.content_type,
-        Some(coset::RegisteredLabel::Assigned(
-            coset::iana::CoapContentFormat::EatCwt
-        ))
-    ) {
-        return Err(OcpEatError::InvalidToken(
-            "Content format mismatch in protected header",
-        ));
-    }
+    match &protected.content_type {
+        Some(coset::RegisteredLabel::Assigned(coset::iana::CoapContentFormat::EatCwt)) => {
+            // Accept EAT CWT
+        }
+        None => {
+            // Accept missing content-type
+        }
 
+        _other => {
+            return Err(OcpEatError::InvalidToken(
+                "Content format mismatch in protected header",
+            ));
+        }
+    }
     Ok(())
 }
