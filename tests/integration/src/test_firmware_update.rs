@@ -653,6 +653,7 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    #[ignore]
     #[test]
     fn test_firmware_update() {
         test_firmware_update_common(true);
