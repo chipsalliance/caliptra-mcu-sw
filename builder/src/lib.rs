@@ -7,7 +7,6 @@ pub mod firmware;
 pub mod flash_image;
 mod rom;
 mod runtime;
-mod tbf;
 
 pub use all::{all_build, AllBuildArgs, FirmwareBinaries};
 pub use caliptra::{CaliptraBuilder, ImageCfg};

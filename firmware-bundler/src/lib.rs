@@ -23,8 +23,10 @@
 
 pub mod args;
 pub mod build;
+pub mod bundle;
 pub mod ld;
 pub mod manifest;
+pub mod tbf;
 pub(crate) mod utils;
 
 use anyhow::Result;
@@ -37,6 +39,13 @@ pub fn execute(cmd: Commands) -> Result<()> {
             let manifest = &common.manifest()?;
             let build_definition = ld::generate(manifest, &common, &ld)?;
             let _ = build::build(&common.manifest()?, &build_definition, &common, &build)?;
+            Ok(())
+        }
+        Commands::Bundle { common, ld, build } => {
+            let manifest = common.manifest()?;
+            let build_definition = ld::generate(&manifest, &common, &ld)?;
+            let output = build::build(&manifest, &build_definition, &common, &build)?;
+            bundle::bundle(&manifest, &output, &common)?;
             Ok(())
         }
         Commands::Generate { common, ld } => {

@@ -7,10 +7,12 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::{Context, Result};
+use tbf_header::TbfHeader;
 
 use crate::{
     args::{Common, LdArgs},
     manifest::{Binary, Manifest, Memory},
+    tbf::create_tbf_header,
 };
 
 // To keep the ld file generation simple, a layout is defined for each type of application, and then
@@ -28,18 +30,26 @@ const BASE_APP_LD_CONTENTS: &str = include_str!("../data/default-app-layout.ld")
 
 /// A pairing of application name to the linker script it should be built with.
 #[derive(Debug, Clone)]
-pub struct AppLinkerScript {
+pub struct LinkerScript {
     pub name: String,
     pub linker_script: PathBuf,
+}
+
+/// A TockOS application.
+#[derive(Debug, Clone)]
+pub struct App {
+    pub linker: LinkerScript,
+    pub header: TbfHeader,
+    pub instruction_block: Memory,
 }
 
 /// The build definition for a collection of applications.  The ROM and Runtime are both fully
 /// specified with their linker files.  This is the output of the generation step.
 #[derive(Debug, Clone)]
 pub struct BuildDefinition {
-    pub rom: Option<AppLinkerScript>,
-    pub kernel: AppLinkerScript,
-    pub apps: Vec<AppLinkerScript>,
+    pub rom: Option<LinkerScript>,
+    pub kernel: (LinkerScript, Memory),
+    pub apps: Vec<App>,
 }
 
 /// Generate the collection of linker files required to build the set of applications specified in
@@ -114,7 +124,7 @@ impl<'a> LdGeneration<'a> {
             .manifest
             .rom
             .as_ref()
-            .map(|binary| -> Result<AppLinkerScript> {
+            .map(|binary| -> Result<LinkerScript> {
                 let mut rom_tracker = self.manifest.platform.rom.clone();
                 let mut dccm_tracker = self.manifest.platform.dccm().clone();
 
@@ -126,13 +136,17 @@ impl<'a> LdGeneration<'a> {
                     )
                     .with_context(|| binary_context(&binary.name, "instruction allocation"))?;
                 let data = self
-                    .get_mem_block(binary.ram, binary.ram_alignment, &mut dccm_tracker)
+                    .get_mem_block(
+                        binary.data_mem.size,
+                        binary.data_mem.alignment,
+                        &mut dccm_tracker,
+                    )
                     .with_context(|| binary_context(&binary.name, "data allocation"))?;
                 let content = self
                     .rom_linker_content(binary, instructions, data)
                     .with_context(|| binary_context(&binary.name, "context generation"))?;
                 let path = self.output_ld_file(binary, &content)?;
-                Ok(AppLinkerScript {
+                Ok(LinkerScript {
                     name: binary.name.clone(),
                     linker_script: path,
                 })
@@ -155,13 +169,19 @@ impl<'a> LdGeneration<'a> {
             )
             .with_context(|| binary_context(&kernel.name, "instruction allocation"))?;
         let data = self
-            .get_mem_block(kernel.ram, kernel.ram_alignment, &mut ram_tracker)
+            .get_mem_block(
+                kernel.data_mem.size,
+                kernel.data_mem.alignment,
+                &mut ram_tracker,
+            )
             .with_context(|| binary_context(&kernel.name, "data allocation"))?;
 
         // Now iterate through each application and allocate its ITCM and RAM requirements.
         let mut first_app_instructions = None;
         let mut app_defs = Vec::new();
         for binary in &self.manifest.apps {
+            let header = create_tbf_header(binary)?;
+
             let instructions = self
                 .get_mem_block(
                     binary.exec_mem.size,
@@ -170,7 +190,11 @@ impl<'a> LdGeneration<'a> {
                 )
                 .with_context(|| binary_context(&binary.name, "instruction allocation"))?;
             let data = self
-                .get_mem_block(binary.ram, binary.ram_alignment, &mut ram_tracker)
+                .get_mem_block(
+                    binary.data_mem.size,
+                    binary.data_mem.alignment,
+                    &mut ram_tracker,
+                )
                 .with_context(|| binary_context(&binary.name, "data allocation"))?;
 
             if first_app_instructions.is_none() {
@@ -178,28 +202,38 @@ impl<'a> LdGeneration<'a> {
             }
 
             let content = self
-                .app_linker_content(binary, instructions, data)
+                .app_linker_content(binary, &header, instructions.clone(), data)
                 .with_context(|| binary_context(&binary.name, "context generation"))?;
             let path = self.output_ld_file(binary, &content)?;
-            app_defs.push(AppLinkerScript {
-                name: binary.name.clone(),
-                linker_script: path,
+            app_defs.push(App {
+                linker: LinkerScript {
+                    name: binary.name.clone(),
+                    linker_script: path,
+                },
+                header,
+                instruction_block: instructions,
             });
         }
 
         // Finally generate the linker file for the kernel.
         let content = self
-            .kernel_linker_content(kernel, instructions, first_app_instructions, data)
+            .kernel_linker_content(
+                kernel,
+                instructions.clone(),
+                first_app_instructions,
+                data,
+                self.manifest.platform.ram.clone(),
+            )
             .with_context(|| binary_context(&kernel.name, "context generation"))?;
         let path = self.output_ld_file(kernel, &content)?;
-        let kernel_def = AppLinkerScript {
+        let kernel_def = LinkerScript {
             name: kernel.name.clone(),
             linker_script: path,
         };
 
         Ok(BuildDefinition {
             rom: rom_def,
-            kernel: kernel_def,
+            kernel: (kernel_def, instructions),
             apps: app_defs,
         })
     }
@@ -316,7 +350,8 @@ INCLUDE $BASE_LD_CONTENTS
         binary: &Binary,
         instructions: Memory,
         first_app_instructions: Option<Memory>,
-        data: Memory,
+        kernel_data: Memory,
+        ram: Memory,
     ) -> Result<String> {
         const KERNEL_LD_TEMPLATE: &str = r#"
 /* Licensed under the Apache-2.0 license. */
@@ -331,6 +366,7 @@ MEMORY
     rom (rx)  : ORIGIN = $KERNEL_START, LENGTH = $KERNEL_LENGTH
     prog (rx) : ORIGIN = $APPS_START, LENGTH = $APPS_LENGTH
     ram (rwx) : ORIGIN = $DATA_RAM_START, LENGTH = $DATA_RAM_LENGTH
+    app_ram(rwx) : ORIGIN = $APP_RAM_START, LENGTH = $APP_RAM_LENGTH
     dccm (rw) : ORIGIN = $DCCM_OFFSET, LENGTH = $DCCM_LENGTH
     flash (r) : ORIGIN = $FLASH_OFFSET, LENGTH = $FLASH_LENGTH
 }
@@ -360,8 +396,13 @@ INCLUDE $BASE_LD_CONTENTS
         sub_map.insert("APPS_START", format!("{apps_start:#x}",));
         sub_map.insert("APPS_LENGTH", format!("{apps_length:#x}",));
 
-        sub_map.insert("DATA_RAM_START", format!("{:#x}", data.offset));
-        sub_map.insert("DATA_RAM_LENGTH", format!("{:#x}", data.size));
+        sub_map.insert("DATA_RAM_START", format!("{:#x}", kernel_data.offset));
+        sub_map.insert("DATA_RAM_LENGTH", format!("{:#x}", ram.size));
+
+        let app_offset = kernel_data.offset + kernel_data.size;
+        let app_length = ram.size - kernel_data.size;
+        sub_map.insert("APP_RAM_START", format!("{:#x}", app_offset));
+        sub_map.insert("APP_RAM_LENGTH", format!("{:#x}", app_length));
 
         let dccm = self.manifest.platform.dccm();
         sub_map.insert("DCCM_OFFSET", format!("{:#x}", dccm.offset));
@@ -395,13 +436,14 @@ INCLUDE $BASE_LD_CONTENTS
     fn app_linker_content(
         &self,
         binary: &Binary,
+        header: &TbfHeader,
         instructions: Memory,
         data: Memory,
     ) -> Result<String> {
         // Note: In the future determine the size of the TBF header based on input.  For now assume
         // an 0x84 size.
         const APP_LD_TEMPLATE: &str = r#"
-TBF_HEADER_SIZE = 0x84;
+TBF_HEADER_SIZE = $TBF_HEADER_LENGTH;
 FLASH_START = $FLASH_START;
 FLASH_LENGTH = $FLASH_LENGTH;
 RAM_START = $RAM_START;
@@ -411,8 +453,10 @@ INCLUDE $BASE_LD_CONTENTS
 "#;
 
         let base_ld_file = self.linker_dir.join(BASE_APP_LD_FILE);
+        let header_length = header.generate()?.get_ref().len();
 
         let mut sub_map = HashMap::new();
+        sub_map.insert("TBF_HEADER_LENGTH", format!("{:#x}", header_length));
         sub_map.insert("FLASH_START", format!("{:#x}", instructions.offset));
         sub_map.insert("FLASH_LENGTH", format!("{:#x}", instructions.size));
         sub_map.insert("RAM_START", format!("{:#x}", data.offset));
@@ -437,6 +481,7 @@ mod tests {
     /// All memory regions start at offset 0x0, 0x10000, and 0x20000 respectively.
     fn test_platform(rom_size: u64, itcm_size: u64, ram_size: u64, dccm_size: u64) -> Platform {
         Platform {
+            name: "test".to_string(),
             tuple: "riscv32imc-unknown-none-elf".to_string(),
             default_alignment: Some(8),
             page_size: Some(256),
@@ -510,7 +555,7 @@ mod tests {
 
         let build_def = result.unwrap();
         assert!(build_def.rom.is_none());
-        assert_eq!(build_def.kernel.name, "kernel");
+        assert_eq!(build_def.kernel.0.name, "kernel");
         assert!(build_def.apps.is_empty());
     }
 
@@ -529,7 +574,7 @@ mod tests {
         let build_def = result.unwrap();
         assert!(build_def.rom.is_some());
         assert_eq!(build_def.rom.as_ref().unwrap().name, "rom");
-        assert_eq!(build_def.kernel.name, "kernel");
+        assert_eq!(build_def.kernel.0.name, "kernel");
         assert!(build_def.apps.is_empty());
     }
 
@@ -547,9 +592,9 @@ mod tests {
 
         let build_def = result.unwrap();
         assert!(build_def.rom.is_none());
-        assert_eq!(build_def.kernel.name, "kernel");
+        assert_eq!(build_def.kernel.0.name, "kernel");
         assert_eq!(build_def.apps.len(), 1);
-        assert_eq!(build_def.apps[0].name, "app1");
+        assert_eq!(build_def.apps[0].linker.name, "app1");
     }
 
     #[test]
@@ -570,9 +615,9 @@ mod tests {
 
         let build_def = result.unwrap();
         assert_eq!(build_def.apps.len(), 3);
-        assert_eq!(build_def.apps[0].name, "app1");
-        assert_eq!(build_def.apps[1].name, "app2");
-        assert_eq!(build_def.apps[2].name, "app3");
+        assert_eq!(build_def.apps[0].linker.name, "app1");
+        assert_eq!(build_def.apps[1].linker.name, "app2");
+        assert_eq!(build_def.apps[2].linker.name, "app3");
     }
 
     #[test]
@@ -593,7 +638,7 @@ mod tests {
         let build_def = result.unwrap();
         assert!(build_def.rom.is_some());
         assert_eq!(build_def.rom.as_ref().unwrap().name, "rom");
-        assert_eq!(build_def.kernel.name, "kernel");
+        assert_eq!(build_def.kernel.0.name, "kernel");
         assert_eq!(build_def.apps.len(), 2);
     }
 
@@ -613,7 +658,7 @@ mod tests {
         assert!(result.is_ok());
 
         let build_def = result.unwrap();
-        assert_eq!(build_def.kernel.name, "kernel");
+        assert_eq!(build_def.kernel.0.name, "kernel");
         assert_eq!(build_def.apps.len(), 1);
     }
 
@@ -633,8 +678,8 @@ mod tests {
 
         // Verify linker script files exist on disk
         assert!(build_def.rom.as_ref().unwrap().linker_script.exists());
-        assert!(build_def.kernel.linker_script.exists());
-        assert!(build_def.apps[0].linker_script.exists());
+        assert!(build_def.kernel.0.linker_script.exists());
+        assert!(build_def.apps[0].linker.linker_script.exists());
 
         // Verify base layout files also exist
         let linker_dir = temp
