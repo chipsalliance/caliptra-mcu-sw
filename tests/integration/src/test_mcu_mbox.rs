@@ -5,6 +5,9 @@
 pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use aes_gcm::{aead::AeadMutInPlace, Aes256Gcm, Key, KeyInit};
+    use caliptra_api::mailbox::CmHashAlgorithm;
+    use hkdf::Hkdf;
+    use hmac::{Hmac, Mac};
     use mcu_hw_model::mcu_mbox_transport::{
         McuMailboxError, McuMailboxResponse, McuMailboxTransport,
     };
@@ -16,27 +19,36 @@ pub mod test {
         CmAesGcmDecryptUpdateRespHeader, CmAesGcmEncryptFinalReq, CmAesGcmEncryptFinalRespHeader,
         CmAesGcmEncryptInitReq, CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateRespHeader,
         CmAesMode, CmAesRespHeader, CmDeleteReq, CmEcdhFinishReq, CmEcdhGenerateReq,
-        CmEcdhGenerateResp, CmImportReq, CmKeyUsage, CmRandomGenerateReq, CmRandomStirReq,
-        CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk, DeviceCapsReq,
-        DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq, DeviceInfoResp,
-        FirmwareVersionReq, FirmwareVersionResp, MailboxReqHeader, MailboxRespHeader,
-        MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
-        McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
-        McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
-        McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
-        McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp,
-        McuEcdhGenerateReq, McuEcdhGenerateResp, McuMailboxReq, McuMailboxResp,
+        CmEcdhGenerateResp, CmHkdfExpandReq, CmHkdfExtractReq, CmHmacKdfCounterReq, CmHmacReq,
+        CmImportReq, CmKeyUsage, CmRandomGenerateReq, CmRandomStirReq, CmShaFinalReq,
+        CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk, DeviceCapsReq, DeviceCapsResp,
+        DeviceIdReq, DeviceIdResp, DeviceInfoReq, DeviceInfoResp, FirmwareVersionReq,
+        FirmwareVersionResp, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
+        McuAesDecryptInitReq, McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq,
+        McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq,
+        McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq,
+        McuCmDeleteReq, McuCmImportReq, McuCmImportResp, McuCmStatusReq, McuCmStatusResp,
+        McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
+        McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
+        McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuMailboxReq, McuMailboxResp,
         McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
         McuShaInitResp, McuShaUpdateReq, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
         CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
     };
     use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+    use rand::prelude::*;
+    use rand::rngs::StdRng;
     use random_port::PortPicker;
     use registers_generated::mci;
     use sha2::{Digest, Sha384, Sha512};
     use std::process::exit;
     use std::sync::atomic::Ordering;
     use zerocopy::{FromBytes, IntoBytes};
+
+    type HmacSha384 = Hmac<Sha384>;
+    type HmacSha512 = Hmac<Sha512>;
+    type Hkdf384 = Hkdf<Sha384>;
+    type Hkdf512 = Hkdf<Sha512>;
 
     /// Chunk size for splitting large AES-GCM payloads.
     /// Set to 2048 to ensure total request (headers ~140 bytes + data) fits within 4K SRAM.
@@ -206,6 +218,9 @@ pub mod test {
                 self.add_aes_encrypt_decrypt_tests()?;
                 self.add_aes_gcm_encrypt_decrypt_tests()?;
                 self.add_ecdh_tests()?;
+                self.add_hmac_tests()?;
+                self.add_hmac_kdf_counter_tests()?;
+                self.add_hkdf_tests()?;
                 Ok(())
             } else {
                 Ok(())
@@ -1516,6 +1531,378 @@ pub mod test {
 
             Ok(ecdh_finish_resp.0.output.clone())
         }
+
+        /// Test HMAC command.
+        fn add_hmac_tests(&mut self) -> Result<(), ()> {
+            println!("Running HMAC tests");
+
+            // Seed RNG for random test data
+            let seed_bytes = [1u8; 32];
+            let mut seeded_rng = StdRng::from_seed(seed_bytes);
+
+            // Test with both SHA384 (48-byte key) and SHA512 (64-byte key)
+            for size in [48, 64] {
+                let hash_algorithm = if size == 48 {
+                    CmHashAlgorithm::Sha384
+                } else {
+                    CmHashAlgorithm::Sha512
+                };
+                println!(
+                    "  Testing HMAC with {:?} (key size: {})",
+                    hash_algorithm, size
+                );
+
+                // Import a key for HMAC
+                let mut key = vec![0u8; size];
+                seeded_rng.fill_bytes(&mut key);
+                let cmk = self.import_key(&key, CmKeyUsage::Hmac)?;
+                println!("    Imported HMAC key");
+
+                // Test with multiple random messages
+                for i in 0..5 {
+                    let len = seeded_rng.gen_range(1..MAX_CMB_DATA_SIZE / 2);
+                    let mut data = vec![0u8; len];
+                    seeded_rng.fill_bytes(&mut data);
+
+                    println!(
+                        "    Testing HMAC iteration {} with message length: {}",
+                        i, len
+                    );
+
+                    // Compute HMAC via mailbox
+                    let mac = self.hmac(&cmk, hash_algorithm, &data)?;
+                    println!("      Mailbox MAC[0..4]={:02x?}", &mac[..4.min(mac.len())]);
+
+                    // Compute HMAC with RustCrypto and verify
+                    let expected_mac = rustcrypto_hmac(hash_algorithm, &key, &data);
+                    assert_eq!(mac.len(), expected_mac.len(), "MAC length should match");
+                    assert_eq!(
+                        mac, expected_mac,
+                        "HMAC should match RustCrypto computation"
+                    );
+                    println!("      HMAC matches RustCrypto");
+                }
+
+                // Clean up
+                self.delete_key(&cmk)?;
+            }
+
+            println!("HMAC tests passed");
+            Ok(())
+        }
+
+        /// Compute HMAC using the mailbox API.
+        fn hmac(
+            &mut self,
+            cmk: &Cmk,
+            hash_algorithm: CmHashAlgorithm,
+            data: &[u8],
+        ) -> Result<Vec<u8>, ()> {
+            let mut hmac_req = CmHmacReq {
+                hdr: MailboxReqHeader::default(),
+                cmk: cmk.clone(),
+                hash_algorithm: hash_algorithm.into(),
+                data_size: data.len() as u32,
+                ..Default::default()
+            };
+            hmac_req.data[..data.len()].copy_from_slice(data);
+
+            let mut req = McuMailboxReq::Hmac(McuHmacReq(hmac_req));
+            req.populate_chksum().unwrap();
+
+            let resp = self
+                .process_message(req.cmd_code().0, req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            // Parse response header to get MAC size
+            let hdr_size = core::mem::size_of::<MailboxRespHeaderVarSize>();
+            let hdr = MailboxRespHeaderVarSize::read_from_bytes(&resp.data[..hdr_size])
+                .map_err(|_| ())?;
+            assert_eq!(
+                hdr.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+
+            let mac_len = hdr.data_len as usize;
+            let mac = resp.data[hdr_size..hdr_size + mac_len].to_vec();
+            Ok(mac)
+        }
+
+        /// Test HMAC KDF Counter command.
+        fn add_hmac_kdf_counter_tests(&mut self) -> Result<(), ()> {
+            println!("Running HMAC KDF Counter tests");
+
+            // Seed RNG for random test data
+            let seed_bytes = [1u8; 32];
+            let mut seeded_rng = StdRng::from_seed(seed_bytes);
+
+            // Test with both SHA384 (48-byte key) and SHA512 (64-byte key)
+            for size in [48, 64] {
+                let hash_algorithm = if size == 48 {
+                    CmHashAlgorithm::Sha384
+                } else {
+                    CmHashAlgorithm::Sha512
+                };
+                println!(
+                    "  Testing HMAC KDF Counter with {:?} (key size: {})",
+                    hash_algorithm, size
+                );
+
+                // Import a key for HMAC
+                let mut key = vec![0u8; size];
+                seeded_rng.fill_bytes(&mut key);
+                let cmk = self.import_key(&key, CmKeyUsage::Hmac)?;
+                println!("    Imported HMAC key for KDF");
+
+                // Test with multiple random labels
+                for i in 0..5 {
+                    let len = seeded_rng.gen_range(1..MAX_CMB_DATA_SIZE / 2);
+                    let mut label = vec![0u8; len];
+                    seeded_rng.fill_bytes(&mut label);
+
+                    println!(
+                        "    Testing HMAC KDF Counter iteration {} with label length: {}",
+                        i, len
+                    );
+
+                    // Derive key via mailbox
+                    let derived_cmk =
+                        self.hmac_kdf_counter(&cmk, hash_algorithm, CmKeyUsage::Aes, 32, &label)?;
+                    println!("      Got derived CMK");
+
+                    // Compute expected derived key using RustCrypto
+                    let expected_key = rustcrypto_hmac_kdf_counter(hash_algorithm, &key, &label);
+                    println!(
+                        "      Expected key[0..4]={:02x?}",
+                        &expected_key[..4.min(expected_key.len())]
+                    );
+
+                    // Verify by encrypting with AES-GCM and comparing
+                    let plaintext = [0u8; 16];
+                    let (iv, tag, ciphertext) =
+                        self.aes_gcm_encrypt(&derived_cmk, &[], &plaintext)?;
+
+                    // expected_key is already truncated to 32 bytes by rustcrypto_hmac_kdf_counter
+                    let (rtag, rciphertext) =
+                        rustcrypto_gcm_encrypt(&expected_key, &iv, &[], &plaintext);
+
+                    assert_eq!(
+                        ciphertext, rciphertext,
+                        "Ciphertext should match RustCrypto"
+                    );
+                    assert_eq!(tag, rtag, "Tag should match RustCrypto");
+                    println!("      Derived key verified via AES-GCM encryption");
+
+                    // Clean up derived key
+                    self.delete_key(&derived_cmk)?;
+                }
+
+                // Clean up input key
+                self.delete_key(&cmk)?;
+            }
+
+            println!("HMAC KDF Counter tests passed");
+            Ok(())
+        }
+
+        /// Derive a key using HMAC KDF Counter.
+        fn hmac_kdf_counter(
+            &mut self,
+            kin: &Cmk,
+            hash_algorithm: CmHashAlgorithm,
+            key_usage: CmKeyUsage,
+            key_size: u32,
+            label: &[u8],
+        ) -> Result<Cmk, ()> {
+            let mut kdf_req = CmHmacKdfCounterReq {
+                hdr: MailboxReqHeader::default(),
+                kin: kin.clone(),
+                hash_algorithm: hash_algorithm.into(),
+                key_usage: key_usage.into(),
+                key_size,
+                label_size: label.len() as u32,
+                ..Default::default()
+            };
+            kdf_req.label[..label.len()].copy_from_slice(label);
+
+            let mut req = McuMailboxReq::HmacKdfCounter(McuHmacKdfCounterReq(kdf_req));
+            req.populate_chksum().unwrap();
+
+            let resp = self
+                .process_message(req.cmd_code().0, req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            let kdf_resp = McuHmacKdfCounterResp::read_from_bytes(&resp.data).map_err(|_| ())?;
+            assert_eq!(
+                kdf_resp.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+
+            Ok(kdf_resp.0.kout)
+        }
+
+        /// Test HKDF Extract and Expand commands.
+        fn add_hkdf_tests(&mut self) -> Result<(), ()> {
+            println!("Running HKDF tests");
+
+            // Seed RNG for random test data
+            let seed_bytes = [1u8; 32];
+            let mut seeded_rng = StdRng::from_seed(seed_bytes);
+
+            // Test with both SHA384 (48-byte key) and SHA512 (64-byte key)
+            for size in [48, 64] {
+                let hash_algorithm = if size == 48 {
+                    CmHashAlgorithm::Sha384
+                } else {
+                    CmHashAlgorithm::Sha512
+                };
+                println!(
+                    "  Testing HKDF with {:?} (key size: {})",
+                    hash_algorithm, size
+                );
+
+                // Import IKM (input keying material)
+                let mut ikm = vec![0u8; size];
+                seeded_rng.fill_bytes(&mut ikm);
+                let ikm_cmk = self.import_key(&ikm, CmKeyUsage::Hmac)?;
+                println!("    Imported IKM");
+
+                // Test with multiple iterations
+                for i in 0..5 {
+                    // Generate random salt
+                    let salt_len = seeded_rng.gen_range(0..size);
+                    let mut salt = vec![0u8; size]; // Salt CMK must be full size
+                    seeded_rng.fill_bytes(&mut salt[..salt_len]);
+
+                    // Import salt as CMK
+                    let salt_cmk = self.import_key(&salt, CmKeyUsage::Hmac)?;
+
+                    // HKDF Extract
+                    let prk_cmk = self.hkdf_extract(&ikm_cmk, &salt_cmk, hash_algorithm)?;
+                    println!(
+                        "    Iteration {}: Extracted PRK with salt length {}",
+                        i, salt_len
+                    );
+
+                    // Generate random info
+                    let info_len = seeded_rng.gen_range(0..MAX_CMB_DATA_SIZE / 2);
+                    let mut info = vec![0u8; info_len];
+                    seeded_rng.fill_bytes(&mut info);
+
+                    // HKDF Expand
+                    let okm_cmk =
+                        self.hkdf_expand(&prk_cmk, hash_algorithm, CmKeyUsage::Aes, 32, &info)?;
+                    println!(
+                        "    Iteration {}: Expanded OKM with info length {}",
+                        i, info_len
+                    );
+
+                    // Compute expected OKM using RustCrypto
+                    // Use full salt buffer since CMK is imported with the complete buffer (including zero padding)
+                    let expected_okm = rustcrypto_hkdf(hash_algorithm, &ikm, &salt, &info, 32);
+                    println!(
+                        "      Expected OKM[0..4]={:02x?}",
+                        &expected_okm[..4.min(expected_okm.len())]
+                    );
+
+                    // Verify by encrypting with AES-GCM and comparing
+                    let plaintext = [0u8; 16];
+                    let (iv, tag, ciphertext) = self.aes_gcm_encrypt(&okm_cmk, &[], &plaintext)?;
+
+                    // expected_okm is already 32 bytes as specified in rustcrypto_hkdf call
+                    let (rtag, rciphertext) =
+                        rustcrypto_gcm_encrypt(&expected_okm, &iv, &[], &plaintext);
+
+                    assert_eq!(
+                        ciphertext, rciphertext,
+                        "Ciphertext should match RustCrypto"
+                    );
+                    assert_eq!(tag, rtag, "Tag should match RustCrypto");
+                    println!("      Derived key verified via AES-GCM encryption");
+
+                    // Clean up
+                    self.delete_key(&okm_cmk)?;
+                    self.delete_key(&prk_cmk)?;
+                    self.delete_key(&salt_cmk)?;
+                }
+
+                // Clean up IKM
+                self.delete_key(&ikm_cmk)?;
+            }
+
+            println!("HKDF tests passed");
+            Ok(())
+        }
+
+        /// Perform HKDF Extract.
+        fn hkdf_extract(
+            &mut self,
+            ikm: &Cmk,
+            salt: &Cmk,
+            hash_algorithm: CmHashAlgorithm,
+        ) -> Result<Cmk, ()> {
+            let extract_req = CmHkdfExtractReq {
+                hdr: MailboxReqHeader::default(),
+                hash_algorithm: hash_algorithm.into(),
+                salt: salt.clone(),
+                ikm: ikm.clone(),
+            };
+
+            let mut req = McuMailboxReq::HkdfExtract(McuHkdfExtractReq(extract_req));
+            req.populate_chksum().unwrap();
+
+            let resp = self
+                .process_message(req.cmd_code().0, req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            let extract_resp = McuHkdfExtractResp::read_from_bytes(&resp.data).map_err(|_| ())?;
+            assert_eq!(
+                extract_resp.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+
+            Ok(extract_resp.0.prk)
+        }
+
+        /// Perform HKDF Expand.
+        fn hkdf_expand(
+            &mut self,
+            prk: &Cmk,
+            hash_algorithm: CmHashAlgorithm,
+            key_usage: CmKeyUsage,
+            key_size: u32,
+            info: &[u8],
+        ) -> Result<Cmk, ()> {
+            let mut expand_req = CmHkdfExpandReq {
+                hdr: MailboxReqHeader::default(),
+                prk: prk.clone(),
+                hash_algorithm: hash_algorithm.into(),
+                key_usage: key_usage.into(),
+                key_size,
+                info_size: info.len() as u32,
+                ..Default::default()
+            };
+            expand_req.info[..info.len()].copy_from_slice(info);
+
+            let mut req = McuMailboxReq::HkdfExpand(McuHkdfExpandReq(expand_req));
+            req.populate_chksum().unwrap();
+
+            let resp = self
+                .process_message(req.cmd_code().0, req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            let expand_resp = McuHkdfExpandResp::read_from_bytes(&resp.data).map_err(|_| ())?;
+            assert_eq!(
+                expand_resp.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+
+            Ok(expand_resp.0.okm)
+        }
     }
 
     /// Helper function to perform AES-GCM encryption using RustCrypto.
@@ -1533,5 +1920,69 @@ pub mod test {
             .encrypt_in_place_detached(iv.into(), aad, &mut buffer)
             .expect("Encryption failed");
         (tag.into(), buffer)
+    }
+
+    /// Helper function to compute HMAC using RustCrypto.
+    fn rustcrypto_hmac(hash_algorithm: CmHashAlgorithm, key: &[u8], data: &[u8]) -> Vec<u8> {
+        match hash_algorithm {
+            CmHashAlgorithm::Sha384 => {
+                let mut mac = <HmacSha384 as KeyInit>::new_from_slice(key).unwrap();
+                mac.update(data);
+                let result = mac.finalize();
+                let x: [u8; 48] = result.into_bytes().into();
+                x.into()
+            }
+            CmHashAlgorithm::Sha512 => {
+                let mut mac = <HmacSha512 as KeyInit>::new_from_slice(key).unwrap();
+                mac.update(data);
+                let result = mac.finalize();
+                let x: [u8; 64] = result.into_bytes().into();
+                x.into()
+            }
+            _ => panic!("Invalid hash algorithm"),
+        }
+    }
+
+    /// Helper function to compute HMAC KDF Counter using RustCrypto.
+    fn rustcrypto_hmac_kdf_counter(
+        hash_algorithm: CmHashAlgorithm,
+        key: &[u8],
+        label: &[u8],
+    ) -> Vec<u8> {
+        // Counter-mode KDF: HMAC(key, counter || label), then truncate to 32 bytes
+        let mut data = vec![];
+        data.extend(1u32.to_be_bytes().as_slice());
+        data.extend(label);
+        let mut okm = rustcrypto_hmac(hash_algorithm, key, &data);
+        // Derive a 256-bit key (32 bytes) as used by AES-256-GCM in these tests.
+        if okm.len() > 32 {
+            okm.truncate(32);
+        }
+        okm
+    }
+
+    /// Helper function to compute HKDF using RustCrypto with a configurable output length.
+    fn rustcrypto_hkdf(
+        hash_algorithm: CmHashAlgorithm,
+        ikm: &[u8],
+        salt: &[u8],
+        info: &[u8],
+        key_size: usize,
+    ) -> Vec<u8> {
+        match hash_algorithm {
+            CmHashAlgorithm::Sha384 => {
+                let hk = Hkdf384::new(Some(salt), ikm);
+                let mut okm = vec![0u8; key_size];
+                hk.expand(info, &mut okm).unwrap();
+                okm
+            }
+            CmHashAlgorithm::Sha512 => {
+                let hk = Hkdf512::new(Some(salt), ikm);
+                let mut okm = vec![0u8; key_size];
+                hk.expand(info, &mut okm).unwrap();
+                okm
+            }
+            _ => panic!("Invalid hash algorithm"),
+        }
     }
 }
