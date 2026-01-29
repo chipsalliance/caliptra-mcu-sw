@@ -28,7 +28,7 @@ pub fn platform() -> &'static str {
 mod test {
     use caliptra_hw_model::BootParams;
     use caliptra_image_types::FwVerificationPqcKeyType;
-    use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg, TARGET};
+    use mcu_builder::{CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET};
     use mcu_config::McuMemoryMap;
     use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
     use mcu_image_header::McuImageHeader;
@@ -68,8 +68,26 @@ mod test {
             .join(name)
     }
 
+    // Get ROM from prebuilt or compile
+    fn get_or_compile_rom(feature: &str) -> PathBuf {
+        // Try to get prebuilt ROM from the firmware bundle
+        if feature.is_empty() {
+            if let Ok(binaries) = FirmwareBinaries::from_env() {
+                let output = target_binary("mcu_rom_prebuilt.bin");
+                if let Some(parent) = output.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                std::fs::write(&output, &binaries.mcu_rom)
+                    .expect("Failed to write prebuilt ROM to file");
+                return output;
+            }
+        }
+        // Fall back to compilation
+        compile_rom(feature)
+    }
+
     // only build the ROM once
-    pub static ROM: LazyLock<PathBuf> = LazyLock::new(|| compile_rom(""));
+    pub static ROM: LazyLock<PathBuf> = LazyLock::new(|| get_or_compile_rom(""));
 
     pub static TEST_LOCK: LazyLock<Mutex<AtomicU32>> =
         LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
@@ -126,6 +144,17 @@ mod test {
         .expect("Runtime build failed");
         assert!(output.exists());
         output
+    }
+
+    /// Check if prebuilt binaries are available for the given feature.
+    pub fn has_prebuilt_binaries(feature: &str) -> bool {
+        if let Ok(binaries) = FirmwareBinaries::from_env() {
+            binaries.test_runtime(feature).is_ok()
+                && binaries.test_pldm_fw_pkg(feature).is_ok()
+                && binaries.test_flash_image(feature).is_ok()
+        } else {
+            false
+        }
     }
 
     struct TestBinaries {
@@ -302,89 +331,89 @@ mod test {
         fuse_soc_manifest_max_svn: Option<u8>,
         fuse_vendor_test_partition: Option<Vec<u8>>,
     ) -> i32 {
-        let mut cargo_run_args = vec![
-            "run",
-            "-p",
-            "emulator",
-            "--profile",
-            "test",
-            "--features",
-            feature,
-            "--",
-            "--rom",
-            rom_path.to_str().unwrap(),
-            "--firmware",
-            runtime_path.to_str().unwrap(),
-            "--i3c-port",
-            i3c_port.as_str(),
+        // Check for prebuilt emulator first
+        let prebuilt_emulator = get_prebuilt_emulator(feature);
+
+        // Build emulator arguments (these are the same whether using prebuilt or cargo run)
+        let rom_path_str = rom_path.to_str().unwrap().to_string();
+        let runtime_path_str = runtime_path.to_str().unwrap().to_string();
+        let mut emulator_args: Vec<String> = vec![
+            "--rom".to_string(),
+            rom_path_str,
+            "--firmware".to_string(),
+            runtime_path_str,
+            "--i3c-port".to_string(),
+            i3c_port.clone(),
         ];
 
         // map the memory map to the emulator
-        let rom_offset = format!(
-            "0x{:x}",
-            mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_offset
-        );
-        cargo_run_args.extend(["--rom-offset", &rom_offset]);
-        let rom_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size);
-        cargo_run_args.extend(["--rom-size", &rom_size]);
-        let dccm_offset = format!(
-            "0x{:x}",
-            mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset
-        );
-        cargo_run_args.extend(["--dccm-offset", &dccm_offset]);
-        let dccm_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size);
-        cargo_run_args.extend(["--dccm-size", &dccm_size]);
-        let sram_offset = format!(
-            "0x{:x}",
-            mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset
-        );
-        cargo_run_args.extend(["--sram-offset", &sram_offset]);
-        let sram_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_size);
-        cargo_run_args.extend(["--sram-size", &sram_size]);
-        let pic_offset = format!(
-            "0x{:x}",
-            mcu_config_emulator::EMULATOR_MEMORY_MAP.pic_offset
-        );
-        cargo_run_args.extend(["--pic-offset", &pic_offset]);
-        let i3c_offset = format!(
-            "0x{:x}",
-            mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_offset
-        );
-        cargo_run_args.extend(["--i3c-offset", &i3c_offset]);
-        let i3c_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_size);
-        cargo_run_args.extend(["--i3c-size", &i3c_size]);
-        let mci_offset = format!(
-            "0x{:x}",
-            mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_offset
-        );
-        cargo_run_args.extend(["--mci-offset", &mci_offset]);
-        let mci_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_size);
-        cargo_run_args.extend(["--mci-size", &mci_size]);
-        let mbox_offset = format!(
-            "0x{:x}",
-            mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_offset
-        );
-        cargo_run_args.extend(["--mbox-offset", &mbox_offset]);
-        let mbox_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_size);
-        cargo_run_args.extend(["--mbox-size", &mbox_size]);
-        let soc_offset = format!(
-            "0x{:x}",
-            mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_offset
-        );
-        cargo_run_args.extend(["--soc-offset", &soc_offset]);
-        let soc_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_size);
-        cargo_run_args.extend(["--soc-size", &soc_size]);
-        let otp_offset = format!(
-            "0x{:x}",
-            mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_offset
-        );
-        cargo_run_args.extend(["--otp-offset", &otp_offset]);
-        let otp_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_size);
-        cargo_run_args.extend(["--otp-size", &otp_size]);
-        let lc_offset = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_offset);
-        cargo_run_args.extend(["--lc-offset", &lc_offset]);
-        let lc_size = format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_size);
-        cargo_run_args.extend(["--lc-size", &lc_size]);
+        emulator_args.extend([
+            "--rom-offset".to_string(),
+            format!(
+                "0x{:x}",
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_offset
+            ),
+            "--rom-size".to_string(),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size),
+            "--dccm-offset".to_string(),
+            format!(
+                "0x{:x}",
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset
+            ),
+            "--dccm-size".to_string(),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size),
+            "--sram-offset".to_string(),
+            format!(
+                "0x{:x}",
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset
+            ),
+            "--sram-size".to_string(),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_size),
+            "--pic-offset".to_string(),
+            format!(
+                "0x{:x}",
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.pic_offset
+            ),
+            "--i3c-offset".to_string(),
+            format!(
+                "0x{:x}",
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_offset
+            ),
+            "--i3c-size".to_string(),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_size),
+            "--mci-offset".to_string(),
+            format!(
+                "0x{:x}",
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_offset
+            ),
+            "--mci-size".to_string(),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_size),
+            "--mbox-offset".to_string(),
+            format!(
+                "0x{:x}",
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_offset
+            ),
+            "--mbox-size".to_string(),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_size),
+            "--soc-offset".to_string(),
+            format!(
+                "0x{:x}",
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_offset
+            ),
+            "--soc-size".to_string(),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_size),
+            "--otp-offset".to_string(),
+            format!(
+                "0x{:x}",
+                mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_offset
+            ),
+            "--otp-size".to_string(),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_size),
+            "--lc-offset".to_string(),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_offset),
+            "--lc-size".to_string(),
+            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_size),
+        ]);
 
         let mut caliptra_builder = if let Some(caliptra_builder) = caliptra_builder {
             caliptra_builder
@@ -404,98 +433,212 @@ mod test {
             )
         };
 
-        let hw_revision_str;
         if let Some(hw_revision) = hw_revision {
-            hw_revision_str = hw_revision;
-            cargo_run_args.extend(["--hw-revision", &hw_revision_str]);
+            emulator_args.extend(["--hw-revision".to_string(), hw_revision]);
         }
 
         if active_mode {
-            let lifecycle_arg = format!("{}", device_security_state as u32);
-            cargo_run_args.extend(["--device-security-state", lifecycle_arg.as_str()]);
+            emulator_args.extend([
+                "--device-security-state".to_string(),
+                format!("{}", device_security_state as u32),
+            ]);
             let caliptra_rom = caliptra_builder
                 .get_caliptra_rom()
                 .expect("Failed to build Caliptra ROM");
-            cargo_run_args.push("--caliptra-rom");
-            cargo_run_args.push(caliptra_rom.to_str().unwrap());
+            emulator_args.extend([
+                "--caliptra-rom".to_string(),
+                caliptra_rom.to_str().unwrap().to_string(),
+            ]);
             let caliptra_fw = caliptra_builder
                 .get_caliptra_fw()
                 .expect("Failed to build Caliptra firmware");
-            cargo_run_args.push("--caliptra-firmware");
-            cargo_run_args.push(caliptra_fw.to_str().unwrap());
+            emulator_args.extend([
+                "--caliptra-firmware".to_string(),
+                caliptra_fw.to_str().unwrap().to_string(),
+            ]);
             let soc_manifest = caliptra_builder
                 .get_soc_manifest(None)
                 .expect("Failed to build SoC manifest");
-            cargo_run_args.push("--soc-manifest");
-            cargo_run_args.push(soc_manifest.to_str().unwrap());
+            emulator_args.extend([
+                "--soc-manifest".to_string(),
+                soc_manifest.to_str().unwrap().to_string(),
+            ]);
             let vendor_pk_hash = caliptra_builder
                 .get_vendor_pk_hash()
                 .expect("Failed to get vendor PK hash");
-            cargo_run_args.push("--vendor-pk-hash");
-            cargo_run_args.push(vendor_pk_hash);
+            emulator_args.extend(["--vendor-pk-hash".to_string(), vendor_pk_hash.to_string()]);
 
-            let streaming_boot_path;
             if let Some(path) = streaming_boot_package_path {
-                cargo_run_args.push("--streaming-boot");
-                streaming_boot_path = path;
-                cargo_run_args.push(streaming_boot_path.to_str().unwrap());
+                emulator_args.extend([
+                    "--streaming-boot".to_string(),
+                    path.to_str().unwrap().to_string(),
+                ]);
             }
 
-            let primary_flash_image;
             if let Some(path) = primary_flash_image_path {
-                cargo_run_args.push("--primary-flash-image");
-                primary_flash_image = path;
-                cargo_run_args.push(primary_flash_image.to_str().unwrap());
+                emulator_args.extend([
+                    "--primary-flash-image".to_string(),
+                    path.to_str().unwrap().to_string(),
+                ]);
             }
 
-            let secondary_flash_image;
             if let Some(path) = secondary_flash_image_path {
-                cargo_run_args.push("--secondary-flash-image");
-                secondary_flash_image = path;
-                cargo_run_args.push(secondary_flash_image.to_str().unwrap());
+                emulator_args.extend([
+                    "--secondary-flash-image".to_string(),
+                    path.to_str().unwrap().to_string(),
+                ]);
             }
 
-            let soc_manifest_svn_str;
             if let Some(soc_manifest_svn) = fuse_soc_manifest_svn {
-                cargo_run_args.push("--fuse-soc-manifest-svn");
-                soc_manifest_svn_str = soc_manifest_svn.to_string();
-                cargo_run_args.push(soc_manifest_svn_str.as_str());
+                emulator_args.extend([
+                    "--fuse-soc-manifest-svn".to_string(),
+                    soc_manifest_svn.to_string(),
+                ]);
             }
 
-            let soc_manifest_max_svn_str;
             if let Some(soc_manifest_max_svn) = fuse_soc_manifest_max_svn {
-                cargo_run_args.push("--fuse-soc-manifest-max-svn");
-                soc_manifest_max_svn_str = soc_manifest_max_svn.to_string();
-                cargo_run_args.push(soc_manifest_max_svn_str.as_str());
+                emulator_args.extend([
+                    "--fuse-soc-manifest-max-svn".to_string(),
+                    soc_manifest_max_svn.to_string(),
+                ]);
             }
 
-            let fuse_vendor_test_partition_str;
             if let Some(fuse_vendor_test_partition) = fuse_vendor_test_partition {
-                cargo_run_args.push("--fuse-vendor-test-partition");
-                fuse_vendor_test_partition_str = hex::encode(fuse_vendor_test_partition);
-                cargo_run_args.push(fuse_vendor_test_partition_str.as_str());
+                emulator_args.extend([
+                    "--fuse-vendor-test-partition".to_string(),
+                    hex::encode(fuse_vendor_test_partition),
+                ]);
             }
+        }
 
-            println!("Running test firmware {}", feature.replace("_", "-"));
-            let mut cmd = Command::new("cargo");
-            let cmd = cmd.args(&cargo_run_args).current_dir(&*PROJECT_ROOT);
+        println!("Running test firmware {}", feature.replace("_", "-"));
+
+        // Use prebuilt emulator if available, otherwise fall back to cargo run
+        if let Some(emulator_path) = prebuilt_emulator {
+            let mut cmd = Command::new(&emulator_path);
+            let cmd = cmd.args(&emulator_args).current_dir(&*PROJECT_ROOT);
             cmd.status().unwrap().code().unwrap_or(1)
         } else {
-            println!("Running test firmware {}", feature.replace("_", "-"));
+            println!("No prebuilt emulator available, using cargo run...");
+            let mut cargo_args: Vec<String> = vec![
+                "run".to_string(),
+                "-p".to_string(),
+                "emulator".to_string(),
+                "--profile".to_string(),
+                "test".to_string(),
+                "--features".to_string(),
+                feature.to_string(),
+                "--".to_string(),
+            ];
+            cargo_args.extend(emulator_args);
             let mut cmd = Command::new("cargo");
-            let cmd = cmd.args(&cargo_run_args).current_dir(&*PROJECT_ROOT);
+            let cmd = cmd.args(&cargo_args).current_dir(&*PROJECT_ROOT);
             cmd.status().unwrap().code().unwrap_or(1)
         }
+    }
+
+    /// Get prebuilt emulator from EmulatorBinaries if available.
+    /// Returns the path to the emulator binary, or None if not available.
+    /// Uses the CPTRA_EMULATOR_BUNDLE environment variable.
+    fn get_prebuilt_emulator(feature: &str) -> Option<PathBuf> {
+        let binaries = EmulatorBinaries::from_env().ok()?;
+        let emulator_bytes = binaries.emulator(feature).ok()?;
+
+        // Write prebuilt emulator to target directory
+        let output = target_binary(&format!("emulator-{}", feature));
+        if let Some(parent) = output.parent() {
+            std::fs::create_dir_all(parent).ok()?;
+        }
+        std::fs::write(&output, emulator_bytes).ok()?;
+        // Make executable
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&output, std::fs::Permissions::from_mode(0o755)).ok()?;
+        }
+        println!("Using prebuilt emulator for feature {}", feature);
+        Some(output)
+    }
+
+    /// Get prebuilt runtime from FirmwareBinaries if available, writing it to a temp file.
+    /// Returns the path to the runtime binary.
+    fn get_or_compile_runtime(feature: &str, example_app: bool) -> PathBuf {
+        // Try to get prebuilt runtime from the firmware bundle
+        if let Ok(binaries) = FirmwareBinaries::from_env() {
+            if let Ok(runtime_bytes) = binaries.test_runtime(feature) {
+                // Write prebuilt runtime to target directory
+                let output = target_binary(&format!("runtime-{}-emulator.bin", feature));
+                if let Some(parent) = output.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                std::fs::write(&output, runtime_bytes)
+                    .expect("Failed to write prebuilt runtime to file");
+                println!("Using prebuilt test firmware {}", feature);
+                return output;
+            }
+        }
+        // Fall back to compilation if prebuilt not available
+        println!(
+            "Compiling test firmware {} (no prebuilt available)",
+            feature
+        );
+        compile_runtime(Some(feature), example_app)
+    }
+
+    /// Create a CaliptraBuilder with prebuilt binaries if available.
+    fn create_caliptra_builder_with_prebuilt(
+        runtime_path: PathBuf,
+        feature: &str,
+    ) -> Option<CaliptraBuilder> {
+        let binaries = FirmwareBinaries::from_env().ok()?;
+
+        // Write prebuilt Caliptra binaries to target directory
+        let target_dir = PROJECT_ROOT.join("target").join(TARGET).join("release");
+        std::fs::create_dir_all(&target_dir).ok()?;
+
+        let caliptra_rom_path = target_dir.join("caliptra_rom_prebuilt.bin");
+        std::fs::write(&caliptra_rom_path, &binaries.caliptra_rom).ok()?;
+
+        let caliptra_fw_path = target_dir.join("caliptra_fw_prebuilt.bin");
+        std::fs::write(&caliptra_fw_path, &binaries.caliptra_fw).ok()?;
+
+        // Get SoC manifest for this feature, or default
+        let soc_manifest_bytes = binaries
+            .test_soc_manifest(feature)
+            .ok()
+            .unwrap_or_else(|| binaries.soc_manifest.clone());
+        let soc_manifest_path = target_dir.join(format!("soc_manifest_{}_prebuilt.bin", feature));
+        std::fs::write(&soc_manifest_path, soc_manifest_bytes).ok()?;
+
+        let vendor_pk_hash = binaries.vendor_pk_hash().map(|h| hex::encode(h));
+
+        Some(CaliptraBuilder::new(
+            false,
+            Some(caliptra_rom_path),
+            Some(caliptra_fw_path),
+            Some(soc_manifest_path),
+            vendor_pk_hash,
+            Some(runtime_path),
+            None,
+            None,
+            None,
+            None,
+            None,
+        ))
     }
 
     fn run_test(feature: &str, example_app: bool) {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        println!("Compiling test firmware {}", feature);
         let feature = feature.replace("_", "-");
-        let test_runtime = compile_runtime(Some(&feature), example_app);
+        let test_runtime = get_or_compile_runtime(&feature, example_app);
         let i3c_port = PortPicker::new().pick().unwrap().to_string();
+
+        // Try to create CaliptraBuilder with prebuilt binaries
+        let caliptra_builder =
+            create_caliptra_builder_with_prebuilt(test_runtime.clone(), &feature);
+
         let test = run_runtime(
             &feature,
             ROM.to_path_buf(),
@@ -507,7 +650,7 @@ mod test {
             None,
             None,
             None,
-            None,
+            caliptra_builder,
             None,
             None,
             None,
@@ -597,9 +740,10 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let feature = "test-exit-immediately".to_string();
-        println!("Compiling test firmware {}", &feature);
-        let test_runtime = compile_runtime(Some(&feature), false);
+        let test_runtime = get_or_compile_runtime(&feature, false);
         let i3c_port = PortPicker::new().pick().unwrap().to_string();
+        let caliptra_builder =
+            create_caliptra_builder_with_prebuilt(test_runtime.clone(), &feature);
         let test = run_runtime(
             &feature,
             ROM.to_path_buf(),
@@ -611,7 +755,7 @@ mod test {
             None,
             None,
             None,
-            None,
+            caliptra_builder,
             None,
             None,
             None,
@@ -629,9 +773,10 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let feature = "test-mcu-rom-flash-access".to_string();
-        println!("Compiling test firmware {}", &feature);
-        let test_runtime = compile_runtime(Some(&feature), false);
+        let test_runtime = get_or_compile_runtime(&feature, false);
         let i3c_port = PortPicker::new().pick().unwrap().to_string();
+        let caliptra_builder =
+            create_caliptra_builder_with_prebuilt(test_runtime.clone(), &feature);
         let test = run_runtime(
             &feature,
             get_rom_with_feature(&feature),
@@ -643,7 +788,7 @@ mod test {
             None,
             None,
             None,
-            None,
+            caliptra_builder,
             None,
             None,
             None,
