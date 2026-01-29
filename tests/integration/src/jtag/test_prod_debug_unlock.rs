@@ -6,7 +6,7 @@ mod test {
     use std::thread;
     use std::time::Duration;
 
-    use crate::jtag::test::ss_setup;
+    use crate::jtag::test::{debug_is_unlocked, ss_setup};
 
     use caliptra_hw_model::jtag::CaliptraCoreReg;
     use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
@@ -41,45 +41,56 @@ mod test {
         );
 
         // Connect to Caliptra Core JTAG TAP via OpenOCD.
-        println!("Connecting to Core TAP ...");
         let jtag_params = JtagParams {
             openocd: PathBuf::from("openocd"),
             adapter_speed_khz: 1000,
             log_stdio: true,
         };
-        let mut tap = model
+        println!("Connecting to Core TAP ...");
+        let mut core_tap = model
             .jtag_tap_connect(&jtag_params, JtagTap::CaliptraCoreTap)
             .expect("Failed to connect to the Caliptra Core JTAG TAP.");
         println!("Connected.");
+        println!("Connecting to MCU TAP ...");
+        let mut mcu_tap = model
+            .jtag_tap_connect(&jtag_params, JtagTap::CaliptraMcuTap)
+            .expect("Failed to connect to the Caliptra MCU JTAG TAP.");
+        println!("Connected.");
+
+        // Confirm debug is locked.
+        let is_unlocked = debug_is_unlocked(&mut *core_tap, &mut *mcu_tap).unwrap_or(false);
+        assert_eq!(is_unlocked, false);
 
         // Ensure another prod debug unlock operation is not in progress.
-        let dbg_manuf_service_rsp = tap
+        let dbg_manuf_service_rsp = core_tap
             .read_reg(&CaliptraCoreReg::SsDbgManufServiceRegRsp)
             .expect("Unable to read SsDbgManufServiceRegRes reg.");
         assert_eq!(dbg_manuf_service_rsp & 0x20, 0);
-        let mut dbg_manuf_service_req = tap
+        let mut dbg_manuf_service_req = core_tap
             .read_reg(&CaliptraCoreReg::SsDbgManufServiceRegReq)
             .expect("Unable to read SsDbgManufServiceRegReq reg.");
         assert_eq!(dbg_manuf_service_req, 0);
 
         // Request prod debug unlock operation.
         println!("Request to initiate prod debug unlock ...");
-        tap.write_reg(&CaliptraCoreReg::SsDbgManufServiceRegReq, 0x2)
+        core_tap
+            .write_reg(&CaliptraCoreReg::SsDbgManufServiceRegReq, 0x2)
             .expect("Unable to write SsDbgManufServiceRegReq reg.");
-        dbg_manuf_service_req = tap
+        dbg_manuf_service_req = core_tap
             .read_reg(&CaliptraCoreReg::SsDbgManufServiceRegReq)
             .expect("Unable to read SsDbgManufServiceRegReq reg.");
         assert_eq!(dbg_manuf_service_req, 0x2);
         println!("Request sent.");
 
         // Continue Caliptra Core boot.
-        tap.write_reg(&CaliptraCoreReg::BootfsmGo, 0x1)
+        core_tap
+            .write_reg(&CaliptraCoreReg::BootfsmGo, 0x1)
             .expect("Unable to write BootfsmGo.");
 
         // Wait for the Caliptra mailbox to become available.
         let mut mb_available = false;
         println!("Waiting for Caliptra mailbox TAP to become available ...");
-        while let Ok(rsp) = tap.read_reg(&CaliptraCoreReg::SsDbgManufServiceRegRsp) {
+        while let Ok(rsp) = core_tap.read_reg(&CaliptraCoreReg::SsDbgManufServiceRegRsp) {
             if rsp & 0x200 != 0 {
                 mb_available = true;
                 break;
@@ -93,16 +104,20 @@ mod test {
 
         // Wait for the prod debug unlock request to be "in-progress".
         println!("Waiting for prod debug unlock in progress ...");
-        let _ = prod_debug_unlock_wait_for_in_progress(&mut model, &mut *tap, /*begin=*/ true);
+        let _ = prod_debug_unlock_wait_for_in_progress(
+            &mut model,
+            &mut *core_tap,
+            /*begin=*/ true,
+        );
         println!("In progress.");
 
         // Send the debug unlock request and wait for the challenge response in the mailbox.
         println!("Sending the prod debug unlock request ...");
-        prod_debug_unlock_send_request(&mut *tap, /*debug_level=*/ 1)
+        prod_debug_unlock_send_request(&mut *core_tap, /*debug_level=*/ 1)
             .expect("Failed to send prod debug unlock request.");
         model.base.step();
         println!("Request sent.");
-        let du_challenge = prod_debug_unlock_get_challenge(&mut *tap)
+        let du_challenge = prod_debug_unlock_get_challenge(&mut *core_tap)
             .expect("Unable to read challenge in mailbox.");
         model.base.step();
         println!("Challenge received.");
@@ -143,16 +158,35 @@ mod test {
 
         // Send the signed prod debug unlock token to the mailbox.
         println!("Sending the signed unlock token to the mailbox ...");
-        prod_debug_unlock_send_token(&mut *tap, &du_token)
+        prod_debug_unlock_send_token(&mut *core_tap, &du_token)
             .expect("Unable to send the signed token to the mailbox.");
         model.base.step();
         println!("Token sent.");
 
         // Wait for the prod debug unlock request to be complete.
         println!("Waiting for prod debug unlock in progress to complete ...");
-        let response =
-            prod_debug_unlock_wait_for_in_progress(&mut model, &mut *tap, /*begin=*/ false);
+        let response = prod_debug_unlock_wait_for_in_progress(
+            &mut model,
+            &mut *core_tap,
+            /*begin=*/ false,
+        );
         assert_eq!(response & 0x8, 0x8);
         println!("Unlock complete.");
+
+        // Confirm debug is unlocked.
+        core_tap
+            .reexamine_cpu_target()
+            .expect("Failed to reexamine CPU target.");
+        core_tap
+            .set_sysbus_access()
+            .expect("Failed to set sysbus access.");
+        mcu_tap
+            .reexamine_cpu_target()
+            .expect("Failed to reexamine CPU target.");
+        mcu_tap
+            .set_sysbus_access()
+            .expect("Failed to set sysbus access.");
+        let is_unlocked = debug_is_unlocked(&mut *core_tap, &mut *mcu_tap).unwrap_or(false);
+        assert_eq!(is_unlocked, true);
     }
 }
