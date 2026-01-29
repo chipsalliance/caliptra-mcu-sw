@@ -101,3 +101,81 @@ fn decode_and_verify_ecc_p384_cose_sign1() {
         .verify()
         .expect("COSE_Sign1 signature verification should succeed");
 }
+
+mod tag_order_tests {
+    use super::*;
+    use coset::cbor::value::Value;
+    use ocptoken::error::OcpEatError;
+    use ocptoken::token::evidence::{CBOR_TAG_CBOR, CBOR_TAG_COSE_SIGN1, CBOR_TAG_CWT};
+
+    fn wrap_with_tags(mut inner: Value, tags: &[u64]) -> Vec<u8> {
+        for &tag in tags.iter().rev() {
+            inner = Value::Tag(tag, Box::new(inner));
+        }
+        inner.to_vec().unwrap()
+    }
+
+    fn dummy_cose_array() -> Value {
+        Value::Array(vec![
+            Value::Bytes(vec![]),
+            Value::Map(vec![]),
+            Value::Bytes(vec![]),
+            Value::Bytes(vec![]),
+        ])
+    }
+
+    #[test]
+    fn reject_incorrect_cbor_tag_order() {
+        let encoded = wrap_with_tags(
+            dummy_cose_array(),
+            &[CBOR_TAG_CWT, CBOR_TAG_CBOR, CBOR_TAG_COSE_SIGN1],
+        );
+
+        match Evidence::decode(&encoded) {
+            Err(OcpEatError::InvalidToken(msg)) => {
+                assert!(
+                    msg.contains("CBOR tags are not in required order"),
+                    "unexpected error message: {msg}"
+                );
+            }
+            Ok(_) => panic!("Unexpected success"),
+            Err(_) => panic!("Unexpected error variant"),
+        }
+    }
+
+    #[test]
+    fn accept_correct_cbor_tag_order() {
+        let encoded = wrap_with_tags(
+            dummy_cose_array(),
+            &[CBOR_TAG_CBOR, CBOR_TAG_CWT, CBOR_TAG_COSE_SIGN1],
+        );
+
+        match Evidence::decode(&encoded) {
+            Err(OcpEatError::InvalidToken(msg))
+                if msg.contains("CBOR tags are not in required order") =>
+            {
+                panic!("Tag order was rejected unexpectedly");
+            }
+            Err(_) => {} // expected
+            Ok(_) => panic!("Unexpected success"),
+        }
+    }
+
+    #[test]
+    fn reject_missing_required_cbor_tag() {
+        // Missing CWT tag (61)
+        let encoded = wrap_with_tags(dummy_cose_array(), &[CBOR_TAG_CBOR, CBOR_TAG_COSE_SIGN1]);
+
+        match Evidence::decode(&encoded) {
+            Err(OcpEatError::InvalidToken(msg)) => {
+                //fail during tag validation,
+                assert!(
+                    msg.contains("CBOR tags are not in required order"),
+                    "unexpected error message for missing tag: {msg}"
+                );
+            }
+            Ok(_) => panic!("Unexpected success with missing required CBOR tag"),
+            Err(_) => panic!("Unexpected error variant"),
+        }
+    }
+}
