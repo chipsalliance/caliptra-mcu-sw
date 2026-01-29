@@ -8,10 +8,12 @@ mod test_uds;
 
 #[cfg(test)]
 mod test {
+
     use caliptra_hw_model::jtag::DmReg;
     use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
     use caliptra_hw_model::Fuses;
     use mcu_builder::FirmwareBinaries;
+    use mcu_config_fpga::FPGA_MEMORY_MAP;
     use mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel};
     use mcu_rom_common::LifecycleControllerState;
 
@@ -43,7 +45,27 @@ mod test {
         m
     }
 
-    pub fn debug_is_unlocked(tap: &mut OpenOcdJtagTap) -> Result<bool> {
+    /// Write/Read words to SRAM over the system bus.
+    fn sysbus_write_read(tap: &mut OpenOcdJtagTap, sram_base_addr: u32) -> Result<bool> {
+        const NUM_WORDS: u32 = 4;
+        for i in 0..NUM_WORDS {
+            let addr = sram_base_addr + i * 4;
+            let value = 0xa5a5a5a5;
+            tap.write_memory_32(addr, value)?;
+            let read_value = tap.read_memory_32(addr)?;
+            println!(
+                "Wrote 0x{:x} to 0x{:x}; Read 0x{:x}",
+                value, addr, read_value
+            );
+            if value != read_value {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    /// Check if a debug module is active.
+    fn check_debug_module_active(tap: &mut OpenOcdJtagTap) -> Result<bool> {
         // Check dmstatus.allrunning and dmstatus.anyrunning bits to see if
         // debug access has been unlocked.
         let dmstatus = tap.read_reg(&DmReg::DmStatus)?;
@@ -51,6 +73,26 @@ mod test {
             println!("Debug is not unlocked: dmstatus = 0x{:08x}", dmstatus);
             return Ok(false);
         }
+        Ok(true)
+    }
+
+    pub fn debug_is_unlocked(
+        core_tap: &mut OpenOcdJtagTap,
+        mcu_tap: &mut OpenOcdJtagTap,
+    ) -> Result<bool> {
+        // Check both TAPs are active.
+        if !check_debug_module_active(core_tap)? {
+            return Ok(false);
+        }
+        if !check_debug_module_active(mcu_tap)? {
+            return Ok(false);
+        }
+
+        // Test writes to Caliptra MCU SRAM.
+        if !sysbus_write_read(mcu_tap, FPGA_MEMORY_MAP.sram_offset)? {
+            return Ok(false);
+        }
+
         Ok(true)
     }
 }

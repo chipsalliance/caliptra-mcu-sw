@@ -13,7 +13,7 @@ mod test {
     use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
     use caliptra_hw_model::HwModel;
     use caliptra_hw_model::DEFAULT_MANUF_DEBUG_UNLOCK_RAW_TOKEN;
-    use mcu_hw_model::jtag::jtag_send_caliptra_mailbox_cmd;
+    use mcu_hw_model::jtag::{jtag_get_caliptra_mailbox_resp, jtag_send_caliptra_mailbox_cmd};
     use mcu_rom_common::LifecycleControllerState;
 
     use zerocopy::IntoBytes;
@@ -28,44 +28,54 @@ mod test {
             /*enable_mcu_uart_log=*/ true,
         );
 
-        // Connect to Caliptra Core JTAG TAP via OpenOCD.
-        println!("Connecting to Core TAP ...");
+        // Connect to Caliptra Core and MCU JTAG TAPs via OpenOCD.
         let jtag_params = JtagParams {
             openocd: PathBuf::from("openocd"),
             adapter_speed_khz: 1000,
             log_stdio: true,
         };
-        let mut tap = model
+        println!("Connecting to Core TAP ...");
+        let mut core_tap = model
             .jtag_tap_connect(&jtag_params, JtagTap::CaliptraCoreTap)
             .expect("Failed to connect to the Caliptra Core JTAG TAP.");
         println!("Connected.");
+        println!("Connecting to MCU TAP ...");
+        let mut mcu_tap = model
+            .jtag_tap_connect(&jtag_params, JtagTap::CaliptraMcuTap)
+            .expect("Failed to connect to the Caliptra MCU JTAG TAP.");
+        println!("Connected.");
 
         // Confirm debug is locked.
-        let is_unlocked = debug_is_unlocked(&mut *tap).unwrap_or(false);
+        let is_unlocked = debug_is_unlocked(&mut *core_tap, &mut *mcu_tap).unwrap_or(false);
         assert_eq!(is_unlocked, false);
 
         // Request manuf debug unlock operation.
-        tap.write_reg(&CaliptraCoreReg::SsDbgManufServiceRegReq, 0x1)
+        core_tap
+            .write_reg(&CaliptraCoreReg::SsDbgManufServiceRegReq, 0x1)
             .expect("Unable to write SsDbgManufServiceRegReq reg.");
         model.base.step();
 
         // Continue Caliptra Core boot.
-        tap.write_reg(&CaliptraCoreReg::BootfsmGo, 0x1)
+        core_tap
+            .write_reg(&CaliptraCoreReg::BootfsmGo, 0x1)
             .expect("Unable to write BootfsmGo.");
         model.base.step();
 
         // Send the manuf debug unlock token.
         jtag_send_caliptra_mailbox_cmd(
-            &mut *tap,
+            &mut *core_tap,
             CommandId::MANUF_DEBUG_UNLOCK_REQ_TOKEN,
             DEFAULT_MANUF_DEBUG_UNLOCK_RAW_TOKEN.0.as_bytes(),
         )
         .expect("Failed to send manuf debug unlock token.");
         model.base.step();
+        let _ = jtag_get_caliptra_mailbox_resp(&mut *core_tap)
+            .expect("Failed to get manuf debug unlock response.");
+        model.base.step();
 
         // Wait for debug unlock operation to complete.
         while let Ok(ss_debug_manuf_response) =
-            tap.read_reg(&CaliptraCoreReg::SsDbgManufServiceRegRsp)
+            core_tap.read_reg(&CaliptraCoreReg::SsDbgManufServiceRegRsp)
         {
             if (ss_debug_manuf_response & 0x3) != 0 {
                 println!(
@@ -73,6 +83,7 @@ mod test {
                     ss_debug_manuf_response
                 );
                 assert_eq!(ss_debug_manuf_response, 0x1);
+                model.base.step();
                 break;
             }
             model.base.step();
@@ -80,11 +91,19 @@ mod test {
         }
 
         // Confirm debug is unlocked.
-        tap.reexamine_cpu_target()
+        core_tap
+            .reexamine_cpu_target()
             .expect("Failed to reexamine CPU target.");
-        tap.set_sysbus_access()
+        core_tap
+            .set_sysbus_access()
             .expect("Failed to set sysbus access.");
-        let is_unlocked = debug_is_unlocked(&mut *tap).unwrap_or(false);
+        mcu_tap
+            .reexamine_cpu_target()
+            .expect("Failed to reexamine CPU target.");
+        mcu_tap
+            .set_sysbus_access()
+            .expect("Failed to set sysbus access.");
+        let is_unlocked = debug_is_unlocked(&mut *core_tap, &mut *mcu_tap).unwrap_or(false);
         assert_eq!(is_unlocked, true);
     }
 }
