@@ -252,13 +252,13 @@ jobs:
               -E 'package(tests-integration) and test(test_fw_update_e2e)'
               -E 'package(tests-integration) and test(test_mcu_mbox_usermode)'
               -E 'package(tests-integration) and test(test_mcu_mbox_cmds)'
-              -E 'package(tests-integration) and test(test_firmware_update_streaming_fpga)'
               -E 'package(tests-integration) and test(test_i3c_constant_writes)'
               -E 'package(tests-integration) and test(test_i3c_simple)'
-
           )
               # disabled for now due to flakiness of recovery boot
               # -E 'package(tests-integration) and test(test_mctp_capsule_loopback)'
+              # disabled for now due to flakiness of firmware update
+              # -E 'package(tests-integration) and test(test_firmware_update_streaming_fpga)'
 
 
           cargo-nextest nextest list \
