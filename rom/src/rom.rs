@@ -327,6 +327,18 @@ impl Soc {
                 mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg[reg_idx].set(word);
             }
         }
+        // Set the debug enablement masks for: DFT, HW Debug, Prod Debug.
+        //
+        // Note: this enables all 8 debug levels (supported by the 8 prod debug
+        // unlock public key hash slots in the reference fuse map) to unlock
+        // DFT, HW debug, and prod debug access. Integrators should change this
+        // based on their integration.
+        mci.registers.mci_reg_soc_dft_en[0].set(0x000000FF);
+        mci.registers.mci_reg_soc_dft_en[1].set(0x00000000);
+        mci.registers.mci_reg_soc_hw_debug_en[0].set(0x000000FF);
+        mci.registers.mci_reg_soc_hw_debug_en[1].set(0x00000000);
+        mci.registers.mci_reg_soc_prod_debug_state[0].set(0x000000FF);
+        mci.registers.mci_reg_soc_prod_debug_state[1].set(0x00000000);
     }
 
     pub fn set_axi_users(&self, users: AxiUsers) {
