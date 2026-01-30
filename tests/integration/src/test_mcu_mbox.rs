@@ -19,16 +19,18 @@ pub mod test {
         CmAesGcmDecryptUpdateRespHeader, CmAesGcmEncryptFinalReq, CmAesGcmEncryptFinalRespHeader,
         CmAesGcmEncryptInitReq, CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateRespHeader,
         CmAesMode, CmAesRespHeader, CmDeleteReq, CmEcdhFinishReq, CmEcdhGenerateReq,
-        CmEcdhGenerateResp, CmHkdfExpandReq, CmHkdfExtractReq, CmHmacKdfCounterReq, CmHmacReq,
-        CmImportReq, CmKeyUsage, CmRandomGenerateReq, CmRandomStirReq, CmShaFinalReq,
-        CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk, DeviceCapsReq, DeviceCapsResp,
-        DeviceIdReq, DeviceIdResp, DeviceInfoReq, DeviceInfoResp, FirmwareVersionReq,
-        FirmwareVersionResp, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
-        McuAesDecryptInitReq, McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq,
-        McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq,
-        McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq,
-        McuCmDeleteReq, McuCmImportReq, McuCmImportResp, McuCmStatusReq, McuCmStatusResp,
-        McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
+        CmEcdhGenerateResp, CmEcdsaPublicKeyReq, CmEcdsaSignReq, CmEcdsaVerifyReq, CmHkdfExpandReq,
+        CmHkdfExtractReq, CmHmacKdfCounterReq, CmHmacReq, CmImportReq, CmKeyUsage,
+        CmRandomGenerateReq, CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq,
+        CmShaUpdateReq, Cmk, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp,
+        DeviceInfoReq, DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, MailboxReqHeader,
+        MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
+        McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
+        McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
+        McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
+        McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp,
+        McuEcdhGenerateReq, McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp,
+        McuEcdsaCmkSignReq, McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp,
         McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
         McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuMailboxReq, McuMailboxResp,
         McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
@@ -36,6 +38,8 @@ pub mod test {
         CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
     };
     use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+    use p384::ecdsa::signature::hazmat::PrehashSigner;
+    use p384::ecdsa::{Signature, SigningKey};
     use rand::prelude::*;
     use rand::rngs::StdRng;
     use random_port::PortPicker;
@@ -218,6 +222,7 @@ pub mod test {
                 self.add_aes_encrypt_decrypt_tests()?;
                 self.add_aes_gcm_encrypt_decrypt_tests()?;
                 self.add_ecdh_tests()?;
+                self.add_ecdsa_tests()?;
                 self.add_hmac_tests()?;
                 self.add_hmac_kdf_counter_tests()?;
                 self.add_hkdf_tests()?;
@@ -1465,6 +1470,9 @@ pub mod test {
             );
             println!("  Verified: ciphertext and tags match!");
 
+            // Clean up CMK created by ecdh_finish to avoid resource leaks
+            self.delete_key(&cmk)?;
+
             println!("ECDH tests passed");
             Ok(())
         }
@@ -1531,6 +1539,217 @@ pub mod test {
             );
 
             Ok(ecdh_finish_resp.0.output.clone())
+        }
+
+        /// Test ECDSA operations: public key extraction, sign, and verify.
+        /// 1. Import an ECDSA key
+        /// 2. Get the public key and verify it matches expected value
+        /// 3. Sign random messages via mailbox
+        /// 4. Verify signature matches RustCrypto ECDSA signature
+        /// 5. Verify via mailbox with correct message (should succeed)
+        /// 6. Verify via mailbox with modified message (should fail)
+        fn add_ecdsa_tests(&mut self) -> Result<(), ()> {
+            println!("Running ECDSA tests");
+
+            // Import a 48-byte seed for ECDSA (P-384)
+            let seed_bytes = [0u8; 48];
+            let cmk = self.import_key(&seed_bytes, CmKeyUsage::Ecdsa)?;
+            println!("  Imported ECDSA key");
+
+            // Seed RNG for random test messages
+            let seed_rng_bytes = [1u8; 32];
+            let mut seeded_rng = StdRng::from_seed(seed_rng_bytes);
+
+            // Private key corresponding to the imported seed (test vector from caliptra-sw)
+            let privkey: [u8; 48] = [
+                0xfe, 0xee, 0xf5, 0x54, 0x4a, 0x76, 0x56, 0x49, 0x90, 0x12, 0x8a, 0xd1, 0x89, 0xe8,
+                0x73, 0xf2, 0x1f, 0xd, 0xfd, 0x5a, 0xd7, 0xe2, 0xfa, 0x86, 0x11, 0x27, 0xee, 0x6e,
+                0x39, 0x4c, 0xa7, 0x84, 0x87, 0x1c, 0x1a, 0xec, 0x3, 0x2c, 0x7a, 0x8b, 0x10, 0xb9,
+                0x3e, 0xe, 0xab, 0x89, 0x46, 0xd6,
+            ];
+
+            // Get public key
+            let pub_key = self.ecdsa_public_key(&cmk)?;
+            println!(
+                "  Got public key: X[0..4]={:02x?}, Y[0..4]={:02x?}",
+                &pub_key.0[..4],
+                &pub_key.1[..4]
+            );
+
+            // Expected public key values (from deterministic seed of all zeros)
+            let expected_pub_key_x: [u8; 48] = [
+                0xd7, 0xdd, 0x94, 0xe0, 0xbf, 0xfc, 0x4c, 0xad, 0xe9, 0x90, 0x2b, 0x7f, 0xdb, 0x15,
+                0x42, 0x60, 0xd5, 0xec, 0x5d, 0xfd, 0x57, 0x95, 0x0e, 0x83, 0x59, 0x01, 0x5a, 0x30,
+                0x2c, 0x8b, 0xf7, 0xbb, 0xa7, 0xe5, 0xf6, 0xdf, 0xfc, 0x16, 0x85, 0x16, 0x2b, 0xdd,
+                0x35, 0xf9, 0xf5, 0xc1, 0xb0, 0xff,
+            ];
+            let expected_pub_key_y: [u8; 48] = [
+                0xbb, 0x9c, 0x3a, 0x2f, 0x06, 0x1e, 0x8d, 0x70, 0x14, 0x27, 0x8d, 0xd5, 0x1e, 0x66,
+                0xa9, 0x18, 0xa6, 0xb6, 0xf9, 0xf1, 0xc1, 0x93, 0x73, 0x12, 0xd4, 0xe7, 0xa9, 0x21,
+                0xb1, 0x8e, 0xf0, 0xf4, 0x1f, 0xdd, 0x40, 0x1d, 0x9e, 0x77, 0x18, 0x50, 0x9f, 0x87,
+                0x31, 0xe9, 0xee, 0xc9, 0xc3, 0x1d,
+            ];
+            assert_eq!(pub_key.0, expected_pub_key_x, "Public key X should match");
+            assert_eq!(pub_key.1, expected_pub_key_y, "Public key Y should match");
+
+            // Test sign and verify with random messages (aligned with caliptra-sw approach)
+            // Using fewer iterations than caliptra-sw (25) due to MCU test environment constraints
+            for i in 0..10 {
+                // Generate random message length and data
+                let len = seeded_rng.gen_range(1..MAX_CMB_DATA_SIZE / 2);
+                let mut data = vec![0u8; len];
+                seeded_rng.fill_bytes(&mut data);
+
+                println!(
+                    "  Testing ECDSA sign/verify iteration {} with message length: {}",
+                    i, len
+                );
+
+                // Sign the message via mailbox
+                let signature = self.ecdsa_sign(&cmk, &data)?;
+                println!(
+                    "    Mailbox signed: R[0..4]={:02x?}, S[0..4]={:02x?}",
+                    &signature.0[..4],
+                    &signature.1[..4]
+                );
+
+                // Hash the message with SHA384 and sign with RustCrypto to verify
+                let mut hasher = Sha384::new();
+                hasher.update(&data);
+                let hash = hasher.finalize();
+                let hash_arr: [u8; 48] = hash.into();
+
+                let rustcrypto_sig = rustcrypto_ecdsa_sign(&privkey, &hash_arr);
+                println!(
+                    "    RustCrypto signed: R[0..4]={:02x?}, S[0..4]={:02x?}",
+                    &rustcrypto_sig.0[..4],
+                    &rustcrypto_sig.1[..4]
+                );
+
+                // Verify signatures match between mailbox and RustCrypto
+                assert_eq!(
+                    signature.0, rustcrypto_sig.0,
+                    "Signature R should match RustCrypto"
+                );
+                assert_eq!(
+                    signature.1, rustcrypto_sig.1,
+                    "Signature S should match RustCrypto"
+                );
+                println!("    Signatures match between mailbox and RustCrypto");
+
+                // Verify via mailbox with correct message (should succeed)
+                self.ecdsa_verify(&cmk, &data, &signature.0, &signature.1)?;
+                println!("    Mailbox verification with correct message succeeded");
+
+                // Verify with modified message (should fail)
+                let mut modified_data = data.clone();
+                let modify_idx = seeded_rng.gen_range(0..len);
+                modified_data[modify_idx] ^= seeded_rng.gen_range(1..=255u8);
+
+                let verify_fail_result =
+                    self.ecdsa_verify(&cmk, &modified_data, &signature.0, &signature.1);
+                assert!(
+                    verify_fail_result.is_err(),
+                    "Signature verification should fail with modified message"
+                );
+                println!("    Mailbox verification with modified message failed as expected");
+            }
+
+            // Clean up
+            self.delete_key(&cmk)?;
+            println!("ECDSA tests passed");
+            Ok(())
+        }
+
+        /// Get the public key for an ECDSA CMK.
+        fn ecdsa_public_key(&mut self, cmk: &Cmk) -> Result<([u8; 48], [u8; 48]), ()> {
+            let mut req =
+                McuMailboxReq::EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq(CmEcdsaPublicKeyReq {
+                    hdr: MailboxReqHeader::default(),
+                    cmk: cmk.clone(),
+                }));
+            req.populate_chksum().unwrap();
+
+            let resp = self
+                .process_message(req.cmd_code().0, req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            let pub_key_resp =
+                McuEcdsaCmkPublicKeyResp::read_from_bytes(&resp.data).map_err(|_| ())?;
+
+            assert_eq!(
+                pub_key_resp.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+
+            Ok((pub_key_resp.0.public_key_x, pub_key_resp.0.public_key_y))
+        }
+
+        /// Sign a message using an ECDSA CMK.
+        fn ecdsa_sign(&mut self, cmk: &Cmk, message: &[u8]) -> Result<([u8; 48], [u8; 48]), ()> {
+            let mut sign_req = CmEcdsaSignReq {
+                hdr: MailboxReqHeader::default(),
+                cmk: cmk.clone(),
+                message_size: message.len() as u32,
+                ..Default::default()
+            };
+            sign_req.message[..message.len()].copy_from_slice(message);
+
+            let mut req = McuMailboxReq::EcdsaCmkSign(McuEcdsaCmkSignReq(sign_req));
+            req.populate_chksum().unwrap();
+
+            let resp = self
+                .process_message(req.cmd_code().0, req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            let sign_resp = McuEcdsaCmkSignResp::read_from_bytes(&resp.data).map_err(|_| ())?;
+
+            assert_eq!(
+                sign_resp.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS status should be approved"
+            );
+
+            Ok((sign_resp.0.signature_r, sign_resp.0.signature_s))
+        }
+
+        /// Verify a signature using an ECDSA CMK.
+        fn ecdsa_verify(
+            &mut self,
+            cmk: &Cmk,
+            message: &[u8],
+            signature_r: &[u8; 48],
+            signature_s: &[u8; 48],
+        ) -> Result<(), ()> {
+            let mut verify_req = CmEcdsaVerifyReq {
+                hdr: MailboxReqHeader::default(),
+                cmk: cmk.clone(),
+                signature_r: *signature_r,
+                signature_s: *signature_s,
+                message_size: message.len() as u32,
+                ..Default::default()
+            };
+            verify_req.message[..message.len()].copy_from_slice(message);
+
+            let mut req = McuMailboxReq::EcdsaCmkVerify(McuEcdsaCmkVerifyReq(verify_req));
+            req.populate_chksum().unwrap();
+
+            let result = self.process_message(req.cmd_code().0, req.as_bytes().unwrap());
+
+            match result {
+                Ok(resp) => {
+                    let verify_resp =
+                        McuEcdsaCmkVerifyResp::read_from_bytes(&resp.data).map_err(|_| ())?;
+                    assert_eq!(
+                        verify_resp.0.fips_status,
+                        MailboxRespHeader::FIPS_STATUS_APPROVED,
+                        "FIPS status should be approved"
+                    );
+                    Ok(())
+                }
+                Err(_) => Err(()), // Verification failed (signature mismatch)
+            }
         }
 
         /// Test HMAC command.
@@ -1904,6 +2123,17 @@ pub mod test {
 
             Ok(expand_resp.0.okm)
         }
+    }
+
+    /// Helper function to perform ECDSA signing using RustCrypto.
+    /// Used for verifying signatures match between mailbox and RustCrypto.
+    fn rustcrypto_ecdsa_sign(priv_key: &[u8; 48], hash: &[u8; 48]) -> ([u8; 48], [u8; 48]) {
+        let signing_key = SigningKey::from_slice(priv_key).unwrap();
+        let ecc_sig: Signature = signing_key.sign_prehash(hash).unwrap();
+        let ecc_sig = ecc_sig.to_vec();
+        let r = ecc_sig[..48].try_into().unwrap();
+        let s = ecc_sig[48..].try_into().unwrap();
+        (r, s)
     }
 
     /// Helper function to perform AES-GCM encryption using RustCrypto.
