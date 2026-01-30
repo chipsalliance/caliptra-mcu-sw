@@ -5,6 +5,8 @@ mod i3c_socket;
 mod jtag;
 #[cfg(test)]
 mod rom;
+#[cfg(test)]
+mod runtime;
 mod test_dot;
 mod test_exception_handler;
 mod test_firmware_update;
