@@ -260,7 +260,7 @@ jobs:
               # disabled for now due to flakiness of recovery boot
               # -E 'package(tests-integration) and test(test_mctp_capsule_loopback)'
               # TODO(#694): renable after debugging failing tests:
-              # -E 'package(tests-integration) and test(test_firmware_update_streaming)'
+              # -E 'package(tests-integration) and test(test_firmware_update_streaming_fpga)'
 
           cargo-nextest nextest list \
               "${COMMON_ARGS[@]}" \
