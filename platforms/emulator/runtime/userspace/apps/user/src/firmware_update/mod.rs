@@ -71,6 +71,11 @@ pub async fn firmware_update<D: DMAMapping>(dma_mapping: &D) -> Result<(), Error
         updater.start().await?;
     }
 
+    // Trigger MCU warm reset to boot into new firmware
+    writeln!(console_writer, "[FW Upd] Triggering MCU reset").unwrap();
+    let mci = MciSyscall::<DefaultSyscalls>::new();
+    mci.trigger_warm_reset()?;
+
     Ok(())
 }
 

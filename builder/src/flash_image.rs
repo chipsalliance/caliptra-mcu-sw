@@ -57,6 +57,19 @@ impl<'a> FlashImage<'a> {
         Self { header, payload }
     }
 
+    /// Convert the flash image to a byte vector
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(self.header.as_bytes());
+        for info in self.payload.image_info {
+            bytes.extend_from_slice(info.as_bytes());
+        }
+        for image in self.payload.images {
+            bytes.extend_from_slice(image.data);
+        }
+        bytes
+    }
+
     pub fn write_to_file(&self, offset: usize, filename: &str) -> Result<()> {
         let mut file = OpenOptions::new()
             .write(true)
@@ -238,6 +251,59 @@ pub fn generate_image_info(images: Vec<FirmwareImage>) -> Vec<ImageHeader> {
         offset += image.data.len() as u32;
     }
     info
+}
+
+/// Build a flash image from raw firmware data and return it as bytes.
+///
+/// This is useful for loading firmware to flash in the hardware model
+/// instead of using the recovery interface.
+pub fn build_flash_image_bytes(
+    caliptra_fw: Option<&[u8]>,
+    soc_manifest: Option<&[u8]>,
+    mcu_runtime: Option<&[u8]>,
+) -> Vec<u8> {
+    fn pad_to_256_bytes(data: &[u8]) -> Vec<u8> {
+        let padding = data.len().next_multiple_of(256) - data.len();
+        let mut padded = data.to_vec();
+        padded.extend(vec![0; padding]);
+        padded
+    }
+
+    // Build padded copies of the firmware images
+    let caliptra_fw_padded = caliptra_fw.map(pad_to_256_bytes);
+    let soc_manifest_padded = soc_manifest.map(pad_to_256_bytes);
+    let mcu_runtime_padded = mcu_runtime.map(pad_to_256_bytes);
+
+    let mut images: Vec<FirmwareImage> = Vec::new();
+
+    if let Some(ref data) = caliptra_fw_padded {
+        images.push(FirmwareImage {
+            identifier: CALIPTRA_FMC_RT_IDENTIFIER,
+            data,
+        });
+    }
+
+    if let Some(ref data) = soc_manifest_padded {
+        images.push(FirmwareImage {
+            identifier: SOC_MANIFEST_IDENTIFIER,
+            data,
+        });
+    }
+
+    if let Some(ref data) = mcu_runtime_padded {
+        images.push(FirmwareImage {
+            identifier: MCU_RT_IDENTIFIER,
+            data,
+        });
+    }
+
+    if images.is_empty() {
+        return Vec::new();
+    }
+
+    let image_info = generate_image_info(images.clone());
+    let flash_image = FlashImage::new(&images, &image_info);
+    flash_image.to_bytes()
 }
 
 pub fn flash_image_verify(image_file_path: &str, offset: u32) -> Result<()> {
