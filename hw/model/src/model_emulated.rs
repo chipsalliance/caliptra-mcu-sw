@@ -253,11 +253,16 @@ impl McuHwModel for ModelEmulated {
                 device_lifecycle,
                 req_idevid_csr,
                 use_mcu_recovery_interface,
-                extra_soc_bus: Some(
-                    params
-                        .caliptra_soc_axi_user
-                        .unwrap_or(McuStraps::default().axi_user1),
-                ),
+                extra_soc_bus: Some(params.caliptra_soc_axi_user.unwrap_or({
+                    #[cfg(not(feature = "extended_axi_user"))]
+                    {
+                        McuStraps::default().axi_user1
+                    }
+                    #[cfg(feature = "extended_axi_user")]
+                    {
+                        McuStraps::default().extended_axi_users.cptra_mbox_users[1]
+                    }
+                })),
             })
             .expect("Failed to start Caliptra CPU");
         let soc_to_caliptra_bus = soc_to_caliptra_bus.unwrap();

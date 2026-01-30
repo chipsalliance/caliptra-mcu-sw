@@ -50,8 +50,22 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
 
 pub const FPGA_MCU_STRAPS: McuStraps = McuStraps {
     i3c_static_addr: 0x3a,
+    #[cfg(not(feature = "extended_axi_user"))]
     axi_user0: 0x1,
+
+    #[cfg(not(feature = "extended_axi_user"))]
     axi_user1: 0x2,
+
+    #[cfg(feature = "extended_axi_user")]
+    extended_axi_users: {
+        ExtendedAxiUsers {
+            cptra_mbox_users: [1, 2, 0, 0, 0],
+            fuse_user: 1,
+            trng_user: 1,
+            dma_user: 1,
+        }
+    },
+
     mcu_mbox0_axi_users: [1, 2, 0, 0, 0],
     mcu_mbox1_axi_users: [1, 2, 0, 0, 0],
     cptra_wdt_cfg0: 200_000_000,

@@ -7,6 +7,7 @@ edition.workspace = true
 
 [features]
 default = []
+extended_axi_user = ["mcu-config/extended_axi_user"]
 fpga_realtime = [
     "dep:uio",
     "dep:mcu-config-fpga",

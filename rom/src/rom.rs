@@ -670,7 +670,20 @@ pub struct AxiUsers {
 
 impl From<&McuStraps> for AxiUsers {
     fn from(straps: &McuStraps) -> Self {
+        #[cfg(feature = "extended_axi_user")]
+        let mut mbox_users_to_set: [Option<u32>; 5] = [None; 5];
+
+        #[cfg(feature = "extended_axi_user")]
+        {
+            for i in 0..mbox_users_to_set.len() {
+                if straps.extended_axi_users.cptra_mbox_users[i] != 0 {
+                    mbox_users_to_set[i] = Some(straps.extended_axi_users.cptra_mbox_users[i]);
+                }
+            }
+        }
+
         AxiUsers {
+            #[cfg(not(feature = "extended_axi_user"))]
             mbox_users: [
                 Some(straps.axi_user0),
                 Some(straps.axi_user1),
@@ -678,9 +691,21 @@ impl From<&McuStraps> for AxiUsers {
                 None,
                 None,
             ],
+            #[cfg(not(feature = "extended_axi_user"))]
             fuse_user: straps.axi_user0,
+            #[cfg(not(feature = "extended_axi_user"))]
             trng_user: straps.axi_user0,
+            #[cfg(not(feature = "extended_axi_user"))]
             dma_user: straps.axi_user0,
+
+            #[cfg(feature = "extended_axi_user")]
+            fuse_user: straps.extended_axi_users.fuse_user,
+            #[cfg(feature = "extended_axi_user")]
+            trng_user: straps.extended_axi_users.trng_user,
+            #[cfg(feature = "extended_axi_user")]
+            dma_user: straps.extended_axi_users.dma_user,
+            #[cfg(feature = "extended_axi_user")]
+            mbox_users: mbox_users_to_set,
         }
     }
 }

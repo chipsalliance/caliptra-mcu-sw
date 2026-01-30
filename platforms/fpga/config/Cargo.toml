@@ -8,3 +8,7 @@ edition.workspace = true
 
 [dependencies]
 mcu-config.workspace = true
+
+[features]
+default = []
+extended_axi_user = []

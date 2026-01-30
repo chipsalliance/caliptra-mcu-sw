@@ -8,3 +8,6 @@ edition.workspace = true
 
 [dependencies]
 registers-generated.workspace = true
+
+[features]
+extended_axi_user = []

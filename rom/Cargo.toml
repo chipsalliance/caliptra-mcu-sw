@@ -31,3 +31,4 @@ rv32i.workspace = true
 default = []   # default is 2.0
 hw-2-1 = []
 core_test = []
+extended_axi_user = ["mcu-config/extended_axi_user"]

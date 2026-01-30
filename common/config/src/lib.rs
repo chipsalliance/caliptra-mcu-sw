@@ -98,13 +98,27 @@ impl Default for McuMemoryMap {
     }
 }
 
+#[repr(C)]
+pub struct ExtendedAxiUsers {
+    pub cptra_mbox_users: [u32; 5],
+    pub fuse_user: u32,
+    pub trng_user: u32,
+    pub dma_user: u32,
+}
+
 /// Configures other parameters that are expected to be strapped or hardcoded for a platform.
 /// These are the defaults that can be overridden and provided to the ROM and runtime builds.
 #[repr(C)]
 pub struct McuStraps {
     pub i3c_static_addr: u8,
+    #[cfg(not(feature = "extended_axi_user"))]
     pub axi_user0: u32,
+    #[cfg(not(feature = "extended_axi_user"))]
     pub axi_user1: u32,
+
+    #[cfg(feature = "extended_axi_user")]
+    pub extended_axi_users: ExtendedAxiUsers,
+
     /// Valid users for the MCU mailboxes. 0 values are ignored.
     pub mcu_mbox0_axi_users: [u32; 5],
     /// Valid users for the MCU mailboxes. 0 values are ignored.
@@ -123,8 +137,28 @@ impl McuStraps {
     pub const fn default() -> Self {
         McuStraps {
             i3c_static_addr: 0x3a,
+
+            #[cfg(not(feature = "extended_axi_user"))]
             axi_user0: 0xcccc_cccc,
+            #[cfg(not(feature = "extended_axi_user"))]
             axi_user1: 0xdddd_dddd,
+
+            #[cfg(feature = "extended_axi_user")]
+            extended_axi_users: {
+                ExtendedAxiUsers {
+                    cptra_mbox_users: [
+                        0xcccc_cccc,
+                        0xdddd_dddd,
+                        0x0000_0000,
+                        0x0000_0000,
+                        0x0000_0000,
+                    ],
+                    fuse_user: 0xcccc_cccc,
+                    trng_user: 0xcccc_cccc,
+                    dma_user: 0xcccc_cccc,
+                }
+            },
+
             mcu_mbox0_axi_users: [
                 0xcccc_cccc,
                 0xdddd_dddd,
