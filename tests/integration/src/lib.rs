@@ -12,6 +12,7 @@ mod test_fpga_flash_ctrl;
 mod test_i3c_constant_writes;
 mod test_i3c_simple;
 mod test_mctp_capsule_loopback;
+mod test_mctp_vdm_cmds;
 mod test_mcu_mbox;
 mod test_pldm_fw_update;
 mod test_soc_boot;

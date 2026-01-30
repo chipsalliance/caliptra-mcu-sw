@@ -7,6 +7,7 @@ pub mod i3c;
 pub mod i3c_socket;
 pub mod i3c_socket_server;
 pub mod mctp_transport;
+pub mod mctp_vdm_transport;
 #[macro_use]
 pub mod mctp_util;
 
