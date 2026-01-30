@@ -103,6 +103,12 @@ exec patch $outputDir/caliptra_ss_top.sv $fpgaDir/src/caliptra_ss_top.patch
 remove_files [ glob $ssrtlDir/src/integration/rtl/caliptra_ss_top.sv ]
 add_files $outputDir/caliptra_ss_top.sv
 
+# Hack version to 2.1.1
+file copy [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_reg.sv ] $outputDir/soc_ifc_reg.sv
+exec sed -i {s/\(CPTRA_HW_REV_ID.*16'h\)12/\1112/g} $outputDir/soc_ifc_reg.sv
+remove_files [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_reg.sv ]
+add_files $outputDir/soc_ifc_reg.sv
+
 # Add missing include
 file copy [ glob $caliptrartlDir/src/ahb_lite_bus/rtl/ahb_lite_address_decoder.sv ] $outputDir/ahb_lite_address_decoder.sv
 exec sed -i {1i `include \"config_defines.svh\"} $outputDir/ahb_lite_address_decoder.sv
