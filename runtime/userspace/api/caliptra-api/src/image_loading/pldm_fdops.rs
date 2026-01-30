@@ -11,7 +11,6 @@ use libsyscall_caliptra::dma::{AXIAddr, DMAMapping, DMASource, DMATransaction, D
 use pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::message::firmware_update::get_status::ProgressPercent;
-use pldm_common::message::firmware_update::request_fw_data::RequestFirmwareDataResponseFixed;
 use pldm_common::message::firmware_update::transfer_complete::TransferResult;
 use pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use pldm_common::protocol::firmware_update::{
@@ -19,7 +18,7 @@ use pldm_common::protocol::firmware_update::{
 };
 use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
-const MAX_PLDM_TRANSFER_SIZE: usize = core::mem::size_of::<RequestFirmwareDataResponseFixed>();
+const MAX_PLDM_TRANSFER_SIZE: usize = 196; // This should be smaller than I3C MAX_READ_WRITE_SIZE
 
 pub struct StreamingFdOps<'a, D: DMAMapping> {
     descriptors: &'a [Descriptor],
@@ -169,10 +168,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
                 PLDM_FWUP_BASELINE_TRANSFER_SIZE
             } else {
                 let remaining = ctx.total_length - ctx.total_downloaded;
-                core::cmp::max(
-                    core::cmp::min(remaining, MAX_PLDM_TRANSFER_SIZE),
-                    PLDM_FWUP_BASELINE_TRANSFER_SIZE,
-                )
+                remaining.clamp(PLDM_FWUP_BASELINE_TRANSFER_SIZE, MAX_PLDM_TRANSFER_SIZE)
             };
 
             ctx.last_requested_length = length;

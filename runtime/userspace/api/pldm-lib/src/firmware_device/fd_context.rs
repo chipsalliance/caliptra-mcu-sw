@@ -56,10 +56,13 @@ use pldm_common::util::fw_component::FirmwareComponent;
 use crate::firmware_device::fd_internal::{
     ApplyState, DownloadState, InitiatorModeState, VerifyState,
 };
+use crate::firmware_device::transfer_session::CancellationFlag;
 
 pub struct FirmwareDeviceContext<'a> {
     ops: &'a dyn FdOps,
     internal: FdInternal,
+    /// Cancellation flag for signaling download abort from responder task.
+    cancellation_flag: CancellationFlag,
 }
 
 impl<'a> FirmwareDeviceContext<'a> {
@@ -68,6 +71,7 @@ impl<'a> FirmwareDeviceContext<'a> {
         Self {
             ops,
             internal: FdInternal::default(),
+            cancellation_flag: CancellationFlag::new(),
         }
     }
 
@@ -447,6 +451,8 @@ impl<'a> FirmwareDeviceContext<'a> {
         };
 
         if should_cancel {
+            // Signal cancellation to the download loop
+            self.cancellation_flag.cancel();
             self.ops
                 .cancel_update_component(&self.internal.get_component().await)
                 .map_err(MsgHandlerError::FdOps)?;
@@ -502,6 +508,8 @@ impl<'a> FirmwareDeviceContext<'a> {
         };
 
         if should_cancel {
+            // Signal cancellation to the download loop
+            self.cancellation_flag.cancel();
             self.ops
                 .cancel_update_component(&self.internal.get_component().await)
                 .map_err(MsgHandlerError::FdOps)?;
@@ -888,83 +896,80 @@ impl<'a> FirmwareDeviceContext<'a> {
     }
 
     async fn fd_progress_download(&self, payload: &mut [u8]) -> Result<usize, MsgHandlerError> {
-        if !self.should_send_fd_request().await {
-            return Err(MsgHandlerError::FdInitiatorModeError);
-        }
+        // Get offset and length from ops first (this is async but outside the batch)
+        // We need to do this before the batch because query_download_offset_and_length
+        // needs the component, and getting it requires a lock.
+        // For now, we'll get component separately to call query_download_offset_and_length.
+        let component = self.internal.get_component().await;
+        let (requested_offset, requested_length) = self
+            .ops
+            .query_download_offset_and_length(&component)
+            .await
+            .map_err(MsgHandlerError::FdOps)?;
 
-        let instance_id = self.internal.alloc_next_instance_id().await.unwrap();
+        // Use batch operation to prepare the download request
+        let info = self
+            .internal
+            .prepare_download_request(requested_offset as u32, requested_length as u32)
+            .await
+            .ok_or(MsgHandlerError::FdInitiatorModeError)?;
+
         // If the request is complete, send TransferComplete
-        if self.internal.is_fd_req_complete().await {
-            let result = self
-                .internal
-                .get_fd_req_result()
-                .await
-                .ok_or(MsgHandlerError::FdInitiatorModeError)?;
+        if info.is_complete {
+            let result = info.result.ok_or(MsgHandlerError::FdInitiatorModeError)?;
 
             let msg_len = TransferCompleteRequest::new(
-                instance_id,
+                info.instance_id,
                 PldmMsgType::Request,
                 TransferResult::try_from(result).unwrap(),
             )
             .encode(payload)
             .map_err(MsgHandlerError::Codec)?;
 
-            // Set fd req state to sent
+            // Finalize request state in a single batch operation
             let req_sent_timestamp = self.ops.now();
             self.internal
-                .set_fd_req(
-                    FdReqState::Sent,
+                .finalize_download_request(
+                    0,
+                    0,
+                    info.instance_id,
+                    FwUpdateCmd::TransferComplete as u8,
+                    req_sent_timestamp,
                     true,
                     Some(result),
-                    Some(instance_id),
-                    Some(FwUpdateCmd::TransferComplete as u8),
-                    Some(req_sent_timestamp),
                 )
                 .await;
 
             Ok(msg_len)
         } else {
-            let (requested_offset, requested_length) = self
-                .ops
-                .query_download_offset_and_length(&self.internal.get_component().await)
-                .await
-                .map_err(MsgHandlerError::FdOps)?;
+            let (chunk_offset, chunk_length) = info
+                .chunk_info
+                .ok_or(MsgHandlerError::FdInitiatorModeError)?;
 
-            if let Some((chunk_offset, chunk_length)) = self
-                .internal
-                .get_fd_download_chunk(requested_offset as u32, requested_length as u32)
-                .await
-            {
-                let msg_len = RequestFirmwareDataRequest::new(
-                    instance_id,
-                    PldmMsgType::Request,
+            let msg_len = RequestFirmwareDataRequest::new(
+                info.instance_id,
+                PldmMsgType::Request,
+                chunk_offset,
+                chunk_length,
+            )
+            .encode(payload)
+            .map_err(MsgHandlerError::Codec)?;
+
+            // Finalize download state and request state in a single batch operation
+            let req_sent_timestamp = self.ops.now();
+            self.internal
+                .finalize_download_request(
                     chunk_offset,
                     chunk_length,
+                    info.instance_id,
+                    FwUpdateCmd::RequestFirmwareData as u8,
+                    req_sent_timestamp,
+                    false,
+                    None,
                 )
-                .encode(payload)
-                .map_err(MsgHandlerError::Codec)?;
+                .await;
 
-                // Store offset and length into the internal state
-                self.internal
-                    .set_fd_download_state(chunk_offset, chunk_length)
-                    .await;
-
-                // Set fd req state to sent
-                let req_sent_timestamp = self.ops.now();
-                self.internal
-                    .set_fd_req(
-                        FdReqState::Sent,
-                        false,
-                        None,
-                        Some(instance_id),
-                        Some(FwUpdateCmd::RequestFirmwareData as u8),
-                        Some(req_sent_timestamp),
-                    )
-                    .await;
-                Ok(msg_len)
-            } else {
-                Err(MsgHandlerError::FdInitiatorModeError)
-            }
+            Ok(msg_len)
         }
     }
 
@@ -1087,5 +1092,37 @@ impl<'a> FirmwareDeviceContext<'a> {
                 return (now - fd_req_sent_time) >= self.internal.get_fd_t2_retry_time().await;
             }
         }
+    }
+
+    /// Check if cancellation has been requested.
+    pub fn is_cancelled(&self) -> bool {
+        self.cancellation_flag.is_cancelled()
+    }
+
+    /// Reset the cancellation flag (called when starting a new transfer).
+    pub fn reset_cancellation(&self) {
+        self.cancellation_flag.reset();
+    }
+
+    /// Create a transfer session for optimized download.
+    /// This captures the current state to avoid mutex acquisitions in the hot path.
+    pub async fn create_transfer_session(&self) -> super::transfer_session::TransferSession {
+        self.reset_cancellation();
+        self.internal.create_transfer_session(self.ops.now()).await
+    }
+
+    /// Sync state from a transfer session back to internal state.
+    pub async fn sync_transfer_session(&self, session: &super::transfer_session::TransferSession) {
+        self.internal.sync_from_transfer_session(session).await;
+    }
+
+    /// Get current timestamp from ops.
+    pub fn now(&self) -> pldm_common::protocol::firmware_update::PldmFdTime {
+        self.ops.now()
+    }
+
+    /// Get the ops reference for download operations.
+    pub fn ops(&self) -> &dyn FdOps {
+        self.ops
     }
 }

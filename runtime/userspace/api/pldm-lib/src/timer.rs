@@ -44,18 +44,24 @@ impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
     pub async fn sleep_for<T: Convert>(time: T) -> Result<(), ErrorCode> {
         let freq = Self::get_frequency()?;
         let ticks = time.to_ticks(freq).0;
+        Self::sleep_ticks(ticks).await
+    }
+
+    pub async fn sleep_ticks(ticks: u32) -> Result<(), ErrorCode> {
+        // bad things happen if multiple tasks try to use the alarm at once
+        let guard = ALARM_MUTEX.lock().await;
         let sub = TockSubscribe::subscribe::<S>(DRIVER_NUM, 0);
         S::command(DRIVER_NUM, command::SET_RELATIVE, ticks, 0)
             .to_result()
             .map(|_when: u32| ())?;
-        sub.await.map(|_| ())
+        let result = sub.await.map(|_| ());
+        drop(guard);
+        result
     }
 
     pub async fn sleep(time: Milliseconds) {
-        // bad things happen if multiple tasks try to use the alarm at once
-        let guard = ALARM_MUTEX.lock().await;
+        // sleep_ticks handles mutex acquisition internally
         let _ = AsyncAlarm::<DefaultSyscalls>::sleep_for(time).await;
-        drop(guard);
     }
 }
 
