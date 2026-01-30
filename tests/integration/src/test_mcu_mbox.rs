@@ -31,6 +31,7 @@ pub mod test {
         McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp,
         McuEcdhGenerateReq, McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp,
         McuEcdsaCmkSignReq, McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp,
+        McuFipsSelfTestGetResultsReq, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
         McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
         McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuMailboxReq, McuMailboxResp,
         McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
@@ -226,6 +227,7 @@ pub mod test {
                 self.add_hmac_tests()?;
                 self.add_hmac_kdf_counter_tests()?;
                 self.add_hkdf_tests()?;
+                self.add_fips_self_test_tests()?;
                 Ok(())
             } else {
                 Ok(())
@@ -1749,6 +1751,92 @@ pub mod test {
                 }
                 Err(_) => Err(()), // Verification failed (signature mismatch)
             }
+        }
+
+        /// Test FIPS self-test start and get results commands.
+        /// This test exercises the FIPS KAT (Known Answer Test) passthrough functionality.
+        fn add_fips_self_test_tests(&mut self) -> Result<(), ()> {
+            println!("Running FIPS self-test tests");
+
+            // Step 1: Start the FIPS self-test
+            let mut self_test_start_req = McuMailboxReq::FipsSelfTestStart(
+                McuFipsSelfTestStartReq(MailboxReqHeader::default()),
+            );
+            self_test_start_req.populate_chksum().unwrap();
+
+            let start_resp = self
+                .process_message(
+                    self_test_start_req.cmd_code().0,
+                    self_test_start_req.as_bytes().unwrap(),
+                )
+                .map_err(|_| ())?;
+
+            let start_resp_parsed =
+                McuFipsSelfTestStartResp::read_from_bytes(&start_resp.data).map_err(|_| ())?;
+            assert_eq!(
+                start_resp_parsed.0.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS self-test start should return approved status"
+            );
+            println!("  FIPS self-test started successfully");
+
+            // Wait for KAT tests to complete. Caliptra runs the self-test during enter_idle()
+            // only when the mailbox is unlocked, so we must avoid polling during this time.
+            println!("  Waiting 120 seconds for FIPS KAT tests to complete...");
+            std::thread::sleep(std::time::Duration::from_secs(120));
+
+            // Check results with long waits between polls
+            let max_attempts = 5;
+            let mut completed = false;
+
+            for attempt in 0..max_attempts {
+                println!(
+                    "  Checking FIPS self-test results (attempt {}/{})",
+                    attempt + 1,
+                    max_attempts
+                );
+
+                let mut get_results_req = McuMailboxReq::FipsSelfTestGetResults(
+                    McuFipsSelfTestGetResultsReq(MailboxReqHeader::default()),
+                );
+                get_results_req.populate_chksum().unwrap();
+
+                match self.process_message(
+                    get_results_req.cmd_code().0,
+                    get_results_req.as_bytes().unwrap(),
+                ) {
+                    Ok(results_resp) => {
+                        println!(
+                            "    Response: status_code={}, data_len={}",
+                            results_resp.status_code,
+                            results_resp.data.len()
+                        );
+
+                        // status_code=2 (CmdComplete) or status_code=1 (DataReady) indicates success
+                        if results_resp.status_code == 2
+                            || (results_resp.status_code == 1 && !results_resp.data.is_empty())
+                        {
+                            completed = true;
+                            println!("  FIPS self-test completed successfully!");
+                            break;
+                        } else if results_resp.status_code == 3 {
+                            println!("    Self-test still in progress, waiting 30 more seconds...");
+                        }
+                    }
+                    Err(e) => {
+                        println!("    Command failed ({:?}), waiting...", e);
+                    }
+                }
+
+                if attempt < max_attempts - 1 {
+                    std::thread::sleep(std::time::Duration::from_secs(30));
+                }
+            }
+
+            assert!(completed, "FIPS self-test should complete within timeout");
+
+            println!("FIPS self-test tests passed");
+            Ok(())
         }
 
         /// Test HMAC command.

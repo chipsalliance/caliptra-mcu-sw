@@ -21,11 +21,13 @@ use mcu_mbox_common::messages::{
     McuAesGcmEncryptUpdateResp, McuCmDeleteReq, McuCmDeleteResp, McuCmImportReq, McuCmImportResp,
     McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq,
     McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
-    McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuHkdfExpandReq,
-    McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp, McuHmacKdfCounterReq,
-    McuHmacKdfCounterResp, McuHmacReq, McuHmacResp, McuMailboxResp, McuRandomGenerateReq,
-    McuRandomGenerateResp, McuRandomStirReq, McuRandomStirResp, McuShaFinalReq, McuShaFinalResp,
-    McuShaInitReq, McuShaInitResp, McuShaUpdateReq, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
+    McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuFipsSelfTestGetResultsReq,
+    McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
+    McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
+    McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuHmacResp, McuMailboxResp,
+    McuRandomGenerateReq, McuRandomGenerateResp, McuRandomStirReq, McuRandomStirResp,
+    McuShaFinalReq, McuShaFinalResp, McuShaInitReq, McuShaInitResp, McuShaUpdateReq,
+    DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
 };
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -108,7 +110,7 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_DEVICE_INFO => self.handle_device_info(msg_buf, req_len).await,
             CommandId::MC_SHA_INIT => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuShaInitResp>()];
-                self.handle_crypto_passthrough::<McuShaInitReq>(
+                self.handle_caliptra_passthrough::<McuShaInitReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_SHA_INIT.into(),
@@ -118,7 +120,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_SHA_UPDATE => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuShaInitResp>()];
-                self.handle_crypto_passthrough::<McuShaUpdateReq>(
+                self.handle_caliptra_passthrough::<McuShaUpdateReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_SHA_UPDATE.into(),
@@ -128,7 +130,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_SHA_FINAL => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuShaFinalResp>()];
-                self.handle_crypto_passthrough::<McuShaFinalReq>(
+                self.handle_caliptra_passthrough::<McuShaFinalReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_SHA_FINAL.into(),
@@ -139,7 +141,7 @@ impl<'a> CmdInterface<'a> {
             // Add HMAC command
             CommandId::MC_HMAC => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuHmacResp>()];
-                self.handle_crypto_passthrough::<McuHmacReq>(
+                self.handle_caliptra_passthrough::<McuHmacReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_HMAC.into(),
@@ -150,7 +152,7 @@ impl<'a> CmdInterface<'a> {
             // Add HMAC KDF Counter command
             CommandId::MC_HMAC_KDF_COUNTER => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuHmacKdfCounterResp>()];
-                self.handle_crypto_passthrough::<McuHmacKdfCounterReq>(
+                self.handle_caliptra_passthrough::<McuHmacKdfCounterReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_HMAC_KDF_COUNTER.into(),
@@ -161,7 +163,7 @@ impl<'a> CmdInterface<'a> {
             // Add HKDF Extract command
             CommandId::MC_HKDF_EXTRACT => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuHkdfExtractResp>()];
-                self.handle_crypto_passthrough::<McuHkdfExtractReq>(
+                self.handle_caliptra_passthrough::<McuHkdfExtractReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_HKDF_EXTRACT.into(),
@@ -172,7 +174,7 @@ impl<'a> CmdInterface<'a> {
             // Add HKDF Expand command
             CommandId::MC_HKDF_EXPAND => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuHkdfExpandResp>()];
-                self.handle_crypto_passthrough::<McuHkdfExpandReq>(
+                self.handle_caliptra_passthrough::<McuHkdfExpandReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_HKDF_EXPAND.into(),
@@ -182,7 +184,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_IMPORT => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuCmImportResp>()];
-                self.handle_crypto_passthrough::<McuCmImportReq>(
+                self.handle_caliptra_passthrough::<McuCmImportReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_IMPORT.into(),
@@ -192,7 +194,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_DELETE => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuCmDeleteResp>()];
-                self.handle_crypto_passthrough::<McuCmDeleteReq>(
+                self.handle_caliptra_passthrough::<McuCmDeleteReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_DELETE.into(),
@@ -202,7 +204,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_CM_STATUS => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuCmStatusResp>()];
-                self.handle_crypto_passthrough::<McuCmStatusReq>(
+                self.handle_caliptra_passthrough::<McuCmStatusReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_STATUS.into(),
@@ -212,7 +214,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_RANDOM_GENERATE => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuRandomGenerateResp>()];
-                self.handle_crypto_passthrough::<McuRandomGenerateReq>(
+                self.handle_caliptra_passthrough::<McuRandomGenerateReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_RANDOM_GENERATE.into(),
@@ -222,7 +224,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_RANDOM_STIR => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuRandomStirResp>()];
-                self.handle_crypto_passthrough::<McuRandomStirReq>(
+                self.handle_caliptra_passthrough::<McuRandomStirReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_RANDOM_STIR.into(),
@@ -233,7 +235,7 @@ impl<'a> CmdInterface<'a> {
             // Add AES Encrypt commands
             CommandId::MC_AES_ENCRYPT_INIT => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuAesEncryptInitResp>()];
-                self.handle_crypto_passthrough::<McuAesEncryptInitReq>(
+                self.handle_caliptra_passthrough::<McuAesEncryptInitReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_AES_ENCRYPT_INIT.into(),
@@ -243,7 +245,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_AES_ENCRYPT_UPDATE => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuAesEncryptUpdateResp>()];
-                self.handle_crypto_passthrough::<McuAesEncryptUpdateReq>(
+                self.handle_caliptra_passthrough::<McuAesEncryptUpdateReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_AES_ENCRYPT_UPDATE.into(),
@@ -254,7 +256,7 @@ impl<'a> CmdInterface<'a> {
             // Add AES Decrypt commands
             CommandId::MC_AES_DECRYPT_INIT => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuAesDecryptInitResp>()];
-                self.handle_crypto_passthrough::<McuAesDecryptInitReq>(
+                self.handle_caliptra_passthrough::<McuAesDecryptInitReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_AES_DECRYPT_INIT.into(),
@@ -264,7 +266,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_AES_DECRYPT_UPDATE => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuAesDecryptUpdateResp>()];
-                self.handle_crypto_passthrough::<McuAesDecryptUpdateReq>(
+                self.handle_caliptra_passthrough::<McuAesDecryptUpdateReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_AES_DECRYPT_UPDATE.into(),
@@ -275,7 +277,7 @@ impl<'a> CmdInterface<'a> {
             // Add AES GCM encrypt commands here.
             CommandId::MC_AES_GCM_ENCRYPT_INIT => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuAesGcmEncryptInitResp>()];
-                self.handle_crypto_passthrough::<McuAesGcmEncryptInitReq>(
+                self.handle_caliptra_passthrough::<McuAesGcmEncryptInitReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_AES_GCM_ENCRYPT_INIT.into(),
@@ -285,7 +287,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_AES_GCM_ENCRYPT_UPDATE => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuAesGcmEncryptUpdateResp>()];
-                self.handle_crypto_passthrough::<McuAesGcmEncryptUpdateReq>(
+                self.handle_caliptra_passthrough::<McuAesGcmEncryptUpdateReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_AES_GCM_ENCRYPT_UPDATE.into(),
@@ -295,7 +297,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_AES_GCM_ENCRYPT_FINAL => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuAesGcmEncryptFinalResp>()];
-                self.handle_crypto_passthrough::<McuAesGcmEncryptFinalReq>(
+                self.handle_caliptra_passthrough::<McuAesGcmEncryptFinalReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_AES_GCM_ENCRYPT_FINAL.into(),
@@ -306,7 +308,7 @@ impl<'a> CmdInterface<'a> {
             // Add AES GCM decrypt commands here.
             CommandId::MC_AES_GCM_DECRYPT_INIT => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuAesGcmDecryptInitResp>()];
-                self.handle_crypto_passthrough::<McuAesGcmDecryptInitReq>(
+                self.handle_caliptra_passthrough::<McuAesGcmDecryptInitReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_AES_GCM_DECRYPT_INIT.into(),
@@ -316,7 +318,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_AES_GCM_DECRYPT_UPDATE => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuAesGcmDecryptUpdateResp>()];
-                self.handle_crypto_passthrough::<McuAesGcmDecryptUpdateReq>(
+                self.handle_caliptra_passthrough::<McuAesGcmDecryptUpdateReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_AES_GCM_DECRYPT_UPDATE.into(),
@@ -326,7 +328,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_AES_GCM_DECRYPT_FINAL => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuAesGcmDecryptFinalResp>()];
-                self.handle_crypto_passthrough::<McuAesGcmDecryptFinalReq>(
+                self.handle_caliptra_passthrough::<McuAesGcmDecryptFinalReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_AES_GCM_DECRYPT_FINAL.into(),
@@ -337,7 +339,7 @@ impl<'a> CmdInterface<'a> {
             // Add ECDH commands
             CommandId::MC_ECDH_GENERATE => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuEcdhGenerateResp>()];
-                self.handle_crypto_passthrough::<McuEcdhGenerateReq>(
+                self.handle_caliptra_passthrough::<McuEcdhGenerateReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_ECDH_GENERATE.into(),
@@ -347,7 +349,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_ECDH_FINISH => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuEcdhFinishResp>()];
-                self.handle_crypto_passthrough::<McuEcdhFinishReq>(
+                self.handle_caliptra_passthrough::<McuEcdhFinishReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_ECDH_FINISH.into(),
@@ -358,7 +360,7 @@ impl<'a> CmdInterface<'a> {
             // Add ECDSA CMK commands
             CommandId::MC_ECDSA_CMK_PUBLIC_KEY => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuEcdsaCmkPublicKeyResp>()];
-                self.handle_crypto_passthrough::<McuEcdsaCmkPublicKeyReq>(
+                self.handle_caliptra_passthrough::<McuEcdsaCmkPublicKeyReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_ECDSA_PUBLIC_KEY.into(),
@@ -368,7 +370,7 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_ECDSA_CMK_SIGN => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuEcdsaCmkSignResp>()];
-                self.handle_crypto_passthrough::<McuEcdsaCmkSignReq>(
+                self.handle_caliptra_passthrough::<McuEcdsaCmkSignReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_ECDSA_SIGN.into(),
@@ -378,10 +380,31 @@ impl<'a> CmdInterface<'a> {
             }
             CommandId::MC_ECDSA_CMK_VERIFY => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuEcdsaCmkVerifyResp>()];
-                self.handle_crypto_passthrough::<McuEcdsaCmkVerifyReq>(
+                self.handle_caliptra_passthrough::<McuEcdsaCmkVerifyReq>(
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_ECDSA_VERIFY.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            // FIPS self-test passthrough commands
+            CommandId::MC_FIPS_SELF_TEST_START => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuFipsSelfTestStartResp>()];
+                self.handle_caliptra_passthrough::<McuFipsSelfTestStartReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::SELF_TEST_START.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_FIPS_SELF_TEST_GET_RESULTS => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuFipsSelfTestGetResultsResp>()];
+                self.handle_caliptra_passthrough::<McuFipsSelfTestGetResultsReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::SELF_TEST_GET_RESULTS.into(),
                     &mut resp_bytes,
                 )
                 .await
@@ -583,7 +606,7 @@ impl<'a> CmdInterface<'a> {
         Ok((resp_bytes.len(), mbox_cmd_status))
     }
 
-    pub async fn handle_crypto_passthrough<T: Default + IntoBytes + FromBytes>(
+    pub async fn handle_caliptra_passthrough<T: Default + IntoBytes + FromBytes>(
         &self,
         msg_buf: &mut [u8],
         req_len: usize,

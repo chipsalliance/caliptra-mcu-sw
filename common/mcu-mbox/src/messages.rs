@@ -102,6 +102,10 @@ impl CommandId {
     pub const MC_ECDSA_CMK_SIGN: Self = Self(0x4D43_4553); // "MCES"
     pub const MC_ECDSA_CMK_VERIFY: Self = Self(0x4D43_4556); // "MCEV"
 
+    // FIPS self-test passthrough commands
+    pub const MC_FIPS_SELF_TEST_START: Self = Self(0x4D46_5354); // "MFST"
+    pub const MC_FIPS_SELF_TEST_GET_RESULTS: Self = Self(0x4D46_4752); // "MFGR"
+
     // In-Field Fuse Programming commands
     pub const MC_FUSE_READ: Self = Self(0x4946_5052); // "IFPR"
     pub const MC_FUSE_WRITE: Self = Self(0x4946_5057); // "IFPW"
@@ -156,6 +160,9 @@ pub enum McuMailboxReq {
     EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq),
     EcdsaCmkSign(McuEcdsaCmkSignReq),
     EcdsaCmkVerify(McuEcdsaCmkVerifyReq),
+    // FIPS Self-Test Passthrough
+    FipsSelfTestStart(McuFipsSelfTestStartReq),
+    FipsSelfTestGetResults(McuFipsSelfTestGetResultsReq),
     // In-Field Fuse Programming
     FuseRead(FuseReadReq),
     FuseWrite(FuseWriteReq),
@@ -198,6 +205,8 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(req) => Ok(req.as_bytes()),
             McuMailboxReq::EcdsaCmkSign(req) => req.as_bytes_partial(),
             McuMailboxReq::EcdsaCmkVerify(req) => req.as_bytes_partial(),
+            McuMailboxReq::FipsSelfTestStart(req) => Ok(req.as_bytes()),
+            McuMailboxReq::FipsSelfTestGetResults(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRead(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
@@ -239,6 +248,8 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::EcdsaCmkSign(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::EcdsaCmkVerify(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::FipsSelfTestStart(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::FipsSelfTestGetResults(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRead(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
@@ -280,6 +291,8 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(_) => CommandId::MC_ECDSA_CMK_PUBLIC_KEY,
             McuMailboxReq::EcdsaCmkSign(_) => CommandId::MC_ECDSA_CMK_SIGN,
             McuMailboxReq::EcdsaCmkVerify(_) => CommandId::MC_ECDSA_CMK_VERIFY,
+            McuMailboxReq::FipsSelfTestStart(_) => CommandId::MC_FIPS_SELF_TEST_START,
+            McuMailboxReq::FipsSelfTestGetResults(_) => CommandId::MC_FIPS_SELF_TEST_GET_RESULTS,
             McuMailboxReq::FuseRead(_) => CommandId::MC_FUSE_READ,
             McuMailboxReq::FuseWrite(_) => CommandId::MC_FUSE_WRITE,
             McuMailboxReq::FuseLockPartition(_) => CommandId::MC_FUSE_LOCK_PARTITION,
@@ -344,6 +357,9 @@ pub enum McuMailboxResp {
     EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyResp),
     EcdsaCmkSign(McuEcdsaCmkSignResp),
     EcdsaCmkVerify(McuEcdsaCmkVerifyResp),
+    // FIPS Self-Test Passthrough
+    FipsSelfTestStart(McuFipsSelfTestStartResp),
+    FipsSelfTestGetResults(McuFipsSelfTestGetResultsResp),
     // In-Field Fuse Programming
     FuseRead(FuseReadResp),
     FuseWrite(FuseWriteResp),
@@ -447,6 +463,8 @@ impl McuMailboxResp {
             McuMailboxResp::EcdsaCmkPublicKey(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::EcdsaCmkSign(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::EcdsaCmkVerify(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::FipsSelfTestStart(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::FipsSelfTestGetResults(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
@@ -489,6 +507,8 @@ impl McuMailboxResp {
             McuMailboxResp::EcdsaCmkPublicKey(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::EcdsaCmkSign(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::EcdsaCmkVerify(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::FipsSelfTestStart(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::FipsSelfTestGetResults(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
@@ -1056,6 +1076,33 @@ impl_mcu_request_varsize!(McuEcdsaCmkVerifyReq, CmEcdsaVerifyReq);
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct McuEcdsaCmkVerifyResp(pub MailboxRespHeader);
 impl Response for McuEcdsaCmkVerifyResp {}
+
+// ---- FIPS Self-Test Passthrough ----
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuFipsSelfTestStartReq(pub MailboxReqHeader);
+impl Request for McuFipsSelfTestStartReq {
+    const ID: CommandId = CommandId::MC_FIPS_SELF_TEST_START;
+    type Resp = McuFipsSelfTestStartResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuFipsSelfTestStartResp(pub MailboxRespHeader);
+impl Response for McuFipsSelfTestStartResp {}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuFipsSelfTestGetResultsReq(pub MailboxReqHeader);
+impl Request for McuFipsSelfTestGetResultsReq {
+    const ID: CommandId = CommandId::MC_FIPS_SELF_TEST_GET_RESULTS;
+    type Resp = McuFipsSelfTestGetResultsResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuFipsSelfTestGetResultsResp(pub MailboxRespHeader);
+impl Response for McuFipsSelfTestGetResultsResp {}
 
 // ---- In-Field Fuse Programming (IFP) ----
 
