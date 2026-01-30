@@ -536,68 +536,7 @@ fn load_image_stream(mut stream: ImageStream, dest: ImageDestination) -> Result<
 
 ### Configuration File Format (TOC - Table of Contents)
 
-The network boot coprocessor downloads a configuration file (TOC) that maps firmware IDs to filenames and metadata:
-
-| TOC File Layout |
-| ------------ |
-| Header       |
-| Payload      |
-
-#### Header
-
-The Header section contains the metadata for the images stored in the flash.
-
-| Field          | Size (bytes) | Description                                                                                                                                |
-| -------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Magic Number   | 4            | A unique identifier to mark the start of the header.<br />The value must be `0x54465450` (`"TFTP"` in ASCII)                               |
-| Header Version | 2            | The header version format, allowing for backward compatibility if the package format changes over time.<br />(Current version is `0x0001`) |
-| Image Count    | 2            | The number of images.<br />Each image will have its own image information section.                                      |
-| Payload Offset | 4            | Offset in bytes of the header to where the first byte of the Payload is located.  |
-| Header Checksum | 4            | Checksum calculated for the header excluding this field  |
-
-#### Payload
-
-The Payload contains the following fields:
-
-| Payload                        |
-| ------------------------------ |
-| Image Metadata (Caliptra FMC + RT) |
-| Image Metadata (SoC Manifest)      |
-| Image Metadata (MCU RT)            |
-| Image Metadata (SoC Image 1)       |
-| ...                            |
-| Image Metadata (SoC Image N)       |
-| Data(Caliptra FMC + RT)      |
-| Data(SoC Manifest)                   |
-| Data(MCU RT)                         |
-| Data(SoC Image 1)                    |
-| ...                            |
-| Data(SoC Image N)                    |
-
-##### Image Metadata
-
-The Image Metadata section is repeated for each image and provides detailed manifest data specific to that image.
-
-| Field               | Size (bytes) | Descr                                                                                  |
-| ------------------- | ------------ | -------------------------------------------------------------------------------------- |
-| Identifier          | 4            | Vendor selected unique value to distinguish between images.                            |
-|                     |              | `0x0001`: Caliptra FMC+RT                                                              |
-|                     |              | `0x0002`: SoC Manifest:                                                                |
-|                     |              | `0x0003`: MCU RT<br />`0x1000`-`0xFFFF` - Reserved for other Vendor-defined SoC images |
-| DataOffset          | 4            | Offset in bytes from byte 0 of the header to where the data begins.           |
-| Size                | 4            | Size in bytes of the data. This is the actual size of the data without padding.      |
-|                     |              | The data itself  should be 4-byte aligned and additional       |
-|                     |              | padding will be required to guarantee alignment.                                       |
-| Image Checksum      | 4            | Checksum calculated for the binary image located at `DataOffset` |
-| Image Metadata Checksum | 4            | Checksum calculated for the header excluding this field  |
-
-##### Data
-
-The data are appended after the Image Metadata section, and should be in the same order as their corresponding Image Metadata.
-
-| Field | Size (bytes) | Description                                                           |
-| ----- | ------------ | --------------------------------------------------------------------- |
-| Filename  | 64            | Specifies the TFTP path relative to the TFTP server root                                                        |
+During network boot, the coprocessor first downloads a Table of Contents (TOC) configuration file. This file maps firmware IDs to their corresponding filenames and metadata, allowing the boot process to locate and retrieve the correct firmware images. The TOC follows the same format used for FLASH storage, as described in the [Flash Layout specification](./flash_layout.md).
 
 ## Network Stack Implementation
 
