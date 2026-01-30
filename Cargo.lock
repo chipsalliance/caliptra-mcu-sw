@@ -5640,6 +5640,7 @@ dependencies = [
  "semver",
  "serde",
  "serde-hjson",
+ "serde_json",
  "sudo",
  "tempfile",
  "toml 0.8.23",
