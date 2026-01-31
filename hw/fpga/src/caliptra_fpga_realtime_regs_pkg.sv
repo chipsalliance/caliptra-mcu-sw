@@ -115,6 +115,24 @@ package caliptra_fpga_realtime_regs_pkg;
     } interface_regs__ss_external_staging_area_base_addr__in_t;
 
     typedef struct {
+        logic next;
+    } interface_regs__spare_i3c_control_sts__irq_o__in_t;
+
+    typedef struct {
+        logic next;
+    } interface_regs__spare_i3c_control_sts__recovery_payload_available_o__in_t;
+
+    typedef struct {
+        logic next;
+    } interface_regs__spare_i3c_control_sts__recovery_image_activated_o__in_t;
+
+    typedef struct {
+        interface_regs__spare_i3c_control_sts__irq_o__in_t irq_o;
+        interface_regs__spare_i3c_control_sts__recovery_payload_available_o__in_t recovery_payload_available_o;
+        interface_regs__spare_i3c_control_sts__recovery_image_activated_o__in_t recovery_image_activated_o;
+    } interface_regs__spare_i3c_control_sts__in_t;
+
+    typedef struct {
         interface_regs__fpga_version__in_t fpga_version;
         interface_regs__status__in_t status;
         interface_regs__cycle_count__in_t cycle_count;
@@ -124,6 +142,7 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__ss_key_release_base_addr__in_t ss_key_release_base_addr;
         interface_regs__ss_key_release_key_size__in_t ss_key_release_key_size;
         interface_regs__ss_external_staging_area_base_addr__in_t ss_external_staging_area_base_addr;
+        interface_regs__spare_i3c_control_sts__in_t spare_i3c_control_sts;
     } interface_regs__in_t;
 
     typedef struct {
@@ -596,6 +615,29 @@ package caliptra_fpga_realtime_regs_pkg;
     } interface_regs__cptra_ss_raw_unlock_token_hash__out_t;
 
     typedef struct {
+        logic value;
+    } interface_regs__spare_i3c_control_sts__use_spare_i3c_core__out_t;
+
+    typedef struct {
+        logic value;
+    } interface_regs__spare_i3c_control_sts__irq_o__out_t;
+
+    typedef struct {
+        logic value;
+    } interface_regs__spare_i3c_control_sts__recovery_payload_available_o__out_t;
+
+    typedef struct {
+        logic value;
+    } interface_regs__spare_i3c_control_sts__recovery_image_activated_o__out_t;
+
+    typedef struct {
+        interface_regs__spare_i3c_control_sts__use_spare_i3c_core__out_t use_spare_i3c_core;
+        interface_regs__spare_i3c_control_sts__irq_o__out_t irq_o;
+        interface_regs__spare_i3c_control_sts__recovery_payload_available_o__out_t recovery_payload_available_o;
+        interface_regs__spare_i3c_control_sts__recovery_image_activated_o__out_t recovery_image_activated_o;
+    } interface_regs__spare_i3c_control_sts__out_t;
+
+    typedef struct {
         interface_regs__fpga_magic__out_t fpga_magic;
         interface_regs__fpga_version__out_t fpga_version;
         interface_regs__control__out_t control;
@@ -627,6 +669,7 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__ss_external_staging_area_base_addr__out_t ss_external_staging_area_base_addr;
         interface_regs__cptra_ss_mcu_ext_int__out_t cptra_ss_mcu_ext_int;
         interface_regs__cptra_ss_raw_unlock_token_hash__out_t cptra_ss_raw_unlock_token_hash[4];
+        interface_regs__spare_i3c_control_sts__out_t spare_i3c_control_sts;
     } interface_regs__out_t;
 
     typedef struct {

@@ -150,6 +150,7 @@ ipx::associate_bus_interfaces -busif S_AXI_OTP -clock core_clk [ipx::current_cor
 ipx::associate_bus_interfaces -busif S_AXI_LCC -clock core_clk [ipx::current_core]
 # Different clock used for I3C
 ipx::associate_bus_interfaces -busif S_AXI_I3C -clock i3c_clk [ipx::current_core]
+ipx::associate_bus_interfaces -busif S_AXI_I3C_SPARE -clock i3c_clk [ipx::current_core]
 
 # Other packager settings
 set_property name caliptra_package_top [ipx::current_core]
