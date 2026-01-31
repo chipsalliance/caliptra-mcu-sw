@@ -1,0 +1,49 @@
+# Licensed under the Apache-2.0 license
+
+name: Size History
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1440
+
+    env:
+      CARGO_INCREMENTAL: 0
+      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+      SIZE_CACHE_DIR: /tmp/mcu-size-cache
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0  # Full history for size tracking
+
+      - name: Restore size history cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.SIZE_CACHE_DIR }}
+          key: size-history-v1-${{ github.sha }}
+          restore-keys: |
+            size-history-v1-
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git && \
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Run size analysis (look at workflow "Summary" tab for results)
+        run: |
+          mkdir -p $SIZE_CACHE_DIR
+          cargo xtask size-history --max-commits 1000
