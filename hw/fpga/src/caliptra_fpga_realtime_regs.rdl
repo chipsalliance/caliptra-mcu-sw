@@ -49,6 +49,7 @@ regfile interface_regs {
         field { sw=rw; hw=r; desc = "RSVD in core"; } lc_Allow_RMA_or_SCRAP_on_PPD[19:19] = 1'b0;
         field { sw=rw; hw=r; desc = "RSVD in core"; } FIPS_ZEROIZATION_PPD[20:20] = 1'b0;
 
+
         field { sw=rw; hw=r; singlepulse=true; desc = "RSVD in core"; } trigger_axi_reset[31:31] = 1'b0;
     } control;
 
@@ -235,6 +236,13 @@ regfile interface_regs {
 
         field {} value[32] = 32'b0;
     } cptra_ss_raw_unlock_token_hash[4];
+
+    reg {
+        field { sw=rw; hw=r; desc = "RSVD in core"; } use_spare_i3c_core[0:0] = 1'b0;
+        field { sw=r;  hw=rw; desc = "RSVD in core"; } irq_o[1:1] = 1'b0;
+        field { sw=r;  hw=rw; desc = "RSVD in core"; } recovery_payload_available_o[2:2] = 1'b0;
+        field { sw=r;  hw=rw; desc = "RSVD in core"; } recovery_image_activated_o[3:3] = 1'b0;
+    } spare_i3c_control_sts;
 
     reg {
         field { sw=rw; hw=na; } key[32] = 32'h0;
