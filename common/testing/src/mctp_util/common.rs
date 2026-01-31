@@ -2,7 +2,7 @@
 
 use crate::i3c_socket::BufferedStream;
 use crate::mctp_util::base_protocol::{MCTPHdr, LOCAL_TEST_ENDPOINT_EID, MCTP_HDR_SIZE};
-use crate::{sleep_emulator_ticks, MCU_RUNNING};
+use crate::{get_emulator_ticks, sleep_emulator_ticks, wait_for_i3c_data, WaitResult, MCU_RUNNING};
 use std::collections::VecDeque;
 use std::sync::atomic::Ordering;
 use zerocopy::{FromBytes, IntoBytes};
@@ -238,11 +238,13 @@ impl MctpUtil {
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
-        let retry_count = timeout.unwrap_or(0) * 5;
+        // Convert seconds to ticks (1 second = 1,000,000 ticks at 1 MHz)
+        let timeout_ticks = timeout.map(|s| s as u64 * 1_000_000);
         self.new_resp();
         let mut message_identifier = MessageIdentifier::default();
 
-        let pkts = self.receive_packets(stream, target_addr, &mut message_identifier, retry_count);
+        let pkts =
+            self.receive_packets(stream, target_addr, &mut message_identifier, timeout_ticks);
         assert_eq!(message_identifier.tag_owner, 0);
         self.assemble(pkts, &message_identifier)
     }
@@ -264,11 +266,13 @@ impl MctpUtil {
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
-        let retry_count = timeout.unwrap_or(0) * 5;
+        // Convert seconds to ticks (1 second = 1,000,000 ticks at 1 MHz)
+        let timeout_ticks = timeout.map(|s| s as u64 * 1_000_000);
         // Msg tag will be assigned by the sender (device in this case)
         self.new_req(8);
         let mut message_identifier = MessageIdentifier::default();
-        let pkts = self.receive_packets(stream, target_addr, &mut message_identifier, retry_count);
+        let pkts =
+            self.receive_packets(stream, target_addr, &mut message_identifier, timeout_ticks);
         assert_eq!(message_identifier.tag_owner, 1);
         self.assemble(pkts, &message_identifier)
     }
@@ -290,9 +294,11 @@ impl MctpUtil {
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
-        let retry_count = timeout.unwrap_or(0) * 5;
+        // Convert seconds to ticks (1 second = 1,000,000 ticks at 1 MHz)
+        let timeout_ticks = timeout.map(|s| s as u64 * 1_000_000);
         let mut message_identifier = MessageIdentifier::default();
-        let pkts = self.receive_packets(stream, target_addr, &mut message_identifier, retry_count);
+        let pkts =
+            self.receive_packets(stream, target_addr, &mut message_identifier, timeout_ticks);
         self.assemble(pkts, &message_identifier)
     }
 
@@ -301,28 +307,37 @@ impl MctpUtil {
         stream: &mut BufferedStream,
         target_addr: u8,
         message_identifier: &mut MessageIdentifier,
-        retry_count: u32,
+        timeout_ticks: Option<u64>,
     ) -> VecDeque<Vec<u8>> {
         let mut i3c_state = I3cControllerState::WaitForIbi;
         let mut pkts: VecDeque<Vec<u8>> = VecDeque::new();
         stream.set_nonblocking(true).unwrap();
-        let mut retry = retry_count;
+        let start_ticks = get_emulator_ticks();
 
         while MCU_RUNNING.load(Ordering::Relaxed) {
             match i3c_state {
                 I3cControllerState::WaitForIbi => {
                     if stream.receive_ibi(target_addr) {
                         i3c_state = I3cControllerState::ReceivePrivateRead;
-                    } else if retry > 0 {
-                        sleep_emulator_ticks(100_000);
-                        retry -= 1;
-                        if retry == 0 {
-                            println!(
-                                "MCTP_UTIL: IBI not received. Exiting after {} retries...",
-                                retry_count
-                            );
-                            pkts.clear();
-                            break;
+                    } else {
+                        // Check if we've exceeded the timeout
+                        if let Some(timeout) = timeout_ticks {
+                            let elapsed = get_emulator_ticks().saturating_sub(start_ticks);
+                            if elapsed >= timeout {
+                                println!(
+                                    "MCTP_UTIL: IBI not received. Timed out after {} ticks...",
+                                    elapsed
+                                );
+                                pkts.clear();
+                                break;
+                            }
+                        }
+                        // Wait for I3C data notification
+                        match wait_for_i3c_data(Some(100_000)) {
+                            WaitResult::EmulatorStopped => break,
+                            WaitResult::DataNotified | WaitResult::Timeout => {
+                                // Continue looping to check for data
+                            }
                         }
                     }
                 }

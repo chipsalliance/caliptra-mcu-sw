@@ -36,6 +36,7 @@ Abstract:
 use crate::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriCommandXfer, ResponseDescriptor,
 };
+use crate::notify_i3c_data;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -161,6 +162,8 @@ fn handle_i3c_socket_connection(
             if data_len > 0 {
                 stream.write_all(&response.resp.data[..data_len]).unwrap();
             }
+            // Notify waiting threads that I3C data is available
+            notify_i3c_data();
         }
     }
 }
