@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::Result;
-use caliptra_hw_model::BootParams;
 use caliptra_image_types::FwVerificationPqcKeyType;
+use mcu_builder::flash_image::build_flash_image_bytes;
 use mcu_hw_model::McuHwModel;
 use mcu_hw_model::{new, Fuses, InitParams};
 use mcu_rom_common::McuBootMilestones;
@@ -12,40 +12,41 @@ use mcu_rom_common::McuBootMilestones;
 #[test]
 fn test_warm_reset_success() -> Result<()> {
     let binaries = mcu_builder::FirmwareBinaries::from_env()?;
-    let mut hw = new(
-        InitParams {
-            fuses: Fuses {
-                fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
-                vendor_pk_hash: {
-                    let mut vendor_pk_hash = [0u32; 12];
-                    binaries
-                        .vendor_pk_hash()
-                        .unwrap()
-                        .chunks(4)
-                        .enumerate()
-                        .for_each(|(i, chunk)| {
-                            let mut array = [0u8; 4];
-                            array.copy_from_slice(chunk);
-                            vendor_pk_hash[i] = u32::from_be_bytes(array);
-                        });
-                    vendor_pk_hash
-                },
-                ..Default::default()
+
+    // Build flash image from firmware binaries
+    let flash_image = build_flash_image_bytes(
+        Some(&binaries.caliptra_fw),
+        Some(&binaries.soc_manifest),
+        Some(&binaries.mcu_runtime),
+    );
+
+    let mut hw = new(InitParams {
+        fuses: Fuses {
+            fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
+            vendor_pk_hash: {
+                let mut vendor_pk_hash = [0u32; 12];
+                binaries
+                    .vendor_pk_hash()
+                    .unwrap()
+                    .chunks(4)
+                    .enumerate()
+                    .for_each(|(i, chunk)| {
+                        let mut array = [0u8; 4];
+                        array.copy_from_slice(chunk);
+                        vendor_pk_hash[i] = u32::from_be_bytes(array);
+                    });
+                vendor_pk_hash
             },
-            caliptra_rom: &binaries.caliptra_rom,
-            mcu_rom: &binaries.mcu_rom,
-            vendor_pk_hash: binaries.vendor_pk_hash(),
-            active_mode: true,
-            vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
             ..Default::default()
         },
-        BootParams {
-            fw_image: Some(&binaries.caliptra_fw),
-            soc_manifest: Some(&binaries.soc_manifest),
-            mcu_fw_image: Some(&binaries.mcu_runtime),
-            ..Default::default()
-        },
-    )?;
+        caliptra_rom: &binaries.caliptra_rom,
+        mcu_rom: &binaries.mcu_rom,
+        vendor_pk_hash: binaries.vendor_pk_hash(),
+        active_mode: true,
+        vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
+        primary_flash_initial_contents: Some(flash_image),
+        ..Default::default()
+    })?;
 
     assert!(hw
         .mci_boot_milestones()

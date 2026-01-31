@@ -129,6 +129,11 @@ impl McuError {
             "Device Ownership Transfer corrupt blob"
         ),
         (
+            ROM_COLD_BOOT_FLASH_NOT_CONFIGURED_ERROR,
+            0x1_0010,
+            "Flash not configured"
+        ),
+        (
             ROM_LC_TRANSITION_ERROR,
             0x2_0000,
             "Lifecycle transition error"
