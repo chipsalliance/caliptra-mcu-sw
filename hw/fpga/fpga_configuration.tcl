@@ -132,7 +132,7 @@ close $xdc_fd
 #### Add AXI Infrastructure
 create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect:1.0 axi_interconnect_0
 set_property -dict [list \
-  CONFIG.NUM_MI {13} \
+  CONFIG.NUM_MI {14} \
   CONFIG.NUM_SI {6} \
   CONFIG.NUM_CLKS {2} \
   ] [get_bd_cells axi_interconnect_0]
@@ -156,20 +156,21 @@ proc register_axi_subordinate {src_block src_port address size dst addrseg name 
 global axi_subordinates
 set axi_subordinates(ID) 0
 
-#                        src_block          src_port address    size       dst                                   addrseg name               debug  clock
-register_axi_subordinate axi_interconnect_0 M00_AXI  0xA4100000 0x00100000 caliptra_package_top_0/S_AXI_CALIPTRA reg0    S_AXI_CALIPTRA     TRUE   "/ps_0/pl0_ref_clk"
-register_axi_subordinate axi_interconnect_0 M01_AXI  0xA4030000 0x00002000 caliptra_package_top_0/S_AXI_I3C      reg0    S_AXI_I3C          TRUE   "/ps_0/pl1_ref_clk"
-register_axi_subordinate axi_interconnect_0 M02_AXI  0xA4040000 0x00002000 caliptra_package_top_0/S_AXI_LCC      reg0    S_AXI_LCC          FALSE  "/ps_0/pl0_ref_clk"
-register_axi_subordinate axi_interconnect_0 M03_AXI  0xA8000000 0x01000000 caliptra_package_top_0/S_AXI_MCI      reg0    S_AXI_MCI          TRUE   "/ps_0/pl0_ref_clk"
-register_axi_subordinate axi_interconnect_0 M04_AXI  0xB0040000 0x00020000 caliptra_package_top_0/S_AXI_MCU_ROM  reg0    S_AXI_MCU_ROM      TRUE   "/ps_0/pl0_ref_clk"
-register_axi_subordinate axi_interconnect_0 M05_AXI  0xA4060000 0x00002000 caliptra_package_top_0/S_AXI_OTP      reg0    S_AXI_OTP          TRUE   "/ps_0/pl0_ref_clk"
-register_axi_subordinate axi_interconnect_0 M06_AXI  0xA4010000 0x00004000 caliptra_package_top_0/S_AXI_WRAPPER  reg0    S_AXI_WRAPPER      FALSE  "/ps_0/pl0_ref_clk"
-register_axi_subordinate axi_interconnect_0 M07_AXI  0xB0080000 0x00010000 otp_ram_bram_ctrl_0/S_AXI             Mem0    S_AXI_OTP_RAM      TRUE   "/ps_0/pl0_ref_clk"
-register_axi_subordinate axi_interconnect_0 M08_AXI  0xB00C0000 0x00040000 staging_sram_bram_ctrl_0/S_AXI        Mem0    S_AXI_STAGING_SRAM FALSE  "/ps_0/pl0_ref_clk"
-register_axi_subordinate axi_interconnect_0 M09_AXI  0xA4080000 0x00001000 xilinx_i3c_0/S_AXI                    Reg     S_AXI_XILINX_I3C   FALSE  "/ps_0/pl1_ref_clk"
-register_axi_subordinate axi_interconnect_0 M10_AXI  0xA4081000 0x00001000 axi_cdma_0/S_AXI_LITE                 Reg     S_AXI_XILINX_DMA   FALSE  "/ps_0/pl0_ref_clk"
-register_axi_subordinate axi_interconnect_0 M11_AXI  0xB0000000 0x00018000 cptra_rom_backdoor_bram_0/S_AXI       Mem0    S_AXI_CALIPTRA_ROM FALSE  "/ps_0/pl0_ref_clk"
-register_axi_subordinate axi_interconnect_0 M12_AXI  0xB0020000 0x00020000 mcu_rom_backdoor_bram_0/S_AXI         Mem0    S_AXI_SS_ROM       FALSE  "/ps_0/pl0_ref_clk"
+#                        src_block          src_port address    size       dst                                    addrseg name               debug  clock
+register_axi_subordinate axi_interconnect_0 M00_AXI  0xA4100000 0x00100000 caliptra_package_top_0/S_AXI_CALIPTRA  reg0    S_AXI_CALIPTRA     TRUE   "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M01_AXI  0xA4030000 0x00002000 caliptra_package_top_0/S_AXI_I3C       reg0    S_AXI_I3C          TRUE   "/ps_0/pl1_ref_clk"
+register_axi_subordinate axi_interconnect_0 M13_AXI  0xA4032000 0x00002000 caliptra_package_top_0/S_AXI_I3C_SPARE reg0    S_AXI_I3C_SPARE    TRUE   "/ps_0/pl1_ref_clk"
+register_axi_subordinate axi_interconnect_0 M02_AXI  0xA4040000 0x00002000 caliptra_package_top_0/S_AXI_LCC       reg0    S_AXI_LCC          FALSE  "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M03_AXI  0xA8000000 0x01000000 caliptra_package_top_0/S_AXI_MCI       reg0    S_AXI_MCI          TRUE   "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M04_AXI  0xB0040000 0x00020000 caliptra_package_top_0/S_AXI_MCU_ROM   reg0    S_AXI_MCU_ROM      TRUE   "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M05_AXI  0xA4060000 0x00002000 caliptra_package_top_0/S_AXI_OTP       reg0    S_AXI_OTP          TRUE   "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M06_AXI  0xA4010000 0x00004000 caliptra_package_top_0/S_AXI_WRAPPER   reg0    S_AXI_WRAPPER      FALSE  "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M07_AXI  0xB0080000 0x00010000 otp_ram_bram_ctrl_0/S_AXI              Mem0    S_AXI_OTP_RAM      TRUE   "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M08_AXI  0xB00C0000 0x00040000 staging_sram_bram_ctrl_0/S_AXI         Mem0    S_AXI_STAGING_SRAM FALSE  "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M09_AXI  0xA4080000 0x00001000 xilinx_i3c_0/S_AXI                     Reg     S_AXI_XILINX_I3C   FALSE  "/ps_0/pl1_ref_clk"
+register_axi_subordinate axi_interconnect_0 M10_AXI  0xA4081000 0x00001000 axi_cdma_0/S_AXI_LITE                  Reg     S_AXI_XILINX_DMA   FALSE  "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M11_AXI  0xB0000000 0x00018000 cptra_rom_backdoor_bram_0/S_AXI        Mem0    S_AXI_CALIPTRA_ROM FALSE  "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M12_AXI  0xB0020000 0x00020000 mcu_rom_backdoor_bram_0/S_AXI          Mem0    S_AXI_SS_ROM       FALSE  "/ps_0/pl0_ref_clk"
 
 # Create reset block
 create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 proc_sys_reset_0
@@ -388,6 +389,7 @@ if {$DEBUG} {
       S_AXI_OTP \
       M_AXI_MCU_LSU \
       S_AXI_I3C \
+      S_AXI_I3C_SPARE \
       M_AXI_CALIPTRA}]
 
   # Mark signals exposed by the package for debug
