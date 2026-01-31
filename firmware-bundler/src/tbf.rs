@@ -36,7 +36,7 @@ pub fn create_tbf_header(binary: &Binary) -> Result<TbfHeader> {
 
     let mut tbf = TbfHeader::new();
     tbf.create(
-        binary.data_mem.size.try_into()?,
+        binary.data_mem()?.size.try_into()?,
         0,
         binary.name.clone(),
         None,

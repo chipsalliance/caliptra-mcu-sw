@@ -28,6 +28,7 @@ const APP_OBJCOPY_FLAGS: &str = "--strip-sections --strip-all";
 #[derive(Debug, Clone)]
 pub struct BuiltBinary {
     pub name: String,
+    pub elf: PathBuf,
     pub binary: PathBuf,
 }
 
@@ -185,6 +186,7 @@ impl<'a> BuildPass<'a> {
 
         Ok(BuiltBinary {
             name: app.name.clone(),
+            elf,
             binary,
         })
     }

@@ -123,6 +123,7 @@ SECTIONS {
          * at runtime. See https://www.airs.com/blog/archives/189 for background.
          */
         *(.data.rel.ro.*)
+        _flash_end = .;
     } > FLASH
 
     /* Sections located in RAM at runtime.
@@ -165,6 +166,7 @@ SECTIONS {
         *(.sbss .bss.*)
     } > RAM
 
+    _sram_end = .;
     _heap_start = ADDR(.bss) + SIZEOF(.bss);  /* Used by rt_header */
 
     /* Sections we do not need. */

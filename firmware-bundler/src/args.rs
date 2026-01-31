@@ -87,16 +87,6 @@ pub struct BuildArgs {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum Commands {
-    /// Generate the linker files required for a firmware bundled build.  These will be published
-    /// to `<workspace>/target/<target-tuple>/linker-scripts`
-    Generate {
-        #[command(flatten)]
-        common: Common,
-
-        #[command(flatten)]
-        ld: LdArgs,
-    },
-
     /// Build the collection of binaries associated with a firmware bundle.  This will not bundle
     /// them, only build them.  These will be published to
     /// `<workspace>/target/<target-tuple>/release`.
