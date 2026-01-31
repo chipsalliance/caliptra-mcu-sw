@@ -1,8 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::error::{OcpEatError, OcpEatResult};
-use coset::{cbor::value::Value, iana::Algorithm, CborSerializable, CoseSign1, Header};
-
+use coset::{
+    cbor::value::Value, iana::Algorithm, CborSerializable, CoseSign1, Header,
+    TaggedCborSerializable,
+};
 use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint},
@@ -12,6 +14,9 @@ use openssl::{
 };
 
 pub const OCP_EAT_CLAIMS_KEY_ID: &str = "";
+pub const CBOR_TAG_CBOR: u64 = 55799;
+pub const CBOR_TAG_CWT: u64 = 61;
+pub const CBOR_TAG_COSE_SIGN1: u64 = 18;
 
 /// COSE header parameter: x5chain (label 33)
 const COSE_HDR_PARAM_X5CHAIN: i64 = 33;
@@ -38,15 +43,9 @@ impl Evidence {
     /// (Steps 1–3)
     pub fn decode(slice: &[u8]) -> OcpEatResult<Self> {
         /* ==========================================================
-         *  Skip CBOR tags / bstr
+         *  Verify tags & decode COSE_Sign1
          * ========================================================== */
-        let value = skip_cbor_tags(slice)?;
-        let cose_bytes = value.to_vec().map_err(OcpEatError::CoseSign1)?;
-
-        /* ==========================================================
-         *  Strict COSE decode
-         * ========================================================== */
-        let cose = CoseSign1::from_slice(&cose_bytes).map_err(OcpEatError::CoseSign1)?;
+        let cose = parse_tagged_evidence(slice)?;
 
         /* ==========================================================
          *  Verify protected header
@@ -87,25 +86,47 @@ impl Evidence {
 /*                               Helper functions                              */
 /* -------------------------------------------------------------------------- */
 
-fn skip_cbor_tags(slice: &[u8]) -> OcpEatResult<Value> {
+fn parse_tagged_evidence(slice: &[u8]) -> OcpEatResult<CoseSign1> {
     let mut value = Value::from_slice(slice).map_err(OcpEatError::CoseSign1)?;
+
+    // Expected tag order
+    let mut expected_tags = [CBOR_TAG_CBOR, CBOR_TAG_CWT, CBOR_TAG_COSE_SIGN1].into_iter();
 
     loop {
         match value {
-            Value::Tag(_, boxed) => value = *boxed,
-            Value::Bytes(bytes) => {
-                value = Value::from_slice(&bytes).map_err(OcpEatError::CoseSign1)?
+            Value::Tag(tag, boxed) => {
+                let expected = expected_tags
+                    .next()
+                    .ok_or(OcpEatError::InvalidToken("Unexpected extra CBOR tag"))?;
+
+                if tag != expected {
+                    return Err(OcpEatError::InvalidToken(
+                        "CBOR tags are not in required order (55799 → 61 → 18)",
+                    ));
+                }
+
+                value = *boxed;
             }
-            Value::Array(_) => break,
+
+            // Tagged COSE_Sign1
+            Value::Bytes(bytes) => {
+                return CoseSign1::from_tagged_slice(&bytes).map_err(OcpEatError::CoseSign1);
+            }
+
+            // Bare COSE_Sign1 array
+            Value::Array(_) => {
+                let bytes = value.to_vec().map_err(OcpEatError::CoseSign1)?;
+
+                return CoseSign1::from_slice(&bytes).map_err(OcpEatError::CoseSign1);
+            }
+
             _ => {
                 return Err(OcpEatError::InvalidToken(
-                    "Invalid COSE_Sign1 structure: expected CBOR tag, byte string, or array",
+                    "Invalid tagged COSE_Sign1 structure",
                 ));
             }
         }
     }
-
-    Ok(value)
 }
 
 /// Extract leaf certificate DER from x5chain (label 33)
@@ -130,7 +151,7 @@ fn extract_leaf_cert_der(unprotected: &Header) -> OcpEatResult<Vec<u8>> {
         _ => None,
     }
     .and_then(|v| match v {
-        Value::Bytes(bytes) => Some(bytes.clone()), // 👈 CLONE
+        Value::Bytes(bytes) => Some(bytes.clone()),
         _ => None,
     })
     .ok_or(OcpEatError::InvalidToken(
@@ -233,33 +254,39 @@ fn verify_signature_es384(
 
 fn verify_protected_header(protected: &Header) -> OcpEatResult<()> {
     /* ----------------------------------------------------------
-     * Algorithm must be ESP384 or ML-DSA-87 (TBD)
+     *  * Algorithm must be ES384 or ESP384
      * ---------------------------------------------------------- */
 
-    if !matches!(
+    let alg_ok = matches!(
         protected.alg,
         Some(coset::RegisteredLabelWithPrivate::Assigned(
+            Algorithm::ES384
+        )) | Some(coset::RegisteredLabelWithPrivate::Assigned(
             Algorithm::ESP384
         ))
-    ) {
+    );
+    if !alg_ok {
         return Err(OcpEatError::InvalidToken(
             "Unexpected algorithm in protected header",
         ));
     }
 
     /* ----------------------------------------------------------
-     * Content-Type must be EatCwt
+     * Content-Type
      * ---------------------------------------------------------- */
-    if !matches!(
-        &protected.content_type,
-        Some(coset::RegisteredLabel::Assigned(
-            coset::iana::CoapContentFormat::EatCwt
-        ))
-    ) {
-        return Err(OcpEatError::InvalidToken(
-            "Content format mismatch in protected header",
-        ));
-    }
+    match &protected.content_type {
+        Some(coset::RegisteredLabel::Assigned(coset::iana::CoapContentFormat::EatCwt)) => {
+            // Accept EAT CWT
+        }
+        None => {
+            // Accept missing content-type
+        }
 
+        _other => {
+            return Err(OcpEatError::InvalidToken(
+                "Content format mismatch in protected header",
+            ));
+        }
+    }
     Ok(())
 }
