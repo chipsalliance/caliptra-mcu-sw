@@ -72,7 +72,7 @@ The subsystem bitstream is pulled from the [subsystem.toml](../../hw/fpga/bitstr
 
 ### Ubuntu Image
 
-Follow the instructions in `hw/fpga/README.md` on build and loading a bitstream.
+Follow the instructions in `hw/fpga/README.md` on building and loading a bitstream.
 
 ## FPGA bootstrap
 
