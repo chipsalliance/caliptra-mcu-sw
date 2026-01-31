@@ -237,6 +237,13 @@ regfile interface_regs {
     } cptra_ss_raw_unlock_token_hash[4];
 
     reg {
+        field { sw=rw; hw=r; desc = "RSVD in core"; } use_spare_i3c_core[0:0] = 1'b0;
+        field { sw=r;  hw=rw; desc = "RSVD in core"; } irq_o[1:1] = 1'b0;
+        field { sw=r;  hw=rw; desc = "RSVD in core"; } recovery_payload_available_o[2:2] = 1'b0;
+        field { sw=r;  hw=rw; desc = "RSVD in core"; } recovery_image_activated_o[3:3] = 1'b0;
+    } spare_i3c_control_sts;
+
+    reg {
         field { sw=rw; hw=na; } key[32] = 32'h0;
     } ocp_lock_key_release_reg[16] @ 0x200;
 };

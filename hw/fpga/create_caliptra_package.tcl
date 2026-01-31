@@ -109,6 +109,12 @@ exec sed -i {1i `include \"config_defines.svh\"} $outputDir/ahb_lite_address_dec
 remove_files [ glob $caliptrartlDir/src/ahb_lite_bus/rtl/ahb_lite_address_decoder.sv ]
 add_files $outputDir/ahb_lite_address_decoder.sv
 
+# Change soc_ifc to assign generic_input_wires[1] to CALIPTRA_FUSE_GRANULARITY
+file copy [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_top.sv ] $outputDir/soc_ifc_top.sv
+exec sed -i {/`ifdef CALIPTRA_FUSE_GRANULARITY_32/,/`endif/calways_comb soc_ifc_reg_hwif_in.CPTRA_HW_CONFIG.Fuse_Granularity.next = generic_input_wires[0][1];} caliptra_build/soc_ifc_top.sv
+remove_files [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_top.sv ]
+add_files $outputDir/soc_ifc_top.sv
+
 # Mark all Verilog sources as SystemVerilog because some of them have SystemVerilog syntax.
 set_property file_type SystemVerilog [get_files *.v]
 
@@ -151,6 +157,7 @@ ipx::associate_bus_interfaces -busif S_AXI_OTP -clock core_clk [ipx::current_cor
 ipx::associate_bus_interfaces -busif S_AXI_LCC -clock core_clk [ipx::current_core]
 # Different clock used for I3C
 ipx::associate_bus_interfaces -busif S_AXI_I3C -clock i3c_clk [ipx::current_core]
+ipx::associate_bus_interfaces -busif S_AXI_I3C_SPARE -clock i3c_clk [ipx::current_core]
 
 # Other packager settings
 set_property name caliptra_package_top [ipx::current_core]

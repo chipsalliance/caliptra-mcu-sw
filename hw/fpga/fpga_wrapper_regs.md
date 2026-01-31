@@ -109,6 +109,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 | 0x150|       cptra_ss_raw_unlock_token_hash[1]      |  — |
 | 0x154|       cptra_ss_raw_unlock_token_hash[2]      |  — |
 | 0x158|       cptra_ss_raw_unlock_token_hash[3]      |  — |
+| 0x15C|             spare_i3c_control_sts            |  — |
 | 0x200|          ocp_lock_key_release_reg[0]         |  — |
 | 0x204|          ocp_lock_key_release_reg[1]         |  — |
 | 0x208|          ocp_lock_key_release_reg[2]         |  — |
@@ -1282,6 +1283,35 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0|   value  |  rw  | 0x0 |  — |
+
+### spare_i3c_control_sts register
+
+- Absolute Address: 0xA401015C
+- Base Offset: 0x15C
+- Size: 0x4
+
+|Bits|         Identifier         |Access|Reset|Name|
+|----|----------------------------|------|-----|----|
+|  0 |     use_spare_i3c_core     |  rw  | 0x0 |  — |
+|  1 |            irq_o           |   r  | 0x0 |  — |
+|  2 |recovery_payload_available_o|   r  | 0x0 |  — |
+|  3 | recovery_image_activated_o |   r  | 0x0 |  — |
+
+#### use_spare_i3c_core field
+
+<p>RSVD in core</p>
+
+#### irq_o field
+
+<p>RSVD in core</p>
+
+#### recovery_payload_available_o field
+
+<p>RSVD in core</p>
+
+#### recovery_image_activated_o field
+
+<p>RSVD in core</p>
 
 ### ocp_lock_key_release_reg register
 

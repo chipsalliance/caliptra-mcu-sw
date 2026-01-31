@@ -334,7 +334,7 @@ module caliptra_wrapper_top (
 
     input  wire                      M_AXI_MCU_SB_RVALID,
     output wire                      M_AXI_MCU_SB_RREADY,
-    input  wire [18:0]              M_AXI_MCU_SB_RID,
+    input  wire [18:0]               M_AXI_MCU_SB_RID,
     input  wire [              63:0] M_AXI_MCU_SB_RDATA,
     input  wire [               1:0] M_AXI_MCU_SB_RRESP,
     input  wire                      M_AXI_MCU_SB_RLAST,
@@ -360,22 +360,60 @@ module caliptra_wrapper_top (
     output	wire [31:0]               S_AXI_I3C_RDATA,
     output	wire [1:0]                S_AXI_I3C_RRESP,
 
-    input wire [1:0] S_AXI_I3C_ARBURST,
-    input wire [2:0] S_AXI_I3C_ARSIZE,
-    input wire [7:0] S_AXI_I3C_ARLEN,
-    input wire [31:0] S_AXI_I3C_ARUSER,
-    input wire [18:0] S_AXI_I3C_ARID,
-    input wire S_AXI_I3C_ARLOCK,
-    output wire [18:0]           S_AXI_I3C_RID,
-    output wire                   S_AXI_I3C_RLAST,
-    input wire [             1:0] S_AXI_I3C_AWBURST,
-    input wire [             2:0] S_AXI_I3C_AWSIZE,
-    input wire [             7:0] S_AXI_I3C_AWLEN,
-    input wire [31:0] S_AXI_I3C_AWUSER,
-    input wire [18:0] S_AXI_I3C_AWID,
-    input wire                    S_AXI_I3C_AWLOCK,
-    input  wire                  S_AXI_I3C_WLAST,
-    output wire [18:0] S_AXI_I3C_BID,
+    input wire [1:0]                  S_AXI_I3C_ARBURST,
+    input wire [2:0]                  S_AXI_I3C_ARSIZE,
+    input wire [7:0]                  S_AXI_I3C_ARLEN,
+    input wire [31:0]                 S_AXI_I3C_ARUSER,
+    input wire [18:0]                 S_AXI_I3C_ARID,
+    input wire                        S_AXI_I3C_ARLOCK,
+    output wire [18:0]                S_AXI_I3C_RID,
+    output wire                       S_AXI_I3C_RLAST,
+    input wire [             1:0]     S_AXI_I3C_AWBURST,
+    input wire [             2:0]     S_AXI_I3C_AWSIZE,
+    input wire [             7:0]     S_AXI_I3C_AWLEN,
+    input wire [31:0]                 S_AXI_I3C_AWUSER,
+    input wire [18:0]                 S_AXI_I3C_AWID,
+    input wire                        S_AXI_I3C_AWLOCK,
+    input  wire                       S_AXI_I3C_WLAST,
+    output wire [18:0]                S_AXI_I3C_BID,
+
+    // Spare I3C
+    input	wire                      S_AXI_I3C_SPARE_AWVALID,
+    output	wire                      S_AXI_I3C_SPARE_AWREADY,
+    input	wire [31:0]               S_AXI_I3C_SPARE_AWADDR,
+    //input	wire [2:0]                S_AXI_I3C_SPARE_AWPROT,
+    input	wire                      S_AXI_I3C_SPARE_WVALID,
+    output	wire                      S_AXI_I3C_SPARE_WREADY,
+    input	wire [31:0]               S_AXI_I3C_SPARE_WDATA,
+    input	wire [3:0]                S_AXI_I3C_SPARE_WSTRB,
+    output	wire                      S_AXI_I3C_SPARE_BVALID,
+    input	wire                      S_AXI_I3C_SPARE_BREADY,
+    output	wire [1:0]                S_AXI_I3C_SPARE_BRESP,
+    input	wire                      S_AXI_I3C_SPARE_ARVALID,
+    output	wire                      S_AXI_I3C_SPARE_ARREADY,
+    input	wire [31:0]               S_AXI_I3C_SPARE_ARADDR,
+    //input	wire [2:0]                S_AXI_I3C_SPARE_ARPROT,
+    output	wire                      S_AXI_I3C_SPARE_RVALID,
+    input	wire                      S_AXI_I3C_SPARE_RREADY,
+    output	wire [31:0]               S_AXI_I3C_SPARE_RDATA,
+    output	wire [1:0]                S_AXI_I3C_SPARE_RRESP,
+
+    input wire [1:0]                  S_AXI_I3C_SPARE_ARBURST,
+    input wire [2:0]                  S_AXI_I3C_SPARE_ARSIZE,
+    input wire [7:0]                  S_AXI_I3C_SPARE_ARLEN,
+    input wire [31:0]                 S_AXI_I3C_SPARE_ARUSER,
+    input wire [18:0]                 S_AXI_I3C_SPARE_ARID,
+    input wire                        S_AXI_I3C_SPARE_ARLOCK,
+    output wire [18:0]                S_AXI_I3C_SPARE_RID,
+    output wire                       S_AXI_I3C_SPARE_RLAST,
+    input wire [1:0]                  S_AXI_I3C_SPARE_AWBURST,
+    input wire [2:0]                  S_AXI_I3C_SPARE_AWSIZE,
+    input wire [7:0]                  S_AXI_I3C_SPARE_AWLEN,
+    input wire [31:0]                 S_AXI_I3C_SPARE_AWUSER,
+    input wire [18:0]                 S_AXI_I3C_SPARE_AWID,
+    input wire                        S_AXI_I3C_SPARE_AWLOCK,
+    input  wire                       S_AXI_I3C_SPARE_WLAST,
+    output wire [18:0]                S_AXI_I3C_SPARE_BID,
 
     // LCC
     input	wire                      S_AXI_LCC_AWVALID,
@@ -1857,63 +1895,41 @@ mcu_rom (
     |         1 |      0 |           0 | -> |    1 |    1 |  1 | -> | push pull low  |
     |         1 |      1 |           1 | -> |    0 |    0 |  1 | -> | push pull high |
     */
+    // I3C Core within Subsystem
     (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_sel_od_pp_o;
-    (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_scl_o;
     (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_sda_o;
+    (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_scl;
+    // Spare I3C Core in Wrapper
+    (* syn_keep = "true", mark_debug = "true" *) logic spare_i3c_core_sel_od_pp_o;
+    (* syn_keep = "true", mark_debug = "true" *) logic spare_i3c_core_sda_o;
+    (* syn_keep = "true", mark_debug = "true" *) logic spare_i3c_core_scl;
+    // For signals from the i3c-core to the SDA logic switch based on use_spare_i3c_core
+    (* syn_keep = "true", mark_debug = "true" *) logic selected_i3c_core_sel_od_pp_o;
+    (* syn_keep = "true", mark_debug = "true" *) logic selected_i3c_core_sda_o;
 
-
-    // TODO: Connect OE signals from i3c-core
     always_comb begin
-        //     i3c-core                             | AXI I3C
-        case ({i3c_core_sel_od_pp_o, i3c_core_scl_o, axi_i3c_scl_pullup_en, ~axi_i3c_scl_t, axi_i3c_scl_o
-        })
-        // Open drain, i3c_core pulls data low.
-        5'b00000:   SCL = 1'b0; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 0, output disable, data 0 // Conflict between OD status
-        5'b00001:   SCL = 1'b0; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 0, output disable, data 1 // Conflict between OD status
-        5'b00010:   SCL = 1'b0; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 0, output enable,  data 0 // Conflict between OD status
-        5'b00011:   SCL = 1'b1; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 0, output enable,  data 1 // Conflict between OD status
-        5'b00100:   SCL = 1'b0; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 1, output disable, data 0
-        5'b00101:   SCL = 1'b0; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 1, output disable, data 1
-        5'b00110:   SCL = 1'b0; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 1, output enable,  data 0
-        5'b00111:   SCL = 1'b1; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 1, output enable,  data 1
+        selected_i3c_core_sel_od_pp_o = (hwif_out.interface_regs.spare_i3c_control_sts.use_spare_i3c_core.value) ? spare_i3c_core_sel_od_pp_o : i3c_core_sel_od_pp_o;
+        selected_i3c_core_sda_o =       (hwif_out.interface_regs.spare_i3c_control_sts.use_spare_i3c_core.value) ? spare_i3c_core_sda_o       : i3c_core_sda_o;
 
-        // Open drain, i3c_core leaves data high. High unless AXI I3C pulls low
-        5'b01000:   SCL = 1'b1; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 0, output disable, data 0
-        5'b01001:   SCL = 1'b1; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 0, output disable, data 1
-        5'b01010:   SCL = 1'b0; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 0, output enable,  data 0 // Conflict between OD status. AXI I3C trying to drive PP
-        5'b01011:   SCL = 1'b1; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 0, output enable,  data 1 // Conflict between OD status. AXI I3C trying to drive PP
-        5'b01100:   SCL = 1'b1; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 1, output disable, data 0 // AXI I3C not driving
-        5'b01101:   SCL = 1'b1; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 1, output disable, data 1 // AXI I3C not driving
-        5'b01110:   SCL = 1'b0; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 1, output enable,  data 0 // AXI I3C pulling low
-        5'b01111:   SCL = 1'b1; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 1, output enable,  data 1 // Both pushing the same high value
+        i3c_core_scl       = ~(hwif_out.interface_regs.spare_i3c_control_sts.use_spare_i3c_core.value) & SCL;
+        spare_i3c_core_scl =  (hwif_out.interface_regs.spare_i3c_control_sts.use_spare_i3c_core.value) & SCL;
+    end
 
-        // I3C core Push Pull - output low
-        5'b10000:   SCL = 1'b0; // I3C core Push Pull - data 0 | AXI_I3C | pullup 0, output disable, data 0 // AXI I3C not driving
-        5'b10001:   SCL = 1'b0; // I3C core Push Pull - data 0 | AXI_I3C | pullup 0, output disable, data 1 // AXI I3C not driving
-        5'b10010:   SCL = 1'b0; // I3C core Push Pull - data 0 | AXI_I3C | pullup 0, output enable,  data 0 // Both driving the same
-        5'b10011:   SCL = 1'b1; // I3C core Push Pull - data 0 | AXI_I3C | pullup 0, output enable,  data 1 // Conflict! Driving different values!!! This should never happen according to I3C spec
-        5'b10100:   SCL = 1'b0; // I3C core Push Pull - data 0 | AXI_I3C | pullup 1, output disable, data 0 // Conflict between OD status.
-        5'b10101:   SCL = 1'b0; // I3C core Push Pull - data 0 | AXI_I3C | pullup 1, output disable, data 1 // Conflict between OD status.
-        5'b10110:   SCL = 1'b0; // I3C core Push Pull - data 0 | AXI_I3C | pullup 1, output enable,  data 0 // Conflict between OD status.
-        5'b10111:   SCL = 1'b1; // I3C core Push Pull - data 0 | AXI_I3C | pullup 1, output enable,  data 1 // Conflict between OD status.
+    always_comb begin
+        // Depends on Xilinx I3C only
+        case ({~axi_i3c_scl_t, axi_i3c_scl_o})
+        2'b00:   SCL = 1'b1; //  AXI_I3C | output disable, data 0
+        2'b01:   SCL = 1'b1; //  AXI_I3C | output disable, data 1
+        2'b10:   SCL = 1'b0; //  AXI_I3C | output enable,  data 0
+        2'b11:   SCL = 1'b1; //  AXI_I3C | output enable,  data 1
 
-
-        // I3C core Push Pull - output high
-        5'b11000:   SCL = 1'b1; // I3C core Push Pull - data 1 | AXI_I3C | pullup 0, output disable, data 0 // AXI I3C not driving
-        5'b11001:   SCL = 1'b1; // I3C core Push Pull - data 1 | AXI_I3C | pullup 0, output disable, data 1 // AXI I3C not driving
-        5'b11010:   SCL = 1'b0; // I3C core Push Pull - data 1 | AXI_I3C | pullup 0, output enable,  data 0 // Conflict! Driving different values!!! This should never happen according to I3C spec
-        5'b11011:   SCL = 1'b1; // I3C core Push Pull - data 1 | AXI_I3C | pullup 0, output enable,  data 1 // Both driving the same
-        5'b11100:   SCL = 1'b1; // I3C core Push Pull - data 1 | AXI_I3C | pullup 1, output disable, data 0 // Conflict between OD status.
-        5'b11101:   SCL = 1'b1; // I3C core Push Pull - data 1 | AXI_I3C | pullup 1, output disable, data 1 // Conflict between OD status.
-        5'b11110:   SCL = 1'b0; // I3C core Push Pull - data 1 | AXI_I3C | pullup 1, output enable,  data 0 // Conflict between OD status.
-        5'b11111:   SCL = 1'b1; // I3C core Push Pull - data 1 | AXI_I3C | pullup 1, output enable,  data 1 // Conflict between OD status.
         default: SCL = 1'b1;
         endcase
     end
 
     always_comb begin
-        //     i3c-core                             | AXI I3C
-        case ({i3c_core_sel_od_pp_o, i3c_core_sda_o, axi_i3c_sda_pullup_en, ~axi_i3c_sda_t, axi_i3c_sda_o
+        //     i3c-core                                              | AXI I3C
+        case ({selected_i3c_core_sel_od_pp_o, selected_i3c_core_sda_o, axi_i3c_sda_pullup_en, ~axi_i3c_sda_t, axi_i3c_sda_o
         })
         // Open drain, i3c_core pulls data low.
         5'b00000:   SDA = 1'b0; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 0, output disable, data 0 // Conflict between OD status
@@ -1959,6 +1975,94 @@ mcu_rom (
         endcase
     end
 
+    // Spare I3C core
+    logic spare_i3c_irq_o;
+    assign hwif_in.interface_regs.spare_i3c_control_sts.irq_o.next = spare_i3c_irq_o;
+
+    logic [31:0] priv_ids [4];
+    assign priv_ids[0] = 32'd0;
+    assign priv_ids[1] = 32'd0;
+    assign priv_ids[2] = 32'd0;
+    assign priv_ids[3] = 32'd0;
+
+    i3c_wrapper #(
+        .AxiDataWidth(32),
+        .AxiAddrWidth(32),
+        .AxiUserWidth(32),
+        .AxiIdWidth  (8)
+    ) i3c (
+        .clk_i                          (i3c_clk),
+        .rst_ni                         (axi_reset),
+    
+        // Read Address Channel
+        .arvalid_i   (S_AXI_I3C_SPARE_ARVALID),
+        .arready_o   (S_AXI_I3C_SPARE_ARREADY),
+        .arid_i      (S_AXI_I3C_SPARE_ARID),
+        .araddr_i    (S_AXI_I3C_SPARE_ARADDR),
+        .arsize_i    (S_AXI_I3C_SPARE_ARSIZE),
+        .aruser_i    (S_AXI_I3C_SPARE_ARUSER),
+        .arlen_i     (S_AXI_I3C_SPARE_ARLEN),
+        .arburst_i   (S_AXI_I3C_SPARE_ARBURST),
+        .arlock_i    (S_AXI_I3C_SPARE_ARLOCK),
+
+        // Read Data Channel
+        .rvalid_o    (S_AXI_I3C_SPARE_RVALID),
+        .rready_i    (S_AXI_I3C_SPARE_RREADY),
+        .rid_o       (S_AXI_I3C_SPARE_RID),
+        .rdata_o     (S_AXI_I3C_SPARE_RDATA),
+        .rresp_o     (S_AXI_I3C_SPARE_RRESP),
+        .rlast_o     (S_AXI_I3C_SPARE_RLAST),
+
+        // Write Address Channel
+        .awvalid_i   (S_AXI_I3C_SPARE_AWVALID),
+        .awready_o   (S_AXI_I3C_SPARE_AWREADY),
+        .awid_i      (S_AXI_I3C_SPARE_AWID),
+        .awaddr_i    (S_AXI_I3C_SPARE_AWADDR),
+        .awsize_i    (S_AXI_I3C_SPARE_AWSIZE),
+        .awuser_i    (S_AXI_I3C_SPARE_AWUSER),
+        .awlen_i     (S_AXI_I3C_SPARE_AWLEN),
+        .awburst_i   (S_AXI_I3C_SPARE_AWBURST),
+        .awlock_i    (S_AXI_I3C_SPARE_AWLOCK),
+
+        // Write Data Channel
+        .wvalid_i    (S_AXI_I3C_SPARE_WVALID),
+        .wuser_i     (/* ??? see note below */),
+        .wready_o    (S_AXI_I3C_SPARE_WREADY),
+        .wdata_i     (S_AXI_I3C_SPARE_WDATA),
+        .wstrb_i     (S_AXI_I3C_SPARE_WSTRB),
+        .wlast_i     (S_AXI_I3C_SPARE_WLAST),
+
+        // Write Response Channel
+        .bvalid_o    (S_AXI_I3C_SPARE_BVALID),
+        .bready_i    (S_AXI_I3C_SPARE_BREADY),
+        .bresp_o     (S_AXI_I3C_SPARE_BRESP),
+        .bid_o       (S_AXI_I3C_SPARE_BID),
+        .buser_o     (/* ??? see note below */),
+    
+        // I3C Signals
+        .scl_i                          (spare_i3c_core_scl),
+        .sda_i                          (SDA),
+        .scl_o                          (),
+        .sda_o                          (spare_i3c_core_sda_o),
+        .scl_oe                         (),
+        .sda_oe                         (),
+    
+        // Additional signals
+        .sel_od_pp_o                    (spare_i3c_core_sel_od_pp_o),
+
+        .recovery_payload_available_o   (hwif_in.interface_regs.spare_i3c_control_sts.recovery_payload_available_o.next),
+        .recovery_image_activated_o     (hwif_in.interface_regs.spare_i3c_control_sts.recovery_image_activated_o.next),
+        .peripheral_reset_o             (),
+        .peripheral_reset_done_i        (1'b1),
+        .escalated_reset_o              (),
+
+        // Interrupts
+        .irq_o                          (spare_i3c_irq_o),
+
+        // id filtering
+        .disable_id_filtering_i         (1'b1),
+        .priv_ids_i                     (priv_ids)    
+    );
 
 // Looping back resets
 logic cptra_rst_b;
@@ -2146,7 +2250,7 @@ caliptra_ss_top #(
     .cptra_ss_all_error_fatal_o(hwif_in.interface_regs.ss_all_error.ss_all_error_fatal.next),
     .cptra_ss_all_error_non_fatal_o(hwif_in.interface_regs.ss_all_error.ss_all_error_non_fatal.next),
 
-    .cptra_ss_mcu_ext_int(0), // TODO: Should SW drive this to something? SOC interrupts
+    .cptra_ss_mcu_ext_int({252'b0, spare_i3c_irq_o}),
     // MCU JTAG
     .cptra_ss_mcu_jtag_tck_i(mcu_jtag_tck_i),
     .cptra_ss_mcu_jtag_tms_i(mcu_jtag_tms_i),
@@ -2196,9 +2300,9 @@ caliptra_ss_top #(
     .cptra_ss_fuse_macro_inputs_o  (cptra_ss_fuse_macro_inputs_tb),
 
     // Caliptra SS I3C GPIO Interface
-    .cptra_ss_i3c_scl_i(SCL),
+    .cptra_ss_i3c_scl_i(i3c_core_scl),
     .cptra_ss_i3c_sda_i(SDA),
-    .cptra_ss_i3c_scl_o(i3c_core_scl_o),
+    .cptra_ss_i3c_scl_o(),
     .cptra_ss_i3c_sda_o(i3c_core_sda_o),
     .cptra_ss_i3c_scl_oe(), // TODO: Connect
     .cptra_ss_i3c_sda_oe(), // TODO: Connect
