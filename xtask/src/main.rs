@@ -84,8 +84,8 @@ enum Commands {
         #[arg(long)]
         streaming_boot: Option<PathBuf>,
 
-        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>
-        /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2
+        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>
+        /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2,2,test-flash-based-boot
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
         soc_images: Option<Vec<ImageCfg>>,
 
@@ -176,8 +176,8 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         separate_runtimes: bool,
 
-        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>
-        /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2
+        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>
+        /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2,2,test-flash-based-boot
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
         soc_images: Option<Vec<ImageCfg>>,
 
@@ -539,6 +539,7 @@ fn main() {
                 mcu_image,
                 output,
             } => auth_manifest::create(images, mcu_image, output),
+            AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
         Commands::Experimental { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
     };

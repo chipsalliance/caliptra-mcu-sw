@@ -29,7 +29,7 @@ pub async fn flash_read_header(
 pub async fn flash_read_toc(
     flash: &FlashSyscall,
     header: &[u8; core::mem::size_of::<FlashHeader>()],
-    image_id: u32,
+    component_id: u32,
 ) -> Result<(u32, u32), ErrorCode> {
     let (header, _) = FlashHeader::ref_from_prefix(header).map_err(|_| ErrorCode::Fail)?;
     for index in 0..header.image_count as usize {
@@ -41,7 +41,7 @@ pub async fn flash_read_toc(
             .await?;
         let (image_header, _) =
             ImageHeader::ref_from_prefix(buffer).map_err(|_| ErrorCode::Fail)?;
-        if image_header.identifier == image_id {
+        if image_header.identifier == component_id {
             return Ok((image_header.offset, image_header.size));
         }
     }
