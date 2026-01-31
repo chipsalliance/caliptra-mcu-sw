@@ -177,6 +177,7 @@ impl<'a> ActionHandler<'a> for Subsystem {
             staging_addr: 0xB00C0000,
             image_id: 2,
             exec_bit: 2,
+            component_id: 2,
             feature: "test-fpga-flash-ctrl".to_string(),
         }]);
         let args = AllBuildArgs {

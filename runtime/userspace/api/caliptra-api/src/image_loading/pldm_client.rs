@@ -70,7 +70,7 @@ async fn pldm_download_header() -> Result<(), ErrorCode> {
     Ok(())
 }
 
-pub async fn pldm_download_toc(image_id: u32) -> Result<(u32, u32), ErrorCode> {
+pub async fn pldm_download_toc(component_id: u32) -> Result<(u32, u32), ErrorCode> {
     let num_images = DOWNLOAD_CTX.lock(|ctx| {
         let ctx = ctx.borrow();
         let (header, _rest) = FlashHeader::ref_from_prefix(&ctx.header).unwrap();
@@ -104,7 +104,7 @@ pub async fn pldm_download_toc(image_id: u32) -> Result<(u32, u32), ErrorCode> {
                     DOWNLOAD_CTX.lock(|ctx| {
                         let ctx = ctx.borrow();
                         let (info, _rest) = ImageHeader::ref_from_prefix(&ctx.image_info).unwrap();
-                        if info.identifier == image_id {
+                        if info.identifier == component_id {
                             image_offset_and_size = Some((info.offset, info.size));
                             *state = State::ImageDownloadReady;
                         } else {

@@ -229,6 +229,7 @@ mod test {
                 path: update_soc_images_paths[0].clone(),
                 load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
                 image_id: SOC_IMAGES_BASE_IDENTIFIER,
+                component_id: SOC_IMAGES_BASE_IDENTIFIER,
                 exec_bit: 100,
                 ..Default::default()
             },
@@ -238,6 +239,7 @@ mod test {
                     + MCU_MBOX_SRAM1_OFFSET
                     + update_soc_image_fw_1.len() as u64,
                 image_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
+                component_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
                 exec_bit: 101,
                 ..Default::default()
             },
@@ -249,6 +251,7 @@ mod test {
             load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
             staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
             image_id: MCU_RT_IDENTIFIER,
+            component_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
             feature: feature.to_string(),
         };
@@ -601,7 +604,7 @@ mod test {
         // Create SoC images (needed for tests that modify images)
         let soc_image_fw_1 = [0x55u8; 512];
         let soc_image_fw_2 = [0xAAu8; 256];
-        let soc_images_paths: Vec<PathBuf> = vec![soc_image_fw_1.to_vec(), soc_image_fw_2.to_vec()]
+        let soc_images_paths: Vec<PathBuf> = [soc_image_fw_1.to_vec(), soc_image_fw_2.to_vec()]
             .iter()
             .enumerate()
             .map(|(i, data)| {
@@ -619,6 +622,7 @@ mod test {
                 load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
                 staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024),
                 image_id: SOC_IMAGES_BASE_IDENTIFIER,
+                component_id: SOC_IMAGES_BASE_IDENTIFIER,
                 exec_bit: 3,
                 ..Default::default()
             },
@@ -632,6 +636,7 @@ mod test {
                     + (512 * 1024)
                     + soc_image_fw_1.len() as u64,
                 image_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
+                component_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
                 exec_bit: 4,
                 ..Default::default()
             },
@@ -642,6 +647,7 @@ mod test {
             load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
             staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
             image_id: MCU_RT_IDENTIFIER,
+            component_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
             feature: feature.to_string(),
         };
@@ -738,6 +744,7 @@ mod test {
                 path: soc_images_paths[0].clone(),
                 load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
                 image_id: SOC_IMAGES_BASE_IDENTIFIER,
+                component_id: SOC_IMAGES_BASE_IDENTIFIER,
                 exec_bit: 100,
                 ..Default::default()
             },
@@ -747,6 +754,7 @@ mod test {
                     + MCU_MBOX_SRAM1_OFFSET
                     + soc_image_fw_1.len() as u64,
                 image_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
+                component_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
                 exec_bit: 101,
                 ..Default::default()
             },
@@ -757,6 +765,7 @@ mod test {
             load_addr: (EMULATOR_MEMORY_MAP.mci_offset as u64) + MCU_SRAM_OFFSET,
             staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
             image_id: MCU_RT_IDENTIFIER,
+            component_id: MCU_RT_IDENTIFIER,
             exec_bit: 2,
             feature: feature.to_string(),
         };
@@ -825,7 +834,7 @@ mod test {
             feature,
             rom: mcu_rom,
             runtime: test_runtime.clone(),
-            i3c_port: i3c_port.into(),
+            i3c_port,
             soc_images: soc_images.clone(),
             soc_images_paths: soc_images_paths.clone(),
             primary_flash_image_path: flash_image_path.clone(),
