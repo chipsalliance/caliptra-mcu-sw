@@ -112,7 +112,7 @@ pub fn run_command(target_host: Option<&str>, command: &str) -> Result<()> {
 }
 
 #[derive(Default, PartialEq)]
-enum Output {
+pub enum Output {
     Silence,
     Capture,
     #[default]
@@ -121,9 +121,9 @@ enum Output {
 
 #[derive(Default)]
 pub struct RunCommandArgs<'a> {
-    target_host: Option<&'a str>,
-    command: &'a str,
-    output: Output,
+    pub target_host: Option<&'a str>,
+    pub command: &'a str,
+    pub output: Output,
 }
 
 /// Runs a command over SSH if `target_host` is `Some`. Otherwise runs command on current machine.
@@ -324,5 +324,23 @@ pub fn build_caliptra_firmware(caliptra_workspace: &PathBuf, fw_id: Option<&str>
         let elf_filename = fwid.elf_filename();
         std::fs::write(fw_dir.join(elf_filename), elf_bytes).unwrap();
     }
+    Ok(())
+}
+
+pub fn check_ssh_access(target_host: Option<&str>) -> Result<()> {
+    if let Some(target_host) = target_host {
+        if run_command_extended(RunCommandArgs {
+            target_host: Some(target_host),
+            command: "true",
+            output: Output::Silence,
+        })
+        .is_err()
+        {
+            bail!(
+                "Could not ssh to '{target_host}'. Please check your ssh connection and settings."
+            );
+        };
+    }
+
     Ok(())
 }

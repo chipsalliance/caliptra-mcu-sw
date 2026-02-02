@@ -12,7 +12,8 @@ use romtime::LifecycleControllerState;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use utils::{
-    check_fpga_dependencies, check_host_dependencies, run_command, run_command_with_output,
+    check_fpga_dependencies, check_host_dependencies, check_ssh_access, run_command,
+    run_command_with_output,
 };
 
 mod configurations;
@@ -228,6 +229,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
 
             let target_host = target_host.as_deref();
             check_fpga_dependencies(target_host)?;
+
             let hostname = run_command_with_output(target_host, "hostname")?;
 
             // skip this step for CI images. Kernel modules are already installed.
@@ -238,6 +240,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
 
             let cache_function = |config_marker| {
                 // Cache FPGA configuration in RAM. We need to re-bootstrap on power cycles.
+                check_ssh_access(target_host)?;
                 run_command(
                     target_host,
                     &format!("echo \"{config_marker}\" > /dev/shm/fpga-config"),
