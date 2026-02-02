@@ -103,6 +103,18 @@ impl<'a> WorkTree<'a> {
     }
 
     pub fn checkout(&self, commit_id: &str) -> io::Result<()> {
+        // First, clean up any local changes (especially Cargo.lock which gets modified during builds)
+        let _ = Command::new("git")
+            .current_dir(self.path)
+            .args(["checkout", "--", "."])
+            .status();
+
+        // Also clean untracked files that might cause issues
+        let _ = Command::new("git")
+            .current_dir(self.path)
+            .args(["clean", "-fd"])
+            .status();
+
         run_cmd_stdout(
             Command::new("git")
                 .current_dir(self.path)
