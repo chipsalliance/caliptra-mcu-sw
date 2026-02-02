@@ -123,7 +123,7 @@ SECTIONS {
          * at runtime. See https://www.airs.com/blog/archives/189 for background.
          */
         *(.data.rel.ro.*)
-        _flash_end = .;
+        _rodata_end = .;
     } > FLASH
 
     /* Sections located in RAM at runtime.
@@ -155,6 +155,8 @@ SECTIONS {
          */
         . = ALIGN(4);
     } > RAM AT > FLASH
+
+    _flash_end = _rodata_end + SIZEOF(.data);
 
     /* BSS section. These are zero-initialized static variables. This section is
      * not copied from FLASH into RAM but rather directly initialized, and is
