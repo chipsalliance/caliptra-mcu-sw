@@ -4,7 +4,10 @@
 //! manifest file.  This includes allocating memory from the RAM, ITCM, and ROM spaces to be
 //! associated with individual applications.
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
 use tbf_header::TbfHeader;
@@ -21,9 +24,9 @@ use crate::{
 // linker-script directory as well as the default contents for those files.
 //
 // Vendors can choose to override the default layouts via cli arguments if they so choose.
-const BASE_ROM_LD_FILE: &str = "rom-layout.ld";
-const BASE_KERNEL_LD_FILE: &str = "kernel-layout.ld";
-const BASE_APP_LD_FILE: &str = "app-layout.ld";
+const BASE_ROM_LD_PREFIX: &str = "bundler-rom-layout";
+const BASE_KERNEL_LD_PREFIX: &str = "bundler-kernel-layout";
+const BASE_APP_LD_PREFIX: &str = "bundler-app-layout";
 const BASE_ROM_LD_CONTENTS: &str = include_str!("../data/default-rom-layout.ld");
 const BASE_KERNEL_LD_CONTENTS: &str = include_str!("../data/default-kernel-layout.ld");
 const BASE_APP_LD_CONTENTS: &str = include_str!("../data/default-app-layout.ld");
@@ -86,6 +89,9 @@ pub fn generate_maximal_link_scripts(
 struct LdGeneration<'a> {
     manifest: &'a Manifest,
     linker_dir: PathBuf,
+    base_rom: PathBuf,
+    base_kernel: PathBuf,
+    base_app: PathBuf,
 }
 
 impl<'a> LdGeneration<'a> {
@@ -105,27 +111,30 @@ impl<'a> LdGeneration<'a> {
 
         // Go through each layout file.  If the user specified a file to use, copy it into the
         // output linker directory, otherwise copy out the default contents.
-        let rom_ld_file = linker_dir.join(BASE_ROM_LD_FILE);
-        match &ld.rom_ld_base {
-            Some(user_base) => std::fs::copy(user_base, rom_ld_file).map(|_| ())?,
-            None => std::fs::write(rom_ld_file, BASE_ROM_LD_CONTENTS)?,
+        let rom_contents = match &ld.rom_ld_base {
+            Some(user_base) => &String::from_utf8(std::fs::read(user_base)?)?,
+            None => BASE_ROM_LD_CONTENTS,
         };
+        let base_rom = content_aware_write(BASE_ROM_LD_PREFIX, rom_contents, &linker_dir)?;
 
-        let kernel_ld_file = linker_dir.join(BASE_KERNEL_LD_FILE);
-        match &ld.kernel_ld_base {
-            Some(user_base) => std::fs::copy(user_base, kernel_ld_file).map(|_| ())?,
-            None => std::fs::write(kernel_ld_file, BASE_KERNEL_LD_CONTENTS)?,
+        let kernel_contents = match &ld.kernel_ld_base {
+            Some(user_base) => &String::from_utf8(std::fs::read(user_base)?)?,
+            None => BASE_KERNEL_LD_CONTENTS,
         };
+        let base_kernel = content_aware_write(BASE_KERNEL_LD_PREFIX, kernel_contents, &linker_dir)?;
 
-        let app_ld_file = linker_dir.join(BASE_APP_LD_FILE);
-        match &ld.app_ld_base {
-            Some(user_base) => std::fs::copy(user_base, app_ld_file).map(|_| ())?,
-            None => std::fs::write(app_ld_file, BASE_APP_LD_CONTENTS)?,
+        let app_contents = match &ld.app_ld_base {
+            Some(user_base) => &String::from_utf8(std::fs::read(user_base)?)?,
+            None => BASE_APP_LD_CONTENTS,
         };
+        let base_app = content_aware_write(BASE_APP_LD_PREFIX, app_contents, &linker_dir)?;
 
         Ok(LdGeneration {
             manifest,
             linker_dir,
+            base_rom,
+            base_kernel,
+            base_app,
         })
     }
 
@@ -142,7 +151,7 @@ impl<'a> LdGeneration<'a> {
         let mut app_defs = Vec::new();
         for binary in &self.manifest.apps {
             // This is a sizing build, so the header values don't matter.
-            let header = TbfHeader::default();
+            let header = create_tbf_header(binary)?;
 
             let itcm = self.manifest.platform.itcm.clone();
             let ram = self.manifest.platform.ram.clone();
@@ -328,52 +337,7 @@ impl<'a> LdGeneration<'a> {
 
     /// Output a linker file for the application.
     fn output_ld_file(&self, binary: &Binary, content: &str) -> Result<PathBuf> {
-        // Determine if a linker file has been previously generated.
-        // First read through the linker-script directory
-        let maybe_previous_file = std::fs::read_dir(&self.linker_dir)?
-            .find(|f| {
-                f.as_ref()
-                    .map(|f| {
-                        // Then check if each entry has a name which starts with the same name as
-                        // this linker file.  If so return it as the previous file.
-                        f.file_name()
-                            .to_str()
-                            .map(|n| n.starts_with(&binary.name))
-                            .unwrap_or(false)
-                    })
-                    .unwrap_or(false)
-            })
-            .transpose()?;
-
-        // To keep incremental builds fast, only output the linker contents if they differ from the
-        // previously existing file.
-        if let Some(previous_file) = maybe_previous_file {
-            let previous_file = previous_file.path();
-            // If the contents match exactly, just use the previous file, and perhaps the cached
-            // build.
-            if std::fs::read_to_string(&previous_file)
-                .map(|prev| prev == content)
-                .unwrap_or(false)
-            {
-                return Ok(previous_file);
-            } else {
-                // If they are different clean up the old file to avoid confusing multiple entries
-                // within the linker-script directory.
-                std::fs::remove_file(previous_file)?;
-            }
-        }
-
-        // Finally output the linker script file if we need to.  Use a unique UUID with each linker
-        // script generated.  This allows the `rustc` compiler to recognize when different scripts
-        // are used, and thus trigger a new build when memory space allocations change.
-        //
-        // If this is not done, compilation can diverge from the actual status of the Manifest toml
-        // until `cargo clean` is executed which can be quite confusing.
-        let output_file =
-            self.linker_dir
-                .join(format!("{}-{}.ld", binary.name, uuid::Uuid::new_v4()));
-        std::fs::write(&output_file, content)?;
-        Ok(output_file)
+        content_aware_write(&binary.name, content, &self.linker_dir)
     }
 
     fn rom_linker_content(
@@ -392,7 +356,7 @@ ESTACK_SIZE = $ESTACK_SIZE;
 INCLUDE $BASE_LD_CONTENTS
 "#;
 
-        let base_ld_file = self.linker_dir.join(BASE_ROM_LD_FILE);
+        let base_ld_file = self.linker_dir.join(&self.base_rom);
 
         let mut sub_map = HashMap::new();
         sub_map.insert("ROM_START", format!("{:#x}", instructions.offset));
@@ -444,7 +408,7 @@ $PAGE_SIZE
 
 INCLUDE $BASE_LD_CONTENTS
 "#;
-        let base_ld_file = self.linker_dir.join(BASE_KERNEL_LD_FILE);
+        let base_ld_file = self.linker_dir.join(&self.base_kernel);
 
         let mut sub_map = HashMap::new();
         sub_map.insert("KERNEL_START", format!("{:#x}", instructions.offset));
@@ -526,7 +490,7 @@ STACK_SIZE = $STACK_SIZE;
 INCLUDE $BASE_LD_CONTENTS
 "#;
 
-        let base_ld_file = self.linker_dir.join(BASE_APP_LD_FILE);
+        let base_ld_file = self.linker_dir.join(&self.base_app);
         let header_length = header.generate()?.get_ref().len();
 
         let mut sub_map = HashMap::new();
@@ -548,6 +512,54 @@ INCLUDE $BASE_LD_CONTENTS
 
         subst::substitute(APP_LD_TEMPLATE, &sub_map).map_err(|e| e.into())
     }
+}
+
+/// Output a linker file for the application.
+fn content_aware_write(prefix: &str, content: &str, linker_dir: &Path) -> Result<PathBuf> {
+    // Determine if a previous file matching this prefix has already been generated.
+    // First read through the linker-script directory
+    let maybe_previous_file = std::fs::read_dir(linker_dir)?
+        .find(|f| {
+            f.as_ref()
+                .map(|f| {
+                    // Then check if each entry has a name which starts with the same name as
+                    // this linker file.  If so return it as the previous file.
+                    f.file_name()
+                        .to_str()
+                        .map(|n| n.starts_with(prefix))
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false)
+        })
+        .transpose()?;
+
+    // To keep incremental builds fast, only output the linker contents if they differ from the
+    // previously existing file.
+    if let Some(previous_file) = maybe_previous_file {
+        let previous_file = previous_file.path();
+        // If the contents match exactly, just use the previous file, and perhaps the cached
+        // build.
+        if std::fs::read_to_string(&previous_file)
+            .map(|prev| prev == content)
+            .unwrap_or(false)
+        {
+            return Ok(previous_file);
+        } else {
+            // If they are different clean up the old file to avoid confusing multiple entries
+            // within the linker-script directory.
+            std::fs::remove_file(previous_file)?;
+        }
+    }
+
+    // Finally output the linker script file if we need to.  Use a unique UUID with each linker
+    // script generated.  This allows the `rustc` compiler to recognize when different scripts
+    // are used, and thus trigger a new build when memory space allocations change.
+    //
+    // If this is not done, compilation can diverge from the actual status of the Manifest toml
+    // until `cargo clean` is executed which can be quite confusing.
+    let output_file = linker_dir.join(format!("{}-{}.ld", prefix, uuid::Uuid::new_v4()));
+    std::fs::write(&output_file, content)?;
+    Ok(output_file)
 }
 
 #[cfg(test)]
@@ -761,13 +773,25 @@ mod tests {
         assert!(build_def.kernel.0.linker_script.exists());
         assert!(build_def.apps[0].linker.linker_script.exists());
 
-        // Verify base layout files also exist
+        // Verify base layout files also exist (with UUID suffixes)
         let linker_dir = temp
             .path()
             .join("target/riscv32imc-unknown-none-elf/linker-scripts");
-        assert!(linker_dir.join("rom-layout.ld").exists());
-        assert!(linker_dir.join("kernel-layout.ld").exists());
-        assert!(linker_dir.join("app-layout.ld").exists());
+        let has_file_with_prefix = |prefix: &str| {
+            std::fs::read_dir(&linker_dir)
+                .map(|entries| {
+                    entries.filter_map(|e| e.ok()).any(|e| {
+                        e.file_name()
+                            .to_str()
+                            .map(|n| n.starts_with(prefix) && n.ends_with(".ld"))
+                            .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false)
+        };
+        assert!(has_file_with_prefix("bundler-rom-layout"));
+        assert!(has_file_with_prefix("bundler-kernel-layout"));
+        assert!(has_file_with_prefix("bundler-app-layout"));
     }
 
     // ==================== Failure Cases ====================
