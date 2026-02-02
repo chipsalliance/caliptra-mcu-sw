@@ -24,7 +24,6 @@ use caliptra_api::mailbox::{CmStableKeyType, CommandId, FeProgReq, MailboxReqHea
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
-use caliptra_drivers::okref;
 use core::fmt::Write;
 use core::ops::Deref;
 use mcu_error::McuError;
@@ -187,19 +186,7 @@ impl BootFlow for ColdBoot {
             loop {}
         }
 
-        romtime::println!("[mcu-rom] Reading fuses");
-        let fuses_result = otp.read_fuses();
-        let fuses_result = okref(&fuses_result);
-        let fuses = match fuses_result {
-            Ok(fuses) => {
-                mci.set_flow_checkpoint(McuRomBootStatus::FusesReadFromOtp.into());
-                fuses
-            }
-            Err(e) => {
-                romtime::println!("Error reading fuses: {}", HexWord(e.into()));
-                fatal_error(e);
-            }
-        };
+        romtime::println!("[mcu-rom] OTP initialized");
 
         // TODO: Handle flash image loading with the watchdog enabled
         if params.flash_partition_driver.is_none() {
@@ -245,7 +232,7 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         romtime::println!("[mcu-rom] Populating fuses");
-        soc.populate_fuses(fuses, mci);
+        soc.populate_fuses(otp, mci);
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
         // Configure MCU mailbox AXI users before locking
@@ -271,7 +258,7 @@ impl BootFlow for ColdBoot {
 
         // Verify PK hashes haven't been tampered with after locking
         romtime::println!("[mcu-rom] Verifying production debug unlock PK hashes");
-        if let Err(err) = verify_prod_debug_unlock_pk_hash(mci, fuses) {
+        if let Err(err) = verify_prod_debug_unlock_pk_hash(mci, otp) {
             romtime::println!("[mcu-rom] PK hash verification failed");
             fatal_error(err);
         }
@@ -328,7 +315,6 @@ impl BootFlow for ColdBoot {
                 let dot_blob: DotBlob = transmute!(dot_blob);
                 if let Err(err) = device_ownership_transfer::dot_flow(
                     env,
-                    fuses,
                     &dot_fuses,
                     &dot_blob,
                     params
@@ -419,7 +405,7 @@ impl BootFlow for ColdBoot {
             };
 
             romtime::println!("[mcu-rom] Verifying firmware header");
-            if !image_verifier.verify_header(header, fuses) {
+            if !image_verifier.verify_header(header, &env.otp) {
                 romtime::println!("Firmware header verification failed; halting");
                 fatal_error(McuError::ROM_COLD_BOOT_HEADER_VERIFY_ERROR);
             }

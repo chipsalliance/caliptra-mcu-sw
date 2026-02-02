@@ -44,8 +44,7 @@ pub enum McuRomBootStatus {
 
     // OTP and Fuse Operations
     OtpControllerInitialized = OTP_FUSE_OPERATIONS_BASE,
-    FusesReadFromOtp = OTP_FUSE_OPERATIONS_BASE + 1,
-    WatchdogConfigured = OTP_FUSE_OPERATIONS_BASE + 2,
+    WatchdogConfigured = OTP_FUSE_OPERATIONS_BASE + 1,
 
     // Caliptra Setup Statuses
     CaliptraBootGoAsserted = CALIPTRA_SETUP_BASE,

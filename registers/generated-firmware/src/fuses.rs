@@ -42,18 +42,6 @@ pub struct Fuses {
     /// Vendor non-secret production partition.
     #[zeroize(skip)]
     pub vendor_non_secret_prod_partition: [u8; 520],
-
-    /// Lifecycle partition.
-    /// This contains lifecycle transition count and state. This partition
-    /// cannot be locked since the life cycle state needs to advance to RMA
-    /// in-field. Note that while this partition is not marked secret, it
-    /// is not readable nor writeable via the DAI. Only the LC controller
-    /// can access this partition, and even via the LC controller it is not
-    /// possible to read the raw manufacturing life cycle state in encoded
-    /// form, since that encoding is considered a netlist secret. The LC
-    /// controller only exposes a decoded version of this state.
-    #[zeroize(skip)]
-    pub life_cycle: [u8; 88],
 }
 impl Fuses {
     pub fn cptra_ss_manuf_debug_unlock_token(&self) -> &[u8] {
@@ -503,12 +491,6 @@ impl Fuses {
     pub fn cptra_ss_vendor_specific_non_secret_fuse_15(&self) -> &[u8] {
         &self.vendor_non_secret_prod_partition[480..512]
     }
-    pub fn lc_transition_cnt(&self) -> &[u8] {
-        &self.life_cycle[0..48]
-    }
-    pub fn lc_state(&self) -> &[u8] {
-        &self.life_cycle[48..88]
-    }
 }
 impl Default for Fuses {
     fn default() -> Self {
@@ -523,7 +505,6 @@ impl Default for Fuses {
             vendor_revocations_prod_partition: [0; 216],
             vendor_secret_prod_partition: [0; 520],
             vendor_non_secret_prod_partition: [0; 520],
-            life_cycle: [0; 88],
         }
     }
 }
