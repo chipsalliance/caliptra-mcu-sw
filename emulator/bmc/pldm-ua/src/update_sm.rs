@@ -57,6 +57,7 @@ statemachine! {
         ReadyXfer + SendUpdateComponent / on_send_update_component = ReadyXfer,
         ReadyXfer + UpdateComponentResponse(pldm_packet::update_component::UpdateComponentResponse) / on_update_component_response = ReadyXfer,
         ReadyXfer + StartDownload / on_start_download = Download,
+        ReadyXfer + RequestFirmwareData(pldm_packet::request_fw_data::RequestFirmwareDataRequest) / on_request_firmware_from_ready_xfer = Download,
         ReadyXfer + CancelUpdateComponent  / on_stop_update = Idle,
         ReadyXfer + ActivateFirmware / on_activate_firmware = Activate,
 
@@ -624,6 +625,21 @@ pub trait StateMachineActions {
         ctx.transferred_bytes = 0;
         ctx.transfer_start_time = None;
         Ok(())
+    }
+
+    /// Handle RequestFirmwareData when state is ReadyXfer.
+    /// This can happen when the device responds to UpdateComponent and immediately
+    /// sends RequestFirmwareData before the UA has processed the StartDownload event.
+    fn on_request_firmware_from_ready_xfer(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+        request: pldm_packet::request_fw_data::RequestFirmwareDataRequest,
+    ) -> Result<(), ()> {
+        // First, perform the download initialization (same as on_start_download)
+        ctx.transferred_bytes = 0;
+        ctx.transfer_start_time = None;
+        // Then handle the firmware request
+        self.on_request_firmware(ctx, request)
     }
 
     fn on_request_firmware(
@@ -1270,6 +1286,7 @@ impl<T: StateMachineActions, S: PldmSocket + Send + 'static> StateMachineContext
         on_start_download() -> Result<(),()>,
         on_update_component_response(response : pldm_packet::update_component::UpdateComponentResponse) -> Result<(),()>,
         on_request_firmware(request: pldm_packet::request_fw_data::RequestFirmwareDataRequest) -> Result<(),()>,
+        on_request_firmware_from_ready_xfer(request: pldm_packet::request_fw_data::RequestFirmwareDataRequest) -> Result<(),()>,
         on_transfer_complete_request(request: pldm_packet::transfer_complete::TransferCompleteRequest) -> Result<(),()>,
         on_transfer_fail() -> Result<(),()>,
         on_transfer_success() -> Result<(),()>,
