@@ -8,7 +8,7 @@ use super::{
     run_command, run_command_with_output,
     utils::{
         build_base_docker_command, build_caliptra_firmware, caliptra_sw_workspace_root,
-        download_bitstream_pdi, rsync_file, run_test_suite,
+        check_ssh_access, download_bitstream_pdi, rsync_file, run_test_suite,
     },
     ActionHandler, BuildArgs, BuildTestArgs, TestArgs,
 };
@@ -65,6 +65,7 @@ impl<'a> Configuration {
     }
 
     pub fn from_cmd(target_host: Option<&str>) -> Result<Self> {
+        check_ssh_access(target_host)?;
         let cache_contents = run_command_with_output(target_host, "cat /dev/shm/fpga-config")?;
         let cache_contents = cache_contents.trim_end();
         Self::from_cache(cache_contents)
