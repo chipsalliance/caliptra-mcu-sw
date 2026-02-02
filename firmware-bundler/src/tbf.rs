@@ -34,9 +34,18 @@ const BASE_PERMISSIONS: &[(u32, u32)] = &[
 pub fn create_tbf_header(binary: &Binary) -> Result<TbfHeader> {
     let permissions = BASE_PERMISSIONS.to_vec();
 
+    // If the min ram size is not defined, set it to 0.  This is likely a sizing build, so the
+    // minimum ram size is being determined.
+    let min_ram_size = binary
+        .data_mem
+        .as_ref()
+        .map(|d| d.size)
+        .unwrap_or_default()
+        .try_into()?;
+
     let mut tbf = TbfHeader::new();
     tbf.create(
-        binary.data_mem()?.size.try_into()?,
+        min_ram_size,
         0,
         binary.name.clone(),
         None,

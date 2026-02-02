@@ -57,6 +57,12 @@ pub fn bundle(manifest: &Manifest, output: &BuildOutput, common: &Common) -> Res
         runtime.extend(app.into_iter());
     }
 
+    // Firmware validated by Caliptra is required to be 4 byte aligned.
+    let aligned_bin_len = runtime.len().next_multiple_of(4);
+    if aligned_bin_len != runtime.len() {
+        runtime.resize(aligned_bin_len, 0);
+    }
+
     let runtime_file = binary_dir.join(format!("runtime-{}.bin", &manifest.platform.name));
     std::fs::write(runtime_file, runtime).map_err(|e| e.into())
 }

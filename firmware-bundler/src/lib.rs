@@ -83,6 +83,18 @@ fn dynamically_size(
     let maximal_output = build::build(manifest, &maximal_build_definition, common, build)?;
     let sizes = size::sizes(&maximal_output)?;
 
+    if let (Some(rom), Some(dccm)) = (manifest.rom.as_mut(), &manifest.platform.dccm) {
+        rom.exec_mem = Some(AllocationRequest {
+            size: manifest.platform.rom.size,
+            alignment: None,
+        });
+
+        rom.data_mem = Some(AllocationRequest {
+            size: dccm.size,
+            alignment: None,
+        });
+    }
+
     // Update the kernels memory requirments.
     manifest.kernel.exec_mem = Some(AllocationRequest {
         size: sizes.kernel.instructions.next_multiple_of(ALIGNMENT),
@@ -98,7 +110,8 @@ fn dynamically_size(
         .apps
         .iter_mut()
         .zip(sizes.apps)
-        .try_for_each(|(manifest_app, size_app)| {
+        .zip(maximal_build_definition.apps)
+        .try_for_each(|((manifest_app, size_app), built_app)| {
             // As a sanity test ensure we are talking about the same binary.  Each round iterates
             // through the apps in the same order, so this should always succeed.
             if manifest_app.name != size_app.name {
@@ -109,8 +122,11 @@ fn dynamically_size(
                 );
             }
 
+            let header_len = built_app.header.generate()?.get_ref().len();
             manifest_app.exec_mem = Some(AllocationRequest {
-                size: size_app.instructions.next_multiple_of(ALIGNMENT),
+                // Account for the header length, which is placed within the flash block, but not
+                // accounted for by the instruction count.
+                size: (size_app.instructions + header_len as u64).next_multiple_of(ALIGNMENT),
                 alignment: None,
             });
 

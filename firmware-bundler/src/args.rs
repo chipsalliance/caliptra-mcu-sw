@@ -10,7 +10,7 @@ use clap::{Args, Subcommand};
 use crate::{manifest::Manifest, utils};
 
 /// Arguments common among all subcommands.
-#[derive(Args, Debug, Clone)]
+#[derive(Args, Default, Debug, Clone)]
 pub struct Common {
     /// The manifest file describing the platform to be deployed to, and which binaries to
     /// deploy to it.
