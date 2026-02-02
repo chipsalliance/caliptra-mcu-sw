@@ -85,6 +85,15 @@ pub struct BuildArgs {
     pub features: Option<String>,
 }
 
+/// Arguments required for commands which execute the bundle step of the bundle process.
+#[derive(Args, Default, Debug, Clone)]
+pub struct BundleArgs {
+    /// The name to give the bundled runtime binary output by the bundle step.  A file with the
+    /// given name will be placed in the `<workspace>/target/<target-tuple>/release` directory.
+    #[arg(long)]
+    pub bundle_name: Option<String>,
+}
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum Commands {
     /// Build the collection of binaries associated with a firmware bundle.  This will not bundle
@@ -112,5 +121,8 @@ pub enum Commands {
 
         #[command(flatten)]
         build: BuildArgs,
+
+        #[command(flatten)]
+        bundle: BundleArgs,
     },
 }

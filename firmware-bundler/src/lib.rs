@@ -40,9 +40,14 @@ use crate::args::Commands;
 pub fn execute(cmd: Commands) -> Result<()> {
     match cmd {
         Commands::Build { common, ld, build } => build_step(&common, &ld, &build).map(|_| ()),
-        Commands::Bundle { common, ld, build } => {
+        Commands::Bundle {
+            common,
+            ld,
+            build,
+            bundle,
+        } => {
             let (manifest, output) = build_step(&common, &ld, &build)?;
-            bundle::bundle(&manifest, &output, &common)?;
+            bundle::bundle(&manifest, &output, &common, &bundle)?;
             Ok(())
         }
     }

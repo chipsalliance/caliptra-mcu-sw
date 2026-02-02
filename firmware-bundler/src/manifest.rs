@@ -73,7 +73,8 @@ impl Manifest {
 /// A description of the platform to deploy applications to.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Platform {
-    /// The name of this platform.  This is used for various artifact names.
+    /// The name of this platform.  This may be used the bundle artifact name, if not specified on
+    /// the command line.
     pub name: String,
 
     /// The rustc target tuple this platform should be built with.
