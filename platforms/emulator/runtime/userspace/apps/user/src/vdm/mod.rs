@@ -12,6 +12,8 @@ use libsyscall_caliptra::system::System;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
+#[cfg(feature = "test-mctp-vdm-cmds")]
+use static_cell::StaticCell;
 
 #[embassy_executor::task]
 pub async fn vdm_task() {
@@ -29,8 +31,16 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
 
     #[cfg(feature = "test-mctp-vdm-cmds")]
     {
-        let handler = cmd_handler_mock::NonCryptoCmdHandlerMock::default();
-        let mut transport = mctp_vdm_lib::transport::MctpVdmTransport::default();
+        // Use static storage to ensure 'static lifetime for handler, transport, and cmd_interface.
+        static HANDLER: StaticCell<cmd_handler_mock::NonCryptoCmdHandlerMock> = StaticCell::new();
+        static TRANSPORT: StaticCell<mctp_vdm_lib::transport::MctpVdmTransport> = StaticCell::new();
+        static CMD_INTERFACE: StaticCell<mctp_vdm_lib::cmd_interface::CmdInterface<'static>> =
+            StaticCell::new();
+
+        let handler: &'static cmd_handler_mock::NonCryptoCmdHandlerMock =
+            HANDLER.init(cmd_handler_mock::NonCryptoCmdHandlerMock::default());
+        let transport: &'static mut mctp_vdm_lib::transport::MctpVdmTransport =
+            TRANSPORT.init(mctp_vdm_lib::transport::MctpVdmTransport::default());
 
         // Check if the transport driver exists
         if !transport.exists() {
@@ -42,18 +52,22 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
             return Ok(());
         }
 
-        let mut vdm_service = mctp_vdm_lib::daemon::VdmService::init(
-            &handler,
-            &mut transport,
-            crate::EXECUTOR.get().spawner(),
-        );
+        // Create the command interface with static storage
+        let cmd_interface: &'static mut mctp_vdm_lib::cmd_interface::CmdInterface<'static> =
+            CMD_INTERFACE.init(mctp_vdm_lib::cmd_interface::CmdInterface::new(
+                transport, handler,
+            ));
+
         writeln!(
             console_writer,
             "Starting MCTP VDM service for integration tests..."
         )
         .unwrap();
 
-        if let Err(e) = vdm_service.start().await {
+        if let Err(e) = mctp_vdm_lib::daemon::spawn_vdm_responder(
+            crate::EXECUTOR.get().spawner(),
+            cmd_interface,
+        ) {
             writeln!(
                 console_writer,
                 "USER_APP: Error starting MCTP VDM service: {:?}",

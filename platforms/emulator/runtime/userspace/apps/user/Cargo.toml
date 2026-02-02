@@ -36,6 +36,7 @@ pldm-common.workspace = true
 pldm-lib.workspace = true
 romtime.workspace = true
 spdm-lib.workspace = true
+static_cell.workspace = true
 zerocopy.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
@@ -44,6 +45,7 @@ libtock_unittest.workspace = true
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
 embedded-alloc.workspace = true
+portable-atomic = { workspace = true, features = ["critical-section"] }
 
 [features]
 default = []
