@@ -14,6 +14,7 @@ fpga_realtime = [
 
 [dependencies]
 caliptra-api-types.workspace = true
+caliptra-auth-man-types.workspace = true
 caliptra-builder.workspace = true
 anyhow.workspace = true
 cargo_metadata.workspace = true
@@ -24,6 +25,7 @@ caliptra-hw-model = { workspace = true, optional = true }
 clap.workspace = true
 clap-num.workspace = true
 elf.workspace = true
+hex.workspace = true
 mcu-builder.workspace = true
 mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true
@@ -44,6 +46,7 @@ sudo.workspace = true
 tempfile.workspace = true
 toml.workspace = true
 walkdir.workspace = true
+zerocopy.workspace = true
 caliptra-bitstream-downloader.workspace = true
 
 [build-dependencies]

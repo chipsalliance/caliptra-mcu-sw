@@ -179,6 +179,7 @@ impl CaliptraBuilder {
             // exec_bit must be >= 2 (bits 0 and 1 are reserved by Caliptra)
             ImageCfg {
                 image_id: MCU_RT_IDENTIFIER,
+                component_id: MCU_RT_IDENTIFIER,
                 exec_bit: 2,
                 // MCU staging address in SRAM region (FPGA memory map)
                 staging_addr: mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset as u64,
@@ -199,6 +200,7 @@ impl CaliptraBuilder {
                 lo: cfg.staging_addr as u32,
                 hi: (cfg.staging_addr >> 32) as u32,
             },
+            component_id: cfg.component_id,
             ..Default::default()
         })
     }
@@ -216,6 +218,7 @@ impl CaliptraBuilder {
         Ok(AuthManifestImageMetadata {
             fw_id: image_cfg.image_id,
             flags: flags.0,
+            component_id: image_cfg.component_id,
             digest,
             image_staging_address: Addr64 {
                 lo: image_cfg.staging_addr as u32,
@@ -520,6 +523,7 @@ pub struct ImageCfg {
     pub staging_addr: u64,
     pub image_id: u32,
     pub exec_bit: u32,
+    pub component_id: u32,
     pub feature: String,
 }
 impl Default for ImageCfg {
@@ -531,6 +535,7 @@ impl Default for ImageCfg {
             image_id: 0,
             // exec_bit must be >= 2 (bits 0 and 1 are reserved by Caliptra)
             exec_bit: 2,
+            component_id: 0,
             feature: String::new(),
         }
     }
@@ -541,9 +546,9 @@ impl FromStr for ImageCfg {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split(',').collect();
-        if parts.len() != 6 {
+        if parts.len() != 7 {
             return Err(
-                "Expected format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<feature>".into(),
+                "Expected format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>".into(),
             );
         }
 
@@ -554,7 +559,8 @@ impl FromStr for ImageCfg {
             .map_err(|e: ParseIntError| e.to_string())?;
         let image_id = parts[3].parse::<u32>().map_err(|e| e.to_string())?;
         let exec_bit = parts[4].parse::<u32>().map_err(|e| e.to_string())?;
-        let feature = parts[5].to_string();
+        let component_id = parts[5].parse::<u32>().map_err(|e| e.to_string())?;
+        let feature = parts[6].to_string();
 
         Ok(ImageCfg {
             path,
@@ -562,6 +568,7 @@ impl FromStr for ImageCfg {
             staging_addr,
             image_id,
             exec_bit,
+            component_id,
             feature,
         })
     }

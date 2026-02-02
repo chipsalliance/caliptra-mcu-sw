@@ -377,12 +377,6 @@ mod test {
         let mut new_options = opts.clone();
         // Change the load address in the SOC manifest to an invalid one
         new_options.soc_images[0].load_addr = 0xffff; // Invalid load address
-        new_options
-            .builder
-            .as_mut()
-            .unwrap()
-            .replace_manifest_config(new_options.soc_images.clone(), None)
-            .unwrap();
 
         let soc_manifest = new_options
             .builder
@@ -619,6 +613,77 @@ mod test {
         assert_ne!(0, test);
     }
 
+    fn test_one_component_id_for_all(opts: &TestOptions) {
+        let mut new_options = opts.clone();
+
+        // First soc_image metadata
+        let first_soc_image_metadata = new_options.soc_images[0].clone();
+        // Set all soc_images to have the same component ID as the first one
+        for soc_image in new_options.soc_images.iter_mut() {
+            soc_image.component_id = first_soc_image_metadata.component_id;
+            soc_image.path = first_soc_image_metadata.path.clone();
+        }
+
+        new_options
+            .builder
+            .as_mut()
+            .unwrap()
+            .replace_manifest_config(new_options.soc_images.clone(), None)
+            .unwrap();
+
+        // Replace the SoC Manifest in the PLDM package
+        let flash_offset = opts
+            .partition_table
+            .as_ref()
+            .and_then(|pt| pt.get_active_partition().1.as_ref().map(|p| p.offset))
+            .unwrap_or(0);
+
+        // Same image for all SOCs
+        let soc_images_paths =
+            vec![new_options.soc_images_paths[0].clone(); new_options.soc_images.len()];
+
+        let new_soc_manifest = new_options
+            .builder
+            .as_mut()
+            .unwrap()
+            .get_soc_manifest(None)
+            .ok();
+
+        // Create a flash image with the updated SOC manifest
+        let (_, flash_image_path) = create_flash_image(
+            new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
+            new_soc_manifest.clone(),
+            Some(opts.runtime.clone()),
+            opts.partition_table.clone(),
+            flash_offset,
+            soc_images_paths.clone(),
+        );
+        new_options.primary_flash_image_path = if opts.primary_flash_image_path.is_some() {
+            Some(flash_image_path)
+        } else {
+            None
+        };
+        new_options.pldm_fw_pkg_path = if opts.pldm_fw_pkg_path.is_some() {
+            let (_, flash_image_path) = create_flash_image(
+                new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
+                new_soc_manifest.clone(),
+                Some(opts.runtime.clone()),
+                None,
+                0,
+                soc_images_paths.clone(),
+            );
+            let flash_image = std::fs::read(flash_image_path).expect("Failed to read flash image");
+            let pldm_manifest =
+                get_streaming_boot_pldm_fw_manifest(&get_device_uuid(), &flash_image);
+            Some(create_pldm_fw_package(&pldm_manifest))
+        } else {
+            None
+        };
+
+        let test = run_runtime_with_options(&new_options);
+        assert_eq!(0, test);
+    }
+
     // Helper to create test options for soc boot tests
     fn create_soc_boot_options(is_flash_based_boot: bool) -> TestOptions {
         env::set_var(
@@ -719,6 +784,7 @@ mod test {
                 path: soc_images_paths[0].clone(),
                 load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
                 image_id: 4096,
+                component_id: 4096,
                 exec_bit: 5,
                 ..Default::default()
             },
@@ -728,6 +794,7 @@ mod test {
                     + MCU_MBOX_SRAM1_OFFSET
                     + soc_image_fw_1.len() as u64,
                 image_id: 4097,
+                component_id: 4097,
                 exec_bit: 6,
                 ..Default::default()
             },
@@ -825,6 +892,7 @@ mod test {
                 path: soc_images_paths[0].clone(),
                 load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
                 image_id: 4096,
+                component_id: 4096,
                 exec_bit: 5,
                 ..Default::default()
             },
@@ -834,6 +902,7 @@ mod test {
                     + MCU_MBOX_SRAM1_OFFSET
                     + soc_image_fw_1.len() as u64,
                 image_id: 4097,
+                component_id: 4097,
                 exec_bit: 6,
                 ..Default::default()
             },
@@ -914,7 +983,7 @@ mod test {
             feature,
             rom: mcu_rom,
             runtime: test_runtime.clone(),
-            i3c_port: i3c_port.into(),
+            i3c_port,
             soc_images: soc_images.clone(),
             soc_images_paths: soc_images_paths.clone(),
             primary_flash_image_path: flash_image_path.clone(),
@@ -976,6 +1045,14 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_soc_boot_options(true);
         test_boot_partition_table_invalid_checksum(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_flash_soc_boot_one_component_id_for_all() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        test_one_component_id_for_all(&opts);
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
@@ -1066,6 +1143,14 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_soc_boot_options(false);
         test_soc_manifest_good_svn(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_streaming_soc_boot_one_component_id_for_all() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(false);
+        test_one_component_id_for_all(&opts);
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 

@@ -5822,6 +5822,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "caliptra-api-types",
+ "caliptra-auth-man-types",
  "caliptra-bitstream-downloader",
  "caliptra-builder",
  "caliptra-hw-model",
@@ -5832,6 +5833,7 @@ dependencies = [
  "clap 4.5.51",
  "clap-num",
  "elf",
+ "hex",
  "mcu-builder",
  "mcu-config-emulator",
  "mcu-config-fpga",
@@ -5852,6 +5854,7 @@ dependencies = [
  "tempfile",
  "toml 0.8.23",
  "walkdir",
+ "zerocopy",
 ]
 
 [[package]]

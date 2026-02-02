@@ -134,6 +134,7 @@ fn create_default_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
             path: soc_image_path_1.clone(),
             load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
             image_id: 4096,
+            component_id: 4096,
             exec_bit: 5,
             ..Default::default()
         },
@@ -141,6 +142,7 @@ fn create_default_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
             path: soc_image_path_2.clone(),
             load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + soc_image_fw_1.len() as u64,
             image_id: 4097,
+            component_id: 4097,
             exec_bit: 6,
             ..Default::default()
         },

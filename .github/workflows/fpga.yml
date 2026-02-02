@@ -138,7 +138,7 @@ jobs:
           cargo xtask-fpga all-build --platform fpga \
             --rom-features "core_test" \
             --runtime-features "test-i3c-simple,test-i3c-constant-writes,test-mctp-capsule-loopback,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming,test-mcu-mbox-usermode,test-mcu-mbox-cmds,test-exit-immediately" \
-            --mcu_cfg mcu,0x0,$MCU_STAGING_ADDR,2,2,test-fpga-flash-ctrl \
+            --mcu_cfg mcu,0x0,$MCU_STAGING_ADDR,2,2,2,test-fpga-flash-ctrl \
             --separate-runtimes
           sccache --show-stats
 

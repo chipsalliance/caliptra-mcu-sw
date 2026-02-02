@@ -5,7 +5,9 @@ use flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, FLASH_IMAGE_MAGIC_NUMBER, HEADER_VERSION,
     MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
 };
-use mcu_config_emulator::flash::PartitionTable;
+use mcu_config_emulator::flash::{
+    PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
+};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error, ErrorKind, Read, Seek, Write};
 use std::mem::offset_of;
@@ -95,6 +97,19 @@ impl<'a> FlashImage<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn verify_flash_partition_table(image: &[u8]) -> Result<PartitionTable> {
+        if image.len() < std::mem::size_of::<PartitionTable>() {
+            bail!("Image too small to contain the partition table.");
+        }
+        let partition_table =
+            PartitionTable::read_from_bytes(&image[..std::mem::size_of::<PartitionTable>()])
+                .map_err(|_| anyhow!("Partition table not detected"))?;
+        if !partition_table.verify_checksum(&StandAloneChecksumCalculator {}) {
+            return Err(anyhow!("Partition table not detected"));
+        }
+        Ok(partition_table)
     }
 
     pub fn verify_flash_image(image: &[u8]) -> Result<()> {
@@ -322,7 +337,17 @@ pub fn flash_image_verify(image_file_path: &str, offset: u32) -> Result<()> {
         )
     })?;
     file.read_to_end(&mut data)?;
-    FlashImage::verify_flash_image(&data[offset as usize..])
+    // Check if flash image has partition table
+    match FlashImage::verify_flash_partition_table(&data[offset as usize..]) {
+        Ok(partition_table) => {
+            println!("Partition table found: {:?}", partition_table);
+            println!("Partition A (offset {}):", IMAGE_A_PARTITION.offset);
+            FlashImage::verify_flash_image(&data[IMAGE_A_PARTITION.offset..])?;
+            println!("Partition B (offset {}):", IMAGE_B_PARTITION.offset);
+            FlashImage::verify_flash_image(&data[IMAGE_B_PARTITION.offset..])
+        }
+        Err(_) => FlashImage::verify_flash_image(&data[offset as usize..]),
+    }
 }
 
 pub fn write_partition_table(

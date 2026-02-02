@@ -79,12 +79,17 @@ impl<D: DMAMapping + 'static> FlashImageLoader<D> {
 #[async_trait(?Send)]
 impl<D: DMAMapping + 'static> ImageLoader for FlashImageLoader<D> {
     async fn load_and_authorize(&self, image_id: u32) -> Result<(), ErrorCode> {
-        let load_address =
-            get_image_load_address(&self.mailbox, image_id, self.dma_mapping).await?;
+        let image_info = get_image_info(&self.mailbox, image_id).await?;
+        let load_address = convert_dma_cptra_addr_to_mcu_addr(
+            self.dma_mapping,
+            ((image_info.image_load_address_high as u64) << 32)
+                | (image_info.image_load_address_low as u64),
+        )?;
         let mut header: [u8; core::mem::size_of::<FlashHeader>()] =
             [0; core::mem::size_of::<FlashHeader>()];
         flash_client::flash_read_header(&self.flash, &mut header).await?;
-        let (offset, size) = flash_client::flash_read_toc(&self.flash, &header, image_id).await?;
+        let (offset, size) =
+            flash_client::flash_read_toc(&self.flash, &header, image_info.component_id).await?;
         flash_client::flash_load_image(
             &self.flash,
             load_address,
@@ -166,8 +171,12 @@ impl<'a, D: DMAMapping + 'static> PldmImageLoader<'a, D> {
 #[async_trait(?Send)]
 impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
     async fn load_and_authorize(&self, image_id: u32) -> Result<(), ErrorCode> {
-        let load_address =
-            get_image_load_address(&self.mailbox, image_id, self.dma_mapping).await?;
+        let image_info = get_image_info(&self.mailbox, image_id).await?;
+        let load_address = convert_dma_cptra_addr_to_mcu_addr(
+            self.dma_mapping,
+            ((image_info.image_load_address_high as u64) << 32)
+                | (image_info.image_load_address_low as u64),
+        )?;
 
         let result: Result<(), ErrorCode> = {
             pldm_client::initialize_pldm(
@@ -177,7 +186,7 @@ impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
                 self.dma_mapping,
             )
             .await?;
-            let (offset, size) = pldm_client::pldm_download_toc(image_id).await?;
+            let (offset, size) = pldm_client::pldm_download_toc(image_info.component_id).await?;
             pldm_client::pldm_download_image(load_address, offset, size).await?;
             authorize_image(&self.mailbox, image_id, size).await
         };
@@ -190,11 +199,16 @@ impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
     }
 }
 
-async fn get_image_load_address(
-    mailbox: &Mailbox,
-    image_id: u32,
+fn convert_dma_cptra_addr_to_mcu_addr(
     dma_mapping: &impl DMAMapping,
+    caliptra_axi_addr: u64,
 ) -> Result<AXIAddr, ErrorCode> {
+    dma_mapping
+        .cptra_axi_to_mcu_axi(caliptra_axi_addr)
+        .map_err(|_| ErrorCode::Fail)
+}
+
+async fn get_image_info(mailbox: &Mailbox, image_id: u32) -> Result<GetImageInfoResp, ErrorCode> {
     let mut req = GetImageInfoReq {
         hdr: MailboxReqHeader::default(),
         fw_id: image_id.to_le_bytes(),
@@ -218,14 +232,15 @@ async fn get_image_load_address(
     }
 
     match GetImageInfoResp::ref_from_bytes(response_buffer) {
-        Ok(resp) => {
-            let caliptra_axi_addr =
-                ((resp.image_load_address_high as u64) << 32) | resp.image_load_address_low as u64;
-
-            dma_mapping
-                .cptra_axi_to_mcu_axi(caliptra_axi_addr)
-                .map_err(|_| ErrorCode::Fail)
-        }
+        Ok(resp) => Ok(GetImageInfoResp {
+            component_id: resp.component_id,
+            flags: resp.flags,
+            image_load_address_high: resp.image_load_address_high,
+            image_load_address_low: resp.image_load_address_low,
+            image_staging_address_high: resp.image_staging_address_high,
+            image_staging_address_low: resp.image_staging_address_low,
+            ..Default::default()
+        }),
         Err(_) => Err(ErrorCode::Fail),
     }
 }
