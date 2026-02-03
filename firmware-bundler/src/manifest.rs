@@ -2,7 +2,7 @@
 
 //! The manifest required for bundling a set of applications for a particular platform.
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use serde::{Deserialize, Serialize};
 
 /// The configuration for this distribution.  It includes both the platform and binaries to be
@@ -33,8 +33,10 @@ impl Manifest {
     pub fn validate(&self) -> Result<()> {
         const APP_RAM_ALIGNMENT: u64 = 4096;
 
+        let dynamic_sizing = self.platform.dynamic_sizing();
+
         if let Some(rom) = &self.rom {
-            rom.validate()?;
+            rom.validate(dynamic_sizing)?;
 
             if self.platform.dccm.is_none() {
                 bail!("ROM Applications require DCCM to be defined");
@@ -49,17 +51,19 @@ impl Manifest {
             );
         }
 
-        if (self.kernel.data_mem.size % APP_RAM_ALIGNMENT) != 0 {
-            bail!(
-                "Kernel RAM size ({}) is not aligned with App memory offset requirement ({})",
-                self.kernel.data_mem.size,
-                APP_RAM_ALIGNMENT
-            );
+        if let Some(data_mem) = &self.kernel.data_mem {
+            if (data_mem.size % APP_RAM_ALIGNMENT) != 0 {
+                bail!(
+                    "Kernel RAM size ({}) is not aligned with App memory offset requirement ({})",
+                    data_mem.size,
+                    APP_RAM_ALIGNMENT
+                );
+            }
         }
 
-        self.kernel.validate()?;
+        self.kernel.validate(dynamic_sizing)?;
         for app in &self.apps {
-            app.validate()?;
+            app.validate(dynamic_sizing)?;
         }
 
         Ok(())
@@ -74,6 +78,16 @@ pub struct Platform {
 
     /// The rustc target tuple this platform should be built with.
     pub tuple: String,
+
+    /// Instead of utilizing budgets for applications specified within the Manifest, dynamically
+    /// allocate memory for runtime binaries based on their actual sizes.  This requires a two pass
+    /// build process, the first to determine the size of the binaries, and the second to build the
+    /// binaries with an appropriate linker file matching their allocations.
+    ///
+    /// If this option is specified the `exec_mem` and `data_mem` sections must not be specified.
+    /// The `stack` section must be specified for each application, as it will not be able to fall
+    /// back to the `data_mem` specification.
+    pub dynamic_sizing: Option<bool>,
 
     /// The alignment all binaries should use by default.  If not specified, this will be assume to
     /// be 8 bytes.
@@ -104,6 +118,11 @@ pub struct Platform {
 }
 
 impl Platform {
+    /// Retrieve the value of dynamic resizing.  If not specified it is false.
+    pub fn dynamic_sizing(&self) -> bool {
+        self.dynamic_sizing.unwrap_or_default()
+    }
+
     /// Retrieve the default alignment of the platform.  If not specified in the toml file, it is 8
     /// bytes.
     pub fn default_alignment(&self) -> u64 {
@@ -168,11 +187,11 @@ pub struct Binary {
 
     /// The amount of instruction memory to request allocation for this binary.  Whether this will
     /// be from ROM or ITCM will depend on the field this binary populates.
-    pub exec_mem: AllocationRequest,
+    pub exec_mem: Option<AllocationRequest>,
 
     /// The amount of RAM the code should be able to allocate for uses like the data, bss, stack,
     /// grant, and other arbitrary code blocks.
-    pub data_mem: AllocationRequest,
+    pub data_mem: Option<AllocationRequest>,
 
     /// The amount of stack the application should have.  This memory will exist in the ram segment
     /// and thus must be equal to or smaller, than that value.
@@ -189,25 +208,88 @@ pub struct Binary {
 }
 
 impl Binary {
+    /// Retrieve the exec memory for the binary.  If not defined an error is returned.
+    pub fn exec_mem(&self) -> Result<AllocationRequest> {
+        // Note: The application should have already verified the exec memory is specified prior to
+        // its utilization, so the error case should not be triggered.
+        self.exec_mem
+            .clone()
+            .ok_or_else(|| anyhow!("Binary {} doesn't have exec mem", self.name))
+    }
+
+    /// Retrieve the data memory for the binary.  If not defined an error is returned.
+    pub fn data_mem(&self) -> Result<AllocationRequest> {
+        // Note: The application should have already verified the data memory is specified prior to
+        // its utilization, so the error case should not be triggered.
+        self.data_mem
+            .clone()
+            .ok_or_else(|| anyhow!("Binary {} doesn't have data mem", self.name))
+    }
+
     /// Retrieve the stack field of the `Binary` structure.  If not defined the default is
     /// equivalent to the specified RAM value.
-    pub fn stack(&self) -> u64 {
-        self.stack.unwrap_or(self.data_mem.size)
+    pub fn stack(&self) -> Result<u64> {
+        match &self.stack {
+            Some(s) => Ok(*s),
+            None => self.data_mem().map(|d| d.size),
+        }
     }
 
     /// Verify that a `Binary` matches its semantic requirements.
     ///
     /// This could fail if the binary is misconfigured for any of the following reasons:
     ///     * The stack/estack exceed the RAM specification.
-    pub fn validate(&self) -> Result<()> {
-        if self.stack() + self.exception_stack > self.data_mem.size {
-            bail!(
+    ///     * The exec or data memory are incorrectly populated in regard to dynamic sizing.
+    pub fn validate(&self, dynamic_sizing: bool) -> Result<()> {
+        if dynamic_sizing {
+            if self.exec_mem.is_some() {
+                bail!(
+                    "Binary {} has exec mem specified and is using dynamic sizing",
+                    self.name
+                );
+            }
+
+            if self.data_mem.is_some() {
+                bail!(
+                    "Binary {} has data mem specified and is using dynamic sizing",
+                    self.name
+                );
+            }
+
+            if self.stack.is_none() {
+                bail!(
+                    "Binary {} has no stack specified and is using dyanmic sizing",
+                    self.name
+                );
+            }
+        } else {
+            if self.exec_mem.is_none() {
+                bail!(
+                    "Binary {} does not have exec mem specified and is not using dynamic sizing",
+                    self.name
+                );
+            }
+
+            if self.data_mem.is_none() {
+                bail!(
+                    "Binary {} does not have data mem specified and is not using dynamic sizing",
+                    self.name
+                );
+            }
+        }
+
+        // If the data mem is specified, verify the stack and exception stack can fit within it.
+        if let Some(data_mem) = &self.data_mem {
+            let stack = self.stack()?;
+            if stack + self.exception_stack > data_mem.size {
+                bail!(
                 "Binary {} ram ({:#x}) is exceeded by stack ({:#x}) and exception stack ({:#x})",
                 self.name,
-                self.data_mem.size,
-                self.stack(),
+                data_mem.size,
+                stack,
                 self.exception_stack
             );
+            }
         }
 
         Ok(())
@@ -224,14 +306,14 @@ impl Binary {
     ) -> Self {
         Binary {
             name: name.to_string(),
-            exec_mem: AllocationRequest {
+            exec_mem: Some(AllocationRequest {
                 size: exec_size,
                 alignment: None,
-            },
-            data_mem: AllocationRequest {
+            }),
+            data_mem: Some(AllocationRequest {
                 size: ram,
                 alignment: None,
-            },
+            }),
             stack,
             exception_stack,
         }
@@ -240,7 +322,7 @@ impl Binary {
 
 #[cfg(test)]
 mod tests {
-    use super::{Binary, Memory};
+    use super::{AllocationRequest, Binary, Memory};
 
     #[test]
     fn memory_consume_with_room() {
@@ -274,34 +356,127 @@ mod tests {
         // When stack is None, it defaults to ram. With exception_stack = 0,
         // stack() + exception_stack == ram, which should pass.
         let binary = Binary::new_for_test("test", 0x100, 0x200, None, 0);
-        assert!(binary.validate().is_ok());
+        assert!(binary.validate(false,).is_ok());
     }
 
     #[test]
     fn binary_validate_explicit_stack_within_ram() {
         // Explicit stack (0x80) + exception_stack (0x40) = 0xC0 < ram (0x200)
         let binary = Binary::new_for_test("test", 0x100, 0x200, Some(0x80), 0x40);
-        assert!(binary.validate().is_ok());
+        assert!(binary.validate(false,).is_ok());
     }
 
     #[test]
     fn binary_validate_stack_exceeds_ram() {
         // Explicit stack (0x300) > ram (0x200), should fail
         let binary = Binary::new_for_test("test", 0x100, 0x200, Some(0x300), 0);
-        assert!(binary.validate().is_err());
+        assert!(binary.validate(false,).is_err());
     }
 
     #[test]
     fn binary_validate_exception_stack_causes_overflow() {
         // stack (0x100) fits, but stack + exception_stack (0x100 + 0x150 = 0x250) > ram (0x200)
         let binary = Binary::new_for_test("test", 0x100, 0x200, Some(0x100), 0x150);
-        assert!(binary.validate().is_err());
+        assert!(binary.validate(false,).is_err());
     }
 
     #[test]
     fn binary_validate_exact_fit() {
         // stack (0x100) + exception_stack (0x100) == ram (0x200), should pass
         let binary = Binary::new_for_test("test", 0x100, 0x200, Some(0x100), 0x100);
-        assert!(binary.validate().is_ok());
+        assert!(binary.validate(false,).is_ok());
+    }
+
+    #[test]
+    fn binary_validate_dynamic_sizing_rejects_exec_mem() {
+        // With dynamic_sizing=true, exec_mem must not be specified
+        let binary = Binary::new_for_test("test", 0x100, 0x200, None, 0);
+        let result = binary.validate(true);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("exec mem specified"));
+    }
+
+    #[test]
+    fn binary_validate_static_sizing_requires_exec_mem() {
+        // With dynamic_sizing=false, exec_mem must be specified
+        let binary = Binary {
+            name: "test".to_string(),
+            exec_mem: None,
+            data_mem: Some(AllocationRequest {
+                size: 0x200,
+                alignment: None,
+            }),
+            stack: None,
+            exception_stack: 0,
+        };
+        let result = binary.validate(false);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("does not have exec mem"));
+    }
+
+    #[test]
+    fn binary_validate_dynamic_sizing_rejects_data_mem() {
+        // With dynamic_sizing=true, data_mem must not be specified
+        let binary = Binary {
+            name: "test".to_string(),
+            exec_mem: None,
+            data_mem: Some(AllocationRequest {
+                size: 0x200,
+                alignment: None,
+            }),
+            stack: None,
+            exception_stack: 0,
+        };
+        let result = binary.validate(true);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("data mem specified"));
+    }
+
+    #[test]
+    fn binary_validate_static_sizing_requires_data_mem() {
+        // With dynamic_sizing=false, data_mem must be specified
+        let binary = Binary {
+            name: "test".to_string(),
+            exec_mem: Some(AllocationRequest {
+                size: 0x100,
+                alignment: None,
+            }),
+            data_mem: None,
+            stack: None,
+            exception_stack: 0,
+        };
+        let result = binary.validate(false);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("does not have data mem"));
+    }
+
+    #[test]
+    fn binary_validate_dynamic_sizing_requires_stack() {
+        // With dynamic_sizing=true, stack must be explicitly specified
+        let binary = Binary {
+            name: "test".to_string(),
+            exec_mem: None,
+            data_mem: None,
+            stack: None,
+            exception_stack: 0,
+        };
+        let result = binary.validate(true);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no stack specified"));
     }
 }

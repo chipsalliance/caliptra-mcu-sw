@@ -26,32 +26,101 @@ pub mod build;
 pub mod bundle;
 pub mod ld;
 pub mod manifest;
+pub mod size;
 pub mod tbf;
 pub(crate) mod utils;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
+use args::{BuildArgs, Common, LdArgs};
+use build::BuildOutput;
+use manifest::{AllocationRequest, Manifest};
 
 use crate::args::Commands;
 
 pub fn execute(cmd: Commands) -> Result<()> {
     match cmd {
-        Commands::Build { common, ld, build } => {
-            let manifest = &common.manifest()?;
-            let build_definition = ld::generate(manifest, &common, &ld)?;
-            let _ = build::build(&common.manifest()?, &build_definition, &common, &build)?;
-            Ok(())
-        }
+        Commands::Build { common, ld, build } => build_step(&common, &ld, &build).map(|_| ()),
         Commands::Bundle { common, ld, build } => {
-            let manifest = common.manifest()?;
-            let build_definition = ld::generate(&manifest, &common, &ld)?;
-            let output = build::build(&manifest, &build_definition, &common, &build)?;
+            let (manifest, output) = build_step(&common, &ld, &build)?;
             bundle::bundle(&manifest, &output, &common)?;
             Ok(())
         }
-        Commands::Generate { common, ld } => {
-            let definition = ld::generate(&common.manifest()?, &common, &ld)?;
-            println!("Build definition: {definition:?}");
-            Ok(())
-        }
     }
+}
+
+/// A utility function to run the logic for a build step.
+fn build_step(common: &Common, ld: &LdArgs, build: &BuildArgs) -> Result<(Manifest, BuildOutput)> {
+    let mut manifest = common.manifest()?;
+
+    if manifest.platform.dynamic_sizing() {
+        dynamically_size(&mut manifest, common, ld, build)?;
+    }
+
+    let build_definition = ld::generate(&manifest, common, ld)?;
+    let build_output = build::build(&manifest, &build_definition, common, build)?;
+    Ok((manifest, build_output))
+}
+
+/// Execute a dynamic sizing pass.  This will build each runtime application with a maximal linker
+/// script, and then determine the size of each applications instruction and data memory.  It will
+/// then update the manifest file to match the minimal size of each applications memory requirement
+/// with alignment to the Tock required 4Kb.
+fn dynamically_size(
+    manifest: &mut Manifest,
+    common: &Common,
+    ld: &LdArgs,
+    build: &BuildArgs,
+) -> Result<()> {
+    // This alignment is derived from Tocks' requirements within the linker script.
+    const ALIGNMENT: u64 = 4096;
+
+    // Generate the maximal linker file, build with it, and then get the size out of the resulting
+    // binary.
+    //
+    // Note: We cannot just build without a linker script, since the application assumes some of
+    // the symbols stated in the linker exist, and won't compile without them.
+    let maximal_build_definition = ld::generate_maximal_link_scripts(manifest, common, ld)?;
+    let maximal_output = build::build(manifest, &maximal_build_definition, common, build)?;
+    let sizes = size::sizes(&maximal_output)?;
+
+    // Update the kernels memory requirments.
+    manifest.kernel.exec_mem = Some(AllocationRequest {
+        size: sizes.kernel.instructions.next_multiple_of(ALIGNMENT),
+        alignment: None,
+    });
+    manifest.kernel.data_mem = Some(AllocationRequest {
+        size: sizes.kernel.data.next_multiple_of(ALIGNMENT),
+        alignment: None,
+    });
+
+    // Update the requirements for each application.
+    manifest
+        .apps
+        .iter_mut()
+        .zip(sizes.apps)
+        .try_for_each(|(manifest_app, size_app)| {
+            // As a sanity test ensure we are talking about the same binary.  Each round iterates
+            // through the apps in the same order, so this should always succeed.
+            if manifest_app.name != size_app.name {
+                bail!(
+                    "Manifest and size application are not aligned ({}, {})",
+                    manifest_app.name,
+                    size_app.name
+                );
+            }
+
+            manifest_app.exec_mem = Some(AllocationRequest {
+                size: size_app.instructions.next_multiple_of(ALIGNMENT),
+                alignment: None,
+            });
+
+            manifest_app.data_mem = Some(AllocationRequest {
+                size: size_app.data.next_multiple_of(ALIGNMENT),
+                alignment: None,
+            });
+
+            Ok(())
+        })?;
+
+    Ok(())
 }
