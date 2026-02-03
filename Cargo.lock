@@ -2921,6 +2921,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
+name = "mctp-vdm-common"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "zerocopy",
+]
+
+[[package]]
+name = "mctp-vdm-lib"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "embassy-executor",
+ "embassy-sync",
+ "embedded-alloc",
+ "external-cmds-common",
+ "libsyscall-caliptra",
+ "libtock_alarm",
+ "libtock_console",
+ "libtock_platform",
+ "libtock_runtime",
+ "libtock_unittest",
+ "libtockasync",
+ "mctp-vdm-common",
+ "zerocopy",
+]
+
+[[package]]
 name = "mcu-builder"
 version = "0.0.0"
 dependencies = [
@@ -3316,6 +3344,7 @@ dependencies = [
  "caliptra-api-types",
  "crc",
  "hex",
+ "mctp-vdm-common",
  "pldm-common",
  "pldm-ua",
  "rand 0.8.5",
@@ -3797,6 +3826,9 @@ name = "portable-atomic"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f84267b20a16ea918e43c6a88433c2d54fa145c92a811b5b047ccbe153674483"
+dependencies = [
+ "critical-section",
+]
 
 [[package]]
 name = "potential_utf"
@@ -4649,6 +4681,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
+name = "static_cell"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0530892bb4fa575ee0da4b86f86c667132a94b74bb72160f58ee5a4afec74c23"
+dependencies = [
+ "portable-atomic",
+]
+
+[[package]]
 name = "string_morph"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4823,6 +4864,7 @@ dependencies = [
  "hmac",
  "lazy_static",
  "log",
+ "mctp-vdm-common",
  "mcu-builder",
  "mcu-config",
  "mcu-config-emulator",
@@ -5360,6 +5402,8 @@ dependencies = [
  "libtock_runtime",
  "libtock_unittest",
  "libtockasync",
+ "mctp-vdm-common",
+ "mctp-vdm-lib",
  "mcu-config",
  "mcu-config-emulator",
  "mcu-config-fpga",
@@ -5371,6 +5415,7 @@ dependencies = [
  "portable-atomic",
  "romtime",
  "spdm-lib",
+ "static_cell",
  "zerocopy",
 ]
 

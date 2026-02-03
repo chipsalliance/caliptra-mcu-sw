@@ -134,7 +134,7 @@ struct VeeR {
     mctp_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     // mctp_secure_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    // mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     doe_spdm: &'static capsules_runtime::doe::driver::DoeDriver<
         'static,
         EmulatedDoeTransport<'static, InternalTimers<'static>>,
@@ -175,7 +175,7 @@ impl SyscallDriverLookup for VeeR {
             //     f(Some(self.mctp_secure_spdm))
             // }
             capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
-            // capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
+            capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
             capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM => f(Some(self.doe_spdm)),
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
@@ -604,13 +604,15 @@ pub unsafe fn main() {
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
 
-    // let mctp_caliptra = mcu_components::mctp_driver::MCTPDriverComponent::new(
-    //     board_kernel,
-    //     capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM,
-    //     mux_mctp,
-    //     MessageType::Caliptra,
-    // )
-    // .finalize(mctp_driver_component_static!(InternalTimers));
+    // Enable MCTP Caliptra VDM driver
+    let mctp_caliptra = mcu_components::mctp_driver::MCTPDriverComponent::new(
+        board_kernel,
+        capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM,
+        mux_mctp,
+        MessageType::Caliptra,
+    )
+    .finalize(mctp_driver_component_static!(InternalTimers));
+    romtime::println!("[mcu-runtime] MCTP Caliptra driver component initialized");
 
     // Set up a SPDM over DOE capsule.
     let doe_spdm = mcu_components::doe::DoeComponent::new(
@@ -734,7 +736,7 @@ pub unsafe fn main() {
             mctp_spdm,
             // mctp_secure_spdm,
             mctp_pldm,
-            // mctp_caliptra,
+            mctp_caliptra,
             doe_spdm,
             flash_partitions,
             mailbox,

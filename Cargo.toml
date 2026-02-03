@@ -6,6 +6,7 @@ members = [
     "common/config",
     "common/flash-image",
     "common/mcu-mbox",
+    "common/mctp-vdm",
     "common/pldm",
     "common/poll",
     "common/testing",
@@ -56,6 +57,7 @@ members = [
     "runtime/userspace/api/eat",
     "runtime/userspace/api/external-cmds-common",
     "runtime/userspace/api/mcu-mbox-lib",
+    "runtime/userspace/api/mctp-vdm-lib",
     "runtime/userspace/api/pldm-lib",
     "runtime/userspace/api/spdm-lib",
     "runtime/userspace/libtock/apis/interface/console",
@@ -153,6 +155,7 @@ sha2 = { version = "0.10.8", default-features = false }
 sha3 = "0.10.8"
 simple_logger = "5.0.0"
 smlang = "0.8.0"
+static_cell = "2.1.0"
 subst = "0.3.8"
 sudo = "0.6.0"
 strum = "0.24"
@@ -210,6 +213,7 @@ mcu-test-harness = {path = "platforms/test_harness"}
 mcu-testing-common = { path = "common/testing" }
 mcu-tock-veer = { path = "runtime/kernel/veer" }
 ocp-eat = { path = "runtime/userspace/api/eat", default-features = false }
+mctp-vdm-common = { path = "common/mctp-vdm" }
 pldm-common = { path = "common/pldm"}
 pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
 pldm-ua = { path = "emulator/bmc/pldm-ua"}
@@ -223,6 +227,7 @@ romtime = { path = "romtime" }
 # App related dependencies
 external-cmds-common = { path = "runtime/userspace/api/external-cmds-common" }
 mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
+mctp-vdm-lib = { path = "runtime/userspace/api/mctp-vdm-lib" }
 pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
 spdm-lib = { path = "runtime/userspace/api/spdm-lib", default-features = false }
 libsyscall-caliptra = { path = "runtime/userspace/syscall" }

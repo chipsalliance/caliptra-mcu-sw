@@ -137,7 +137,7 @@ jobs:
           export MCU_STAGING_ADDR=0xB00C0000
           cargo xtask-fpga all-build --platform fpga \
             --rom-features "core_test" \
-            --runtime-features "test-i3c-simple,test-i3c-constant-writes,test-mctp-capsule-loopback,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming,test-mcu-mbox-usermode,test-mcu-mbox-cmds,test-exit-immediately" \
+            --runtime-features "test-i3c-simple,test-i3c-constant-writes,test-mctp-capsule-loopback,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming,test-mcu-mbox-usermode,test-mcu-mbox-cmds,test-mctp-vdm-cmds" \
             --mcu_cfg mcu,0x0,$MCU_STAGING_ADDR,2,2,2,test-fpga-flash-ctrl \
             --separate-runtimes
           sccache --show-stats
@@ -256,6 +256,8 @@ jobs:
               -E 'package(tests-integration) and test(test_mcu_mbox_cmds)'
               -E 'package(tests-integration) and test(test_i3c_constant_writes)'
               -E 'package(tests-integration) and test(test_i3c_simple)'
+              -E 'package(tests-integration) and test(test_mctp_vdm_cmds)'
+
           )
               # disabled for now due to flakiness of recovery boot
               # -E 'package(tests-integration) and test(test_mctp_capsule_loopback)'

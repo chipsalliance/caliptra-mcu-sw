@@ -28,12 +28,15 @@ mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true
 mcu-mbox-lib.workspace = true
 mcu-mbox-common.workspace = true
+mctp-vdm-common.workspace = true
+mctp-vdm-lib.workspace = true
 ocp-eat.workspace = true
 portable-atomic.workspace = true
 pldm-common.workspace = true
 pldm-lib.workspace = true
 romtime.workspace = true
 spdm-lib.workspace = true
+static_cell.workspace = true
 zerocopy.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
@@ -42,6 +45,7 @@ libtock_unittest.workspace = true
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
 embedded-alloc.workspace = true
+portable-atomic = { workspace = true, features = ["critical-section"] }
 
 [features]
 default = []
@@ -77,6 +81,7 @@ test-mci = []
 test-mctp-ctrl-cmds = []
 test-mctp-capsule-loopback = []
 test-mctp-user-loopback = []
+test-mctp-vdm-cmds = []
 test-mcu-mbox-driver = []
 test-mcu-mbox-soc-requester-loopback = []
 test-mcu-mbox-usermode = []

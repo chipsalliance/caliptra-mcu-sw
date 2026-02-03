@@ -88,12 +88,29 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Build ROM and runtime binaries
+        # RUNTIME_FEATURES uses YAML folded block scalar (>-) for readability.
+        # The >- folds newlines into spaces, and ${RUNTIME_FEATURES// /} removes
+        # all spaces to produce a clean comma-separated feature list for cargo.
+        env:
+          RUNTIME_FEATURES: >-
+            test-i3c-simple,test-i3c-constant-writes,test-mctp-capsule-loopback,
+            test-firmware-update-streaming,test-firmware-update-flash,test-flash-based-boot,
+            test-pldm-streaming-boot,test-pldm-fw-update-e2e,test-do-nothing,
+            test-caliptra-certs,test-caliptra-crypto,test-caliptra-mailbox,
+            test-dma,test-doe-transport-loopback,test-doe-user-loopback,test-doe-discovery,
+            test-get-device-state,test-flash-ctrl-init,test-flash-ctrl-read-write-page,
+            test-flash-ctrl-erase-page,test-flash-storage-read-write,test-flash-storage-erase,
+            test-flash-usermode,test-log-flash-linear,test-log-flash-circular,
+            test-log-flash-usermode,test-mctp-ctrl-cmds,test-mctp-vdm-cmds,
+            test-pldm-discovery,test-pldm-fw-update,test-mci,test-mcu-mbox-driver,
+            test-mcu-mbox-soc-requester-loopback,test-mbox-sram,test-warm-reset,
+            test-exit-immediately,test-mcu-rom-flash-access,test-mcu-svn-gt-fuse,test-mcu-svn-lt-fuse
         run: |
           # Build all test runtime features used by integration tests
           # Note: nightly tests (test-*-spdm-*, test-caliptra-util-host-validator) are excluded
           cargo xtask all-build --platform emulator \
             --rom-features hw-2-1 \
-            --runtime-features "test-i3c-simple,test-i3c-constant-writes,test-mctp-capsule-loopback,test-firmware-update-streaming,test-firmware-update-flash,test-flash-based-boot,test-pldm-streaming-boot,test-pldm-fw-update-e2e,test-do-nothing,test-caliptra-certs,test-caliptra-crypto,test-caliptra-mailbox,test-dma,test-doe-transport-loopback,test-doe-user-loopback,test-doe-discovery,test-get-device-state,test-flash-ctrl-init,test-flash-ctrl-read-write-page,test-flash-ctrl-erase-page,test-flash-storage-read-write,test-flash-storage-erase,test-flash-usermode,test-log-flash-linear,test-log-flash-circular,test-log-flash-usermode,test-mctp-ctrl-cmds,test-pldm-discovery,test-pldm-fw-update,test-mci,test-mcu-mbox-driver,test-mcu-mbox-soc-requester-loopback,test-mbox-sram,test-warm-reset,test-exit-immediately,test-mcu-rom-flash-access,test-mcu-svn-gt-fuse,test-mcu-svn-lt-fuse" \
+            --runtime-features "${RUNTIME_FEATURES// /}" \
             --separate-runtimes
           sccache --show-stats
 
@@ -157,11 +174,27 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Build emulator binaries
+        # EMULATOR_FEATURES uses YAML folded block scalar (>-) for readability.
+        # The >- folds newlines into spaces, and ${EMULATOR_FEATURES// /} removes
+        # all spaces to produce a clean comma-separated feature list for cargo.
+        env:
+          EMULATOR_FEATURES: >-
+            test-caliptra-certs,test-caliptra-crypto,test-caliptra-mailbox,
+            test-dma,test-doe-transport-loopback,test-doe-user-loopback,test-doe-discovery,
+            test-get-device-state,test-flash-based-boot,test-flash-ctrl-init,
+            test-flash-ctrl-read-write-page,test-flash-ctrl-erase-page,
+            test-flash-storage-read-write,test-flash-storage-erase,test-flash-usermode,
+            test-firmware-update-flash,test-firmware-update-streaming,
+            test-log-flash-linear,test-log-flash-circular,test-log-flash-usermode,
+            test-mbox-sram,test-mci,test-mctp-ctrl-cmds,test-mctp-vdm-cmds,
+            test-mcu-mbox-driver,test-mcu-mbox-soc-requester-loopback,test-mcu-rom-flash-access,
+            test-mcu-svn-gt-fuse,test-mcu-svn-lt-fuse,test-exit-immediately,
+            test-pldm-discovery,test-pldm-fw-update,test-pldm-fw-update-e2e,
+            test-pldm-streaming-boot,test-warm-reset
         run: |
           # Build emulators for all features that the emulator supports
           # Features not supported by emulator (e.g., test-i3c-simple) are automatically skipped
-          cargo xtask emulator-build \
-            --features "test-caliptra-certs,test-caliptra-crypto,test-caliptra-mailbox,test-dma,test-doe-transport-loopback,test-doe-user-loopback,test-doe-discovery,test-get-device-state,test-flash-based-boot,test-flash-ctrl-init,test-flash-ctrl-read-write-page,test-flash-ctrl-erase-page,test-flash-storage-read-write,test-flash-storage-erase,test-flash-usermode,test-firmware-update-flash,test-firmware-update-streaming,test-log-flash-linear,test-log-flash-circular,test-log-flash-usermode,test-mbox-sram,test-mci,test-mctp-ctrl-cmds,test-mcu-mbox-driver,test-mcu-mbox-soc-requester-loopback,test-mcu-rom-flash-access,test-mcu-svn-gt-fuse,test-mcu-svn-lt-fuse,test-exit-immediately,test-pldm-discovery,test-pldm-fw-update,test-pldm-fw-update-e2e,test-pldm-streaming-boot,test-warm-reset"
+          cargo xtask emulator-build --features "${EMULATOR_FEATURES// /}"
           sccache --show-stats
 
       - name: Upload emulator bundle

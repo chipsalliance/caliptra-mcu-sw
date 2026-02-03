@@ -29,7 +29,7 @@ const INTERRUPT_TABLE_SIZE: usize = 128;
 // Returns the amount to reserve for data RAM at the end of RAM, platform-specific.
 pub(crate) fn data_ram_size(platform: &str) -> Result<usize> {
     match platform {
-        "emulator" => Ok(152 * 1024),
+        "emulator" => Ok(160 * 1024),
         "fpga" => Ok(160 * 1024),
         _ => bail!("Unknown platform: {}", platform),
     }
