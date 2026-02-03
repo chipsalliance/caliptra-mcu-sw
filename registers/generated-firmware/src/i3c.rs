@@ -1219,6 +1219,12 @@ pub mod bits {
                 /// This field contains the Host Controller Device’s Static Address.
                 VirtStaticAddr OFFSET(0) NUMBITS(7) [],
             ],
+            pub TerminationExtcapHeader [
+                /// Capability Structure Length in DWORDs
+                CapLength OFFSET(8) NUMBITS(16) [],
+                /// Extended Capability ID
+                CapId OFFSET(0) NUMBITS(8) [],
+            ],
             pub TtiDataBufferThldCtrl [
                 /// Minimum number of TTI RX Data queue entries of data received, in DWORDs, that will trigger the TTI RX Data interrupt. Interrupt triggers when `2^(N+1)` RX Buffer DWORD entries are received during the Read transfer.
                 RxStartThld OFFSET(24) NUMBITS(3) [],
@@ -1342,7 +1348,7 @@ pub mod regs {
             (0xac => pub piocontrol_pio_intr_force: tock_registers::registers::WriteOnly<u32, crate::i3c::bits::PioIntrForce::Register>),
             (0xb0 => pub piocontrol_pio_control: tock_registers::registers::ReadWrite<u32, crate::i3c::bits::PioControl::Register>),
             (0xb4 => _reserved4),
-            (0x100 => pub i3c_ec_termination_extcap_header: tock_registers::registers::ReadOnly<u32, crate::i3c::bits::ExtcapHeader::Register>),
+            (0x100 => pub i3c_ec_termination_extcap_header: tock_registers::registers::ReadOnly<u32, crate::i3c::bits::TerminationExtcapHeader::Register>),
             (0x104 => pub sec_fw_recovery_if_prot_cap_0: tock_registers::registers::ReadOnly<u32>),
             (0x108 => pub sec_fw_recovery_if_prot_cap_1: tock_registers::registers::ReadOnly<u32>),
             (0x10c => pub sec_fw_recovery_if_prot_cap_2: tock_registers::registers::ReadWrite<u32, crate::i3c::bits::ProtCap2::Register>),

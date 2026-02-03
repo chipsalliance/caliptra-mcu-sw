@@ -237,10 +237,22 @@ fn translate_field(iref: systemrdl::InstanceRef) -> Result<RegisterField, Error>
         .property_val_opt("desc")
         .unwrap()
         .unwrap_or_default();
+
+    // First try to get the reset value from the "reset" property in the field's scope,
+    // then fall back to the Instance's reset field (used for assignment syntax like FIELD = value)
+    let default_val = inst
+        .scope
+        .property_val_opt::<systemrdl::Bits>("reset")
+        .ok()
+        .flatten()
+        .map(|b| b.val())
+        .or_else(|| inst.reset.map(|b| b.val()))
+        .unwrap_or_default();
+
     let result = RegisterField {
         name: inst.name.clone(),
         ty: field_type,
-        default_val: inst.reset.map(|b| b.val()).unwrap_or_default(),
+        default_val,
         comment: unpad_description(&description),
         enum_type,
         position: inst
