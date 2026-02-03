@@ -32,7 +32,7 @@ pub(crate) mod utils;
 
 use anyhow::{bail, Result};
 use args::{BuildArgs, Common, LdArgs};
-use build::BuildOutput;
+use ld::BuildDefinition;
 use manifest::{AllocationRequest, Manifest};
 
 use crate::args::Commands;
@@ -43,22 +43,37 @@ pub const TOCK_ALIGNMENT: u64 = 4096;
 
 pub fn execute(cmd: Commands) -> Result<()> {
     match cmd {
-        Commands::Build { common, ld, build } => build_step(&common, &ld, &build).map(|_| ()),
+        Commands::Build {
+            common,
+            ld,
+            build,
+            target,
+        } => {
+            let (manifest, build_definition) = ld_step(&common, &ld, &build)?;
+
+            match target {
+                Some(t) => {
+                    build::build_single_target(&manifest, &build_definition, &common, &build, &t)
+                }
+                None => build::build(&manifest, &build_definition, &common, &build).map(|_| ()),
+            }
+        }
         Commands::Bundle {
             common,
             ld,
             build,
             bundle,
         } => {
-            let (manifest, output) = build_step(&common, &ld, &build)?;
-            bundle::bundle(&manifest, &output, &common, &bundle)?;
+            let (manifest, build_definition) = ld_step(&common, &ld, &build)?;
+            let build_output = build::build(&manifest, &build_definition, &common, &build)?;
+            bundle::bundle(&manifest, &build_output, &common, &bundle)?;
             Ok(())
         }
     }
 }
 
 /// A utility function to run the logic for a build step.
-fn build_step(common: &Common, ld: &LdArgs, build: &BuildArgs) -> Result<(Manifest, BuildOutput)> {
+fn ld_step(common: &Common, ld: &LdArgs, build: &BuildArgs) -> Result<(Manifest, BuildDefinition)> {
     let mut manifest = common.manifest()?;
 
     if manifest.platform.dynamic_sizing() {
@@ -66,8 +81,7 @@ fn build_step(common: &Common, ld: &LdArgs, build: &BuildArgs) -> Result<(Manife
     }
 
     let build_definition = ld::generate(&manifest, common, ld)?;
-    let build_output = build::build(&manifest, &build_definition, common, build)?;
-    Ok((manifest, build_output))
+    Ok((manifest, build_definition))
 }
 
 /// Execute a dynamic sizing pass.  This will build each runtime application with a maximal linker

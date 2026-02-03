@@ -108,6 +108,12 @@ pub enum Commands {
 
         #[command(flatten)]
         build: BuildArgs,
+
+        /// If specified, build only the module specified by the given name.
+        ///
+        /// Note: If `dynamic_sizing` is enabled, other applications may be built during the sizing
+        /// operation to determine the memory region available to the given application.
+        target: Option<String>,
     },
 
     /// Build and bundle the collection of binaries required for a deployment.  The bundles will

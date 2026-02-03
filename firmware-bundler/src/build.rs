@@ -66,6 +66,44 @@ pub fn build(
     BuildPass::new(manifest, build_definition, common, build)?.run()
 }
 
+/// Execute the `rustc` compiler against the specified target package within the manifest.  If
+/// successful the elf file and binary will exist in the `<workspace>/target/<tuple>/release`
+/// directory on the hard drive.
+///
+/// This could fail if the package is unable to compile for any reason, including exceeding the
+/// memory restrictions placed on the binary by the generated ld file.  It could also fail if a hard
+/// drive operation errors.  An error will also occur if the target is not defined in the manifest
+/// file.
+pub fn build_single_target(
+    manifest: &Manifest,
+    build_definition: &BuildDefinition,
+    common: &Common,
+    build: &BuildArgs,
+    target: &str,
+) -> Result<()> {
+    // Put together a list of all the packages specified by this manifest, along with their objcopy
+    // flags.
+    let mut binaries = build_definition
+        .apps
+        .iter()
+        .map(|a| (a.linker.clone(), APP_OBJCOPY_FLAGS))
+        .collect::<Vec<_>>();
+    binaries.push((build_definition.kernel.0.clone(), KERNEL_OBJCOPY_FLAGS));
+    if let Some(rom) = &build_definition.rom {
+        binaries.push((rom.clone(), ROM_OBJCOPY_FLAGS));
+    }
+
+    // Find the package to build, if none of the binaries matches the specified target error out.
+    let (target_to_build, objcopy_flags) = binaries
+        .into_iter()
+        .find(|(b, _)| b.name == target)
+        .ok_or_else(|| anyhow!("Binary target {target} not found in manifest file."))?;
+
+    let pass = BuildPass::new(manifest, build_definition, common, build)?;
+    pass.build_binary(&target_to_build, objcopy_flags)
+        .map(|_| ())
+}
+
 /// A helper struct containing the context required to do a build run.
 struct BuildPass<'a> {
     manifest: &'a Manifest,
