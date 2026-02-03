@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 /// deployed, as well as any relevent information required for compilation and composition of the
 /// binaries.
 #[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Manifest {
     /// A description of the platform to deploy applications to.
     pub platform: Platform,
@@ -83,6 +84,7 @@ impl Manifest {
 /// backed by a single SRAM use the `TCM` option with the SRAM split as desired between instructions
 /// and data.
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub enum RuntimeMemory {
     /// A singular memory block is used for both Instructions and Data.
     #[serde(rename = "sram")]
@@ -103,6 +105,7 @@ pub enum RuntimeMemory {
 
 /// A description of the platform to deploy applications to.
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Platform {
     /// The name of this platform.  This may be used the bundle artifact name, if not specified on
     /// the command line.
@@ -169,6 +172,7 @@ impl Platform {
 
 /// A specification for a Memory block within a platform.
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Memory {
     /// The offset in the memory space which this block starts at, in bytes.
     pub offset: u64,
@@ -201,6 +205,7 @@ impl Memory {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct AllocationRequest {
     pub size: u64,
     pub alignment: Option<u64>,
@@ -208,6 +213,7 @@ pub struct AllocationRequest {
 
 /// A specification for an individual binary to deploy on the Platform.
 #[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Binary {
     /// The name of the binary.
     pub name: String,
