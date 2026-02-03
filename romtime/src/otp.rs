@@ -19,6 +19,42 @@ const OTP_INTEGRITY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_CHECK_TIMEOUT: u32 = 0x10_0000;
 const OTP_PENDING_CHECK_MAX_ITERATIONS: u32 = 1_000_000;
 
+// -------------------------------------------------------------------------
+// Fuse field offsets within partitions
+// These are offsets relative to the partition base address.
+// -------------------------------------------------------------------------
+
+const SVN_FMC_KEY_MANIFEST_SVN_OFFSET: usize = 0;
+pub const SVN_RUNTIME_SVN_OFFSET: usize = 4;
+pub const SVN_SOC_MANIFEST_SVN_OFFSET: usize = 20;
+pub const SVN_SOC_MANIFEST_MAX_SVN_OFFSET: usize = 36;
+const VENDOR_HASHES_MANUF_VENDOR_PK_HASH_0_OFFSET: usize = 0;
+pub const VENDOR_HASHES_MANUF_PQC_KEY_TYPE_0_OFFSET: usize = 48;
+const VENDOR_HASHES_PROD_OWNER_PK_HASH_OFFSET: usize = 0;
+pub const VENDOR_REVOCATIONS_ECC_REVOCATION_0_OFFSET: usize = 12;
+pub const VENDOR_REVOCATIONS_LMS_REVOCATION_0_OFFSET: usize = 16;
+pub const VENDOR_REVOCATIONS_MLDSA_REVOCATION_0_OFFSET: usize = 20;
+const SW_MANUF_ANTI_ROLLBACK_DISABLE_OFFSET: usize = 0;
+pub const SW_MANUF_IDEVID_CERT_ATTR_OFFSET: usize = 4;
+pub const SW_MANUF_IDEVID_MANUF_HSM_ID_OFFSET: usize = 104;
+const SW_MANUF_SOC_STEPPING_ID_OFFSET: usize = 120;
+pub const SW_MANUF_PROD_DEBUG_UNLOCK_PKS_OFFSET: usize = 124;
+const SW_TEST_UNLOCK_MANUF_DEBUG_UNLOCK_TOKEN_OFFSET: usize = 0;
+const LC_TOKEN_MANUF_INDEX: usize = 7;
+const LC_TOKEN_MANUF_TO_PROD_INDEX: usize = 8;
+const LC_TOKEN_PROD_TO_PROD_END_INDEX: usize = 9;
+const LC_TOKEN_RMA_INDEX: usize = 10;
+
+pub const PROD_DEBUG_UNLOCK_PK_SIZE: usize = 48;
+const OWNER_PK_HASH_SIZE: usize = 48;
+const VENDOR_PK_HASH_SIZE: usize = 48;
+const RUNTIME_SVN_SIZE: usize = 16;
+const SOC_MANIFEST_SVN_SIZE: usize = 16;
+const IDEVID_CERT_ATTR_SIZE: usize = 96;
+const IDEVID_MANUF_HSM_ID_SIZE: usize = 16;
+const MANUF_DEBUG_UNLOCK_TOKEN_SIZE: usize = 64;
+const LC_TOKEN_SIZE: usize = 16;
+
 pub struct Otp {
     registers: StaticRef<otp_ctrl::regs::OtpCtrl>,
 }
@@ -305,53 +341,366 @@ impl Otp {
         }
     }
 
+    /// Makes read_data public so callers can read arbitrary OTP regions.
+    pub fn read_otp_data(&self, byte_offset: usize, data: &mut [u8]) -> McuResult<()> {
+        self.read_data(byte_offset, data.len(), data)
+    }
+
+    /// Reads a u32 from OTP at the given byte offset.
+    pub fn read_u32_at(&self, byte_offset: usize) -> McuResult<u32> {
+        self.read_word(byte_offset / 4)
+    }
+
+    /// Reads multiple u32 words from OTP starting at byte_offset directly into a register array.
+    pub fn read_words_to_registers<F>(
+        &self,
+        byte_offset: usize,
+        count: usize,
+        mut write_fn: F,
+    ) -> McuResult<()>
+    where
+        F: FnMut(usize, u32),
+    {
+        for i in 0..count {
+            let word = self.read_word(byte_offset / 4 + i)?;
+            write_fn(i, word);
+        }
+        Ok(())
+    }
+
+    // -------------------------------------------------------------------------
+    // Partition reading methods - read specific partitions from OTP directly
+    // -------------------------------------------------------------------------
+
+    /// Read the SVN partition (40 bytes).
+    pub fn read_svn_partition(
+        &self,
+        data: &mut [u8; fuses::SVN_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
+        self.read_data(
+            fuses::SVN_PARTITION_BYTE_OFFSET,
+            fuses::SVN_PARTITION_BYTE_SIZE,
+            data,
+        )
+    }
+
+    /// Read the vendor test partition (64 bytes).
+    pub fn read_vendor_test_partition(
+        &self,
+        data: &mut [u8; fuses::VENDOR_TEST_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
+        self.read_data(
+            fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET,
+            fuses::VENDOR_TEST_PARTITION_BYTE_SIZE,
+            data,
+        )
+    }
+
+    /// Read a single word from the vendor test partition.
+    /// word_idx is the word index (0-15 for 64 bytes).
+    pub fn read_vendor_test_word(&self, word_idx: usize) -> McuResult<u32> {
+        self.read_u32_at(fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET + word_idx * 4)
+    }
+
+    /// Read the vendor hashes manufacturing partition (64 bytes).
+    pub fn read_vendor_hashes_manuf_partition(
+        &self,
+        data: &mut [u8; fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
+        self.read_data(
+            fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET,
+            fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE,
+            data,
+        )
+    }
+
+    /// Read the vendor hashes production partition (864 bytes).
+    pub fn read_vendor_hashes_prod_partition(
+        &self,
+        data: &mut [u8; fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
+        self.read_data(
+            fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET,
+            fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
+            data,
+        )
+    }
+
+    /// Read the vendor revocations production partition (216 bytes).
+    pub fn read_vendor_revocations_prod_partition(
+        &self,
+        data: &mut [u8; fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
+        self.read_data(
+            fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,
+            fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
+            data,
+        )
+    }
+
+    /// Read the SW test unlock partition (72 bytes).
+    pub fn read_sw_test_unlock_partition(
+        &self,
+        data: &mut [u8; fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
+        self.read_data(
+            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
+            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
+            data,
+        )
+    }
+
+    /// Read the SW manufacturing partition (520 bytes).
+    pub fn read_sw_manuf_partition(
+        &self,
+        data: &mut [u8; fuses::SW_MANUF_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
+        self.read_data(
+            fuses::SW_MANUF_PARTITION_BYTE_OFFSET,
+            fuses::SW_MANUF_PARTITION_BYTE_SIZE,
+            data,
+        )
+    }
+
+    // -------------------------------------------------------------------------
+    // Individual fuse value reading methods - read specific fuse fields directly
+    // These avoid allocating full partition arrays on the stack.
+    // -------------------------------------------------------------------------
+
+    /// Read cptra_core_pqc_key_type_0 (4 bytes) from vendor_hashes_manuf_partition.
+    pub fn read_cptra_core_pqc_key_type_0(&self) -> McuResult<[u8; 4]> {
+        let mut data = [0u8; 4];
+        self.read_data(
+            fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET
+                + VENDOR_HASHES_MANUF_PQC_KEY_TYPE_0_OFFSET,
+            4,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_fmc_key_manifest_svn (4 bytes) from svn_partition.
+    pub fn read_cptra_core_fmc_key_manifest_svn(&self) -> McuResult<[u8; 4]> {
+        let mut data = [0u8; 4];
+        self.read_data(
+            fuses::SVN_PARTITION_BYTE_OFFSET + SVN_FMC_KEY_MANIFEST_SVN_OFFSET,
+            4,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_vendor_pk_hash_0 (48 bytes) from vendor_hashes_manuf_partition.
+    pub fn read_cptra_core_vendor_pk_hash_0(&self) -> McuResult<[u8; VENDOR_PK_HASH_SIZE]> {
+        let mut data = [0u8; VENDOR_PK_HASH_SIZE];
+        self.read_data(
+            fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET
+                + VENDOR_HASHES_MANUF_VENDOR_PK_HASH_0_OFFSET,
+            VENDOR_PK_HASH_SIZE,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_runtime_svn (16 bytes) from svn_partition.
+    pub fn read_cptra_core_runtime_svn(&self) -> McuResult<[u8; RUNTIME_SVN_SIZE]> {
+        let mut data = [0u8; RUNTIME_SVN_SIZE];
+        self.read_data(
+            fuses::SVN_PARTITION_BYTE_OFFSET + SVN_RUNTIME_SVN_OFFSET,
+            RUNTIME_SVN_SIZE,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_soc_manifest_svn (16 bytes) from svn_partition.
+    pub fn read_cptra_core_soc_manifest_svn(&self) -> McuResult<[u8; SOC_MANIFEST_SVN_SIZE]> {
+        let mut data = [0u8; SOC_MANIFEST_SVN_SIZE];
+        self.read_data(
+            fuses::SVN_PARTITION_BYTE_OFFSET + SVN_SOC_MANIFEST_SVN_OFFSET,
+            SOC_MANIFEST_SVN_SIZE,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_soc_manifest_max_svn (4 bytes) from svn_partition.
+    pub fn read_cptra_core_soc_manifest_max_svn(&self) -> McuResult<[u8; 4]> {
+        let mut data = [0u8; 4];
+        self.read_data(
+            fuses::SVN_PARTITION_BYTE_OFFSET + SVN_SOC_MANIFEST_MAX_SVN_OFFSET,
+            4,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_ss_manuf_debug_unlock_token (64 bytes) from sw_test_unlock_partition.
+    pub fn read_cptra_ss_manuf_debug_unlock_token(
+        &self,
+    ) -> McuResult<[u8; MANUF_DEBUG_UNLOCK_TOKEN_SIZE]> {
+        let mut data = [0u8; MANUF_DEBUG_UNLOCK_TOKEN_SIZE];
+        self.read_data(
+            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET
+                + SW_TEST_UNLOCK_MANUF_DEBUG_UNLOCK_TOKEN_OFFSET,
+            MANUF_DEBUG_UNLOCK_TOKEN_SIZE,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_ecc_revocation_0 (4 bytes) from vendor_revocations_prod_partition.
+    pub fn read_cptra_core_ecc_revocation_0(&self) -> McuResult<[u8; 4]> {
+        let mut data = [0u8; 4];
+        self.read_data(
+            fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET
+                + VENDOR_REVOCATIONS_ECC_REVOCATION_0_OFFSET,
+            4,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_lms_revocation_0 (4 bytes) from vendor_revocations_prod_partition.
+    pub fn read_cptra_core_lms_revocation_0(&self) -> McuResult<[u8; 4]> {
+        let mut data = [0u8; 4];
+        self.read_data(
+            fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET
+                + VENDOR_REVOCATIONS_LMS_REVOCATION_0_OFFSET,
+            4,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_mldsa_revocation_0 (4 bytes) from vendor_revocations_prod_partition.
+    pub fn read_cptra_core_mldsa_revocation_0(&self) -> McuResult<[u8; 4]> {
+        let mut data = [0u8; 4];
+        self.read_data(
+            fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET
+                + VENDOR_REVOCATIONS_MLDSA_REVOCATION_0_OFFSET,
+            4,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_ss_owner_pk_hash (48 bytes) from vendor_hashes_prod_partition.
+    pub fn read_cptra_ss_owner_pk_hash(&self) -> McuResult<[u8; OWNER_PK_HASH_SIZE]> {
+        let mut data = [0u8; OWNER_PK_HASH_SIZE];
+        self.read_data(
+            fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET
+                + VENDOR_HASHES_PROD_OWNER_PK_HASH_OFFSET,
+            OWNER_PK_HASH_SIZE,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_soc_stepping_id (4 bytes) from sw_manuf_partition.
+    pub fn read_cptra_core_soc_stepping_id(&self) -> McuResult<[u8; 4]> {
+        let mut data = [0u8; 4];
+        self.read_data(
+            fuses::SW_MANUF_PARTITION_BYTE_OFFSET + SW_MANUF_SOC_STEPPING_ID_OFFSET,
+            4,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_anti_rollback_disable (4 bytes) from sw_manuf_partition.
+    pub fn read_cptra_core_anti_rollback_disable(&self) -> McuResult<[u8; 4]> {
+        let mut data = [0u8; 4];
+        self.read_data(
+            fuses::SW_MANUF_PARTITION_BYTE_OFFSET + SW_MANUF_ANTI_ROLLBACK_DISABLE_OFFSET,
+            4,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_idevid_cert_idevid_attr (96 bytes) from sw_manuf_partition.
+    pub fn read_cptra_core_idevid_cert_idevid_attr(
+        &self,
+    ) -> McuResult<[u8; IDEVID_CERT_ATTR_SIZE]> {
+        let mut data = [0u8; IDEVID_CERT_ATTR_SIZE];
+        self.read_data(
+            fuses::SW_MANUF_PARTITION_BYTE_OFFSET + SW_MANUF_IDEVID_CERT_ATTR_OFFSET,
+            IDEVID_CERT_ATTR_SIZE,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_idevid_manuf_hsm_identifier (16 bytes) from sw_manuf_partition.
+    pub fn read_cptra_core_idevid_manuf_hsm_identifier(
+        &self,
+    ) -> McuResult<[u8; IDEVID_MANUF_HSM_ID_SIZE]> {
+        let mut data = [0u8; IDEVID_MANUF_HSM_ID_SIZE];
+        self.read_data(
+            fuses::SW_MANUF_PARTITION_BYTE_OFFSET + SW_MANUF_IDEVID_MANUF_HSM_ID_OFFSET,
+            IDEVID_MANUF_HSM_ID_SIZE,
+            &mut data,
+        )?;
+        Ok(data)
+    }
+
+    /// Read cptra_ss_prod_debug_unlock_pks (index 0-7, each 48 bytes) from sw_manuf_partition.
+    pub fn read_cptra_ss_prod_debug_unlock_pks(
+        &self,
+        index: usize,
+    ) -> McuResult<[u8; PROD_DEBUG_UNLOCK_PK_SIZE]> {
+        if index > 7 {
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+        let mut data = [0u8; PROD_DEBUG_UNLOCK_PK_SIZE];
+        let offset = fuses::SW_MANUF_PARTITION_BYTE_OFFSET
+            + SW_MANUF_PROD_DEBUG_UNLOCK_PKS_OFFSET
+            + (index * PROD_DEBUG_UNLOCK_PK_SIZE);
+        self.read_data(offset, PROD_DEBUG_UNLOCK_PK_SIZE, &mut data)?;
+        Ok(data)
+    }
+
     pub fn read_fuses(&self) -> McuResult<Fuses> {
         let mut fuses = Fuses::default();
 
-        crate::println!("[mcu-rom-otp] Reading SW tests unlock partition");
+        crate::println!("[mcu-rom-otp] Reading partitions");
         self.read_data(
             fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
             fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
             &mut fuses.sw_test_unlock_partition,
         )?;
-        crate::println!("[mcu-rom-otp] Reading SW manufacturer partition");
         self.read_data(
             fuses::SW_MANUF_PARTITION_BYTE_OFFSET,
             fuses::SW_MANUF_PARTITION_BYTE_SIZE,
             &mut fuses.sw_manuf_partition,
         )?;
-        crate::println!("[mcu-rom-otp] Reading SVN partition");
         self.read_data(
             fuses::SVN_PARTITION_BYTE_OFFSET,
             fuses::SVN_PARTITION_BYTE_SIZE,
             &mut fuses.svn_partition,
         )?;
-        crate::println!("[mcu-rom-otp] Reading vendor test partition");
         self.read_data(
             fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_TEST_PARTITION_BYTE_SIZE,
             &mut fuses.vendor_test_partition,
         )?;
-        crate::println!("[mcu-rom-otp] Reading vendor hashes manufacturer partition");
         self.read_data(
             fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE,
             &mut fuses.vendor_hashes_manuf_partition,
         )?;
         // TODO: read these again when the offsets are fixed
-        crate::println!("[mcu-rom-otp] Reading vendor hashes production partition");
         self.read_data(
             fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
             &mut fuses.vendor_hashes_prod_partition,
         )?;
-        crate::println!("[mcu-rom-otp] Reading vendor revocations production partition");
         self.read_data(
             fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
             &mut fuses.vendor_revocations_prod_partition,
         )?;
-        crate::println!("[mcu-rom-otp] Reading OCP LOCK HEK seeds");
         self.read_data(
             fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET,
             fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE,
@@ -410,32 +759,44 @@ impl Otp {
                 i,
                 HexBytes(&tokeni.0)
             );
-            self.burn_lifecycle_token(LC_TOKENS_OFFSET + i * 16, tokeni)?;
+            self.burn_lifecycle_token(LC_TOKENS_OFFSET + i * LC_TOKEN_SIZE, tokeni)?;
         }
 
         crate::println!(
             "[mcu-rom-otp] Burning manuf token: {}",
             HexBytes(&tokens.manuf.0)
         );
-        self.burn_lifecycle_token(LC_TOKENS_OFFSET + 7 * 16, &tokens.manuf)?;
+        self.burn_lifecycle_token(
+            LC_TOKENS_OFFSET + LC_TOKEN_MANUF_INDEX * LC_TOKEN_SIZE,
+            &tokens.manuf,
+        )?;
 
         crate::println!(
             "[mcu-rom-otp] Burning manuf_to_prod token: {}",
             HexBytes(&tokens.manuf_to_prod.0)
         );
-        self.burn_lifecycle_token(LC_TOKENS_OFFSET + 8 * 16, &tokens.manuf_to_prod)?;
+        self.burn_lifecycle_token(
+            LC_TOKENS_OFFSET + LC_TOKEN_MANUF_TO_PROD_INDEX * LC_TOKEN_SIZE,
+            &tokens.manuf_to_prod,
+        )?;
 
         crate::println!(
             "[mcu-rom-otp] Burning prod_to_prod_end token: {}",
             HexBytes(&tokens.prod_to_prod_end.0)
         );
-        self.burn_lifecycle_token(LC_TOKENS_OFFSET + 9 * 16, &tokens.prod_to_prod_end)?;
+        self.burn_lifecycle_token(
+            LC_TOKENS_OFFSET + LC_TOKEN_PROD_TO_PROD_END_INDEX * LC_TOKEN_SIZE,
+            &tokens.prod_to_prod_end,
+        )?;
 
         crate::println!(
             "[mcu-rom-otp] Burning rma token: {}",
             HexBytes(&tokens.rma.0)
         );
-        self.burn_lifecycle_token(LC_TOKENS_OFFSET + 10 * 16, &tokens.rma)?;
+        self.burn_lifecycle_token(
+            LC_TOKENS_OFFSET + LC_TOKEN_RMA_INDEX * LC_TOKEN_SIZE,
+            &tokens.rma,
+        )?;
 
         crate::println!("[mcu-rom] Finalizing digest");
         self.finalize_digest(LC_TOKENS_OFFSET)?;

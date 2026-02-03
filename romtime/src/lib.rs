@@ -7,7 +7,7 @@ mod lifecycle;
 pub use lifecycle::*;
 mod mci;
 pub use mci::*;
-mod otp;
+pub mod otp;
 pub use otp::*;
 mod soc_manager;
 pub use soc_manager::*;

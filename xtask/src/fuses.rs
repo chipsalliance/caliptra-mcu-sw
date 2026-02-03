@@ -12,11 +12,15 @@ const OTP_CTRL_DEFAULT_PATH: &str = "hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_
 const SPECIFIC_FUSES_DEFAULT_PATH: &str = "hw/fuses.hjson";
 
 const SKIP_PARTITIONS: &[&str] = &[
+    "SW_TEST_UNLOCK_PARTITON",
     "SECRET_MANUF_PARTITION",
     "SECRET_PROD_PARTITION_0",
     "SECRET_PROD_PARTITION_1",
     "SECRET_PROD_PARTITION_2",
     "SECRET_PROD_PARTITION_3",
+    "VENDOR_TEST_PARTITON",
+    "SECRET_LC_TRANSITION_PARTITON",
+    "LIFE_CYCLE",
 ];
 
 #[derive(Debug, Deserialize)]

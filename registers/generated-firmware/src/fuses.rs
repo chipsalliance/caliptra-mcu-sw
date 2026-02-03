@@ -74,18 +74,6 @@ pub struct Fuses {
     /// OCP L.O.C.K Hard Epoch Key (HEK) ratchet seed slot 7.
     #[zeroize(skip)]
     pub cptra_ss_lock_hek_prod_7: [u8; 48],
-
-    /// Lifecycle partition.
-    /// This contains lifecycle transition count and state. This partition
-    /// cannot be locked since the life cycle state needs to advance to RMA
-    /// in-field. Note that while this partition is not marked secret, it
-    /// is not readable nor writeable via the DAI. Only the LC controller
-    /// can access this partition, and even via the LC controller it is not
-    /// possible to read the raw manufacturing life cycle state in encoded
-    /// form, since that encoding is considered a netlist secret. The LC
-    /// controller only exposes a decoded version of this state.
-    #[zeroize(skip)]
-    pub life_cycle: [u8; 88],
 }
 impl Fuses {
     pub fn cptra_ss_manuf_debug_unlock_token(&self) -> &[u8] {
@@ -559,12 +547,6 @@ impl Fuses {
     pub fn cptra_ss_lock_hek_prod_7_ratchet_seed(&self) -> &[u8] {
         &self.cptra_ss_lock_hek_prod_7[0..32]
     }
-    pub fn lc_transition_cnt(&self) -> &[u8] {
-        &self.life_cycle[0..48]
-    }
-    pub fn lc_state(&self) -> &[u8] {
-        &self.life_cycle[48..88]
-    }
 }
 impl Default for Fuses {
     fn default() -> Self {
@@ -587,7 +569,6 @@ impl Default for Fuses {
             cptra_ss_lock_hek_prod_5: [0; 48],
             cptra_ss_lock_hek_prod_6: [0; 48],
             cptra_ss_lock_hek_prod_7: [0; 48],
-            life_cycle: [0; 88],
         }
     }
 }

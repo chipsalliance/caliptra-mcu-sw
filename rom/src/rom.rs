@@ -28,17 +28,22 @@ use caliptra_api::mailbox::CmStableKeyType;
 use core::fmt::Write;
 use mcu_config::McuStraps;
 use mcu_error::McuError;
-use registers_generated::fuses::Fuses;
 use registers_generated::mci;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use registers_generated::soc;
+use romtime::otp::{
+    Otp, PROD_DEBUG_UNLOCK_PK_SIZE, SVN_RUNTIME_SVN_OFFSET, SVN_SOC_MANIFEST_MAX_SVN_OFFSET,
+    SVN_SOC_MANIFEST_SVN_OFFSET, SW_MANUF_IDEVID_CERT_ATTR_OFFSET,
+    SW_MANUF_IDEVID_MANUF_HSM_ID_OFFSET, SW_MANUF_PROD_DEBUG_UNLOCK_PKS_OFFSET,
+    VENDOR_HASHES_MANUF_PQC_KEY_TYPE_0_OFFSET, VENDOR_REVOCATIONS_ECC_REVOCATION_0_OFFSET,
+    VENDOR_REVOCATIONS_LMS_REVOCATION_0_OFFSET, VENDOR_REVOCATIONS_MLDSA_REVOCATION_0_OFFSET,
+};
 use romtime::LifecycleControllerState;
 use romtime::LifecycleHashedTokens;
 use romtime::LifecycleToken;
 use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
-use zerocopy::IntoBytes;
 
 // values in fuses
 const LMS_FUSE_VALUE: u8 = 1;
@@ -137,7 +142,8 @@ impl Soc {
         self.registers.ss_caliptra_dma_axi_user.set(value);
     }
 
-    pub fn populate_fuses(&self, fuses: &Fuses, mci: &romtime::Mci) {
+    #[inline(never)]
+    pub fn populate_fuses(&self, otp: &Otp, mci: &romtime::Mci) {
         // secret fuses are populated by a hardware state machine, so we can skip those
 
         // UDS partition base address. (FE offset is calculated automatically by Caliptra ROM.)
@@ -158,7 +164,13 @@ impl Soc {
         self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
 
         // PQC Key Type.
-        let pqc_type = match fuses.cptra_core_pqc_key_type_0()[0] & 1 {
+        let pqc_word = otp
+            .read_u32_at(
+                registers_generated::fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET
+                    + VENDOR_HASHES_MANUF_PQC_KEY_TYPE_0_OFFSET,
+            )
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        let pqc_type = match (pqc_word as u8) & 1 {
             MLDSA_FUSE_VALUE => MLDSA_CALIPTRA_VALUE,
             LMS_FUSE_VALUE => LMS_CALIPTRA_VALUE,
             _ => unreachable!(),
@@ -167,158 +179,116 @@ impl Soc {
         romtime::println!("[mcu-fuse-write] Setting vendor PQC type to {}", pqc_type);
 
         // FMC Key Manifest SVN.
-        if size_of_val(fuses.cptra_core_fmc_key_manifest_svn())
-            != size_of_val(&self.registers.fuse_fmc_key_manifest_svn)
-        {
-            fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
-        }
-        self.registers
-            .fuse_fmc_key_manifest_svn
-            .set(u32::from_le_bytes(
-                fuses
-                    .cptra_core_fmc_key_manifest_svn()
-                    .try_into()
-                    .unwrap_or_else(|_| {
-                        fatal_error(McuError::SOC_FMC_KEY_MANIFEST_SVN_LEN_MISMATCH)
-                    }),
-            ));
+        let svn = otp
+            .read_u32_at(registers_generated::fuses::SVN_PARTITION_BYTE_OFFSET)
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        self.registers.fuse_fmc_key_manifest_svn.set(svn);
 
         // Vendor PK Hash.
         romtime::print!("[mcu-fuse-write] Writing fuse key vendor PK hash: ");
-        if size_of_val(fuses.cptra_core_vendor_pk_hash_0())
-            != size_of_val(&self.registers.fuse_vendor_pk_hash)
-        {
-            fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
-        }
-        for i in 0..fuses.cptra_core_vendor_pk_hash_0().len() / 4 {
-            let word = u32::from_le_bytes(
-                fuses.cptra_core_vendor_pk_hash_0()[i * 4..i * 4 + 4]
-                    .try_into()
-                    .unwrap_or_else(|_| {
-                        fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
-                    }),
-            );
+        for i in 0..self.registers.fuse_vendor_pk_hash.len() {
+            let word = otp
+                .read_u32_at(
+                    registers_generated::fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + i * 4,
+                )
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
             romtime::print!("{}", HexWord(word));
             self.registers.fuse_vendor_pk_hash[i].set(word);
         }
         romtime::println!("");
 
         // Runtime SVN.
-        if size_of_val(fuses.cptra_core_runtime_svn())
-            != size_of_val(&self.registers.fuse_runtime_svn)
-        {
-            fatal_error(McuError::ROM_SOC_RT_SVN_LEN_MISMATCH);
-        }
-        for i in 0..fuses.cptra_core_runtime_svn().len() / 4 {
-            let word = u32::from_le_bytes(
-                fuses.cptra_core_runtime_svn()[i * 4..i * 4 + 4]
-                    .try_into()
-                    .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_RT_SVN_LEN_MISMATCH)),
-            );
+        for i in 0..self.registers.fuse_runtime_svn.len() {
+            let word = otp
+                .read_u32_at(
+                    registers_generated::fuses::SVN_PARTITION_BYTE_OFFSET
+                        + SVN_RUNTIME_SVN_OFFSET
+                        + i * 4,
+                )
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
             self.registers.fuse_runtime_svn[i].set(word);
         }
 
         // SoC Manifest SVN.
-        if size_of_val(fuses.cptra_core_soc_manifest_svn())
-            != size_of_val(&self.registers.fuse_soc_manifest_svn)
-        {
-            fatal_error(McuError::ROM_SOC_MANIFEST_SVN_LEN_MISMATCH);
-        }
-        for i in 0..fuses.cptra_core_soc_manifest_svn().len() / 4 {
-            let word = u32::from_le_bytes(
-                fuses.cptra_core_soc_manifest_svn()[i * 4..i * 4 + 4]
-                    .try_into()
-                    .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_MANIFEST_SVN_LEN_MISMATCH)),
-            );
+        for i in 0..self.registers.fuse_soc_manifest_svn.len() {
+            let word = otp
+                .read_u32_at(
+                    registers_generated::fuses::SVN_PARTITION_BYTE_OFFSET
+                        + SVN_SOC_MANIFEST_SVN_OFFSET
+                        + i * 4,
+                )
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
             self.registers.fuse_soc_manifest_svn[i].set(word);
         }
 
         // SoC Manifest Max SVN.
-        if size_of_val(fuses.cptra_core_soc_manifest_max_svn())
-            != size_of_val(&self.registers.fuse_soc_manifest_max_svn)
-        {
-            fatal_error(McuError::SOC_MANIFEST_MAX_SVN_LEN_MISMATCH);
-        }
-        let word = u32::from_le_bytes(
-            fuses
-                .cptra_core_soc_manifest_max_svn()
-                .try_into()
-                .unwrap_or_else(|_| fatal_error(McuError::SOC_MANIFEST_MAX_SVN_LEN_MISMATCH)),
-        );
+        let word = otp
+            .read_u32_at(
+                registers_generated::fuses::SVN_PARTITION_BYTE_OFFSET
+                    + SVN_SOC_MANIFEST_MAX_SVN_OFFSET,
+            )
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_soc_manifest_max_svn.set(word);
 
-        // Manuf Debug Unlock Token
-        if size_of_val(fuses.cptra_ss_manuf_debug_unlock_token())
-            != size_of_val(&self.registers.fuse_manuf_dbg_unlock_token)
-        {
-            fatal_error(McuError::ROM_SOC_MANUF_DEBUG_UNLOCK_TOKEN_LEN_MISMATCH);
-        }
-        for i in 0..fuses.cptra_ss_manuf_debug_unlock_token().len() / 4 {
-            let word = u32::from_le_bytes(
-                fuses.cptra_ss_manuf_debug_unlock_token()[i * 4..i * 4 + 4]
-                    .try_into()
-                    .unwrap_or_else(|_| {
-                        fatal_error(McuError::ROM_SOC_MANUF_DEBUG_UNLOCK_TOKEN_LEN_MISMATCH)
-                    }),
-            );
+        // Manuf Debug Unlock Token.
+        for i in 0..self.registers.fuse_manuf_dbg_unlock_token.len() {
+            let word = otp
+                .read_u32_at(
+                    registers_generated::fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET + i * 4,
+                )
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
             self.registers.fuse_manuf_dbg_unlock_token[i].set(word);
         }
 
         // TODO: vendor-specific fuses when those are supported
         // Load Owner ECC/LMS/MLDSA revocation CSRs.
         // ECC Revocation.
-        let vendor_ecc_revocation =
-            u32::from_le_bytes(fuses.cptra_core_ecc_revocation_0().try_into().unwrap());
-        self.registers
-            .fuse_ecc_revocation
-            .set(vendor_ecc_revocation);
+        let word = otp
+            .read_u32_at(
+                registers_generated::fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET
+                    + VENDOR_REVOCATIONS_ECC_REVOCATION_0_OFFSET,
+            )
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        self.registers.fuse_ecc_revocation.set(word);
 
         // LMS Revocation.
-
-        let vendor_lms_revocation = u32::from_le_bytes(
-            fuses
-                .cptra_core_lms_revocation_0()
-                .try_into()
-                .unwrap_or_else(|_| {
-                    fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
-                }),
-        );
-        self.registers
-            .fuse_lms_revocation
-            .set(vendor_lms_revocation);
+        let word = otp
+            .read_u32_at(
+                registers_generated::fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET
+                    + VENDOR_REVOCATIONS_LMS_REVOCATION_0_OFFSET,
+            )
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        self.registers.fuse_lms_revocation.set(word);
 
         // MLDSA Revocation.
-        let vendor_mldsa_revocation = u32::from_le_bytes(
-            fuses
-                .cptra_core_mldsa_revocation_0()
-                .try_into()
-                .unwrap_or_else(|_| {
-                    fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
-                }),
-        );
-        self.registers
-            .fuse_mldsa_revocation
-            .set(vendor_mldsa_revocation);
+        let word = otp
+            .read_u32_at(
+                registers_generated::fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET
+                    + VENDOR_REVOCATIONS_MLDSA_REVOCATION_0_OFFSET,
+            )
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        self.registers.fuse_mldsa_revocation.set(word);
 
         // Owner PK Hash.
         // TBD: Device Ownership Transfer
-        if !fuses.cptra_ss_owner_pk_hash().iter().all(|&x| x == 0) {
+        // First check if it's all zeros by reading the first word
+        let first_word = otp
+            .read_u32_at(registers_generated::fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET)
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+
+        // Only proceed if the first word is non-zero (quick check)
+        if first_word != 0 {
             romtime::print!("[mcu-fuse-write] Writing fuse key owner PK hash: ");
+            romtime::print!("{}", HexWord(first_word));
+            self.registers.cptra_owner_pk_hash[0].set(first_word);
 
-            if size_of_val(fuses.cptra_ss_owner_pk_hash())
-                != size_of_val(&self.registers.cptra_owner_pk_hash)
-            {
-                fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH);
-            }
-
-            for i in 0..self.registers.cptra_owner_pk_hash.len() {
-                let word = u32::from_le_bytes(
-                    fuses.cptra_ss_owner_pk_hash()[i * 4..i * 4 + 4]
-                        .try_into()
-                        .unwrap_or_else(|_| {
-                            fatal_error(McuError::ROM_SOC_KEY_MANIFEST_PK_HASH_LEN_MISMATCH)
-                        }),
-                );
+            for i in 1..self.registers.cptra_owner_pk_hash.len() {
+                let word = otp
+                    .read_u32_at(
+                        registers_generated::fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET
+                            + i * 4,
+                    )
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
                 romtime::print!("{}", HexWord(word));
                 self.registers.cptra_owner_pk_hash[i].set(word);
             }
@@ -326,116 +296,62 @@ impl Soc {
         }
 
         // TODO: load HEK Seed CSRs.
-
         // SoC Stepping ID (only 16-bits are relevant).
-        if size_of_val(fuses.cptra_core_soc_stepping_id())
-            != size_of_val(&self.registers.fuse_soc_stepping_id)
-        {
-            fatal_error(McuError::ROM_SOC_STEPPING_ID_LEN_MISMATCH);
-        }
-        let soc_stepping_id = u16::from_le_bytes(
-            fuses.cptra_core_soc_stepping_id()[0..2]
-                .try_into()
-                .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_STEPPING_ID_LEN_MISMATCH)),
-        ) as u32;
+        let word = otp
+            .read_u32_at(registers_generated::fuses::SW_MANUF_PARTITION_BYTE_OFFSET + 120)
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        let soc_stepping_id = word & 0xFFFF;
         self.registers
             .fuse_soc_stepping_id
             .write(soc::bits::FuseSocSteppingId::SocSteppingId.val(soc_stepping_id));
 
-        // Anti Rollback Disable.
-        if size_of_val(fuses.cptra_core_anti_rollback_disable())
-            != size_of_val(&self.registers.fuse_anti_rollback_disable)
-        {
-            fatal_error(McuError::ROM_SOC_ANTI_ROLLBACK_DISABLE_LEN_MISMATCH);
-        }
-        let anti_rollback_disable = u32::from_le_bytes(
-            fuses
-                .cptra_core_anti_rollback_disable()
-                .try_into()
-                .unwrap_or_else(|_| {
-                    fatal_error(McuError::ROM_SOC_ANTI_ROLLBACK_DISABLE_LEN_MISMATCH)
-                }),
-        );
+        // Anti Rollback Disable. - read single word
+        let word = otp
+            .read_u32_at(registers_generated::fuses::SW_MANUF_PARTITION_BYTE_OFFSET)
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers
             .fuse_anti_rollback_disable
-            .write(soc::bits::FuseAntiRollbackDisable::Dis.val(anti_rollback_disable));
+            .write(soc::bits::FuseAntiRollbackDisable::Dis.val(word));
 
         // IDevID Cert Attr.
-        if size_of_val(fuses.cptra_core_idevid_cert_idevid_attr())
-            != size_of_val(&self.registers.fuse_idevid_cert_attr)
-        {
-            fatal_error(McuError::ROM_SOC_IDEVID_CERT_ATTR_LEN_MISMATCH);
-        }
         for i in 0..self.registers.fuse_idevid_cert_attr.len() {
-            let word = u32::from_le_bytes(
-                fuses.cptra_core_idevid_cert_idevid_attr()[i * 4..i * 4 + 4]
-                    .try_into()
-                    .unwrap_or_else(|_| {
-                        fatal_error(McuError::ROM_SOC_IDEVID_CERT_ATTR_LEN_MISMATCH)
-                    }),
-            );
+            let word = otp
+                .read_u32_at(
+                    registers_generated::fuses::SW_MANUF_PARTITION_BYTE_OFFSET
+                        + SW_MANUF_IDEVID_CERT_ATTR_OFFSET
+                        + i * 4,
+                )
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
             self.registers.fuse_idevid_cert_attr[i].set(word);
         }
 
         // IDevID Manuf HSM ID.
-        if size_of_val(fuses.cptra_core_idevid_manuf_hsm_identifier())
-            != size_of_val(&self.registers.fuse_idevid_manuf_hsm_id)
-        {
-            fatal_error(McuError::ROM_SOC_IDEVID_MANUF_HSM_ID_LEN_MISMATCH);
-        }
         for i in 0..self.registers.fuse_idevid_manuf_hsm_id.len() {
-            let word = u32::from_le_bytes(
-                fuses.cptra_core_idevid_manuf_hsm_identifier()[i * 4..i * 4 + 4]
-                    .try_into()
-                    .unwrap_or_else(|_| {
-                        fatal_error(McuError::ROM_SOC_IDEVID_MANUF_HSM_ID_LEN_MISMATCH)
-                    }),
-            );
+            let word = otp
+                .read_u32_at(
+                    registers_generated::fuses::SW_MANUF_PARTITION_BYTE_OFFSET
+                        + SW_MANUF_IDEVID_MANUF_HSM_ID_OFFSET
+                        + i * 4,
+                )
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
             self.registers.fuse_idevid_manuf_hsm_id[i].set(word);
         }
 
-        // Prod Debug Unlock Public Key Hashes.
-        // Copy all 8 prod debug unlock public key hashes into a single buffer.
-        let mut prod_dbg_unlock_pks_hashes = [0u8; 384];
-        let fuse_slices = [
-            fuses.cptra_ss_prod_debug_unlock_pks_0(),
-            fuses.cptra_ss_prod_debug_unlock_pks_1(),
-            fuses.cptra_ss_prod_debug_unlock_pks_2(),
-            fuses.cptra_ss_prod_debug_unlock_pks_3(),
-            fuses.cptra_ss_prod_debug_unlock_pks_4(),
-            fuses.cptra_ss_prod_debug_unlock_pks_5(),
-            fuses.cptra_ss_prod_debug_unlock_pks_6(),
-            fuses.cptra_ss_prod_debug_unlock_pks_7(),
-        ];
-        for (i, fuse_slice) in fuse_slices.iter().enumerate() {
-            let start = i * 48;
-            let end = start + 48;
-            if let Some(slice) = prod_dbg_unlock_pks_hashes.get_mut(start..end) {
-                if slice.len() != fuse_slice.len() {
-                    fatal_error(McuError::ROM_SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH);
-                }
-                slice.copy_from_slice(fuse_slice);
-            } else {
-                // This is unreachable as prod_dbg_unlock_pks_hashes is 384 bytes.
-                fatal_error(McuError::ROM_SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH);
+        // Prod Debug Unlock Public Key Hashes - read 96 words (384 bytes = 8 x 48 bytes) directly into MCI
+        // Each of the 8 hashes is 48 bytes (12 words)
+        for hash_idx in 0..8 {
+            let hash_base_offset = registers_generated::fuses::SW_MANUF_PARTITION_BYTE_OFFSET
+                + SW_MANUF_PROD_DEBUG_UNLOCK_PKS_OFFSET
+                + hash_idx * PROD_DEBUG_UNLOCK_PK_SIZE;
+            for word_idx in 0..12 {
+                let word = otp
+                    .read_u32_at(hash_base_offset + word_idx * 4)
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+                let reg_idx = hash_idx * 12 + word_idx;
+                mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg[reg_idx].set(word);
             }
         }
-        // Copy the single public key hashes buffer to the MCI CSRs.
-        if size_of_val(&prod_dbg_unlock_pks_hashes)
-            != size_of_val(&mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg)
-        {
-            fatal_error(McuError::ROM_SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH)
-        }
-        for i in 0..mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg.len() {
-            let word = u32::from_le_bytes(
-                prod_dbg_unlock_pks_hashes[i * 4..i * 4 + 4]
-                    .try_into()
-                    .unwrap_or_else(|_| {
-                        fatal_error(McuError::ROM_SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH)
-                    }),
-            );
-            mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg[i].set(word);
-        }
+
         // Set the debug enablement masks for: DFT, HW Debug, Prod Debug.
         //
         // Note: this enables all 8 debug levels (supported by the 8 prod debug
@@ -451,13 +367,13 @@ impl Soc {
 
         // OCP LOCK Fuses.
         romtime::println!("[mcu-fuse-write] Attempting to write OCP LOCK fuses");
-        for (idx, word) in fuses
-            .cptra_ss_lock_hek_prod_0_ratchet_seed()
-            .chunks_exact(4)
-            .enumerate()
-        {
-            let word = u32::from_le_bytes(word.try_into().unwrap());
-            self.registers.fuse_hek_seed[idx].set(word);
+        for i in 0..self.registers.fuse_hek_seed.len() {
+            let word = otp
+                .read_u32_at(
+                    registers_generated::fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET + i * 4,
+                )
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+            self.registers.fuse_hek_seed[i].set(word);
         }
 
         // Key release is always 64 bytes currently
@@ -479,35 +395,26 @@ impl Soc {
         if cfg!(feature = "core_test") {
             // UDS Seed from vendor_non_secret_prod_partition (first 64 bytes)
             romtime::println!("[mcu-fuse-write] Writing UDS seed");
-            if size_of_val(&fuses.vendor_non_secret_prod_partition[0..64])
-                != size_of_val(&self.registers.fuse_uds_seed)
-            {
-                fatal_error(McuError::ROM_SOC_UDS_SEED_LEN_MISMATCH);
-            }
             for i in 0..self.registers.fuse_uds_seed.len() {
-                let word = u32::from_le_bytes(
-                    fuses.vendor_non_secret_prod_partition[i * 4..i * 4 + 4]
-                        .try_into()
-                        .unwrap_or_else(|_| fatal_error(McuError::ROM_SOC_UDS_SEED_LEN_MISMATCH)),
-                );
+                let word = otp
+                    .read_u32_at(
+                        registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET
+                            + i * 4,
+                    )
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
                 self.registers.fuse_uds_seed[i].set(word);
             }
 
             // Field Entropy from vendor_non_secret_prod_partition (32 bytes after UDS)
             romtime::println!("[mcu-fuse-write] Writing field entropy");
-            if size_of_val(&fuses.vendor_non_secret_prod_partition[64..96])
-                != size_of_val(&self.registers.fuse_field_entropy)
-            {
-                fatal_error(McuError::ROM_SOC_FIELD_ENTROPY_LEN_MISMATCH);
-            }
             for i in 0..self.registers.fuse_field_entropy.len() {
-                let word = u32::from_le_bytes(
-                    fuses.vendor_non_secret_prod_partition[64 + i * 4..64 + i * 4 + 4]
-                        .try_into()
-                        .unwrap_or_else(|_| {
-                            fatal_error(McuError::ROM_SOC_FIELD_ENTROPY_LEN_MISMATCH)
-                        }),
-                );
+                let word = otp
+                    .read_u32_at(
+                        registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET
+                            + 64
+                            + i * 4,
+                    )
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
                 self.registers.fuse_field_entropy[i].set(word);
             }
         }
@@ -632,30 +539,9 @@ pub fn configure_mcu_mbox_axi_users(
 /// after SS_CONFIG_DONE_STICKY is set.
 ///
 /// This function compares the current MCI register values against the expected values
-/// computed from the fuses.
-pub fn verify_prod_debug_unlock_pk_hash(mci: &romtime::Mci, fuses: &Fuses) -> Result<(), McuError> {
-    let mut expected_hashes = [0u8; 384];
-    let fuse_slices = [
-        fuses.cptra_ss_prod_debug_unlock_pks_0(),
-        fuses.cptra_ss_prod_debug_unlock_pks_1(),
-        fuses.cptra_ss_prod_debug_unlock_pks_2(),
-        fuses.cptra_ss_prod_debug_unlock_pks_3(),
-        fuses.cptra_ss_prod_debug_unlock_pks_4(),
-        fuses.cptra_ss_prod_debug_unlock_pks_5(),
-        fuses.cptra_ss_prod_debug_unlock_pks_6(),
-        fuses.cptra_ss_prod_debug_unlock_pks_7(),
-    ];
-    for (i, fuse_slice) in fuse_slices.iter().enumerate() {
-        let start = i * 48;
-        if fuse_slice.len() != 48 {
-            // impossible but avoid panic
-            return Err(McuError::ROM_SOC_PK_HASH_VERIFY_FAILED);
-        }
-        if let Some(slice) = expected_hashes.get_mut(start..start + 48) {
-            slice.copy_from_slice(fuse_slice);
-        }
-    }
-
+/// read from OTP word-by-word to minimize stack usage.
+#[inline(never)]
+pub fn verify_prod_debug_unlock_pk_hash(mci: &romtime::Mci, otp: &Otp) -> Result<(), McuError> {
     // Verify length matches: 384 bytes = 96 u32 words
     let pk_hash_len = mci.prod_debug_unlock_pk_hash_len();
     if pk_hash_len != 96 {
@@ -666,11 +552,24 @@ pub fn verify_prod_debug_unlock_pk_hash(mci: &romtime::Mci, fuses: &Fuses) -> Re
         return Err(McuError::ROM_SOC_PK_HASH_VERIFY_FAILED);
     }
 
-    let mut fuse_hashes = [0u32; 96];
-    for (i, fuse_hash) in fuse_hashes.iter_mut().enumerate() {
-        *fuse_hash = mci.read_prod_debug_unlock_pk_hash(i).unwrap_or(0);
+    // Compare word-by-word to minimize stack usage
+    // Each of the 8 hashes is 48 bytes (12 words)
+    let mut mismatch = false;
+    for hash_idx in 0..8 {
+        let hash_base_offset =
+            registers_generated::fuses::SW_MANUF_PARTITION_BYTE_OFFSET + 124 + hash_idx * 48;
+        for word_idx in 0..12 {
+            let reg_idx = hash_idx * 12 + word_idx;
+            let expected = otp
+                .read_u32_at(hash_base_offset + word_idx * 4)
+                .map_err(|_| McuError::ROM_SOC_PK_HASH_VERIFY_FAILED)?;
+            let actual = mci.read_prod_debug_unlock_pk_hash(reg_idx).unwrap_or(0);
+            // Use bitwise OR to accumulate mismatches (constant-time)
+            mismatch |= expected != actual;
+        }
     }
-    if !constant_time_eq::constant_time_eq(&expected_hashes, fuse_hashes.as_bytes()) {
+
+    if mismatch {
         romtime::println!("[mcu-rom] Prod debug unlock PK hash verification failed");
         return Err(McuError::ROM_SOC_PK_HASH_VERIFY_FAILED);
     }

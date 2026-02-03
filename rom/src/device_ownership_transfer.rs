@@ -19,7 +19,7 @@ use caliptra_api::mailbox::{
     CommandId, MailboxReqHeader,
 };
 use mcu_error::{McuError, McuResult};
-use registers_generated::fuses::Fuses;
+use romtime::otp::Otp;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
 const DOT_LABEL: &[u8] = b"Caliptra DOT stable key";
@@ -49,20 +49,20 @@ impl DotFuses {
     }
 }
 
-/// Loads the owner public key hash from fuses.
+/// Loads the owner public key hash from OTP.
 ///
 /// This retrieves the owner PK hash from the OTP fuses, a.k.a., the
 /// Code Authentication Key (CAK). This hash is used to
 /// verify the owner's identity during device authentication.
 ///
 /// # Arguments
-/// * `fuses` - fuse data
+/// * `otp` - OTP driver
 ///
 /// # Returns
 /// * `Some(OwnerPkHash)` - The owner public key hash if successfully loaded.
-/// * `None` - If the fuse data cannot be converted to the expected format.
-pub fn load_owner_pkhash(fuses: &Fuses) -> Option<OwnerPkHash> {
-    let hash: [u8; 48] = (*fuses.cptra_ss_owner_pk_hash()).try_into().ok()?;
+/// * `None` - If the fuse data cannot be read or converted to the expected format.
+pub fn load_owner_pkhash(otp: &Otp) -> Option<OwnerPkHash> {
+    let hash: [u8; 48] = otp.read_cptra_ss_owner_pk_hash().ok()?;
     let hash: [u32; 12] = transmute!(hash);
     Some(OwnerPkHash(hash))
 }
@@ -144,7 +144,6 @@ impl DotBlob {
 ///
 /// # Arguments
 /// * `env` - Mutable reference to the ROM environment containing hardware interfaces.
-/// * `main_fuses` - Main fuse data.
 /// * `dot_fuses` - DOT fuse data.
 /// * `blob` - DOT blob loaded from storage.
 /// * `stable_key_type` - The type of stable key to derive to verify the DOT blob with.
@@ -154,7 +153,6 @@ impl DotBlob {
 /// * `Err(McuError)` - If any step of the DOT flow fails.
 pub fn dot_flow(
     env: &mut RomEnv,
-    main_fuses: &Fuses,
     dot_fuses: &DotFuses,
     blob: &DotBlob,
     stable_key_type: CmStableKeyType,
@@ -181,7 +179,7 @@ pub fn dot_flow(
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferComplete.into());
 
     // TODO: incorporate this into the DOT flow
-    Ok(load_owner_pkhash(main_fuses))
+    Ok(load_owner_pkhash(&env.otp))
 }
 
 /// Derives the DOT Effective Key using Caliptra's stable key derivation mailbox command.
