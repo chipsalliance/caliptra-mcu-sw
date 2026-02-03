@@ -9,12 +9,11 @@ This section covers how to perform common MCU flows on an FPGA. You can always f
 The machine that is used for development and cross compilation should have:
 
 - Rust
-- Docker
-  - Make sure you pull the FPGA build image: `$ docker pull ghcr.io/chipsalliance/caliptra-build-image:latest` 
+- Podman
+  - Alternatively you can use docker, but it will need to support rootless commands. Here are the steps [here](https://docs.docker.com/engine/security/rootless/).
+  - Make sure you pull the FPGA build image: `$ podman pull ghcr.io/chipsalliance/caliptra-build-image:latest` or `$ docker pull ghcr.io/chipsalliance/caliptra-build-image:latest` 
 - rsync
 - git
-
-**NOTE:** Setup rootless docker. Here are the steps [here](https://docs.docker.com/engine/security/rootless/). 
 
 ### FPGA System 
 
