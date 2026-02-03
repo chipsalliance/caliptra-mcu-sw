@@ -18,7 +18,7 @@ struct KernelSymbols {}
 
 impl BinarySymbols for KernelSymbols {
     const INSTRUCTION_START_SYMBOL: &str = "_textstart";
-    const INSTRUCTION_END_SYMBOL: &str = "_textend";
+    const INSTRUCTION_END_SYMBOL: &str = "_imem_end";
     const DATA_START_SYMBOL: &str = "_ssram";
     const DATA_END_SYMBOL: &str = "_kernel_ram_done";
 }

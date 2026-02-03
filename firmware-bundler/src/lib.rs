@@ -37,6 +37,10 @@ use manifest::{AllocationRequest, Manifest};
 
 use crate::args::Commands;
 
+/// This alignment is derived from Tocks' requirements within the linker script for the alignment of
+/// code and data blocks within a Tock executable.
+pub const TOCK_ALIGNMENT: u64 = 4096;
+
 pub fn execute(cmd: Commands) -> Result<()> {
     match cmd {
         Commands::Build { common, ld, build } => build_step(&common, &ld, &build).map(|_| ()),
@@ -76,9 +80,6 @@ fn dynamically_size(
     ld: &LdArgs,
     build: &BuildArgs,
 ) -> Result<()> {
-    // This alignment is derived from Tocks' requirements within the linker script.
-    const ALIGNMENT: u64 = 4096;
-
     // Generate the maximal linker file, build with it, and then get the size out of the resulting
     // binary.
     //
@@ -102,11 +103,11 @@ fn dynamically_size(
 
     // Update the kernels memory requirments.
     manifest.kernel.exec_mem = Some(AllocationRequest {
-        size: sizes.kernel.instructions.next_multiple_of(ALIGNMENT),
+        size: sizes.kernel.instructions.next_multiple_of(TOCK_ALIGNMENT),
         alignment: None,
     });
     manifest.kernel.data_mem = Some(AllocationRequest {
-        size: sizes.kernel.data.next_multiple_of(ALIGNMENT),
+        size: sizes.kernel.data.next_multiple_of(TOCK_ALIGNMENT),
         alignment: None,
     });
 
@@ -131,12 +132,13 @@ fn dynamically_size(
             manifest_app.exec_mem = Some(AllocationRequest {
                 // Account for the header length, which is placed within the flash block, but not
                 // accounted for by the instruction count.
-                size: (size_app.instructions + header_len as u64).next_multiple_of(ALIGNMENT),
+                size: (size_app.instructions + (header_len as u64))
+                    .next_multiple_of(TOCK_ALIGNMENT),
                 alignment: None,
             });
 
             manifest_app.data_mem = Some(AllocationRequest {
-                size: size_app.data.next_multiple_of(ALIGNMENT),
+                size: size_app.data.next_multiple_of(TOCK_ALIGNMENT),
                 alignment: None,
             });
 

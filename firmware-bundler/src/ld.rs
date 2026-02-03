@@ -14,8 +14,9 @@ use tbf_header::TbfHeader;
 
 use crate::{
     args::{Common, LdArgs},
-    manifest::{Binary, Manifest, Memory},
+    manifest::{Binary, Manifest, Memory, RuntimeMemory},
     tbf::create_tbf_header,
+    TOCK_ALIGNMENT,
 };
 
 // To keep the ld file generation simple, a layout is defined for each type of application, and then
@@ -147,17 +148,30 @@ impl<'a> LdGeneration<'a> {
         // Skip generating a ROM linker script.  The ROM always has full access to its memory space,
         // and is thus not interesting for generating a maximal script for sizing purposes.
 
+        // Determine the maximal size of itcm/dtcm for the application.
+        let (itcm, dtcm) = match self.manifest.platform.runtime_memory.clone() {
+            RuntimeMemory::Sram(mut mem) => {
+                // If in SRAM mode, split the memory in approximately half for instructions and
+                // data.  They cannot be the same, as it causes allocations to overlap and fail to
+                // compile.
+                //
+                // Note: The in half split is arbitrary.  This may have to be adjusted if real world
+                // applications are found not to compile with this split, but can fit in the SRAM.
+                let split = (mem.size / 2).next_multiple_of(TOCK_ALIGNMENT);
+                let instructions = mem.consume(split)?;
+                (instructions, mem)
+            }
+            RuntimeMemory::Tcm { itcm, dtcm } => (itcm, dtcm),
+        };
+
         // Iterate through each application providing it with the entirety of ITCM and DTCM space.
         let mut app_defs = Vec::new();
         for binary in &self.manifest.apps {
             // This is a sizing build, so the header values don't matter.
             let header = create_tbf_header(binary)?;
 
-            let itcm = self.manifest.platform.itcm.clone();
-            let ram = self.manifest.platform.ram.clone();
-
             let content = self
-                .app_linker_content(binary, &header, itcm.clone(), ram)
+                .app_linker_content(binary, &header, itcm.clone(), dtcm.clone())
                 .with_context(|| binary_context(&binary.name, "context generation"))?;
             let path = self.output_ld_file(binary, &content)?;
             app_defs.push(App {
@@ -166,20 +180,14 @@ impl<'a> LdGeneration<'a> {
                     linker_script: path,
                 },
                 header,
-                instruction_block: itcm,
+                instruction_block: itcm.clone(),
             });
         }
 
         // Then generate a kernel linker file with the entirety of ITCM and DTCM space.
         let kernel = &self.manifest.kernel;
         let content = self
-            .kernel_linker_content(
-                kernel,
-                self.manifest.platform.itcm.clone(),
-                None,
-                self.manifest.platform.ram.clone(),
-                self.manifest.platform.ram.clone(),
-            )
+            .kernel_linker_content(itcm.clone(), None, dtcm.clone(), itcm.clone(), dtcm.clone())
             .with_context(|| binary_context(&kernel.name, "context generation"))?;
         let path = self.output_ld_file(kernel, &content)?;
         let kernel_def = LinkerScript {
@@ -189,7 +197,7 @@ impl<'a> LdGeneration<'a> {
 
         Ok(BuildDefinition {
             rom: None,
-            kernel: (kernel_def, self.manifest.platform.itcm.clone()),
+            kernel: (kernel_def, itcm.clone()),
             apps: app_defs,
         })
     }
@@ -230,15 +238,31 @@ impl<'a> LdGeneration<'a> {
             })
             .transpose()?;
 
+        let kernel = &self.manifest.kernel;
+        let kernel_exec_mem = kernel.exec_mem()?;
+
         // Now get trackers for runtime instruction and data memory.
-        let mut itcm_tracker = self.manifest.platform.itcm.clone();
-        let mut ram_tracker = self.manifest.platform.ram.clone();
+        let (mut itcm_tracker, mut dtcm_tracker) =
+            match self.manifest.platform.runtime_memory.clone() {
+                RuntimeMemory::Sram(mut mem) => {
+                    // Determine the amount of space required within SRAM for the instructions.  It is
+                    // equal to the kernel imem plus each apps imem, with padding for Tock alignment.
+                    let mut split = kernel_exec_mem.size.next_multiple_of(TOCK_ALIGNMENT);
+                    for app in &self.manifest.apps {
+                        split += app.exec_mem()?.size.next_multiple_of(TOCK_ALIGNMENT);
+                    }
+
+                    let instructions = mem.consume(split)?;
+                    (instructions, mem)
+                }
+                RuntimeMemory::Tcm { itcm, dtcm } => (itcm, dtcm),
+            };
+        let initial_itcm = itcm_tracker.clone();
+        let initial_dtcm = dtcm_tracker.clone();
 
         // The kernel should be the first element in both ITCM and RAM, therefore allocate it.  Wait
         // before creating the LD file, as application alignment can effect the value of some LD
         // variables.
-        let kernel = &self.manifest.kernel;
-        let kernel_exec_mem = kernel.exec_mem()?;
         let instructions = self
             .get_mem_block(
                 kernel_exec_mem.size,
@@ -251,7 +275,7 @@ impl<'a> LdGeneration<'a> {
             .get_mem_block(
                 kernel_data_mem.size,
                 kernel_data_mem.alignment,
-                &mut ram_tracker,
+                &mut dtcm_tracker,
             )
             .with_context(|| binary_context(&kernel.name, "data allocation"))?;
 
@@ -267,7 +291,7 @@ impl<'a> LdGeneration<'a> {
                 .with_context(|| binary_context(&binary.name, "instruction allocation"))?;
             let data_mem = binary.data_mem()?;
             let data = self
-                .get_mem_block(data_mem.size, data_mem.alignment, &mut ram_tracker)
+                .get_mem_block(data_mem.size, data_mem.alignment, &mut dtcm_tracker)
                 .with_context(|| binary_context(&binary.name, "data allocation"))?;
 
             if first_app_instructions.is_none() {
@@ -291,11 +315,11 @@ impl<'a> LdGeneration<'a> {
         // Finally generate the linker file for the kernel.
         let content = self
             .kernel_linker_content(
-                kernel,
                 instructions.clone(),
                 first_app_instructions,
                 data,
-                self.manifest.platform.ram.clone(),
+                initial_itcm,
+                initial_dtcm,
             )
             .with_context(|| binary_context(&kernel.name, "context generation"))?;
         let path = self.output_ld_file(kernel, &content)?;
@@ -380,11 +404,11 @@ INCLUDE $BASE_LD_CONTENTS
 
     fn kernel_linker_content(
         &self,
-        binary: &Binary,
         instructions: Memory,
         first_app_instructions: Option<Memory>,
         kernel_data: Memory,
-        ram: Memory,
+        itcm: Memory,
+        dtcm: Memory,
     ) -> Result<String> {
         const KERNEL_LD_TEMPLATE: &str = r#"
 /* Licensed under the Apache-2.0 license. */
@@ -420,20 +444,17 @@ INCLUDE $BASE_LD_CONTENTS
         //
         // If no APPs are specified in the manifest than it is not used anyway so just use 0s.
         let (apps_start, apps_length) = match first_app_instructions {
-            Some(fai) => (
-                fai.offset,
-                self.manifest.platform.itcm.offset + self.manifest.platform.itcm.size - fai.offset,
-            ),
+            Some(fai) => (fai.offset, itcm.offset + itcm.size - fai.offset),
             None => (0, 0),
         };
         sub_map.insert("APPS_START", format!("{apps_start:#x}",));
         sub_map.insert("APPS_LENGTH", format!("{apps_length:#x}",));
 
         sub_map.insert("DATA_RAM_START", format!("{:#x}", kernel_data.offset));
-        sub_map.insert("DATA_RAM_LENGTH", format!("{:#x}", ram.size));
+        sub_map.insert("DATA_RAM_LENGTH", format!("{:#x}", dtcm.size));
 
         let app_offset = kernel_data.offset + kernel_data.size;
-        let app_length = ram.size - kernel_data.size;
+        let app_length = dtcm.size - kernel_data.size;
         sub_map.insert("APP_RAM_START", format!("{:#x}", app_offset));
         sub_map.insert("APP_RAM_LENGTH", format!("{:#x}", app_length));
 
@@ -445,12 +466,6 @@ INCLUDE $BASE_LD_CONTENTS
         sub_map.insert("FLASH_OFFSET", format!("{:#x}", flash.offset));
         sub_map.insert("FLASH_LENGTH", format!("{:#x}", flash.size));
 
-        // If the stack isn't specified we are in a sizing build, and it doesnt matter.  Therefore
-        // default to 0.
-        sub_map.insert(
-            "STACK_SIZE",
-            format!("{:#x}", binary.stack().unwrap_or_default()),
-        );
         sub_map.insert(
             "BASE_LD_CONTENTS",
             base_ld_file.to_string_lossy().to_string(),
@@ -581,13 +596,15 @@ mod tests {
                 offset: 0x0,
                 size: rom_size,
             },
-            itcm: Memory {
-                offset: 0x10000,
-                size: itcm_size,
-            },
-            ram: Memory {
-                offset: 0x20000,
-                size: ram_size,
+            runtime_memory: RuntimeMemory::Tcm {
+                itcm: Memory {
+                    offset: 0x10000,
+                    size: itcm_size,
+                },
+                dtcm: Memory {
+                    offset: 0x20000,
+                    size: ram_size,
+                },
             },
             dccm: Some(Memory {
                 offset: 0x30000,
