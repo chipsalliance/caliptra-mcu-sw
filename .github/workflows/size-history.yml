@@ -46,4 +46,4 @@ jobs:
       - name: Run size analysis (look at workflow "Summary" tab for results)
         run: |
           mkdir -p $SIZE_CACHE_DIR
-          cargo xtask size-history --max-commits 1000
+          cargo xtask size-history --max-commits 100
