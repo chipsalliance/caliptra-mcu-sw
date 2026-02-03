@@ -7,8 +7,9 @@ use mcu_builder::{AllBuildArgs, ImageCfg, PROJECT_ROOT};
 use super::{
     run_command, run_command_with_output,
     utils::{
-        build_base_docker_command, build_caliptra_firmware, caliptra_sw_workspace_root,
+        build_base_container_command, build_caliptra_firmware, caliptra_sw_workspace_root,
         check_ssh_access, download_bitstream_pdi, rsync_file, run_test_suite,
+        NextestArchiveCommand,
     },
     ActionHandler, BuildArgs, BuildTestArgs, TestArgs,
 };
@@ -197,16 +198,16 @@ impl<'a> ActionHandler<'a> for Subsystem {
     }
 
     fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
-        let mut base_cmd = build_base_docker_command()?;
-        let package_filter_set = if let Some(package_filter) = args.package_filter {
-            format!("-E '{package_filter}'")
-        } else {
-            String::new()
-        };
-        base_cmd.arg(
-                format!("(cd /work-dir && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_realtime {package_filter_set} --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)")
-            );
-        base_cmd.status().context("failed to cross compile tests")?;
+        let mut container = build_base_container_command()?;
+        let cmd = NextestArchiveCommand::new("/work-dir")
+            .feature("fpga_realtime")
+            .package_filter(args.package_filter.as_deref())
+            .build();
+
+        container.arg(&cmd);
+        container
+            .status()
+            .context("failed to cross compile tests")?;
         if let Some(target_host) = &self.target_host {
             rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
                 .context("failed to copy tests to fpga")?;
@@ -308,16 +309,17 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
     fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
         let caliptra_sw = caliptra_sw_workspace_root();
         let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
-        let package_filter_set = if let Some(package_filter) = args.package_filter {
-            format!("-E '{package_filter}'")
-        } else {
-            String::new()
-        };
-        let mut base_cmd = build_base_docker_command()?;
-        base_cmd.arg(
-                format!("(cd /{} && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_subsystem,itrng,ocp-lock {package_filter_set} --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
-            , base_name));
-        base_cmd.status().context("failed to cross compile tests")?;
+
+        let mut container = build_base_container_command()?;
+        let cmd = NextestArchiveCommand::new(&format!("/{base_name}"))
+            .features(&["fpga_subsystem", "itrng", "ocp-lock"])
+            .package_filter(args.package_filter.as_deref())
+            .build();
+
+        container.arg(&cmd);
+        container
+            .status()
+            .context("failed to cross compile tests")?;
         if let Some(target_host) = &self.target_host {
             rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
                 .context("failed to copy tests to fpga")?;
@@ -406,17 +408,17 @@ impl<'a> ActionHandler<'a> for Core {
     fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
         let caliptra_sw = caliptra_sw_workspace_root();
         let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
-        let package_filter_set = if let Some(package_filter) = args.package_filter {
-            format!("-E '{package_filter}'")
-        } else {
-            String::new()
-        };
 
-        let mut base_cmd = build_base_docker_command()?;
-        base_cmd.arg(
-                format!("(cd /{} && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_realtime,itrng {package_filter_set} --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
-            , base_name));
-        base_cmd.status().context("failed to cross compile tests")?;
+        let mut container = build_base_container_command()?;
+        let cmd = NextestArchiveCommand::new(&format!("/{base_name}"))
+            .features(&["fpga_realtime", "itrng"])
+            .package_filter(args.package_filter.as_deref())
+            .build();
+
+        container.arg(&cmd);
+        container
+            .status()
+            .context("failed to cross compile tests")?;
         if let Some(target_host) = &self.target_host {
             rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
                 .context("failed to copy tests to fpga")?;

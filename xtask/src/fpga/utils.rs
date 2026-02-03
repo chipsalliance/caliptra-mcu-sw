@@ -14,11 +14,10 @@ use mcu_builder::PROJECT_ROOT;
 
 /// Check that host system has all the tools that the xtask FPGA flows depends on.
 pub fn check_host_dependencies() -> Result<()> {
+    if Container::try_new().is_err() {
+        bail!("Neither 'podman' nor 'docker' found on PATH. Please install one of them.");
+    }
     let tools = [
-        (
-            "docker --version",
-            "'docker' not found on PATH. Please install docker.",
-        ),
         (
             "rsync --version",
             "'rsync' not found on PATH. Please install rsync.",
@@ -176,33 +175,154 @@ pub fn run_command_extended(args: RunCommandArgs) -> Result<Option<String>> {
     }
 }
 
-/// create a base docker command
-pub fn build_base_docker_command() -> Result<Command> {
-    let home = std::env::var("HOME").unwrap();
-    let project_root = PROJECT_ROOT.clone();
-    let project_root = project_root.display();
+pub struct NextestArchiveCommand {
+    work_dir: String,
+    features: Vec<String>,
+    package_filter: Option<String>,
+}
 
-    // TODO(clundin): Clean this docker command up.
-    let mut cmd = Command::new("docker");
-    cmd.current_dir(&*PROJECT_ROOT).args([
-        "run",
-        "--rm",
-        "-e",
-        "\"TERM=xterm-256color\"",
-        &format!("-v{project_root}:/work-dir"),
-        "-w/work-dir",
-        &format!("-v{home}/.cargo/registry:/root/.cargo/registry"),
-        &format!("-v{home}/.cargo/git:/root/.cargo/git"),
-    ]);
-    let caliptra_sw = caliptra_sw_workspace_root();
-    let caliptra_path = caliptra_sw.canonicalize()?;
-    let basename = caliptra_sw.file_name().unwrap().to_str().unwrap();
-    let display = caliptra_path.display();
-    cmd.arg(format!("-v{display}:/{basename}"));
-    cmd.arg("ghcr.io/chipsalliance/caliptra-build-image:latest")
-        .arg("/bin/bash")
-        .arg("-c");
-    Ok(cmd)
+impl NextestArchiveCommand {
+    pub fn new(work_dir: &str) -> Self {
+        Self {
+            work_dir: work_dir.into(),
+            features: vec![],
+            package_filter: None,
+        }
+    }
+
+    pub fn feature(mut self, feature: &str) -> Self {
+        self.features.push(feature.into());
+        self
+    }
+
+    pub fn features(mut self, features: &[&str]) -> Self {
+        for f in features {
+            self.features.push(f.to_string());
+        }
+        self
+    }
+
+    pub fn package_filter(mut self, filter: Option<&str>) -> Self {
+        self.package_filter = filter.map(|s| s.into());
+        self
+    }
+
+    pub fn build(self) -> String {
+        let mut cmd = format!("cd {} && ", self.work_dir);
+        cmd.push_str("CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc ");
+        cmd.push_str("cargo nextest archive ");
+
+        if !self.features.is_empty() {
+            cmd.push_str(&format!("--features={} ", self.features.join(",")));
+        }
+
+        if let Some(filter) = self.package_filter {
+            cmd.push_str(&format!("-E '{}' ", filter));
+        }
+
+        cmd.push_str("--target=aarch64-unknown-linux-gnu ");
+        cmd.push_str("--archive-file=/work-dir/caliptra-test-binaries.tar.zst ");
+        cmd.push_str("--target-dir cross-target/");
+
+        cmd
+    }
+}
+
+pub struct Container {
+    cmd: Command,
+}
+
+impl Container {
+    pub fn try_new() -> Result<Self> {
+        let program = if run_command_extended(RunCommandArgs {
+            command: "podman --version",
+            output: Output::Silence,
+            ..Default::default()
+        })
+        .is_ok()
+        {
+            "podman"
+        } else if run_command_extended(RunCommandArgs {
+            command: "docker --version",
+            output: Output::Silence,
+            ..Default::default()
+        })
+        .is_ok()
+        {
+            "docker"
+        } else {
+            bail!("Host needs either podman or Docker installed!");
+        };
+
+        Ok(Self {
+            cmd: Command::new(program),
+        })
+    }
+
+    pub fn run(&mut self) -> &mut Self {
+        self.cmd.arg("run");
+        self
+    }
+
+    pub fn rm(&mut self) -> &mut Self {
+        self.cmd.arg("--rm");
+        self
+    }
+
+    pub fn env(&mut self, key: &str, val: &str) -> &mut Self {
+        self.cmd.arg("-e").arg(format!("{key}={val}"));
+        self
+    }
+
+    pub fn volume(&mut self, src: &str, dest: &str) -> &mut Self {
+        self.cmd.arg("-v").arg(format!("{src}:{dest}"));
+        self
+    }
+
+    pub fn workdir(&mut self, dir: &str) -> &mut Self {
+        self.cmd.arg("-w").arg(dir);
+        self
+    }
+
+    pub fn arg(&mut self, arg: &str) -> &mut Self {
+        self.cmd.arg(arg);
+        self
+    }
+
+    pub fn setup_build_env(&mut self) -> Result<&mut Self> {
+        let home = std::env::var("HOME").unwrap();
+        let project_root = PROJECT_ROOT.clone();
+        let project_root = project_root.display();
+
+        self.run()
+            .rm()
+            .env("TERM", "xterm-256color")
+            .volume(&project_root.to_string(), "/work-dir")
+            .workdir("/work-dir")
+            .volume(&format!("{home}/.cargo/registry"), "/root/.cargo/registry")
+            .volume(&format!("{home}/.cargo/git"), "/root/.cargo/git");
+
+        let caliptra_sw = caliptra_sw_workspace_root();
+        let caliptra_path = caliptra_sw.canonicalize()?;
+        let basename = caliptra_sw.file_name().unwrap().to_str().unwrap();
+        let display = caliptra_path.display();
+        self.volume(&display.to_string(), &format!("/{basename}"));
+        self.arg("ghcr.io/chipsalliance/caliptra-build-image:latest")
+            .arg("/bin/bash")
+            .arg("-c");
+        Ok(self)
+    }
+
+    pub fn status(&mut self) -> Result<std::process::ExitStatus, std::io::Error> {
+        self.cmd.status()
+    }
+}
+
+/// create a base container command
+pub fn build_base_container_command() -> Result<Container> {
+    let mut container = Container::try_new()?;
+    container.setup_build_env()?;
+    Ok(container)
 }
 
 pub fn run_test_suite(
