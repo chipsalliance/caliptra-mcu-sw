@@ -26,6 +26,11 @@ pub enum MsgHandlerError {
     NotReady,
     InvalidParams,
     UnsupportedCommand,
+    PermissionDenied,
+    Busy,
+    ReadError,
+    WriteError,
+    NoMemory,
 }
 
 /// Command interface for handling MCU mailbox commands.
@@ -175,6 +180,10 @@ impl<'a> CmdInterface<'a> {
                     &mut resp_bytes,
                 )
                 .await
+            }
+            ocp_lock_cmd @ CommandId::MC_PROVISION_HEK
+            | ocp_lock_cmd @ CommandId::MC_ZEROIZE_HEK => {
+                crate::ocp_lock::OcpLock::command_handler(msg_buf, ocp_lock_cmd, req_len).await
             }
             // TODO: add more command handlers.
             _ => Err(MsgHandlerError::UnsupportedCommand),

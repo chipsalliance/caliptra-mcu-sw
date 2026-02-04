@@ -4,4 +4,5 @@
 
 pub mod cmd_interface;
 pub mod daemon;
+pub mod ocp_lock;
 pub mod transport;
