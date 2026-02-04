@@ -269,10 +269,8 @@ caliptra-test = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2
 caliptra-test-harness = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
 caliptra-test-harness-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
 ureg = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
-dpe = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699", default-features = false, features = ["dpe_profile_p384_sha384"] }
-ocp-eat = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
-caliptra-okref = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
-
+dpe = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699", default-features = false, features = ["dpe_profile_p384_sha384"] }okref
+ocp-eat = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699",  default-features = false  }
 
 # local caliptra dependency; useful when developing
 # caliptra-api = { path = "../caliptra-sw/api" }
