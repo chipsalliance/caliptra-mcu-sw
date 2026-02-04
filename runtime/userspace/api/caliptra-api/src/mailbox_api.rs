@@ -45,7 +45,7 @@ use caliptra_api::mailbox::{
 use core::mem::size_of;
 use dpe::context::ContextHandle;
 use dpe::response::{CertifyKeyResp, GetCertificateChainResp, ResponseHdr, SignResp};
-use dpe::DPE_PROFILE;
+use dpe::DpeProfile;
 use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use libtock_platform::ErrorCode;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
@@ -160,8 +160,8 @@ pub(crate) enum DpeResponse {
 pub(crate) struct CertifyEcKeyResp {
     pub resp_hdr: ResponseHdr,
     pub new_context_handle: ContextHandle,
-    pub derived_pubkey_x: [u8; DPE_PROFILE.ecc_int_size()],
-    pub derived_pubkey_y: [u8; DPE_PROFILE.ecc_int_size()],
+    pub derived_pubkey_x: [u8; DpeProfile::P384Sha384.ecc_int_size()],
+    pub derived_pubkey_y: [u8; DpeProfile::P384Sha384.ecc_int_size()],
     pub cert_size: u32,
     pub cert: [u8; MAX_ECC_CERT_SIZE],
 }

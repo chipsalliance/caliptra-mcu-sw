@@ -11,18 +11,20 @@ use caliptra_api::mailbox::{
     PopulateIdevEcc384CertReq, Request, MAX_RESP_DATA_SIZE,
 };
 use dpe::commands::{
-    CertifyKeyCmd, CertifyKeyFlags, Command, CommandHdr, GetCertificateChainCmd, SignCmd, SignFlags,
+    CertifyKeyCommand, CertifyKeyFlags, CertifyKeyP384Cmd as CertifyKeyCmd, Command, CommandHdr,
+    GetCertificateChainCmd, SignFlags, SignP384Cmd as SignCmd,
 };
 use dpe::context::ContextHandle;
-use dpe::response::SignResp;
-use dpe::DPE_PROFILE;
+use dpe::response::{SignP384Resp, SignResp};
+use dpe::DpeProfile;
+
 use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromZeros, IntoBytes, TryFromBytes};
 
 pub const IDEV_ECC_CSR_MAX_SIZE: usize = GetIdevCsrResp::DATA_MAX_SIZE;
 pub const MAX_MAILBOX_GET_CERT_RESP_SIZE: usize = MAX_RESP_DATA_SIZE;
 pub const MAX_CERT_CHUNK_SIZE: usize = 1024;
-pub const KEY_LABEL_SIZE: usize = DPE_PROFILE.hash_size();
+pub const KEY_LABEL_SIZE: usize = DpeProfile::P384Sha384.hash_size();
 
 pub enum CertType {
     Ecc,
@@ -139,12 +141,12 @@ impl CertContext {
         derived_pubkey_y: Option<&mut [u8]>,
     ) -> CaliptraApiResult<usize> {
         if let Some(ref x) = derived_pubkey_x {
-            if x.len() != DPE_PROFILE.tci_size() {
+            if x.len() != DpeProfile::P384Sha384.tci_size() {
                 Err(CaliptraApiError::InvalidArgument("Invalid pubkey size"))?;
             }
         }
         if let Some(ref y) = derived_pubkey_y {
-            if y.len() != DPE_PROFILE.tci_size() {
+            if y.len() != DpeProfile::P384Sha384.tci_size() {
                 Err(CaliptraApiError::InvalidArgument("Invalid pubkey size"))?;
             }
         }
@@ -152,7 +154,7 @@ impl CertContext {
         let mut dpe_cmd = CertifyKeyCmd {
             handle: ContextHandle::default(),
             flags: CertifyKeyFlags::empty(),
-            format: CertifyKeyCmd::FORMAT_X509,
+            format: CertifyKeyCommand::FORMAT_X509,
             label: [0; KEY_LABEL_SIZE],
         };
 
@@ -160,9 +162,7 @@ impl CertContext {
             dpe_cmd.label[..label.len()].copy_from_slice(label);
         }
 
-        let resp = self
-            .execute_dpe_cmd(&mut Command::CertifyKey(&dpe_cmd))
-            .await?;
+        let resp = self.execute_dpe_cmd(&mut Command::from(&dpe_cmd)).await?;
 
         if let DpeResponse::CertifyKey(certify_key_resp) = resp {
             let cert_len = certify_key_resp.cert_size as usize;
@@ -190,11 +190,11 @@ impl CertContext {
         digest: &[u8],
         signature: &mut [u8],
     ) -> CaliptraApiResult<usize> {
-        if digest.len() != DPE_PROFILE.hash_size() {
+        if digest.len() != DpeProfile::P384Sha384.hash_size() {
             return Err(CaliptraApiError::InvalidArgument("Invalid digest size"));
         }
 
-        if signature.len() < DPE_PROFILE.tci_size() {
+        if signature.len() < DpeProfile::P384Sha384.tci_size() {
             return Err(CaliptraApiError::InvalidArgument("Invalid signature size"));
         }
 
@@ -202,16 +202,16 @@ impl CertContext {
             handle: ContextHandle::default(),
             label: [0; KEY_LABEL_SIZE],
             flags: SignFlags::empty(),
-            digest: [0; DPE_PROFILE.hash_size()],
+            digest: [0; DpeProfile::P384Sha384.hash_size()],
         };
         dpe_cmd.digest[..digest.len()].copy_from_slice(digest);
         if let Some(label) = key_label {
             dpe_cmd.label[..label.len()].copy_from_slice(label);
         }
 
-        let resp = self.execute_dpe_cmd(&mut Command::Sign(&dpe_cmd)).await?;
+        let resp = self.execute_dpe_cmd(&mut Command::from(&dpe_cmd)).await?;
         match resp {
-            DpeResponse::Sign(sign_resp) => {
+            DpeResponse::Sign(SignResp::P384(sign_resp)) => {
                 let sig_r_size = sign_resp.sig_r.len();
                 let sig_s_size = sign_resp.sig_s.len();
                 signature[..sig_r_size].copy_from_slice(&sign_resp.sig_r[..]);
@@ -282,14 +282,13 @@ impl CertContext {
         dpe_cmd: &mut Command<'_>,
     ) -> CaliptraApiResult<DpeResponse> {
         let mut cmd_data: [u8; InvokeDpeReq::DATA_MAX_SIZE] = [0; InvokeDpeReq::DATA_MAX_SIZE];
-        let dpe_cmd_id: u32 = Self::dpe_cmd_id(dpe_cmd);
 
-        let cmd_hdr = CommandHdr::new(DPE_PROFILE, dpe_cmd_id);
+        let cmd_hdr = CommandHdr::new(DpeProfile::P384Sha384, dpe_cmd.id());
 
         let cmd_hdr_bytes = cmd_hdr.as_bytes();
         cmd_data[..cmd_hdr_bytes.len()].copy_from_slice(cmd_hdr_bytes);
 
-        let dpe_cmd_bytes = Self::dpe_cmd_as_bytes(dpe_cmd);
+        let dpe_cmd_bytes = dpe_cmd.as_bytes();
         cmd_data[cmd_hdr_bytes.len()..cmd_hdr_bytes.len() + dpe_cmd_bytes.len()]
             .copy_from_slice(dpe_cmd_bytes);
         let cmd_data_len = cmd_hdr_bytes.len() + dpe_cmd_bytes.len();
@@ -316,32 +315,6 @@ impl CertContext {
         self.parse_dpe_response(dpe_cmd, &resp)
     }
 
-    fn dpe_cmd_id(dpe_cmd: &mut Command) -> u32 {
-        match dpe_cmd {
-            Command::GetProfile => Command::GET_PROFILE,
-            Command::InitCtx(_) => Command::INITIALIZE_CONTEXT,
-            Command::DeriveContext(_) => Command::DERIVE_CONTEXT,
-            Command::CertifyKey(_) => Command::CERTIFY_KEY,
-            Command::Sign(_) => Command::SIGN,
-            Command::RotateCtx(_) => Command::ROTATE_CONTEXT_HANDLE,
-            Command::DestroyCtx(_) => Command::DESTROY_CONTEXT,
-            Command::GetCertificateChain(_) => Command::GET_CERTIFICATE_CHAIN,
-        }
-    }
-
-    fn dpe_cmd_as_bytes<'a>(dpe_cmd: &'a mut Command) -> &'a [u8] {
-        match dpe_cmd {
-            Command::CertifyKey(cmd) => cmd.as_bytes(),
-            Command::DeriveContext(cmd) => cmd.as_bytes(),
-            Command::GetCertificateChain(cmd) => cmd.as_bytes(),
-            Command::DestroyCtx(cmd) => cmd.as_bytes(),
-            Command::GetProfile => &[],
-            Command::InitCtx(cmd) => cmd.as_bytes(),
-            Command::RotateCtx(cmd) => cmd.as_bytes(),
-            Command::Sign(cmd) => cmd.as_bytes(),
-        }
-    }
-
     fn parse_dpe_response(
         &self,
         cmd: &mut Command,
@@ -355,10 +328,10 @@ impl CertContext {
                 CertifyEcKeyResp::try_read_from_bytes(&data[..size_of::<CertifyEcKeyResp>()])
                     .map_err(|_| CaliptraApiError::InvalidResponse)?,
             )),
-            Command::Sign(_) => Ok(DpeResponse::Sign(
-                SignResp::try_read_from_bytes(&data[..size_of::<SignResp>()])
+            Command::Sign(_) => Ok(DpeResponse::Sign(SignResp::P384(
+                SignP384Resp::try_read_from_bytes(&data[..size_of::<SignP384Resp>()])
                     .map_err(|_| CaliptraApiError::InvalidResponse)?,
-            )),
+            ))),
             Command::GetCertificateChain(_) => Ok(DpeResponse::GetCertificateChain(
                 CertificateChainResp::try_read_from_bytes(
                     &data[..size_of::<CertificateChainResp>()],
