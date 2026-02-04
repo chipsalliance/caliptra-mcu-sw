@@ -328,19 +328,25 @@ pub fn build_base_container_command() -> Result<Container> {
 pub fn run_test_suite(
     test_dir: &str,
     prelude: &str,
-    test_filters: Vec<&str>,
+    test_filters: Option<Vec<&str>>,
     test_output: &str,
     target_host: Option<&str>,
+    default_test_profile: &str,
 ) -> Result<()> {
     let mut test_command = format!(
         "(cd {test_dir} && \
                 sudo {prelude} \
                 cargo-nextest nextest run \
                 --workspace-remap=. --archive-file $HOME/caliptra-test-binaries.tar.zst \
-                {test_output} --no-fail-fast --profile=nightly "
+                {test_output} --no-fail-fast "
     );
-    for filter in test_filters {
-        test_command += format!("-E \"{filter}\" ").as_str();
+    if let Some(filters) = test_filters {
+        test_command += "--profile=nightly ";
+        for filter in filters {
+            test_command += format!("-E \"{filter}\" ").as_str();
+        }
+    } else {
+        test_command += format!("--profile={default_test_profile} ").as_str();
     }
     test_command += ")";
     // Run test suite.

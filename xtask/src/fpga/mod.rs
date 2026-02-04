@@ -31,6 +31,7 @@ struct BuildTestArgs<'a> {
 struct TestArgs<'a> {
     test_filter: &'a Option<String>,
     test_output: &'a bool,
+    default_test_profile: &'a str,
 }
 trait ActionHandler<'a> {
     fn bootstrap(&self) -> Result<()>;
@@ -272,6 +273,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                 .test(&TestArgs {
                     test_filter,
                     test_output,
+                    default_test_profile: config.default_test_profile(),
                 })?;
         }
         _ => todo!("implement this command"),

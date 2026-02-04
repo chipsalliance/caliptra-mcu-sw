@@ -25,6 +25,17 @@ pub enum Configuration {
     Core,
 }
 
+impl Configuration {
+    pub fn default_test_profile(&self) -> &str {
+        match self {
+            Self::Subsystem => "nightly-ci",
+            // Test profiles defined in caliptra-sw
+            Self::CoreOnSubsystem => "fpga-subsystem",
+            Self::Core => "fpga-core",
+        }
+    }
+}
+
 pub enum CommandExecutor {
     /// Runs commands for a subsystem FPGA.
     Subsystem(Subsystem),
@@ -216,23 +227,10 @@ impl<'a> ActionHandler<'a> for Subsystem {
     }
 
     fn test(&self, args: &'a TestArgs) -> Result<()> {
-        let default_test_filter_string = String::from(
-            "package(mcu-hw-model) and test(test_mailbox_execute),\
-            package(mcu-hw-model) and test(test_mailbox_execute),\
-            package(tests-integration) and test(test_jtag_taps),\
-            package(tests-integration) and test(test_lc_transitions),\
-            package(tests-integration) and test(test_manuf_debug_unlock),\
-            package(tests-integration) and test(test_prod_debug_unlock),\
-            package(tests-integration) and test(test_uds),\
-            package(tests-integration) and test(test_imaginary_flash_controller),\
-            package(tests-integration) and test(test_fw_update_e2e),\
-            package(tests-integration) and test(test_firmware_update_streaming)",
-        );
-        let test_filter_string = args
+        let test_filters = args
             .test_filter
             .as_ref()
-            .unwrap_or(&default_test_filter_string);
-        let test_filters: Vec<&str> = test_filter_string.split(',').collect();
+            .map(|filter_str| filter_str.split(',').collect());
         let to = if *args.test_output {
             "--no-capture"
         } else {
@@ -246,6 +244,7 @@ impl<'a> ActionHandler<'a> for Subsystem {
             test_filters,
             to,
             self.target_host.as_deref(),
+            args.default_test_profile,
         )?;
         Ok(())
     }
@@ -328,12 +327,10 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
     }
 
     fn test(&self, args: &'a TestArgs) -> Result<()> {
-        let default_test_filter = String::from("package(caliptra-drivers)");
-        let test_filters = vec![args
+        let test_filters = args
             .test_filter
             .as_ref()
-            .unwrap_or(&default_test_filter)
-            .as_str()];
+            .map(|filter_str| filter_str.split(',').collect());
 
         let to = if *args.test_output {
             "--no-capture"
@@ -348,6 +345,7 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
             test_filters,
             to,
             self.target_host.as_deref(),
+            args.default_test_profile,
         )?;
         Ok(())
     }
@@ -427,12 +425,10 @@ impl<'a> ActionHandler<'a> for Core {
     }
 
     fn test(&self, args: &'a TestArgs) -> Result<()> {
-        let default_test_filter = String::from("package(caliptra-drivers)");
-        let test_filters = vec![args
+        let test_filters = args
             .test_filter
             .as_ref()
-            .unwrap_or(&default_test_filter)
-            .as_str()];
+            .map(|filter_str| filter_str.split(',').collect());
 
         let to = if *args.test_output {
             "--no-capture"
@@ -447,6 +443,7 @@ impl<'a> ActionHandler<'a> for Core {
             test_filters,
             to,
             self.target_host.as_deref(),
+            args.default_test_profile,
         )?;
         Ok(())
     }
