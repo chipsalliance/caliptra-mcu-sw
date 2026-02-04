@@ -7,6 +7,7 @@
 pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use mcu_hw_model::{flash_ctrl::ImaginaryFlashController, McuHwModel};
+    use mcu_testing_common::sleep_emulator_ticks;
     use mcu_testing_common::wait_for_runtime_start;
     use mcu_testing_common::MCU_RUNNING;
     use random_port::PortPicker;
@@ -15,7 +16,6 @@ pub mod test {
     use std::process::exit;
     use std::sync::atomic::Ordering;
     use std::thread;
-    use std::time::Duration;
 
     #[test]
     pub fn test_imaginary_flash_controller() {
@@ -64,7 +64,7 @@ pub mod test {
                     break;
                 }
                 flash_controller.process_flash_ios();
-                thread::sleep(Duration::from_millis(1));
+                sleep_emulator_ticks(1_000);
             }
         });
     }

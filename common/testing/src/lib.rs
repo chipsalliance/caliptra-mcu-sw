@@ -46,6 +46,38 @@ pub fn sleep_emulator_ticks(ticks: u32) {
     }
 }
 
+/// Wait for the specified number of emulator ticks, or until the emulator stops.
+/// Returns true if the wait completed successfully, false if the emulator stopped.
+pub fn wait_emulator_ticks(ticks: u64) -> bool {
+    let start = MCU_TICKS.load(Ordering::Relaxed);
+    while MCU_RUNNING.load(Ordering::Relaxed) {
+        let now = MCU_TICKS.load(Ordering::Relaxed);
+        if now.saturating_sub(start) >= ticks {
+            return true;
+        }
+        let lock = TICK_LOCK.lock().unwrap();
+        let _ = TICK_COND.wait_timeout(lock, Duration::from_secs(1));
+    }
+    false
+}
+
+/// Get the current emulator tick count.
+pub fn get_emulator_ticks() -> u64 {
+    MCU_TICKS.load(Ordering::Relaxed)
+}
+
+/// Check if the emulator is still running.
+pub fn is_emulator_running() -> bool {
+    MCU_RUNNING.load(Ordering::Relaxed)
+}
+
+/// Check if a timeout has elapsed based on emulator ticks.
+/// Returns true if the timeout has elapsed.
+pub fn emulator_ticks_elapsed(start_ticks: u64, timeout_ticks: u64) -> bool {
+    let now = MCU_TICKS.load(Ordering::Relaxed);
+    now.saturating_sub(start_ticks) >= timeout_ticks
+}
+
 pub fn update_ticks(ticks: u64) {
     MCU_TICKS.store(ticks, Ordering::Relaxed);
     TICK_COND.notify_all();

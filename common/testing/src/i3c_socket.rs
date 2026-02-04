@@ -35,13 +35,12 @@ Abstract:
 
 use crate::i3c::{DynamicI3cAddress, ReguDataTransferCommand};
 use crate::i3c_socket_server::{IncomingHeader, OutgoingHeader, CRC8_SMBUS};
-use crate::{wait_for_runtime_start, MCU_RUNNING};
+use crate::{wait_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
 use std::collections::VecDeque;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::process::exit;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 use std::vec;
 use zerocopy::{transmute, FromBytes};
 
@@ -50,21 +49,27 @@ pub trait MctpTransportTest {
     fn is_passed(&self) -> bool;
 }
 
+/// Default timeout in emulator ticks
+pub const DEFAULT_TEST_TIMEOUT_TICKS: u64 = 120_000_000;
+
 pub fn run_tests(
     port: u16,
     target_addr: DynamicI3cAddress,
     tests: Vec<Box<dyn MctpTransportTest + Send>>,
-    test_timeout_seconds: Option<Duration>,
+    test_timeout_ticks: Option<u64>,
 ) {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let stream = TcpStream::connect(addr).unwrap();
-    // cancel the test after 120 seconds
+    // cancel the test after timeout ticks
+    let timeout_ticks = test_timeout_ticks.unwrap_or(DEFAULT_TEST_TIMEOUT_TICKS);
     std::thread::spawn(move || {
-        let timeout = test_timeout_seconds.unwrap_or(Duration::from_secs(120));
-        std::thread::sleep(timeout);
+        if !wait_emulator_ticks(timeout_ticks) {
+            // Emulator stopped before timeout - this is normal completion
+            return;
+        }
         println!(
-            "INTEGRATION TEST ON MCTP-I3C TIMED OUT AFTER {:?} SECONDS",
-            timeout
+            "INTEGRATION TEST ON MCTP-I3C TIMED OUT AFTER {} TICKS",
+            timeout_ticks
         );
         exit(-1);
     });
