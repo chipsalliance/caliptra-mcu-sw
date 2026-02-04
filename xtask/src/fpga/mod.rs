@@ -229,6 +229,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             println!("configuration: {:?}", configuration);
 
             let target_host = target_host.as_deref();
+            check_ssh_access(target_host)?;
             check_fpga_dependencies(target_host)?;
 
             let hostname = run_command_with_output(target_host, "hostname")?;
@@ -241,7 +242,6 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
 
             let cache_function = |config_marker| {
                 // Cache FPGA configuration in RAM. We need to re-bootstrap on power cycles.
-                check_ssh_access(target_host)?;
                 run_command(
                     target_host,
                     &format!("echo \"{config_marker}\" > /dev/shm/fpga-config"),
