@@ -54,7 +54,6 @@ members = [
     "runtime/kernel/drivers/mcu_mbox",
     "runtime/kernel/veer",
     "runtime/userspace/api/caliptra-api",
-    "runtime/userspace/api/eat",
     "runtime/userspace/api/external-cmds-common",
     "runtime/userspace/api/mcu-mbox-lib",
     "runtime/userspace/api/mctp-vdm-lib",
@@ -211,7 +210,6 @@ mcu-rom-common = { path = "rom" }
 mcu-test-harness = {path = "platforms/test_harness"}
 mcu-testing-common = { path = "common/testing" }
 mcu-tock-veer = { path = "runtime/kernel/veer" }
-ocp-eat = { path = "runtime/userspace/api/eat", default-features = false }
 mctp-vdm-common = { path = "common/mctp-vdm" }
 pldm-common = { path = "common/pldm"}
 pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
@@ -247,31 +245,34 @@ libtock_unittest = { path = "runtime/userspace/libtock/unittest" }
 tbf-header = { path = "runtime/userspace/libtock/tbf-header" }
 
 # caliptra dependencies; keep git revs in sync
-caliptra-api = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-auth-man-gen = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-auth-man-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-builder = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-drivers = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-emu-bus = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-emu-cpu = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-emu-derive = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-emu-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-error = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca", default-features = false }
-caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-hw-model-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-image-crypto = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca", default-features = false, features = ["rustcrypto"] }
-caliptra-image-fake-keys = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-image-gen = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-image-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-test = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-test-harness = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-caliptra-test-harness-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-ureg = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca" }
-dpe = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba689922c5d0750b49e56603e310650ebca", default-features = false, features = ["dpe_profile_p384_sha384"] }
+caliptra-api = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-auth-man-gen = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-auth-man-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-builder = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-drivers = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-emu-bus = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-emu-cpu = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-emu-derive = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-emu-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-error = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699", default-features = false }
+caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-hw-model-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-image-crypto = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699", default-features = false, features = ["rustcrypto"] }
+caliptra-image-fake-keys = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-image-gen = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-image-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-test = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-test-harness = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-test-harness-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+ureg = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+dpe = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699", default-features = false, features = ["dpe_profile_p384_sha384"] }
+ocp-eat = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+caliptra-okref = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a094bd06188714ff7c040252bc3059d9699" }
+
 
 # local caliptra dependency; useful when developing
 # caliptra-api = { path = "../caliptra-sw/api" }
@@ -298,6 +299,7 @@ dpe = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4972cba6899
 # caliptra-test-harness-types = { path = "../caliptra-sw/test-harness/types" }
 # ureg = { path = "../caliptra-sw/ureg" }
 # dpe = { path = "../caliptra-sw/dpe/dpe", default-features = false, features = ["dpe_profile_p384_sha384"] }
+
 
 # tock dependencies; keep git revs in sync
 capsules-core = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
