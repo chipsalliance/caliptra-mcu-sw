@@ -13,6 +13,7 @@ Abstract:
 --*/
 
 use caliptra_emu_cpu::{CpuArgs, CpuOrgArgs};
+use network_config::DEFAULT_NETWORK_MEMORY_MAP;
 
 pub const DEFAULT_CPU_ARGS: CpuArgs = CpuArgs {
     org: CpuOrgArgs {
@@ -38,3 +39,20 @@ pub const DIRECT_READ_FLASH_SIZE: u32 = 64 * 1024 * 1024; // Memory-mapped prima
 pub const MCU_MAILBOX0_SRAM_SIZE: u32 = 2 * 1024 * 1024;
 pub const MCU_MAILBOX1_SRAM_SIZE: u32 = 2 * 1024 * 1024;
 pub const DOT_FLASH_SIZE: u32 = 4 * 1024; // DOT flash
+
+// Network Coprocessor constants (re-exported from network-config for convenience)
+pub const NETWORK_ROM_ORG: u32 = DEFAULT_NETWORK_MEMORY_MAP.rom_offset;
+pub const NETWORK_ROM_SIZE: u32 = DEFAULT_NETWORK_MEMORY_MAP.rom_size;
+
+/// Default CPU arguments for the Network Coprocessor
+pub const NETWORK_CPU_ARGS: CpuArgs = CpuArgs {
+    org: CpuOrgArgs {
+        rom: DEFAULT_NETWORK_MEMORY_MAP.rom_offset,
+        rom_size: DEFAULT_NETWORK_MEMORY_MAP.rom_size,
+        iccm: DEFAULT_NETWORK_MEMORY_MAP.iccm_offset,
+        iccm_size: DEFAULT_NETWORK_MEMORY_MAP.iccm_size,
+        dccm: DEFAULT_NETWORK_MEMORY_MAP.dccm_offset,
+        dccm_size: DEFAULT_NETWORK_MEMORY_MAP.dccm_size,
+        reset_vector: DEFAULT_NETWORK_MEMORY_MAP.rom_offset,
+    },
+};

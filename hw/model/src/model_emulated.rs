@@ -34,6 +34,7 @@ use emulator_caliptra::StartCaliptraArgs;
 use emulator_periph::DummyFlashCtrl;
 use emulator_periph::LcCtrl;
 use emulator_periph::McuRootBusOffsets;
+use emulator_periph::NetworkRootBus;
 use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp, OtpArgs};
 use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
@@ -63,6 +64,8 @@ const BOOT_CYCLES: u64 = 25_000_000;
 pub struct ModelEmulated {
     cpu: Cpu<BusLogger<AutoRootBus>>,
     caliptra_cpu: Cpu<CaliptraMainRootBus>,
+    network_cpu: Option<Cpu<NetworkRootBus>>,
+    network_uart_output: Option<Rc<RefCell<Vec<u8>>>>,
     soc_to_caliptra_bus: SocToCaliptraBus,
     output: Output,
     caliptra_trace_fn: Option<Box<InstrTracer<'static>>>,
@@ -316,8 +319,40 @@ impl McuHwModel for ModelEmulated {
 
         let (events_to_caliptra, events_from_caliptra) = mpsc::channel();
 
+        // Initialize network CPU if network_rom is provided
+        let (network_cpu, network_uart_output) = if !params.network_rom.is_empty() {
+            let network_clock = Rc::new(Clock::new());
+            let network_pic = Rc::new(Pic::new());
+            let network_uart_output = Rc::new(RefCell::new(Vec::new()));
+
+            let network_args = emulator_periph::NetworkRootBusArgs {
+                rom: params.network_rom.to_vec(),
+                pic: network_pic.clone(),
+                clock: network_clock.clone(),
+                uart_output: Some(network_uart_output.clone()),
+                ..Default::default()
+            };
+
+            let network_root_bus =
+                NetworkRootBus::new(network_args).expect("Failed to create NetworkRootBus");
+
+            let mut network_cpu = Cpu::new(
+                network_root_bus,
+                network_clock,
+                network_pic,
+                emulator_consts::NETWORK_CPU_ARGS,
+            );
+            network_cpu.write_pc(emulator_consts::NETWORK_ROM_ORG);
+
+            (Some(network_cpu), Some(network_uart_output))
+        } else {
+            (None, None)
+        };
+
         let mut m = ModelEmulated {
             caliptra_cpu,
+            network_cpu,
+            network_uart_output,
             soc_to_caliptra_bus,
             output,
             cpu,
@@ -397,6 +432,10 @@ impl McuHwModel for ModelEmulated {
             self.caliptra_cpu
                 .step(self.caliptra_trace_fn.as_deref_mut());
             self.bmc.step();
+            // Step network CPU if present
+            if let Some(ref mut network_cpu) = self.network_cpu {
+                network_cpu.step(None);
+            }
         }
         let events = self.events_from_caliptra.try_iter().collect::<Vec<_>>();
         self.collected_events_from_caliptra.extend(events);
@@ -500,6 +539,16 @@ impl McuHwModel for ModelEmulated {
 
     fn i3c_address(&self) -> Option<u8> {
         self.i3c_address
+    }
+
+    fn has_network_cpu(&self) -> bool {
+        self.network_cpu.is_some()
+    }
+
+    fn network_uart_output(&self) -> Option<String> {
+        self.network_uart_output
+            .as_ref()
+            .map(|output| String::from_utf8_lossy(&output.borrow()).to_string())
     }
 
     fn warm_reset(&mut self) {
