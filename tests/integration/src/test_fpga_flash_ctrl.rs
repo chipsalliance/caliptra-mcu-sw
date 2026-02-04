@@ -64,7 +64,6 @@ pub mod test {
                     break;
                 }
                 flash_controller.process_flash_ios();
-                // Sleep for 1,000 ticks (1ms at 1 MHz)
                 sleep_emulator_ticks(1_000);
             }
         });

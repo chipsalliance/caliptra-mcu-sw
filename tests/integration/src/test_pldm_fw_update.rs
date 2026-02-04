@@ -149,7 +149,6 @@ pub mod test {
             &self,
             expected_state: update_sm::States,
         ) -> Result<(), ()> {
-            // Timeout in emulator ticks (1800 million ticks = 1800 seconds at 1 MHz)
             let timeout_ticks: u64 = 1_800_000_000;
             let start_ticks = get_emulator_ticks();
 
@@ -163,7 +162,6 @@ pub mod test {
                     return Err(());
                 }
 
-                // Sleep for 100,000 ticks (100ms at 1 MHz)
                 sleep_emulator_ticks(100_000);
             }
             if let Some(daemon) = &self.daemon {

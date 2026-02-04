@@ -90,7 +90,7 @@ pub mod test {
             if !MCU_RUNNING.load(Ordering::Relaxed) {
                 exit(-1);
             }
-            // Wait for firmware to initialize (5 million ticks = 5 seconds at 1 MHz)
+            // Wait for firmware to initialize
             sleep_emulator_ticks(5_000_000);
             let mci_base = unsafe { romtime::StaticRef::new(mci_ptr as *const mci::regs::Mci) };
             let mbox_transport = McuMailboxTransport::new(mci_base);
@@ -163,7 +163,6 @@ pub mod test {
         ) -> Result<McuMailboxResponse, McuMailboxError> {
             self.mbox.execute(cmd, request)?;
 
-            // Timeout in emulator ticks (20 million ticks = 20 seconds at 1 MHz)
             let timeout_ticks: u64 = 20_000_000;
             let start = get_emulator_ticks();
             loop {
@@ -178,7 +177,6 @@ pub mod test {
                             );
                             return Err(McuMailboxError::Timeout);
                         }
-                        // Sleep for 100,000 ticks (100ms at 1 MHz)
                         sleep_emulator_ticks(100_000);
                     }
                     Err(e) => return Err(e),

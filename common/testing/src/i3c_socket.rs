@@ -49,7 +49,7 @@ pub trait MctpTransportTest {
     fn is_passed(&self) -> bool;
 }
 
-/// Default timeout in emulator ticks (120 seconds at 1 MHz)
+/// Default timeout in emulator ticks
 pub const DEFAULT_TEST_TIMEOUT_TICKS: u64 = 120_000_000;
 
 pub fn run_tests(
