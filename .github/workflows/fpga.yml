@@ -243,26 +243,8 @@ jobs:
               --binaries-metadata="${TEST_BIN}/target/nextest/binaries-metadata.json"
               --target-dir-remap="${TEST_BIN}/target"
               --workspace-remap=.
-              -E 'package(mcu-hw-model) - test(model_emulated::test::test_new_unbooted)'
-              -E 'package(tests-integration) and test(test_axi_bypass)'
-              -E 'package(tests-integration) and test(test_jtag_taps)'
-              -E 'package(tests-integration) and test(test_lc_transitions)'
-              -E 'package(tests-integration) and test(test_manuf_debug_unlock)'
-              -E 'package(tests-integration) and test(test_prod_debug_unlock)'
-              -E 'package(tests-integration) and test(test_uds)' # Modify this as we onboard crates to the FPGA test suite.
-              -E 'package(tests-integration) and test(test_imaginary_flash_controller)'
-              -E 'package(tests-integration) and test(test_fw_update_e2e)'
-              -E 'package(tests-integration) and test(test_mcu_mbox_usermode)'
-              -E 'package(tests-integration) and test(test_mcu_mbox_cmds)'
-              -E 'package(tests-integration) and test(test_i3c_constant_writes)'
-              -E 'package(tests-integration) and test(test_i3c_simple)'
-              -E 'package(tests-integration) and test(test_mctp_vdm_cmds)'
-
+              --profile=nightly-ci
           )
-              # disabled for now due to flakiness of recovery boot
-              # -E 'package(tests-integration) and test(test_mctp_capsule_loopback)'
-              # TODO(#694): renable after debugging failing tests:
-              # -E 'package(tests-integration) and test(test_firmware_update_streaming_fpga)'
 
           cargo-nextest nextest list \
               "${COMMON_ARGS[@]}" \
@@ -271,8 +253,7 @@ jobs:
           sudo CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip" cargo-nextest nextest run \
               "${COMMON_ARGS[@]}" \
               --test-threads=${RUST_TEST_THREADS} \
-              --no-fail-fast \
-              --profile=nightly
+              --no-fail-fast
 
       - name: 'Upload test results'
         uses: actions/upload-artifact@v4
