@@ -2,6 +2,7 @@
 
 #[cfg(any(
     feature = "test-mcu-mbox-cmds",
+    feature = "test-mcu-mbox-fips-self-test",
     feature = "test-caliptra-util-host-validator"
 ))]
 mod cmd_handler_mock;
@@ -32,6 +33,7 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
 
     #[cfg(any(
         feature = "test-mcu-mbox-cmds",
+        feature = "test-mcu-mbox-fips-self-test",
         feature = "test-caliptra-util-host-validator"
     ))]
     {

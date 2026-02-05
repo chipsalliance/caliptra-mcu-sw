@@ -74,6 +74,10 @@ impl CommandId {
     pub const MC_DEVICE_INFO: Self = Self(0x4D44_494E); // "MDIN"
     pub const MC_GET_LOG: Self = Self(0x4D47_4C47); // "MGLG"
     pub const MC_CLEAR_LOG: Self = Self(0x4D43_4C47); // "MCLG"
+
+    // FIPS self-test passthrough commands
+    pub const MC_FIPS_SELF_TEST_START: Self = Self(0x4D46_5354); // "MFST"
+    pub const MC_FIPS_SELF_TEST_GET_RESULTS: Self = Self(0x4D46_4752); // "MFGR"
     pub const MC_SHA_INIT: Self = Self(0x4D43_5349); // "MCSI"
     pub const MC_SHA_UPDATE: Self = Self(0x4D43_5355); // "MCSU"
     pub const MC_SHA_FINAL: Self = Self(0x4D43_5346); // "MCSF"
@@ -129,6 +133,9 @@ pub enum McuMailboxReq {
     DeviceInfo(DeviceInfoReq),
     GetLog(GetLogReq),
     ClearLog(ClearLogReq),
+    // FIPS Self-Test Passthrough
+    FipsSelfTestStart(McuFipsSelfTestStartReq),
+    FipsSelfTestGetResults(McuFipsSelfTestGetResultsReq),
     ShaInit(McuShaInitReq),
     ShaUpdate(McuShaUpdateReq),
     ShaFinal(McuShaFinalReq),
@@ -171,6 +178,8 @@ impl McuMailboxReq {
             McuMailboxReq::DeviceInfo(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetLog(req) => Ok(req.as_bytes()),
             McuMailboxReq::ClearLog(req) => Ok(req.as_bytes()),
+            McuMailboxReq::FipsSelfTestStart(req) => Ok(req.as_bytes()),
+            McuMailboxReq::FipsSelfTestGetResults(req) => Ok(req.as_bytes()),
             McuMailboxReq::ShaInit(req) => req.as_bytes_partial(),
             McuMailboxReq::ShaUpdate(req) => req.as_bytes_partial(),
             McuMailboxReq::ShaFinal(req) => req.as_bytes_partial(),
@@ -212,6 +221,8 @@ impl McuMailboxReq {
             McuMailboxReq::DeviceInfo(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetLog(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ClearLog(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::FipsSelfTestStart(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::FipsSelfTestGetResults(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ShaInit(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::ShaUpdate(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::ShaFinal(req) => req.as_bytes_partial_mut(),
@@ -253,6 +264,8 @@ impl McuMailboxReq {
             McuMailboxReq::DeviceInfo(_) => CommandId::MC_DEVICE_INFO,
             McuMailboxReq::GetLog(_) => CommandId::MC_GET_LOG,
             McuMailboxReq::ClearLog(_) => CommandId::MC_CLEAR_LOG,
+            McuMailboxReq::FipsSelfTestStart(_) => CommandId::MC_FIPS_SELF_TEST_START,
+            McuMailboxReq::FipsSelfTestGetResults(_) => CommandId::MC_FIPS_SELF_TEST_GET_RESULTS,
             McuMailboxReq::ShaInit(_) => CommandId::MC_SHA_INIT,
             McuMailboxReq::ShaUpdate(_) => CommandId::MC_SHA_UPDATE,
             McuMailboxReq::ShaFinal(_) => CommandId::MC_SHA_FINAL,
@@ -317,6 +330,9 @@ pub enum McuMailboxResp {
     DeviceInfo(DeviceInfoResp),
     GetLog(GetLogResp),
     ClearLog(ClearLogResp),
+    // FIPS Self-Test Passthrough
+    FipsSelfTestStart(McuFipsSelfTestStartResp),
+    FipsSelfTestGetResults(McuFipsSelfTestGetResultsResp),
     ShaInit(McuShaInitResp),
     ShaUpdate(McuShaInitResp),
     ShaFinal(McuShaFinalResp),
@@ -420,6 +436,8 @@ impl McuMailboxResp {
             McuMailboxResp::DeviceInfo(resp) => resp.as_bytes_partial(),
             McuMailboxResp::GetLog(resp) => resp.as_bytes_partial(),
             McuMailboxResp::ClearLog(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::FipsSelfTestStart(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::FipsSelfTestGetResults(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ShaInit(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ShaUpdate(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ShaFinal(resp) => resp.as_bytes_partial(),
@@ -462,6 +480,8 @@ impl McuMailboxResp {
             McuMailboxResp::DeviceInfo(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::GetLog(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::ClearLog(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::FipsSelfTestStart(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::FipsSelfTestGetResults(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ShaInit(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ShaUpdate(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ShaFinal(resp) => resp.as_bytes_partial_mut(),
@@ -677,6 +697,33 @@ macro_rules! impl_mcu_request_varsize {
         }
     };
 }
+
+// ---- FIPS Self-Test Passthrough ----
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuFipsSelfTestStartReq(pub MailboxReqHeader);
+impl Request for McuFipsSelfTestStartReq {
+    const ID: CommandId = CommandId::MC_FIPS_SELF_TEST_START;
+    type Resp = McuFipsSelfTestStartResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuFipsSelfTestStartResp(pub MailboxRespHeader);
+impl Response for McuFipsSelfTestStartResp {}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuFipsSelfTestGetResultsReq(pub MailboxReqHeader);
+impl Request for McuFipsSelfTestGetResultsReq {
+    const ID: CommandId = CommandId::MC_FIPS_SELF_TEST_GET_RESULTS;
+    type Resp = McuFipsSelfTestGetResultsResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuFipsSelfTestGetResultsResp(pub MailboxRespHeader);
+impl Response for McuFipsSelfTestGetResultsResp {}
 
 // Create a wrapper for ShaInitReq. MCU mailbox sha init request is the same format of CmShaInitReq
 #[repr(C)]

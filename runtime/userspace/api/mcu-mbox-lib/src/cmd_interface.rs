@@ -21,11 +21,13 @@ use mcu_mbox_common::messages::{
     McuAesGcmEncryptUpdateResp, McuCmDeleteReq, McuCmDeleteResp, McuCmImportReq, McuCmImportResp,
     McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq,
     McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
-    McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuHkdfExpandReq,
-    McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp, McuHmacKdfCounterReq,
-    McuHmacKdfCounterResp, McuHmacReq, McuHmacResp, McuMailboxResp, McuRandomGenerateReq,
-    McuRandomGenerateResp, McuRandomStirReq, McuRandomStirResp, McuShaFinalReq, McuShaFinalResp,
-    McuShaInitReq, McuShaInitResp, McuShaUpdateReq, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
+    McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuFipsSelfTestGetResultsReq,
+    McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
+    McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
+    McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuHmacResp, McuMailboxResp,
+    McuRandomGenerateReq, McuRandomGenerateResp, McuRandomStirReq, McuRandomStirResp,
+    McuShaFinalReq, McuShaFinalResp, McuShaInitReq, McuShaInitResp, McuShaUpdateReq,
+    DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
 };
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -106,6 +108,26 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_DEVICE_CAPABILITIES => self.handle_device_caps(msg_buf, req_len).await,
             CommandId::MC_DEVICE_ID => self.handle_device_id(msg_buf, req_len).await,
             CommandId::MC_DEVICE_INFO => self.handle_device_info(msg_buf, req_len).await,
+            CommandId::MC_FIPS_SELF_TEST_START => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuFipsSelfTestStartResp>()];
+                self.handle_crypto_passthrough::<McuFipsSelfTestStartReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::SELF_TEST_START.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_FIPS_SELF_TEST_GET_RESULTS => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuFipsSelfTestGetResultsResp>()];
+                self.handle_crypto_passthrough::<McuFipsSelfTestGetResultsReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::SELF_TEST_GET_RESULTS.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
             CommandId::MC_SHA_INIT => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuShaInitResp>()];
                 self.handle_crypto_passthrough::<McuShaInitReq>(

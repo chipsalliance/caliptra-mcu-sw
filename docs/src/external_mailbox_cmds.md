@@ -43,6 +43,8 @@ These commands support a wide range of functionalities, including querying devic
 | MC_IMPORT_IDEV_CERT               | 0x4D49_4943 ("MIIC") | Allows SoC to import DER-encoded IDevId certificate on every boot.                                 |
 | MC_GET_LOG                        | 0x4D47_4C47 ("MGLG") | Retrieves the internal log for the RoT.                                                            |
 | MC_CLEAR_LOG                      | 0x4D43_4C47 ("MCLG") | Clears the log in the RoT subsystem.                                                               |
+| MC_FIPS_SELF_TEST_START           | 0x4D46_5354 ("MFST") | Starts the FIPS self-test to exercise the crypto engine.                                           |
+| MC_FIPS_SELF_TEST_GET_RESULTS     | 0x4D46_4752 ("MFGR") | Retrieves the results of the FIPS self-test.                                                       |
 | MC_SHA_INIT                       | 0x4D43_5349 ("MCSI") | Starts the computation of a SHA hash of data.                                                      |
 | MC_SHA_UPDATE                     | 0x4D43_5355 ("MCSU") | Continues a SHA computation started by `MC_SHA_INIT` or another `MC_SHA_UPDATE`.                   |
 | MC_SHA_FINAL                      | 0x4D43_5346 ("MCSF") | Finalizes the computation of a SHA and produces the hash of all the data.                          |
@@ -421,6 +423,8 @@ The MCI mailbox cryptographic commands are mapped to their corresponding Caliptr
 *Table: mapping MCI Mailbox Crypto Commands to Caliptra Crypto Mailbox Commands*
 | **MCI Mailbox Crypto Commands** | **Caliptra Mailbox Crypto Commands**         |
 |--------------------------------|---------------------------------------------|
+| `MC_FIPS_SELF_TEST_START`     | `SELF_TEST_START`                           |
+| `MC_FIPS_SELF_TEST_GET_RESULTS` | `SELF_TEST_GET_RESULTS`                   |
 | `MC_SHA_INIT`                 | `CM_SHA_INIT`                               |
 | `MC_SHA_UPDATE`               | `CM_SHA_UPDATE`                             |
 | `MC_SHA_FINAL`                | `CM_SHA_FINAL`                              |

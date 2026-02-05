@@ -31,6 +31,7 @@ pub mod test {
         McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp,
         McuEcdhGenerateReq, McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp,
         McuEcdsaCmkSignReq, McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp,
+        McuFipsSelfTestGetResultsReq, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
         McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
         McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuMailboxReq, McuMailboxResp,
         McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
@@ -69,6 +70,11 @@ pub mod test {
     #[test]
     pub fn test_mcu_mbox_usermode() {
         start_mcu_mbox_tests("test-mcu-mbox-usermode");
+    }
+
+    #[test]
+    pub fn test_mcu_mbox_fips_self_test() {
+        start_mcu_mbox_tests("test-mcu-mbox-fips-self-test");
     }
 
     fn start_mcu_mbox_tests(feature: &str) {
@@ -161,16 +167,34 @@ pub mod test {
             cmd: u32,
             request: &[u8],
         ) -> Result<McuMailboxResponse, McuMailboxError> {
+            self.process_message_with_options(
+                cmd, request, 20_000_000, // 20 seconds in emulator ticks
+                false,
+            )
+        }
+
+        /// Process a mailbox message with configurable timeout and error handling.
+        ///
+        /// # Arguments
+        /// * `cmd` - The command code
+        /// * `request` - The request payload
+        /// * `timeout_ticks` - Maximum time to wait for a response in emulator ticks
+        /// * `continue_on_error` - If true, continue polling on non-busy errors instead of returning immediately
+        fn process_message_with_options(
+            &mut self,
+            cmd: u32,
+            request: &[u8],
+            timeout_ticks: u64,
+            continue_on_error: bool,
+        ) -> Result<McuMailboxResponse, McuMailboxError> {
             self.mbox.execute(cmd, request)?;
 
-            let timeout_ticks: u64 = 20_000_000;
             let start = get_emulator_ticks();
             loop {
                 match self.mbox.get_execute_response() {
                     Ok(resp) => return Ok(resp),
                     Err(McuMailboxError::Busy) => {
                         if emulator_ticks_elapsed(start, timeout_ticks) {
-                            // Print out timeout error and cmd id
                             println!(
                                 "Timeout waiting for response for MCU mailbox cmd: {:#X}",
                                 cmd
@@ -179,7 +203,20 @@ pub mod test {
                         }
                         sleep_emulator_ticks(100_000);
                     }
-                    Err(e) => return Err(e),
+                    Err(e) => {
+                        if continue_on_error {
+                            if emulator_ticks_elapsed(start, timeout_ticks) {
+                                println!(
+                                    "Timeout waiting for response for MCU mailbox cmd: {:#X}",
+                                    cmd
+                                );
+                                return Err(McuMailboxError::Timeout);
+                            }
+                            sleep_emulator_ticks(100_000);
+                        } else {
+                            return Err(e);
+                        }
+                    }
                 }
             }
         }
@@ -230,6 +267,9 @@ pub mod test {
                 self.add_hmac_tests()?;
                 self.add_hmac_kdf_counter_tests()?;
                 self.add_hkdf_tests()?;
+                Ok(())
+            } else if feature == "test-mcu-mbox-fips-self-test" {
+                self.add_fips_self_test_tests()?;
                 Ok(())
             } else {
                 Ok(())
@@ -1753,6 +1793,60 @@ pub mod test {
                 }
                 Err(_) => Err(()), // Verification failed (signature mismatch)
             }
+        }
+
+        /// Test FIPS self-test start and get results commands.
+        /// This test exercises the FIPS KAT (Known Answer Test) passthrough functionality.
+        /// Follows the polling pattern from caliptra-sw's exec_cmd_self_test_get_results.
+        fn add_fips_self_test_tests(&mut self) -> Result<(), ()> {
+            println!("Running FIPS self-test tests");
+
+            // Step 1: Start the FIPS self-test
+            let mut self_test_start_req = McuMailboxReq::FipsSelfTestStart(
+                McuFipsSelfTestStartReq(MailboxReqHeader::default()),
+            );
+            self_test_start_req.populate_chksum().unwrap();
+
+            let start_resp = self
+                .process_message(
+                    self_test_start_req.cmd_code().0,
+                    self_test_start_req.as_bytes().unwrap(),
+                )
+                .map_err(|_| ())?;
+
+            let start_resp_parsed =
+                McuFipsSelfTestStartResp::read_from_bytes(&start_resp.data).map_err(|_| ())?;
+            assert_eq!(
+                start_resp_parsed.0.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS self-test start should return approved status"
+            );
+            println!("  FIPS self-test started successfully");
+
+            // Add a delay before polling for results
+            sleep_emulator_ticks(500_000);
+
+            println!("  Polling for FIPS self-test results...");
+
+            // Step 2: Get the self-test results with extended timeout.
+            // Caliptra runs the self-test during enter_idle() when the mailbox is unlocked.
+            // Use continue_on_error=true to keep polling if the test isn't complete yet.
+            let mut get_results_req = McuMailboxReq::FipsSelfTestGetResults(
+                McuFipsSelfTestGetResultsReq(MailboxReqHeader::default()),
+            );
+            get_results_req.populate_chksum().unwrap();
+
+            let _results_resp = self
+                .process_message_with_options(
+                    get_results_req.cmd_code().0,
+                    get_results_req.as_bytes().unwrap(),
+                    60_000_000, // 60 seconds in emulator ticks
+                    true,
+                )
+                .map_err(|_| ())?;
+
+            println!("FIPS self-test tests passed");
+            Ok(())
         }
 
         /// Test HMAC command.
