@@ -14,6 +14,8 @@ The machine that is used for development and cross compilation should have:
   - Make sure you pull the FPGA build image: `$ podman pull ghcr.io/chipsalliance/caliptra-build-image:latest` or `$ docker pull ghcr.io/chipsalliance/caliptra-build-image:latest` 
 - rsync
 - git
+- Cargo-nextest
+  - `$ cargo +1.93 install cargo-nextest --locked`
 
 ### FPGA System 
 
