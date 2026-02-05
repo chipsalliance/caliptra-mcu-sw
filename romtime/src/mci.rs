@@ -179,6 +179,7 @@ impl Mci {
     /// The interrupt handler is responsible for clearing the interrupt
     /// and performing the necessary actions based on the interrupt type.
     pub fn handle_interrupt(&self) {
+        crate::println!("Mci::handle_interrupt()");
         const NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK: u32 = 0x2;
         let intr_status = self.registers.intr_block_rf_notif0_internal_intr_r.get();
         if intr_status & NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK != 0 {
