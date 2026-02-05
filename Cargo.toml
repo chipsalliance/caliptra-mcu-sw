@@ -298,7 +298,6 @@ ocp-eat = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "2fe38a0
 # ureg = { path = "../caliptra-sw/ureg" }
 # dpe = { path = "../caliptra-sw/dpe/dpe", default-features = false, features = ["dpe_profile_p384_sha384"] }
 
-
 # tock dependencies; keep git revs in sync
 capsules-core = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
 capsules-extra = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
