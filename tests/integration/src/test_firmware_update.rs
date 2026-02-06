@@ -852,7 +852,6 @@ mod test {
     }
 
     // Flash-based firmware update tests
-    #[ignore]
     #[test]
     fn test_firmware_update_flash_successful() {
         let lock = TEST_LOCK.lock().unwrap();
