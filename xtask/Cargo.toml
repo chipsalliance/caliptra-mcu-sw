@@ -40,6 +40,7 @@ registers-generator.workspace = true
 registers-systemrdl.workspace = true
 semver.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 serde-hjson.workspace = true
 sudo.workspace = true
 tempfile.workspace = true
