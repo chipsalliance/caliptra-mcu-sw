@@ -151,10 +151,13 @@ impl Otp {
     }
 
     fn read_data(&self, addr: usize, len: usize, data: &mut [u8]) -> McuResult<()> {
-        if data.len() < len || len % 4 != 0 {
+        if len % 4 != 0 {
             return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
         }
-        for (i, chunk) in data[..len].chunks_exact_mut(4).enumerate() {
+        let data = data
+            .get_mut(..len)
+            .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+        for (i, chunk) in data.chunks_exact_mut(4).enumerate() {
             let word = self.read_word(addr / 4 + i)?;
             let word_bytes = word.to_le_bytes();
             chunk.copy_from_slice(&word_bytes[..chunk.len()]);

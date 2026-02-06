@@ -126,6 +126,7 @@ impl BootFlow for ColdBoot {
         let straps = env.straps.deref();
 
         romtime::println!("[mcu-rom] Setting Caliptra boot go");
+
         mci.caliptra_boot_go();
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraBootGoAsserted.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
@@ -188,12 +189,24 @@ impl BootFlow for ColdBoot {
 
         romtime::println!("[mcu-rom] OTP initialized");
 
-        // TODO: Handle flash image loading with the watchdog enabled
-        if params.flash_partition_driver.is_none() {
+        let flash_boot = ((mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 29)) != 0)
+            || params.request_flash_boot;
+
+        if flash_boot && (params.flash_partition_driver.is_none() || !cfg!(feature = "hw-2-1")) {
+            romtime::println!(
+                "Flash boot requested but missing flash driver or AXI bypass not enabled in ROM"
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_FLASH_NOT_CONFIGURED_ERROR);
+        }
+
+        if flash_boot {
+            romtime::println!(
+                "[mcu-rom] Configurating Caliptra watchdog timers for flash boot: {} {}",
+                straps.cptra_wdt_cfg0,
+                straps.cptra_wdt_cfg1
+            );
             soc.set_cptra_wdt_cfg(0, straps.cptra_wdt_cfg0);
             soc.set_cptra_wdt_cfg(1, straps.cptra_wdt_cfg1);
-
-            mci.set_nmi_vector(unsafe { MCU_MEMORY_MAP.rom_offset });
 
             let state = SecurityState::from(mci.security_state());
             let lifecycle = state.device_lifecycle();
@@ -211,9 +224,18 @@ impl BootFlow for ColdBoot {
                     mci.configure_wdt(straps.mcu_wdt_cfg0, straps.mcu_wdt_cfg1);
                 }
             }
-
-            mci.set_flow_checkpoint(McuRomBootStatus::WatchdogConfigured.into());
+        } else {
+            romtime::println!(
+                "[mcu-rom] Configurating Caliptra watchdog timers for streaming boot: {} {}",
+                800_000_000,
+                800_000_000,
+            );
+            soc.set_cptra_wdt_cfg(0, 800_000_000);
+            soc.set_cptra_wdt_cfg(1, 800_000_000);
+            mci.configure_wdt(800_000_000, 1);
         }
+        mci.set_nmi_vector(unsafe { MCU_MEMORY_MAP.rom_offset });
+        mci.set_flow_checkpoint(McuRomBootStatus::WatchdogConfigured.into());
 
         romtime::println!("[mcu-rom] Initializing I3C");
         i3c.configure(straps.i3c_static_addr, true);
@@ -405,7 +427,7 @@ impl BootFlow for ColdBoot {
         mci.set_flow_milestone(McuBootMilestones::RI_DOWNLOAD_COMPLETED.into());
 
         // Loading flash into the recovery flow is only possible in 2.1+.
-        if cfg!(feature = "hw-2-1") {
+        if flash_boot {
             if let Some(flash_driver) = params.flash_partition_driver {
                 romtime::println!("[mcu-rom] Starting Flash recovery flow");
                 mci.set_flow_checkpoint(McuRomBootStatus::FlashRecoveryFlowStarted.into());

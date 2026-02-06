@@ -502,6 +502,7 @@ mod tests {
             Some(mcu_mailbox0.clone()),
             None,
             None,
+            [0, 0],
         );
         AutoRootBus::new(
             vec![],
