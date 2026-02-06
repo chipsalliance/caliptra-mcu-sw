@@ -25,7 +25,7 @@ pub struct Manifest {
     /// binaries indicates the order applications should be allocated memory from the space
     /// remaining after the kernel allocation.
     #[serde(rename = "app")]
-    pub apps: Vec<Binary>,
+    pub apps: Vec<App>,
 }
 
 impl Manifest {
@@ -34,7 +34,7 @@ impl Manifest {
     ///
     /// This could fail if the size is larger than the ITCM.
     pub fn reserve_itcm(&mut self, size: u64) -> Result<()> {
-        let mem = match &mut self.platform.runtime_memory {
+        let mem: &mut Memory = match &mut self.platform.runtime_memory {
             RuntimeMemory::Sram(s) => s,
             RuntimeMemory::Tcm { itcm, dtcm: _ } => itcm,
         };
@@ -45,6 +45,8 @@ impl Manifest {
                 mem.size
             );
         }
+
+        mem.offset += size;
 
         Ok(())
     }
@@ -62,14 +64,9 @@ impl Manifest {
             }
         }
 
-        let dtcm = match &self.platform.runtime_memory {
-            RuntimeMemory::Sram(s) => s.clone(),
-            RuntimeMemory::Tcm { itcm: _itcm, dtcm } => dtcm.clone(),
-        };
-
         self.kernel.validate(dynamic_sizing)?;
         for app in &self.apps {
-            app.validate(dynamic_sizing)?;
+            app.binary.validate(dynamic_sizing)?;
         }
 
         Ok(())
@@ -350,6 +347,27 @@ impl Binary {
             stack,
             exception_stack,
         }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct App {
+    #[serde(flatten)]
+    pub binary: Binary,
+
+    /// The amount of space in addition to the data usage of an application which must be reserved
+    /// for TockOS App grants.  If not specified this will default to 4Kb.  This option is only
+    /// used with Dynamic Sizing, otherwise the `data_mem` section should include this within its
+    /// reservation.
+    pub grant_space: Option<u64>,
+}
+
+impl App {
+    /// Retrieve the amount of grant space to reserve for an application.  This is provided by the
+    /// manifest or defaults to 4Kb.
+    pub fn grant_space(&self) -> u64 {
+        self.grant_space.unwrap_or(4096)
     }
 }
 
