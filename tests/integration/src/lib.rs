@@ -32,9 +32,7 @@ mod test {
     use caliptra_hw_model::BootParams;
     use caliptra_image_types::FwVerificationPqcKeyType;
     use mcu_builder::{CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET};
-    use mcu_config::McuMemoryMap;
     use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
-    use mcu_image_header::McuImageHeader;
     use mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
     use random_port::PortPicker;
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -44,7 +42,6 @@ mod test {
         process::Command,
         sync::LazyLock,
     };
-    use zerocopy::IntoBytes;
 
     #[derive(Default)]
     pub struct TestParams<'a> {
@@ -109,43 +106,35 @@ mod test {
         }
     }
 
-    fn memory_map() -> &'static McuMemoryMap {
-        if cfg!(feature = "fpga_realtime") {
-            &mcu_config_fpga::FPGA_MEMORY_MAP
-        } else {
-            &mcu_config_emulator::EMULATOR_MEMORY_MAP
-        }
-    }
-
     fn compile_rom(feature: &str) -> PathBuf {
-        let output: PathBuf = mcu_builder::rom_build(Some(platform()), feature)
-            .expect("ROM build failed")
-            .into();
+        let output: PathBuf =
+            mcu_builder::rom_build(Some(platform().to_string()), Some(feature.to_string()))
+                .expect("ROM build failed");
         assert!(output.exists());
         output
     }
 
     pub fn compile_runtime(feature: Option<&str>, example_app: bool) -> PathBuf {
-        let mut features = vec![];
-        if let Some(feature) = feature {
-            features.push(feature);
-        }
-        let feature = feature.map(|f| format!("-{f}")).unwrap_or_default();
-        let output = target_binary(&format!("runtime{}-{}.bin", feature, platform()));
-        let output_name = format!("{}", output.display());
-        mcu_builder::runtime_build_with_apps(
-            &features,
-            Some(output_name),
+        let platform = platform();
+        let feature_name = match feature {
+            Some(f) => format!("-{f}"),
+            None => String::new(),
+        };
+        let name = format!("runtime{}-{}.bin", feature_name, platform);
+
+        let feature_str: &[&str] = match feature {
+            Some(s) => &[s],
+            None => &[],
+        };
+
+        let output = mcu_builder::runtime_build_with_apps(
+            feature_str,
+            Some(name),
             example_app,
-            Some(platform()),
-            Some(memory_map()),
-            false,
-            None,
-            None,
-            Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG),
+            Some(platform),
             None,
         )
-        .expect("Runtime build failed");
+        .expect("Runtime failed to compile");
         assert!(output.exists());
         output
     }
@@ -828,30 +817,12 @@ mod test {
         } else {
             "test-mcu-svn-lt-fuse"
         };
+        let name = format!("runtime-{}.bin", feature);
+        let test_runtime = target_binary(&name);
 
         println!("Compiling test firmware {}", &feature);
-
-        let test_runtime = target_binary(&format!("runtime-{}.bin", feature));
-        let output_name = format!("{}", test_runtime.display());
-        mcu_builder::runtime_build_with_apps(
-            &[feature],
-            Some(output_name),
-            true,
-            None,
-            None,
-            false,
-            None,
-            None,
-            None,
-            Some(
-                McuImageHeader {
-                    svn: image_svn,
-                    ..Default::default()
-                }
-                .as_bytes(),
-            ),
-        )
-        .expect("Runtime build failed");
+        mcu_builder::runtime_build_with_apps(&[feature], Some(name), true, None, Some(image_svn))
+            .expect("Runtime build failed");
         assert!(test_runtime.exists());
 
         let fuse_vendor_hashes_prod_partition = {

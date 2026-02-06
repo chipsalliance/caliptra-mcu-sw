@@ -423,9 +423,6 @@ impl EmulatorBinaries {
 #[derive(Default)]
 pub struct AllBuildArgs<'a> {
     pub output: Option<&'a str>,
-    pub use_dccm_for_stack: bool,
-    pub dccm_offset: Option<u32>,
-    pub dccm_size: Option<u32>,
     pub platform: Option<&'a str>,
     pub rom_features: Option<&'a str>,
     pub runtime_features: Option<&'a str>,
@@ -439,9 +436,6 @@ pub struct AllBuildArgs<'a> {
 pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let AllBuildArgs {
         output,
-        use_dccm_for_stack,
-        dccm_offset,
-        dccm_size,
         platform,
         rom_features,
         runtime_features,
@@ -454,13 +448,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     // TODO: use temp files
     let platform = platform.unwrap_or("emulator");
     let rom_features = rom_features.unwrap_or_default();
-    let mcu_rom = crate::rom_build(Some(platform), rom_features)?;
+    let mcu_rom = crate::rom_build(Some(platform.to_string()), Some(rom_features.to_string()))?;
     let network_rom = crate::network_rom_build()?;
-    let memory_map = match platform {
-        "emulator" => &mcu_config_emulator::EMULATOR_MEMORY_MAP,
-        "fpga" => &mcu_config_fpga::FPGA_MEMORY_MAP,
-        _ => bail!("Unknown platform: {:?}", platform),
-    };
 
     let mut used_filenames = std::collections::HashSet::new();
     let mut test_roms = vec![];
@@ -516,11 +505,6 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         Some(base_runtime_path.to_string()),
         false,
         Some(platform),
-        Some(memory_map),
-        use_dccm_for_stack,
-        dccm_offset,
-        dccm_size,
-        None,
         None,
     )?;
 
@@ -583,11 +567,11 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     // Only builds for features that the ROM crate supports; tests using other features
     // will fall back to the generic MCU ROM.
     for feature in separate_features.iter() {
-        match crate::rom_build(Some(platform), feature) {
+        match crate::rom_build(Some(platform.to_string()), Some(feature.to_string())) {
             Ok(rom_path) => {
                 let rom_name = format!("mcu-test-rom-feature-{}.bin", feature);
-                println!("Built feature ROM: {} -> {}", rom_path, rom_name);
-                test_roms.push((PathBuf::from(rom_path), rom_name));
+                println!("Built feature ROM: {rom_path:?} -> {}", rom_name);
+                test_roms.push((rom_path, rom_name));
             }
             Err(e) => {
                 println!(
@@ -609,11 +593,6 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             Some(feature_runtime_path),
             include_example_app,
             Some(platform),
-            Some(memory_map),
-            use_dccm_for_stack,
-            dccm_offset,
-            dccm_size,
-            None,
             None,
         )?;
 
@@ -742,12 +721,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         &mut zip,
         options,
     )?;
-    add_to_zip(
-        &PathBuf::from(mcu_rom),
-        FirmwareBinaries::MCU_ROM_NAME,
-        &mut zip,
-        options,
-    )?;
+    add_to_zip(&mcu_rom, FirmwareBinaries::MCU_ROM_NAME, &mut zip, options)?;
     add_to_zip(
         &PathBuf::from(mcu_runtime),
         FirmwareBinaries::MCU_RUNTIME_NAME,

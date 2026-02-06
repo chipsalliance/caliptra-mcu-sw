@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
 
 mod all;
-mod apps;
 mod caliptra;
 pub mod firmware;
 pub mod flash_image;
 mod network_rom;
 mod rom;
 mod runtime;
+mod utils;
 
 pub use all::{
     all_build, emulator_build, AllBuildArgs, EmulatorBinaries, EmulatorBuildArgs, FirmwareBinaries,
@@ -15,7 +15,7 @@ pub use all::{
 pub use caliptra::{CaliptraBuilder, ImageCfg};
 pub use network_rom::network_rom_build;
 pub use rom::{rom_build, rom_ld_script, test_rom_build};
-pub use runtime::{runtime_build_no_apps, runtime_build_with_apps, runtime_ld_script};
+pub use runtime::runtime_build_with_apps;
 
 use anyhow::{anyhow, Result};
 use std::{

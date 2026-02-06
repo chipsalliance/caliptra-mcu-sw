@@ -1,18 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::Result;
-use mcu_builder::{PROJECT_ROOT, TARGET};
+use mcu_builder::PROJECT_ROOT;
 use std::process::Command;
 
 pub(crate) fn rom_run(trace: bool) -> Result<()> {
     let platform = None;
-    let platform_bin = format!("mcu-rom-{}.bin", "emulator");
-    mcu_builder::rom_build(platform, "")?;
-    let rom_binary = PROJECT_ROOT
-        .join("target")
-        .join(TARGET)
-        .join("release")
-        .join(&platform_bin);
+    let rom_binary = mcu_builder::rom_build(platform, None)?;
     let mut cargo_run_args = vec![
         "run",
         "-p",

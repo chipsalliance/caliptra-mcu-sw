@@ -21,6 +21,7 @@ hex.workspace = true
 mcu-config.workspace = true
 mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true
+mcu-firmware-bundler.workspace = true
 pldm-fw-pkg.workspace = true
 serde.workspace = true
 semver.workspace = true

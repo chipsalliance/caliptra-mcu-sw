@@ -289,7 +289,8 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
         let caliptra_sw = caliptra_sw_workspace_root();
-        let rom_path = mcu_builder::rom_build(Some("fpga"), "core_test")?;
+        let rom_path =
+            mcu_builder::rom_build(Some("fpga".to_string()), Some("core_test".to_string()))?;
         if !args.mcu {
             build_caliptra_firmware(&caliptra_sw, args.fw_id.as_deref())?;
         }
@@ -300,7 +301,12 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
                 "/tmp/caliptra-test-firmware",
                 false,
             )?;
-            rsync_file(target_host, &rom_path, "mcu-rom-fpga.bin", false)?;
+            rsync_file(
+                target_host,
+                &rom_path.to_string_lossy(),
+                "mcu-rom-fpga.bin",
+                false,
+            )?;
         }
         Ok(())
     }
