@@ -157,7 +157,8 @@ impl<'a> LdGeneration<'a> {
                 //
                 // Note: The in half split is arbitrary.  This may have to be adjusted if real world
                 // applications are found not to compile with this split, but can fit in the SRAM.
-                let split = (mem.size / 2).next_multiple_of(TOCK_ALIGNMENT);
+                let split =
+                    (mem.offset + (mem.size / 2)).next_multiple_of(TOCK_ALIGNMENT) - mem.offset;
                 let instructions = mem.consume(split)?;
                 (instructions, mem)
             }
@@ -248,10 +249,12 @@ impl<'a> LdGeneration<'a> {
                 RuntimeMemory::Sram(mut mem) => {
                     // Determine the amount of space required within SRAM for the instructions.  It is
                     // equal to the kernel imem plus each apps imem, with padding for Tock alignment.
-                    let mut split = kernel_exec_mem.size.next_multiple_of(TOCK_ALIGNMENT);
+                    let mut split = kernel_exec_mem.size;
                     for app in &self.manifest.apps {
-                        split += app.exec_mem()?.size.next_multiple_of(TOCK_ALIGNMENT);
+                        split += app.binary.exec_mem()?.size;
                     }
+
+                    split = (mem.offset + split).next_multiple_of(TOCK_ALIGNMENT) - mem.offset;
 
                     let instructions = mem.consume(split)?;
                     (instructions, mem)

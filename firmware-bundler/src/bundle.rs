@@ -80,8 +80,8 @@ pub fn bundle(
         runtime.extend(app.into_iter());
     }
 
-    // Firmware validated by Caliptra is required to be 4 byte aligned.
-    let aligned_bin_len = runtime.len().next_multiple_of(4);
+    // Firmware validated by Caliptra is required to be 256 byte aligned.
+    let aligned_bin_len = runtime.len().next_multiple_of(256);
     if aligned_bin_len != runtime.len() {
         runtime.resize(aligned_bin_len, 0);
     }
