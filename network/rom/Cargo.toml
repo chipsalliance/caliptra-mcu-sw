@@ -1,0 +1,16 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "network-rom"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[build-dependencies]
+network-config.workspace = true
+
+[dependencies]
+network-config.workspace = true
+
+[features]
+default = []

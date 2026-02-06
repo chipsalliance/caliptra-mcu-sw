@@ -348,6 +348,7 @@ pub unsafe extern "C" fn emulator_init(
             config.fuse_vendor_hashes_prod_partition,
         ),
         fuse_vendor_test_partition: convert_optional_c_string(config.fuse_vendor_test_partition),
+        network_rom: None,
     };
 
     // Convert C callbacks to Rust callbacks if provided

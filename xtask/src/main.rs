@@ -134,6 +134,8 @@ enum Commands {
         #[arg(long)]
         features: Option<String>,
     },
+    /// Build Network Coprocessor ROM
+    NetworkRomBuild,
     /// Build and Run ROM image
     Rom {
         /// Run with tracing options
@@ -473,6 +475,7 @@ fn main() {
             mcu_builder::rom_build(platform.as_deref(), features.as_deref().unwrap_or(""))
                 .map(|_| ())
         }
+        Commands::NetworkRomBuild => mcu_builder::network_rom_build().map(|_| ()),
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
                 caliptra_fw,
