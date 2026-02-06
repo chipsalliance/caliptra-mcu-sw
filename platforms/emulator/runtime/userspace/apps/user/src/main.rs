@@ -101,6 +101,13 @@ pub(crate) async fn async_main() {
         .spawn(mcu_mbox::mcu_mbox_task())
         .unwrap();
 
+    #[cfg(feature = "test-mcu-mbox-fips-periodic")]
+    EXECUTOR
+        .get()
+        .spawner()
+        .spawn(mcu_mbox_lib::fips_periodic::fips_periodic_task())
+        .unwrap();
+
     #[cfg(feature = "test-mctp-vdm-cmds")]
     EXECUTOR.get().spawner().spawn(vdm::vdm_task()).unwrap();
 

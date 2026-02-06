@@ -13,9 +13,14 @@ external-cmds-common.workspace = true
 caliptra-api.workspace = true
 libapi-caliptra.workspace = true
 libsyscall-caliptra.workspace = true
+libtock_alarm.workspace = true
 libtock_console.workspace = true
 libtock_platform.workspace = true
 libtock_runtime.workspace = true
 libtockasync.workspace = true
 mcu-mbox-common.workspace = true
 zerocopy.workspace = true
+
+[features]
+default = []
+periodic-fips-self-test = []
