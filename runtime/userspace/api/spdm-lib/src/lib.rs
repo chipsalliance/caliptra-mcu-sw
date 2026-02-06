@@ -41,3 +41,6 @@ pub mod vdm_handler;
 
 // Opaque Element
 pub mod opaque_element;
+
+// Platform specific implementations
+pub mod platform;
