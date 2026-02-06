@@ -103,7 +103,7 @@ impl<'a> LdGeneration<'a> {
         // a unique directory to prevent collisions and simplify inspection for debugging.  If
         // the workspace has not been specified attempt to determine it algorithmically.
         let linker_dir = common
-            .workspace_dir()?
+            .target_dir()?
             .join(&manifest.platform.tuple)
             .join("linker-scripts");
 

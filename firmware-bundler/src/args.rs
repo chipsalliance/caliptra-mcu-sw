@@ -38,13 +38,21 @@ impl Common {
         Ok(manifest)
     }
 
-    /// Retrieve the workspace directory, either from the command line specification or
-    /// algorithmically based on the current execution directory.
-    pub fn workspace_dir(&self) -> Result<PathBuf> {
+    /// Retrieve the target directory, either derived from the command line specification for the
+    /// workspace directory or algorithmically based on the current execution directory.
+    pub fn target_dir(&self) -> Result<PathBuf> {
         match &self.workspace_dir {
             Some(wd) => Ok(wd.join("target")),
             None => utils::find_target_directory(),
         }
+    }
+
+    /// Retrieve the release directory, using the target tuple for the manifest and an invocation
+    /// of `target_dir`.
+    pub fn release_dir(&self) -> Result<PathBuf> {
+        let manifest = self.manifest()?;
+        self.target_dir()
+            .map(|t| t.join(manifest.platform.tuple).join("release"))
     }
 
     /// Create a new Common struct for testing purposes.

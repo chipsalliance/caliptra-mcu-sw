@@ -127,12 +127,7 @@ impl<'a> BuildPass<'a> {
     ) -> Result<Self> {
         // Determine the release directory which elf files will be placed by `rustc` and where we
         // wish to place binaries.
-        let binary_dir = match &common.workspace_dir {
-            Some(oc) => oc.to_path_buf(),
-            None => common.workspace_dir()?,
-        }
-        .join(&manifest.platform.tuple)
-        .join("release");
+        let binary_dir = common.release_dir()?;
 
         let objcopy = match &build_args.objcopy {
             Some(o) => o.clone(),

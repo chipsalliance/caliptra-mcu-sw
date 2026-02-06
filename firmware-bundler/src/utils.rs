@@ -10,14 +10,14 @@ use std::{
 
 use anyhow::{anyhow, bail, Result};
 
-/// Determine the target directory for the Cargo workspace being built.  It does so by recursing
+/// Determine the workspace directory for the Cargo workspace being built.  It does so by recursing
 /// up the directory tree to find the highest directory which contains a `Cargo.toml` file, and thus
-/// is the workspace root.  The target directory always hangs off the workspace root.
+/// is the workspace root.
 //
 // Note: This dynamic search must be used instead of relying on CARGO_... variables as we'd like to
 // ship the `firmware-bundler` as a separate tool, which will not have access to those variables
 // like xtask does.
-pub fn find_target_directory() -> Result<PathBuf> {
+pub fn find_workspace_directory() -> Result<PathBuf> {
     let mut proposed_dir = Option::default();
     let mut current_dir = Some(std::env::current_dir()?);
 
@@ -31,12 +31,19 @@ pub fn find_target_directory() -> Result<PathBuf> {
         current_dir = cdir.parent().map(|p| p.to_path_buf());
     }
 
-    proposed_dir.map(|d| d.join("target")).ok_or_else(|| {
+    proposed_dir.ok_or_else(|| {
         anyhow!(
             "Unable to determine workspace directory for this project, \
             consider using the `--workspace-dir` flag to specify."
         )
     })
+}
+
+/// Determine the target directory for the Cargo workspace being built.  It does so by recursing
+/// up the directory tree to find the highest directory which contains a `Cargo.toml` file, and thus
+/// is the workspace root.  The target directory always hangs off the workspace root.
+pub fn find_target_directory() -> Result<PathBuf> {
+    find_workspace_directory().map(|d| d.join("target"))
 }
 
 /// Find the sysroot of the compiler used for this workspace.  This can be used to navigate to
