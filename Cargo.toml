@@ -54,7 +54,6 @@ members = [
     "runtime/kernel/drivers/mcu_mbox",
     "runtime/kernel/veer",
     "runtime/userspace/api/caliptra-api",
-    "runtime/userspace/api/eat",
     "runtime/userspace/api/external-cmds-common",
     "runtime/userspace/api/mcu-mbox-lib",
     "runtime/userspace/api/mctp-vdm-lib",
@@ -212,7 +211,6 @@ mcu-rom-common = { path = "rom" }
 mcu-test-harness = {path = "platforms/test_harness"}
 mcu-testing-common = { path = "common/testing" }
 mcu-tock-veer = { path = "runtime/kernel/veer" }
-ocp-eat = { path = "runtime/userspace/api/eat", default-features = false }
 mctp-vdm-common = { path = "common/mctp-vdm" }
 pldm-common = { path = "common/pldm"}
 pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
@@ -270,6 +268,7 @@ caliptra-registers = { git = "https://github.com/chipsalliance/caliptra-sw", rev
 caliptra-test = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "dde1255d634389a05872db1b6edd7ee88020da3b" }
 caliptra-test-harness = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "dde1255d634389a05872db1b6edd7ee88020da3b" }
 caliptra-test-harness-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "dde1255d634389a05872db1b6edd7ee88020da3b" }
+ocp-eat = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "dde1255d634389a05872db1b6edd7ee88020da3b", default-features = false }
 ureg = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "dde1255d634389a05872db1b6edd7ee88020da3b" }
 
 # caliptra-dpe dependencies; keep git revs in sync with version pulled into caliptra-sw
