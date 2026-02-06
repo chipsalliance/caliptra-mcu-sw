@@ -3170,6 +3170,7 @@ dependencies = [
  "external-cmds-common",
  "libapi-caliptra",
  "libsyscall-caliptra",
+ "libtock_alarm",
  "libtock_console",
  "libtock_platform",
  "libtock_runtime",

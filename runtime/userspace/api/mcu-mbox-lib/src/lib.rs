@@ -5,3 +5,6 @@
 pub mod cmd_interface;
 pub mod daemon;
 pub mod transport;
+
+#[cfg(feature = "periodic-fips-self-test")]
+pub mod fips_periodic;

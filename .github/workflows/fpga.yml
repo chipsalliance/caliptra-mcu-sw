@@ -119,6 +119,12 @@ jobs:
           key: openssl-${{ env.CACHE_BUSTER }}
 
       - name: Build test firmware
+        env:
+          RUNTIME_FEATURES: >-
+            test-i3c-simple,test-i3c-constant-writes,test-mctp-capsule-loopback,
+            test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming,
+            test-mcu-mbox-usermode,test-mcu-mbox-cmds,test-mctp-vdm-cmds,
+            test-mcu-mbox-fips-self-test,test-mcu-mbox-fips-periodic
         run: |
           # In the CI we really want to avoid lengthy build steps.
           # Vendoring OpenSSL is a huge time sink, and instead linking a prebuilt
@@ -137,7 +143,7 @@ jobs:
           export MCU_STAGING_ADDR=0xB00C0000
           cargo xtask-fpga all-build --platform fpga \
             --rom-features "core_test" \
-            --runtime-features "test-i3c-simple,test-i3c-constant-writes,test-mctp-capsule-loopback,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming,test-mcu-mbox-usermode,test-mcu-mbox-cmds,test-mctp-vdm-cmds" \
+            --runtime-features "${RUNTIME_FEATURES// /}" \
             --mcu_cfg mcu,0x0,$MCU_STAGING_ADDR,2,2,2,test-fpga-flash-ctrl \
             --separate-runtimes
           sccache --show-stats

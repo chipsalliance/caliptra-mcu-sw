@@ -34,8 +34,11 @@ default-filter = """
 (package(tests-integration) and test(test_uds)) |
 (package(tests-integration) and test(test_imaginary_flash_controller)) |
 (package(tests-integration) and test(test_fw_update_e2e)) |
+(package(tests-integration) and test(test_mctp_vdm_cmds)) |
 (package(tests-integration) and test(test_mcu_mbox_usermode)) |
 (package(tests-integration) and test(test_mcu_mbox_cmds)) |
+(package(tests-integration) and test(test_mcu_mbox_fips_self_test)) |
+(package(tests-integration) and test(test_mcu_mbox_fips_periodic)) |
 (package(tests-integration) and test(test_i3c_constant_writes)) |
 (package(tests-integration) and test(test_i3c_simple)) |
 (package(tests-integration) and test(test_mctp_vdm_cmds))

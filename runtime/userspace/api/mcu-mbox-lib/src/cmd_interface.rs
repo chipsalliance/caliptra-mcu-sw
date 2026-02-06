@@ -21,11 +21,18 @@ use mcu_mbox_common::messages::{
     McuAesGcmEncryptUpdateResp, McuCmDeleteReq, McuCmDeleteResp, McuCmImportReq, McuCmImportResp,
     McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq,
     McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
-    McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuHkdfExpandReq,
-    McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp, McuHmacKdfCounterReq,
-    McuHmacKdfCounterResp, McuHmacReq, McuHmacResp, McuMailboxResp, McuRandomGenerateReq,
-    McuRandomGenerateResp, McuRandomStirReq, McuRandomStirResp, McuShaFinalReq, McuShaFinalResp,
-    McuShaInitReq, McuShaInitResp, McuShaUpdateReq, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
+    McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuFipsSelfTestGetResultsReq,
+    McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
+    McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
+    McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuHmacResp, McuMailboxResp,
+    McuRandomGenerateReq, McuRandomGenerateResp, McuRandomStirReq, McuRandomStirResp,
+    McuShaFinalReq, McuShaFinalResp, McuShaInitReq, McuShaInitResp, McuShaUpdateReq,
+    DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
+};
+#[cfg(feature = "periodic-fips-self-test")]
+use mcu_mbox_common::messages::{
+    McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
+    McuFipsPeriodicStatusResp,
 };
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -106,6 +113,34 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_DEVICE_CAPABILITIES => self.handle_device_caps(msg_buf, req_len).await,
             CommandId::MC_DEVICE_ID => self.handle_device_id(msg_buf, req_len).await,
             CommandId::MC_DEVICE_INFO => self.handle_device_info(msg_buf, req_len).await,
+            CommandId::MC_FIPS_SELF_TEST_START => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuFipsSelfTestStartResp>()];
+                self.handle_crypto_passthrough::<McuFipsSelfTestStartReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::SELF_TEST_START.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_FIPS_SELF_TEST_GET_RESULTS => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuFipsSelfTestGetResultsResp>()];
+                self.handle_crypto_passthrough::<McuFipsSelfTestGetResultsReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::SELF_TEST_GET_RESULTS.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            #[cfg(feature = "periodic-fips-self-test")]
+            CommandId::MC_FIPS_PERIODIC_ENABLE => {
+                self.handle_fips_periodic_enable(msg_buf, req_len).await
+            }
+            #[cfg(feature = "periodic-fips-self-test")]
+            CommandId::MC_FIPS_PERIODIC_STATUS => {
+                self.handle_fips_periodic_status(msg_buf, req_len).await
+            }
             CommandId::MC_SHA_INIT => {
                 let mut resp_bytes = [0u8; core::mem::size_of::<McuShaInitResp>()];
                 self.handle_crypto_passthrough::<McuShaInitReq>(
@@ -615,5 +650,76 @@ impl<'a> CmdInterface<'a> {
             }
             Err(_) => Ok((0, MbxCmdStatus::Failure)),
         }
+    }
+
+    #[cfg(feature = "periodic-fips-self-test")]
+    async fn handle_fips_periodic_enable(
+        &self,
+        msg_buf: &mut [u8],
+        req_len: usize,
+    ) -> Result<(usize, MbxCmdStatus), MsgHandlerError> {
+        use crate::fips_periodic;
+
+        // Parse the request
+        let req = McuFipsPeriodicEnableReq::ref_from_bytes(&msg_buf[..req_len])
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        // Enable or disable based on request
+        fips_periodic::set_enabled(req.enable != 0);
+
+        // Prepare response
+        let mut resp = McuMailboxResp::FipsPeriodicEnable(McuFipsPeriodicEnableResp(
+            MailboxRespHeader::default(),
+        ));
+
+        // Populate the checksum for response
+        resp.populate_chksum()
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        // Encode the response and copy to msg_buf
+        let resp_bytes = resp
+            .as_bytes()
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        msg_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
+
+        Ok((resp_bytes.len(), MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "periodic-fips-self-test")]
+    async fn handle_fips_periodic_status(
+        &self,
+        msg_buf: &mut [u8],
+        req_len: usize,
+    ) -> Result<(usize, MbxCmdStatus), MsgHandlerError> {
+        use crate::fips_periodic;
+
+        // Parse the request (just header, no additional data)
+        let _req = McuFipsPeriodicStatusReq::ref_from_bytes(&msg_buf[..req_len])
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        // Get status
+        let (enabled, iterations, last_result) = fips_periodic::get_status();
+
+        // Prepare response
+        let mut resp = McuMailboxResp::FipsPeriodicStatus(McuFipsPeriodicStatusResp {
+            header: MailboxRespHeader::default(),
+            enabled: if enabled { 1 } else { 0 },
+            iterations,
+            last_result,
+        });
+
+        // Populate the checksum for response
+        resp.populate_chksum()
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        // Encode the response and copy to msg_buf
+        let resp_bytes = resp
+            .as_bytes()
+            .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        msg_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
+
+        Ok((resp_bytes.len(), MbxCmdStatus::Complete))
     }
 }

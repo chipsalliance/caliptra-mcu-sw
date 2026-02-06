@@ -43,6 +43,10 @@ These commands support a wide range of functionalities, including querying devic
 | MC_IMPORT_IDEV_CERT               | 0x4D49_4943 ("MIIC") | Allows SoC to import DER-encoded IDevId certificate on every boot.                                 |
 | MC_GET_LOG                        | 0x4D47_4C47 ("MGLG") | Retrieves the internal log for the RoT.                                                            |
 | MC_CLEAR_LOG                      | 0x4D43_4C47 ("MCLG") | Clears the log in the RoT subsystem.                                                               |
+| MC_FIPS_SELF_TEST_START           | 0x4D46_5354 ("MFST") | Starts the FIPS self-test to exercise the crypto engine.                                           |
+| MC_FIPS_SELF_TEST_GET_RESULTS     | 0x4D46_4752 ("MFGR") | Retrieves the results of the FIPS self-test.                                                       |
+| MC_FIPS_PERIODIC_ENABLE           | 0x4D46_5045 ("MFPE") | Enables or disables periodic FIPS self-test.                                                       |
+| MC_FIPS_PERIODIC_STATUS           | 0x4D46_5053 ("MFPS") | Retrieves the status of periodic FIPS self-test.                                                   |
 | MC_SHA_INIT                       | 0x4D43_5349 ("MCSI") | Starts the computation of a SHA hash of data.                                                      |
 | MC_SHA_UPDATE                     | 0x4D43_5355 ("MCSU") | Continues a SHA computation started by `MC_SHA_INIT` or another `MC_SHA_UPDATE`.                   |
 | MC_SHA_FINAL                      | 0x4D43_5346 ("MCSF") | Finalizes the computation of a SHA and produces the hash of all the data.                          |
@@ -266,6 +270,44 @@ Command Code: `0x4D43_4C47` ("MCLG")
 | chksum      | u32            |                            |
 | fips_status | u32            | FIPS approved or an error. |
 
+### MC_FIPS_PERIODIC_ENABLE
+
+Enables or disables periodic FIPS self-test. When enabled, the MCU runs FIPS self-tests in the background at a configurable interval (default: 60 seconds).
+
+Command Code: `0x4D46_5045` ("MFPE")
+
+*Table: `MC_FIPS_PERIODIC_ENABLE` input arguments*
+| **Name**   | **Type** | **Description**                         |
+|------------|----------|-----------------------------------------|
+| chksum     | u32      | Checksum over input data                |
+| enable     | u32      | 0 = disable, 1 = enable periodic test   |
+
+*Table: `MC_FIPS_PERIODIC_ENABLE` output arguments*
+| **Name**    | **Type** | **Description**            |
+|-------------|----------|----------------------------|
+| chksum      | u32      |                            |
+| fips_status | u32      | FIPS approved or an error. |
+
+### MC_FIPS_PERIODIC_STATUS
+
+Retrieves the status of the periodic FIPS self-test, including whether it is enabled, the number of completed iterations, and the result of the last test.
+
+Command Code: `0x4D46_5053` ("MFPS")
+
+*Table: `MC_FIPS_PERIODIC_STATUS` input arguments*
+| **Name**   | **Type** | **Description**          |
+|------------|----------|--------------------------|
+| chksum     | u32      | Checksum over input data |
+
+*Table: `MC_FIPS_PERIODIC_STATUS` output arguments*
+| **Name**    | **Type** | **Description**                                           |
+|-------------|----------|-----------------------------------------------------------|
+| chksum      | u32      |                                                           |
+| fips_status | u32      | FIPS approved or an error.                                |
+| enabled     | u32      | 0 = disabled, 1 = enabled                                 |
+| iterations  | u32      | Number of completed periodic test iterations              |
+| last_result | u32      | Last test result: 0 = not run yet, 1 = pass, 2 = fail     |
+
 ### MC_ECDSA384_SIG_VERIFY
 
 Verifies an ECDSA P-384 signature. The hash to be verified is taken from the input.
@@ -421,6 +463,8 @@ The MCI mailbox cryptographic commands are mapped to their corresponding Caliptr
 *Table: mapping MCI Mailbox Crypto Commands to Caliptra Crypto Mailbox Commands*
 | **MCI Mailbox Crypto Commands** | **Caliptra Mailbox Crypto Commands**         |
 |--------------------------------|---------------------------------------------|
+| `MC_FIPS_SELF_TEST_START`     | `SELF_TEST_START`                           |
+| `MC_FIPS_SELF_TEST_GET_RESULTS` | `SELF_TEST_GET_RESULTS`                   |
 | `MC_SHA_INIT`                 | `CM_SHA_INIT`                               |
 | `MC_SHA_UPDATE`               | `CM_SHA_UPDATE`                             |
 | `MC_SHA_FINAL`                | `CM_SHA_FINAL`                              |

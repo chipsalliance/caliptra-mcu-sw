@@ -31,6 +31,8 @@ pub mod test {
         McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp,
         McuEcdhGenerateReq, McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp,
         McuEcdsaCmkSignReq, McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp,
+        McuFipsPeriodicEnableReq, McuFipsPeriodicStatusReq, McuFipsPeriodicStatusResp,
+        McuFipsSelfTestGetResultsReq, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
         McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
         McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuMailboxReq, McuMailboxResp,
         McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
@@ -69,6 +71,16 @@ pub mod test {
     #[test]
     pub fn test_mcu_mbox_usermode() {
         start_mcu_mbox_tests("test-mcu-mbox-usermode");
+    }
+
+    #[test]
+    pub fn test_mcu_mbox_fips_self_test() {
+        start_mcu_mbox_tests("test-mcu-mbox-fips-self-test");
+    }
+
+    #[test]
+    pub fn test_mcu_mbox_fips_periodic() {
+        start_mcu_mbox_tests("test-mcu-mbox-fips-periodic");
     }
 
     fn start_mcu_mbox_tests(feature: &str) {
@@ -161,16 +173,34 @@ pub mod test {
             cmd: u32,
             request: &[u8],
         ) -> Result<McuMailboxResponse, McuMailboxError> {
+            self.process_message_with_options(
+                cmd, request, 20_000_000, // 20 seconds in emulator ticks
+                false,
+            )
+        }
+
+        /// Process a mailbox message with configurable timeout and error handling.
+        ///
+        /// # Arguments
+        /// * `cmd` - The command code
+        /// * `request` - The request payload
+        /// * `timeout_ticks` - Maximum time to wait for a response in emulator ticks
+        /// * `continue_on_error` - If true, continue polling on non-busy errors instead of returning immediately
+        fn process_message_with_options(
+            &mut self,
+            cmd: u32,
+            request: &[u8],
+            timeout_ticks: u64,
+            continue_on_error: bool,
+        ) -> Result<McuMailboxResponse, McuMailboxError> {
             self.mbox.execute(cmd, request)?;
 
-            let timeout_ticks: u64 = 20_000_000;
             let start = get_emulator_ticks();
             loop {
                 match self.mbox.get_execute_response() {
                     Ok(resp) => return Ok(resp),
                     Err(McuMailboxError::Busy) => {
                         if emulator_ticks_elapsed(start, timeout_ticks) {
-                            // Print out timeout error and cmd id
                             println!(
                                 "Timeout waiting for response for MCU mailbox cmd: {:#X}",
                                 cmd
@@ -179,7 +209,20 @@ pub mod test {
                         }
                         sleep_emulator_ticks(100_000);
                     }
-                    Err(e) => return Err(e),
+                    Err(e) => {
+                        if continue_on_error {
+                            if emulator_ticks_elapsed(start, timeout_ticks) {
+                                println!(
+                                    "Timeout waiting for response for MCU mailbox cmd: {:#X}",
+                                    cmd
+                                );
+                                return Err(McuMailboxError::Timeout);
+                            }
+                            sleep_emulator_ticks(100_000);
+                        } else {
+                            return Err(e);
+                        }
+                    }
                 }
             }
         }
@@ -230,6 +273,12 @@ pub mod test {
                 self.add_hmac_tests()?;
                 self.add_hmac_kdf_counter_tests()?;
                 self.add_hkdf_tests()?;
+                Ok(())
+            } else if feature == "test-mcu-mbox-fips-self-test" {
+                self.add_fips_self_test_tests()?;
+                Ok(())
+            } else if feature == "test-mcu-mbox-fips-periodic" {
+                self.add_fips_periodic_tests()?;
                 Ok(())
             } else {
                 Ok(())
@@ -1754,6 +1803,164 @@ pub mod test {
                 }
                 Err(_) => Err(()), // Verification failed (signature mismatch)
             }
+        }
+
+        /// Test FIPS self-test start and get results commands.
+        /// This test exercises the FIPS KAT (Known Answer Test) passthrough functionality.
+        /// Follows the polling pattern from caliptra-sw's exec_cmd_self_test_get_results.
+        fn add_fips_self_test_tests(&mut self) -> Result<(), ()> {
+            println!("Running FIPS self-test tests");
+
+            // Step 1: Start the FIPS self-test
+            let mut self_test_start_req = McuMailboxReq::FipsSelfTestStart(
+                McuFipsSelfTestStartReq(MailboxReqHeader::default()),
+            );
+            self_test_start_req.populate_chksum().unwrap();
+
+            let start_resp = self
+                .process_message(
+                    self_test_start_req.cmd_code().0,
+                    self_test_start_req.as_bytes().unwrap(),
+                )
+                .map_err(|_| ())?;
+
+            let start_resp_parsed =
+                McuFipsSelfTestStartResp::read_from_bytes(&start_resp.data).map_err(|_| ())?;
+            assert_eq!(
+                start_resp_parsed.0.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "FIPS self-test start should return approved status"
+            );
+            println!("  FIPS self-test started successfully");
+
+            // Add a delay before polling for results
+            sleep_emulator_ticks(500_000);
+
+            println!("  Polling for FIPS self-test results...");
+
+            // Step 2: Get the self-test results with extended timeout.
+            // Caliptra runs the self-test during enter_idle() when the mailbox is unlocked.
+            // Use continue_on_error=true to keep polling if the test isn't complete yet.
+            let mut get_results_req = McuMailboxReq::FipsSelfTestGetResults(
+                McuFipsSelfTestGetResultsReq(MailboxReqHeader::default()),
+            );
+            get_results_req.populate_chksum().unwrap();
+
+            let _results_resp = self
+                .process_message_with_options(
+                    get_results_req.cmd_code().0,
+                    get_results_req.as_bytes().unwrap(),
+                    60_000_000, // 60 seconds in emulator ticks
+                    true,
+                )
+                .map_err(|_| ())?;
+
+            println!("FIPS self-test tests passed");
+            Ok(())
+        }
+
+        /// Test periodic FIPS self-test enable/disable and status commands.
+        fn add_fips_periodic_tests(&mut self) -> Result<(), ()> {
+            println!("Running periodic FIPS self-test tests");
+
+            // Step 1: Check initial status (should be disabled, 0 iterations)
+            println!("  Checking initial status...");
+            let mut status_req = McuMailboxReq::FipsPeriodicStatus(McuFipsPeriodicStatusReq(
+                MailboxReqHeader::default(),
+            ));
+            status_req.populate_chksum().unwrap();
+
+            let status_resp = self
+                .process_message(status_req.cmd_code().0, status_req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            let status_parsed =
+                McuFipsPeriodicStatusResp::read_from_bytes(&status_resp.data).map_err(|_| ())?;
+            println!(
+                "    Initial: enabled={}, iterations={}, last_result={}",
+                status_parsed.enabled, status_parsed.iterations, status_parsed.last_result
+            );
+            assert_eq!(
+                status_parsed.enabled, 0,
+                "Periodic FIPS should be disabled initially"
+            );
+            assert_eq!(
+                status_parsed.iterations, 0,
+                "Should have 0 iterations initially"
+            );
+
+            // Step 2: Enable periodic FIPS self-test
+            println!("  Enabling periodic FIPS self-test...");
+            let mut enable_req = McuMailboxReq::FipsPeriodicEnable(McuFipsPeriodicEnableReq {
+                header: MailboxReqHeader::default(),
+                enable: 1,
+            });
+            enable_req.populate_chksum().unwrap();
+
+            let _enable_resp = self
+                .process_message(enable_req.cmd_code().0, enable_req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+            println!("    Enabled successfully");
+
+            // Step 3: Check status (should be enabled now)
+            println!("  Checking status after enable...");
+            let mut status_req2 = McuMailboxReq::FipsPeriodicStatus(McuFipsPeriodicStatusReq(
+                MailboxReqHeader::default(),
+            ));
+            status_req2.populate_chksum().unwrap();
+
+            let status_resp2 = self
+                .process_message(status_req2.cmd_code().0, status_req2.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            let status_parsed2 =
+                McuFipsPeriodicStatusResp::read_from_bytes(&status_resp2.data).map_err(|_| ())?;
+            println!(
+                "    After enable: enabled={}, iterations={}, last_result={}",
+                status_parsed2.enabled, status_parsed2.iterations, status_parsed2.last_result
+            );
+            assert_eq!(
+                status_parsed2.enabled, 1,
+                "Periodic FIPS should be enabled after enable command"
+            );
+
+            // Step 4: Disable periodic FIPS self-test
+            println!("  Disabling periodic FIPS self-test...");
+            let mut disable_req = McuMailboxReq::FipsPeriodicEnable(McuFipsPeriodicEnableReq {
+                header: MailboxReqHeader::default(),
+                enable: 0,
+            });
+            disable_req.populate_chksum().unwrap();
+
+            let _disable_resp = self
+                .process_message(disable_req.cmd_code().0, disable_req.as_bytes().unwrap())
+                .map_err(|_| ())?;
+            println!("    Disabled successfully");
+
+            // Step 5: Check status (should be disabled now)
+            println!("  Checking status after disable...");
+            let mut status_req3 = McuMailboxReq::FipsPeriodicStatus(McuFipsPeriodicStatusReq(
+                MailboxReqHeader::default(),
+            ));
+            status_req3.populate_chksum().unwrap();
+
+            let status_resp3 = self
+                .process_message(status_req3.cmd_code().0, status_req3.as_bytes().unwrap())
+                .map_err(|_| ())?;
+
+            let status_parsed3 =
+                McuFipsPeriodicStatusResp::read_from_bytes(&status_resp3.data).map_err(|_| ())?;
+            println!(
+                "    After disable: enabled={}, iterations={}, last_result={}",
+                status_parsed3.enabled, status_parsed3.iterations, status_parsed3.last_result
+            );
+            assert_eq!(
+                status_parsed3.enabled, 0,
+                "Periodic FIPS should be disabled after disable command"
+            );
+
+            println!("Periodic FIPS self-test tests passed");
+            Ok(())
         }
 
         /// Test HMAC command.
