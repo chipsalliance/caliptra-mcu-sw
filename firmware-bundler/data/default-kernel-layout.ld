@@ -206,7 +206,6 @@ SECTIONS
     /* _eapps symbol used by tock to calculate the length of app flash */
     _eapps = _sapps + LENGTH(prog);
 
-
     /* Kernel data that must be relocated. This is program data that is
      * expected to live in SRAM, but is initialized with a value. This data is
      * physically placed into flash and is copied into SRAM by Tock. The
@@ -215,7 +214,7 @@ SECTIONS
      * Tock assumes the relocation section follows all static elements and will
      * copy (_erelocate - _srelocate) bytes from _etext to _srelocate.
      */
-    .relocate : AT (_etext)
+    .relocate :
     {
         . = ALIGN(4);
         _srelocate = .;
@@ -244,7 +243,9 @@ SECTIONS
 
         . = ALIGN(4);
         _erelocate = .;
-    } > ram
+    } > ram AT > rom
+
+    _imem_end = _textend + SIZEOF(.relocate);
 
 
     .sram (NOLOAD) :

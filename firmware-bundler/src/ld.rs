@@ -4,15 +4,19 @@
 //! manifest file.  This includes allocating memory from the RAM, ITCM, and ROM spaces to be
 //! associated with individual applications.
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
 use tbf_header::TbfHeader;
 
 use crate::{
     args::{Common, LdArgs},
-    manifest::{Binary, Manifest, Memory},
+    manifest::{Binary, Manifest, Memory, RuntimeMemory},
     tbf::create_tbf_header,
+    TOCK_ALIGNMENT,
 };
 
 // To keep the ld file generation simple, a layout is defined for each type of application, and then
@@ -21,9 +25,9 @@ use crate::{
 // linker-script directory as well as the default contents for those files.
 //
 // Vendors can choose to override the default layouts via cli arguments if they so choose.
-const BASE_ROM_LD_FILE: &str = "rom-layout.ld";
-const BASE_KERNEL_LD_FILE: &str = "kernel-layout.ld";
-const BASE_APP_LD_FILE: &str = "app-layout.ld";
+const BASE_ROM_LD_PREFIX: &str = "bundler-rom-layout";
+const BASE_KERNEL_LD_PREFIX: &str = "bundler-kernel-layout";
+const BASE_APP_LD_PREFIX: &str = "bundler-app-layout";
 const BASE_ROM_LD_CONTENTS: &str = include_str!("../data/default-rom-layout.ld");
 const BASE_KERNEL_LD_CONTENTS: &str = include_str!("../data/default-kernel-layout.ld");
 const BASE_APP_LD_CONTENTS: &str = include_str!("../data/default-app-layout.ld");
@@ -86,6 +90,9 @@ pub fn generate_maximal_link_scripts(
 struct LdGeneration<'a> {
     manifest: &'a Manifest,
     linker_dir: PathBuf,
+    base_rom: PathBuf,
+    base_kernel: PathBuf,
+    base_app: PathBuf,
 }
 
 impl<'a> LdGeneration<'a> {
@@ -105,27 +112,30 @@ impl<'a> LdGeneration<'a> {
 
         // Go through each layout file.  If the user specified a file to use, copy it into the
         // output linker directory, otherwise copy out the default contents.
-        let rom_ld_file = linker_dir.join(BASE_ROM_LD_FILE);
-        match &ld.rom_ld_base {
-            Some(user_base) => std::fs::copy(user_base, rom_ld_file).map(|_| ())?,
-            None => std::fs::write(rom_ld_file, BASE_ROM_LD_CONTENTS)?,
+        let rom_contents = match &ld.rom_ld_base {
+            Some(user_base) => &String::from_utf8(std::fs::read(user_base)?)?,
+            None => BASE_ROM_LD_CONTENTS,
         };
+        let base_rom = content_aware_write(BASE_ROM_LD_PREFIX, rom_contents, &linker_dir)?;
 
-        let kernel_ld_file = linker_dir.join(BASE_KERNEL_LD_FILE);
-        match &ld.kernel_ld_base {
-            Some(user_base) => std::fs::copy(user_base, kernel_ld_file).map(|_| ())?,
-            None => std::fs::write(kernel_ld_file, BASE_KERNEL_LD_CONTENTS)?,
+        let kernel_contents = match &ld.kernel_ld_base {
+            Some(user_base) => &String::from_utf8(std::fs::read(user_base)?)?,
+            None => BASE_KERNEL_LD_CONTENTS,
         };
+        let base_kernel = content_aware_write(BASE_KERNEL_LD_PREFIX, kernel_contents, &linker_dir)?;
 
-        let app_ld_file = linker_dir.join(BASE_APP_LD_FILE);
-        match &ld.app_ld_base {
-            Some(user_base) => std::fs::copy(user_base, app_ld_file).map(|_| ())?,
-            None => std::fs::write(app_ld_file, BASE_APP_LD_CONTENTS)?,
+        let app_contents = match &ld.app_ld_base {
+            Some(user_base) => &String::from_utf8(std::fs::read(user_base)?)?,
+            None => BASE_APP_LD_CONTENTS,
         };
+        let base_app = content_aware_write(BASE_APP_LD_PREFIX, app_contents, &linker_dir)?;
 
         Ok(LdGeneration {
             manifest,
             linker_dir,
+            base_rom,
+            base_kernel,
+            base_app,
         })
     }
 
@@ -138,17 +148,30 @@ impl<'a> LdGeneration<'a> {
         // Skip generating a ROM linker script.  The ROM always has full access to its memory space,
         // and is thus not interesting for generating a maximal script for sizing purposes.
 
+        // Determine the maximal size of itcm/dtcm for the application.
+        let (itcm, dtcm) = match self.manifest.platform.runtime_memory.clone() {
+            RuntimeMemory::Sram(mut mem) => {
+                // If in SRAM mode, split the memory in approximately half for instructions and
+                // data.  They cannot be the same, as it causes allocations to overlap and fail to
+                // compile.
+                //
+                // Note: The in half split is arbitrary.  This may have to be adjusted if real world
+                // applications are found not to compile with this split, but can fit in the SRAM.
+                let split = (mem.size / 2).next_multiple_of(TOCK_ALIGNMENT);
+                let instructions = mem.consume(split)?;
+                (instructions, mem)
+            }
+            RuntimeMemory::Tcm { itcm, dtcm } => (itcm, dtcm),
+        };
+
         // Iterate through each application providing it with the entirety of ITCM and DTCM space.
         let mut app_defs = Vec::new();
         for binary in &self.manifest.apps {
             // This is a sizing build, so the header values don't matter.
-            let header = TbfHeader::default();
-
-            let itcm = self.manifest.platform.itcm.clone();
-            let ram = self.manifest.platform.ram.clone();
+            let header = create_tbf_header(binary)?;
 
             let content = self
-                .app_linker_content(binary, &header, itcm.clone(), ram)
+                .app_linker_content(binary, &header, itcm.clone(), dtcm.clone())
                 .with_context(|| binary_context(&binary.name, "context generation"))?;
             let path = self.output_ld_file(binary, &content)?;
             app_defs.push(App {
@@ -157,20 +180,14 @@ impl<'a> LdGeneration<'a> {
                     linker_script: path,
                 },
                 header,
-                instruction_block: itcm,
+                instruction_block: itcm.clone(),
             });
         }
 
         // Then generate a kernel linker file with the entirety of ITCM and DTCM space.
         let kernel = &self.manifest.kernel;
         let content = self
-            .kernel_linker_content(
-                kernel,
-                self.manifest.platform.itcm.clone(),
-                None,
-                self.manifest.platform.ram.clone(),
-                self.manifest.platform.ram.clone(),
-            )
+            .kernel_linker_content(itcm.clone(), None, dtcm.clone(), itcm.clone(), dtcm.clone())
             .with_context(|| binary_context(&kernel.name, "context generation"))?;
         let path = self.output_ld_file(kernel, &content)?;
         let kernel_def = LinkerScript {
@@ -180,7 +197,7 @@ impl<'a> LdGeneration<'a> {
 
         Ok(BuildDefinition {
             rom: None,
-            kernel: (kernel_def, self.manifest.platform.itcm.clone()),
+            kernel: (kernel_def, itcm.clone()),
             apps: app_defs,
         })
     }
@@ -221,15 +238,31 @@ impl<'a> LdGeneration<'a> {
             })
             .transpose()?;
 
+        let kernel = &self.manifest.kernel;
+        let kernel_exec_mem = kernel.exec_mem()?;
+
         // Now get trackers for runtime instruction and data memory.
-        let mut itcm_tracker = self.manifest.platform.itcm.clone();
-        let mut ram_tracker = self.manifest.platform.ram.clone();
+        let (mut itcm_tracker, mut dtcm_tracker) =
+            match self.manifest.platform.runtime_memory.clone() {
+                RuntimeMemory::Sram(mut mem) => {
+                    // Determine the amount of space required within SRAM for the instructions.  It is
+                    // equal to the kernel imem plus each apps imem, with padding for Tock alignment.
+                    let mut split = kernel_exec_mem.size.next_multiple_of(TOCK_ALIGNMENT);
+                    for app in &self.manifest.apps {
+                        split += app.exec_mem()?.size.next_multiple_of(TOCK_ALIGNMENT);
+                    }
+
+                    let instructions = mem.consume(split)?;
+                    (instructions, mem)
+                }
+                RuntimeMemory::Tcm { itcm, dtcm } => (itcm, dtcm),
+            };
+        let initial_itcm = itcm_tracker.clone();
+        let initial_dtcm = dtcm_tracker.clone();
 
         // The kernel should be the first element in both ITCM and RAM, therefore allocate it.  Wait
         // before creating the LD file, as application alignment can effect the value of some LD
         // variables.
-        let kernel = &self.manifest.kernel;
-        let kernel_exec_mem = kernel.exec_mem()?;
         let instructions = self
             .get_mem_block(
                 kernel_exec_mem.size,
@@ -242,7 +275,7 @@ impl<'a> LdGeneration<'a> {
             .get_mem_block(
                 kernel_data_mem.size,
                 kernel_data_mem.alignment,
-                &mut ram_tracker,
+                &mut dtcm_tracker,
             )
             .with_context(|| binary_context(&kernel.name, "data allocation"))?;
 
@@ -258,7 +291,7 @@ impl<'a> LdGeneration<'a> {
                 .with_context(|| binary_context(&binary.name, "instruction allocation"))?;
             let data_mem = binary.data_mem()?;
             let data = self
-                .get_mem_block(data_mem.size, data_mem.alignment, &mut ram_tracker)
+                .get_mem_block(data_mem.size, data_mem.alignment, &mut dtcm_tracker)
                 .with_context(|| binary_context(&binary.name, "data allocation"))?;
 
             if first_app_instructions.is_none() {
@@ -282,11 +315,11 @@ impl<'a> LdGeneration<'a> {
         // Finally generate the linker file for the kernel.
         let content = self
             .kernel_linker_content(
-                kernel,
                 instructions.clone(),
                 first_app_instructions,
                 data,
-                self.manifest.platform.ram.clone(),
+                initial_itcm,
+                initial_dtcm,
             )
             .with_context(|| binary_context(&kernel.name, "context generation"))?;
         let path = self.output_ld_file(kernel, &content)?;
@@ -328,52 +361,7 @@ impl<'a> LdGeneration<'a> {
 
     /// Output a linker file for the application.
     fn output_ld_file(&self, binary: &Binary, content: &str) -> Result<PathBuf> {
-        // Determine if a linker file has been previously generated.
-        // First read through the linker-script directory
-        let maybe_previous_file = std::fs::read_dir(&self.linker_dir)?
-            .find(|f| {
-                f.as_ref()
-                    .map(|f| {
-                        // Then check if each entry has a name which starts with the same name as
-                        // this linker file.  If so return it as the previous file.
-                        f.file_name()
-                            .to_str()
-                            .map(|n| n.starts_with(&binary.name))
-                            .unwrap_or(false)
-                    })
-                    .unwrap_or(false)
-            })
-            .transpose()?;
-
-        // To keep incremental builds fast, only output the linker contents if they differ from the
-        // previously existing file.
-        if let Some(previous_file) = maybe_previous_file {
-            let previous_file = previous_file.path();
-            // If the contents match exactly, just use the previous file, and perhaps the cached
-            // build.
-            if std::fs::read_to_string(&previous_file)
-                .map(|prev| prev == content)
-                .unwrap_or(false)
-            {
-                return Ok(previous_file);
-            } else {
-                // If they are different clean up the old file to avoid confusing multiple entries
-                // within the linker-script directory.
-                std::fs::remove_file(previous_file)?;
-            }
-        }
-
-        // Finally output the linker script file if we need to.  Use a unique UUID with each linker
-        // script generated.  This allows the `rustc` compiler to recognize when different scripts
-        // are used, and thus trigger a new build when memory space allocations change.
-        //
-        // If this is not done, compilation can diverge from the actual status of the Manifest toml
-        // until `cargo clean` is executed which can be quite confusing.
-        let output_file =
-            self.linker_dir
-                .join(format!("{}-{}.ld", binary.name, uuid::Uuid::new_v4()));
-        std::fs::write(&output_file, content)?;
-        Ok(output_file)
+        content_aware_write(&binary.name, content, &self.linker_dir)
     }
 
     fn rom_linker_content(
@@ -392,7 +380,7 @@ ESTACK_SIZE = $ESTACK_SIZE;
 INCLUDE $BASE_LD_CONTENTS
 "#;
 
-        let base_ld_file = self.linker_dir.join(BASE_ROM_LD_FILE);
+        let base_ld_file = self.linker_dir.join(&self.base_rom);
 
         let mut sub_map = HashMap::new();
         sub_map.insert("ROM_START", format!("{:#x}", instructions.offset));
@@ -416,11 +404,11 @@ INCLUDE $BASE_LD_CONTENTS
 
     fn kernel_linker_content(
         &self,
-        binary: &Binary,
         instructions: Memory,
         first_app_instructions: Option<Memory>,
         kernel_data: Memory,
-        ram: Memory,
+        itcm: Memory,
+        dtcm: Memory,
     ) -> Result<String> {
         const KERNEL_LD_TEMPLATE: &str = r#"
 /* Licensed under the Apache-2.0 license. */
@@ -444,7 +432,7 @@ $PAGE_SIZE
 
 INCLUDE $BASE_LD_CONTENTS
 "#;
-        let base_ld_file = self.linker_dir.join(BASE_KERNEL_LD_FILE);
+        let base_ld_file = self.linker_dir.join(&self.base_kernel);
 
         let mut sub_map = HashMap::new();
         sub_map.insert("KERNEL_START", format!("{:#x}", instructions.offset));
@@ -456,20 +444,17 @@ INCLUDE $BASE_LD_CONTENTS
         //
         // If no APPs are specified in the manifest than it is not used anyway so just use 0s.
         let (apps_start, apps_length) = match first_app_instructions {
-            Some(fai) => (
-                fai.offset,
-                self.manifest.platform.itcm.offset + self.manifest.platform.itcm.size - fai.offset,
-            ),
+            Some(fai) => (fai.offset, itcm.offset + itcm.size - fai.offset),
             None => (0, 0),
         };
         sub_map.insert("APPS_START", format!("{apps_start:#x}",));
         sub_map.insert("APPS_LENGTH", format!("{apps_length:#x}",));
 
         sub_map.insert("DATA_RAM_START", format!("{:#x}", kernel_data.offset));
-        sub_map.insert("DATA_RAM_LENGTH", format!("{:#x}", ram.size));
+        sub_map.insert("DATA_RAM_LENGTH", format!("{:#x}", dtcm.size));
 
         let app_offset = kernel_data.offset + kernel_data.size;
-        let app_length = ram.size - kernel_data.size;
+        let app_length = dtcm.size - kernel_data.size;
         sub_map.insert("APP_RAM_START", format!("{:#x}", app_offset));
         sub_map.insert("APP_RAM_LENGTH", format!("{:#x}", app_length));
 
@@ -481,12 +466,6 @@ INCLUDE $BASE_LD_CONTENTS
         sub_map.insert("FLASH_OFFSET", format!("{:#x}", flash.offset));
         sub_map.insert("FLASH_LENGTH", format!("{:#x}", flash.size));
 
-        // If the stack isn't specified we are in a sizing build, and it doesnt matter.  Therefore
-        // default to 0.
-        sub_map.insert(
-            "STACK_SIZE",
-            format!("{:#x}", binary.stack().unwrap_or_default()),
-        );
         sub_map.insert(
             "BASE_LD_CONTENTS",
             base_ld_file.to_string_lossy().to_string(),
@@ -526,7 +505,7 @@ STACK_SIZE = $STACK_SIZE;
 INCLUDE $BASE_LD_CONTENTS
 "#;
 
-        let base_ld_file = self.linker_dir.join(BASE_APP_LD_FILE);
+        let base_ld_file = self.linker_dir.join(&self.base_app);
         let header_length = header.generate()?.get_ref().len();
 
         let mut sub_map = HashMap::new();
@@ -550,6 +529,54 @@ INCLUDE $BASE_LD_CONTENTS
     }
 }
 
+/// Output a linker file for the application.
+fn content_aware_write(prefix: &str, content: &str, linker_dir: &Path) -> Result<PathBuf> {
+    // Determine if a previous file matching this prefix has already been generated.
+    // First read through the linker-script directory
+    let maybe_previous_file = std::fs::read_dir(linker_dir)?
+        .find(|f| {
+            f.as_ref()
+                .map(|f| {
+                    // Then check if each entry has a name which starts with the same name as
+                    // this linker file.  If so return it as the previous file.
+                    f.file_name()
+                        .to_str()
+                        .map(|n| n.starts_with(prefix))
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false)
+        })
+        .transpose()?;
+
+    // To keep incremental builds fast, only output the linker contents if they differ from the
+    // previously existing file.
+    if let Some(previous_file) = maybe_previous_file {
+        let previous_file = previous_file.path();
+        // If the contents match exactly, just use the previous file, and perhaps the cached
+        // build.
+        if std::fs::read_to_string(&previous_file)
+            .map(|prev| prev == content)
+            .unwrap_or(false)
+        {
+            return Ok(previous_file);
+        } else {
+            // If they are different clean up the old file to avoid confusing multiple entries
+            // within the linker-script directory.
+            std::fs::remove_file(previous_file)?;
+        }
+    }
+
+    // Finally output the linker script file if we need to.  Use a unique UUID with each linker
+    // script generated.  This allows the `rustc` compiler to recognize when different scripts
+    // are used, and thus trigger a new build when memory space allocations change.
+    //
+    // If this is not done, compilation can diverge from the actual status of the Manifest toml
+    // until `cargo clean` is executed which can be quite confusing.
+    let output_file = linker_dir.join(format!("{}-{}.ld", prefix, uuid::Uuid::new_v4()));
+    std::fs::write(&output_file, content)?;
+    Ok(output_file)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -569,13 +596,15 @@ mod tests {
                 offset: 0x0,
                 size: rom_size,
             },
-            itcm: Memory {
-                offset: 0x10000,
-                size: itcm_size,
-            },
-            ram: Memory {
-                offset: 0x20000,
-                size: ram_size,
+            runtime_memory: RuntimeMemory::Tcm {
+                itcm: Memory {
+                    offset: 0x10000,
+                    size: itcm_size,
+                },
+                dtcm: Memory {
+                    offset: 0x20000,
+                    size: ram_size,
+                },
             },
             dccm: Some(Memory {
                 offset: 0x30000,
@@ -761,13 +790,25 @@ mod tests {
         assert!(build_def.kernel.0.linker_script.exists());
         assert!(build_def.apps[0].linker.linker_script.exists());
 
-        // Verify base layout files also exist
+        // Verify base layout files also exist (with UUID suffixes)
         let linker_dir = temp
             .path()
             .join("target/riscv32imc-unknown-none-elf/linker-scripts");
-        assert!(linker_dir.join("rom-layout.ld").exists());
-        assert!(linker_dir.join("kernel-layout.ld").exists());
-        assert!(linker_dir.join("app-layout.ld").exists());
+        let has_file_with_prefix = |prefix: &str| {
+            std::fs::read_dir(&linker_dir)
+                .map(|entries| {
+                    entries.filter_map(|e| e.ok()).any(|e| {
+                        e.file_name()
+                            .to_str()
+                            .map(|n| n.starts_with(prefix) && n.ends_with(".ld"))
+                            .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false)
+        };
+        assert!(has_file_with_prefix("bundler-rom-layout"));
+        assert!(has_file_with_prefix("bundler-kernel-layout"));
+        assert!(has_file_with_prefix("bundler-app-layout"));
     }
 
     // ==================== Failure Cases ====================

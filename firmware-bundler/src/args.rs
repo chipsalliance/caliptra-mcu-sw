@@ -10,7 +10,7 @@ use clap::{Args, Subcommand};
 use crate::{manifest::Manifest, utils};
 
 /// Arguments common among all subcommands.
-#[derive(Args, Debug, Clone)]
+#[derive(Args, Default, Debug, Clone)]
 pub struct Common {
     /// The manifest file describing the platform to be deployed to, and which binaries to
     /// deploy to it.
@@ -85,6 +85,15 @@ pub struct BuildArgs {
     pub features: Option<String>,
 }
 
+/// Arguments required for commands which execute the bundle step of the bundle process.
+#[derive(Args, Default, Debug, Clone)]
+pub struct BundleArgs {
+    /// The name to give the bundled runtime binary output by the bundle step.  A file with the
+    /// given name will be placed in the `<workspace>/target/<target-tuple>/release` directory.
+    #[arg(long)]
+    pub bundle_name: Option<String>,
+}
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum Commands {
     /// Build the collection of binaries associated with a firmware bundle.  This will not bundle
@@ -99,6 +108,12 @@ pub enum Commands {
 
         #[command(flatten)]
         build: BuildArgs,
+
+        /// If specified, build only the module specified by the given name.
+        ///
+        /// Note: If `dynamic_sizing` is enabled, other applications may be built during the sizing
+        /// operation to determine the memory region available to the given application.
+        target: Option<String>,
     },
 
     /// Build and bundle the collection of binaries required for a deployment.  The bundles will
@@ -112,5 +127,8 @@ pub enum Commands {
 
         #[command(flatten)]
         build: BuildArgs,
+
+        #[command(flatten)]
+        bundle: BundleArgs,
     },
 }

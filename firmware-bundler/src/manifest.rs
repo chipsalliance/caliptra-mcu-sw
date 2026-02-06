@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 /// deployed, as well as any relevent information required for compilation and composition of the
 /// binaries.
 #[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Manifest {
     /// A description of the platform to deploy applications to.
     pub platform: Platform,
@@ -43,10 +44,15 @@ impl Manifest {
             }
         }
 
-        if (self.platform.ram.offset % APP_RAM_ALIGNMENT) != 0 {
+        let dtcm = match &self.platform.runtime_memory {
+            RuntimeMemory::Sram(s) => s.clone(),
+            RuntimeMemory::Tcm { itcm: _itcm, dtcm } => dtcm.clone(),
+        };
+
+        if (dtcm.offset % APP_RAM_ALIGNMENT) != 0 {
             bail!(
                 "Start of kernel RAM ({}) is not aligned with App memory offset requirement ({})",
-                self.platform.ram.offset,
+                dtcm.offset,
                 APP_RAM_ALIGNMENT
             );
         }
@@ -70,10 +76,39 @@ impl Manifest {
     }
 }
 
+/// A description of how the runtime memory space is physically instantiated.  There can be either
+/// an SRAM architecture where ITCM and DTCM are combined, or a TCM (Tightly Couple Memory)
+/// architecture where they are split.
+///
+/// To configure a Platform with explicit splits between Instructions and Data, even when physically
+/// backed by a single SRAM use the `TCM` option with the SRAM split as desired between instructions
+/// and data.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub enum RuntimeMemory {
+    /// A singular memory block is used for both Instructions and Data.
+    #[serde(rename = "sram")]
+    Sram(Memory),
+
+    /// The memory space is split for instructions and data.  This can either be a physical or
+    /// logical constraint.
+    #[serde(rename = "tcm")]
+    Tcm {
+        /// The instruction memory for runtime applications.
+        itcm: Memory,
+        /// The RAM/Data memory for both the ROM and runtime applications.  It is assumed that the ROM
+        /// and Runtime applications will not be executed at the same time, and thus can reused between
+        /// the two.
+        dtcm: Memory,
+    },
+}
+
 /// A description of the platform to deploy applications to.
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Platform {
-    /// The name of this platform.  This is used for various artifact names.
+    /// The name of this platform.  This may be used the bundle artifact name, if not specified on
+    /// the command line.
     pub name: String,
 
     /// The rustc target tuple this platform should be built with.
@@ -100,8 +135,8 @@ pub struct Platform {
     /// The instruction location for ROM applications.
     pub rom: Memory,
 
-    /// The instruction memory for runtime applications.
-    pub itcm: Memory,
+    /// The memory runtime application should use.
+    pub runtime_memory: RuntimeMemory,
 
     /// Data memory, outside of the RAM used by the application.  This is used for the
     /// _pic_vector_table on VeeR chips.  Defaults to a size and offset of 0 if not defined.
@@ -110,11 +145,6 @@ pub struct Platform {
     /// Location of flash memory.  This can be used for persistent storage, e.g. logs.  Defaults to
     /// a size and offset of 0 if not defined.
     pub flash: Option<Memory>,
-
-    /// The RAM/Data memory for both the ROM and runtime applications.  It is assumed that the ROM
-    /// and Runtime applications will not be executed at the same time, and thus can reused between
-    /// the two.
-    pub ram: Memory,
 }
 
 impl Platform {
@@ -142,6 +172,7 @@ impl Platform {
 
 /// A specification for a Memory block within a platform.
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Memory {
     /// The offset in the memory space which this block starts at, in bytes.
     pub offset: u64,
@@ -174,6 +205,7 @@ impl Memory {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct AllocationRequest {
     pub size: u64,
     pub alignment: Option<u64>,
@@ -181,6 +213,7 @@ pub struct AllocationRequest {
 
 /// A specification for an individual binary to deploy on the Platform.
 #[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Binary {
     /// The name of the binary.
     pub name: String,

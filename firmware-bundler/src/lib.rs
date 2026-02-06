@@ -32,24 +32,48 @@ pub(crate) mod utils;
 
 use anyhow::{bail, Result};
 use args::{BuildArgs, Common, LdArgs};
-use build::BuildOutput;
+use ld::BuildDefinition;
 use manifest::{AllocationRequest, Manifest};
 
 use crate::args::Commands;
 
+/// This alignment is derived from Tocks' requirements within the linker script for the alignment of
+/// code and data blocks within a Tock executable.
+pub const TOCK_ALIGNMENT: u64 = 4096;
+
 pub fn execute(cmd: Commands) -> Result<()> {
     match cmd {
-        Commands::Build { common, ld, build } => build_step(&common, &ld, &build).map(|_| ()),
-        Commands::Bundle { common, ld, build } => {
-            let (manifest, output) = build_step(&common, &ld, &build)?;
-            bundle::bundle(&manifest, &output, &common)?;
+        Commands::Build {
+            common,
+            ld,
+            build,
+            target,
+        } => {
+            let (manifest, build_definition) = ld_step(&common, &ld, &build)?;
+
+            match target {
+                Some(t) => {
+                    build::build_single_target(&manifest, &build_definition, &common, &build, &t)
+                }
+                None => build::build(&manifest, &build_definition, &common, &build).map(|_| ()),
+            }
+        }
+        Commands::Bundle {
+            common,
+            ld,
+            build,
+            bundle,
+        } => {
+            let (manifest, build_definition) = ld_step(&common, &ld, &build)?;
+            let build_output = build::build(&manifest, &build_definition, &common, &build)?;
+            bundle::bundle(&manifest, &build_output, &common, &bundle)?;
             Ok(())
         }
     }
 }
 
 /// A utility function to run the logic for a build step.
-fn build_step(common: &Common, ld: &LdArgs, build: &BuildArgs) -> Result<(Manifest, BuildOutput)> {
+fn ld_step(common: &Common, ld: &LdArgs, build: &BuildArgs) -> Result<(Manifest, BuildDefinition)> {
     let mut manifest = common.manifest()?;
 
     if manifest.platform.dynamic_sizing() {
@@ -57,8 +81,7 @@ fn build_step(common: &Common, ld: &LdArgs, build: &BuildArgs) -> Result<(Manife
     }
 
     let build_definition = ld::generate(&manifest, common, ld)?;
-    let build_output = build::build(&manifest, &build_definition, common, build)?;
-    Ok((manifest, build_output))
+    Ok((manifest, build_definition))
 }
 
 /// Execute a dynamic sizing pass.  This will build each runtime application with a maximal linker
@@ -71,9 +94,6 @@ fn dynamically_size(
     ld: &LdArgs,
     build: &BuildArgs,
 ) -> Result<()> {
-    // This alignment is derived from Tocks' requirements within the linker script.
-    const ALIGNMENT: u64 = 4096;
-
     // Generate the maximal linker file, build with it, and then get the size out of the resulting
     // binary.
     //
@@ -83,13 +103,25 @@ fn dynamically_size(
     let maximal_output = build::build(manifest, &maximal_build_definition, common, build)?;
     let sizes = size::sizes(&maximal_output)?;
 
+    if let (Some(rom), Some(dccm)) = (manifest.rom.as_mut(), &manifest.platform.dccm) {
+        rom.exec_mem = Some(AllocationRequest {
+            size: manifest.platform.rom.size,
+            alignment: None,
+        });
+
+        rom.data_mem = Some(AllocationRequest {
+            size: dccm.size,
+            alignment: None,
+        });
+    }
+
     // Update the kernels memory requirments.
     manifest.kernel.exec_mem = Some(AllocationRequest {
-        size: sizes.kernel.instructions.next_multiple_of(ALIGNMENT),
+        size: sizes.kernel.instructions.next_multiple_of(TOCK_ALIGNMENT),
         alignment: None,
     });
     manifest.kernel.data_mem = Some(AllocationRequest {
-        size: sizes.kernel.data.next_multiple_of(ALIGNMENT),
+        size: sizes.kernel.data.next_multiple_of(TOCK_ALIGNMENT),
         alignment: None,
     });
 
@@ -98,7 +130,8 @@ fn dynamically_size(
         .apps
         .iter_mut()
         .zip(sizes.apps)
-        .try_for_each(|(manifest_app, size_app)| {
+        .zip(maximal_build_definition.apps)
+        .try_for_each(|((manifest_app, size_app), built_app)| {
             // As a sanity test ensure we are talking about the same binary.  Each round iterates
             // through the apps in the same order, so this should always succeed.
             if manifest_app.name != size_app.name {
@@ -109,13 +142,17 @@ fn dynamically_size(
                 );
             }
 
+            let header_len = built_app.header.generate()?.get_ref().len();
             manifest_app.exec_mem = Some(AllocationRequest {
-                size: size_app.instructions.next_multiple_of(ALIGNMENT),
+                // Account for the header length, which is placed within the flash block, but not
+                // accounted for by the instruction count.
+                size: (size_app.instructions + (header_len as u64))
+                    .next_multiple_of(TOCK_ALIGNMENT),
                 alignment: None,
             });
 
             manifest_app.data_mem = Some(AllocationRequest {
-                size: size_app.data.next_multiple_of(ALIGNMENT),
+                size: size_app.data.next_multiple_of(TOCK_ALIGNMENT),
                 alignment: None,
             });
 

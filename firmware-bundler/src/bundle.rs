@@ -7,14 +7,24 @@ use std::cmp::Ordering;
 
 use anyhow::{bail, Result};
 
-use crate::{args::Common, build::BuildOutput, manifest::Manifest, tbf::generate_tbf_header};
+use crate::{
+    args::{BundleArgs, Common},
+    build::BuildOutput,
+    manifest::Manifest,
+    tbf::generate_tbf_header,
+};
 
 /// Take a collection of binaries and output a single binary which can be loaded into a memory
 /// block.
 ///
 /// This could fail if the binaries aren't able to fit into the blob, or if a hard drive operation
 /// fails.
-pub fn bundle(manifest: &Manifest, output: &BuildOutput, common: &Common) -> Result<()> {
+pub fn bundle(
+    manifest: &Manifest,
+    output: &BuildOutput,
+    common: &Common,
+    bundle: &BundleArgs,
+) -> Result<()> {
     // Determine the release directory which elf files will be placed by `rustc` and where we
     // wish to place binaries.
     let binary_dir = match &common.workspace_dir {
@@ -57,6 +67,16 @@ pub fn bundle(manifest: &Manifest, output: &BuildOutput, common: &Common) -> Res
         runtime.extend(app.into_iter());
     }
 
-    let runtime_file = binary_dir.join(format!("runtime-{}.bin", &manifest.platform.name));
+    // Firmware validated by Caliptra is required to be 4 byte aligned.
+    let aligned_bin_len = runtime.len().next_multiple_of(4);
+    if aligned_bin_len != runtime.len() {
+        runtime.resize(aligned_bin_len, 0);
+    }
+
+    let name = match &bundle.bundle_name {
+        Some(n) => n,
+        None => &format!("runtime-{}.bin", &manifest.platform.name),
+    };
+    let runtime_file = binary_dir.join(name);
     std::fs::write(runtime_file, runtime).map_err(|e| e.into())
 }
