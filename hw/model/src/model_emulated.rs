@@ -36,6 +36,7 @@ use emulator_periph::LcCtrl;
 use emulator_periph::McuRootBusOffsets;
 use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp, OtpArgs};
 use emulator_registers_generated::axicdma::AxicdmaPeripheral;
+use emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
 use mcu_config::McuStraps;
@@ -57,7 +58,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
-const BOOT_CYCLES: u64 = 25_000_000;
+const BOOT_CYCLES: u64 = 100_000_000;
 
 /// Emulated model
 pub struct ModelEmulated {
@@ -78,7 +79,7 @@ pub struct ModelEmulated {
     events_to_caliptra: mpsc::Sender<Event>,
     events_from_caliptra: mpsc::Receiver<Event>,
     collected_events_from_caliptra: Vec<Event>,
-    bmc: Bmc,
+    bmc: Option<Bmc>,
     i3c_port: Option<u16>,
     i3c_controller: I3cController,
     i3c_address: Option<u8>,
@@ -138,15 +139,18 @@ impl McuHwModel for ModelEmulated {
         let i3c_irq = pic.register_irq(McuRootBus::I3C_IRQ);
 
         let dma_ram = mcu_root_bus.ram.clone();
+        let rom_sram = mcu_root_bus.rom_sram.clone();
         let direct_read_flash = mcu_root_bus.direct_read_flash.clone();
         let dot_flash = mcu_root_bus.dot_flash.clone();
 
-        let i3c = I3c::new(
-            &clock.clone(),
-            &mut i3c_controller,
-            i3c_irq,
-            Version::new(2, 0, 0),
-        );
+        // Use HW 2.1.0 for flash-based boot, otherwise 2.0.0
+        let hw_version = if params.flash_boot {
+            Version::new(2, 1, 0)
+        } else {
+            Version::new(2, 0, 0)
+        };
+
+        let i3c = I3c::new(&clock.clone(), &mut i3c_controller, i3c_irq, hw_version);
 
         let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
 
@@ -203,21 +207,23 @@ impl McuHwModel for ModelEmulated {
                 .unwrap()
             };
 
-        let primary_flash_controller = create_flash_controller(
+        let mut primary_flash_controller = create_flash_controller(
             "primary_flash",
             McuRootBus::PRIMARY_FLASH_CTRL_ERROR_IRQ,
             McuRootBus::PRIMARY_FLASH_CTRL_EVENT_IRQ,
-            None,
+            params.primary_flash_initial_contents.as_deref(),
             Some(direct_read_flash.clone()),
         );
+        primary_flash_controller.set_dma_rom_sram(rom_sram.clone());
 
-        let secondary_flash_controller = create_flash_controller(
+        let mut secondary_flash_controller = create_flash_controller(
             "secondary_flash",
             McuRootBus::SECONDARY_FLASH_CTRL_ERROR_IRQ,
             McuRootBus::SECONDARY_FLASH_CTRL_EVENT_IRQ,
             None,
             None,
         );
+        secondary_flash_controller.set_dma_rom_sram(rom_sram.clone());
 
         let mut dma_ctrl = emulator_periph::AxiCDMA::new(
             &clock.clone(),
@@ -242,7 +248,8 @@ impl McuHwModel for ModelEmulated {
             _ => None,
         };
 
-        let use_mcu_recovery_interface = false;
+        // Use MCU recovery interface when flash-based boot is enabled
+        let use_mcu_recovery_interface = params.flash_boot;
 
         let (mut caliptra_cpu, soc_to_caliptra, soc_to_caliptra_bus, ext_mci) =
             start_caliptra(&StartCaliptraArgs {
@@ -263,6 +270,12 @@ impl McuHwModel for ModelEmulated {
         let mcu_mailbox1 = mcu_root_bus.mcu_mailbox1.clone();
 
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
+        // Set flash boot wire (bit 29 of generic_input_wires[1]) if flash boot is requested
+        let mci_generic_input_wires = if params.flash_boot {
+            [0, 1 << 29]
+        } else {
+            [0, 0]
+        };
         let mci = Mci::new(
             &clock.clone(),
             ext_mci,
@@ -270,6 +283,7 @@ impl McuHwModel for ModelEmulated {
             Some(mcu_mailbox0),
             Some(mcu_mailbox1),
             None,
+            mci_generic_input_wires,
         );
 
         let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
@@ -305,14 +319,46 @@ impl McuHwModel for ModelEmulated {
         }
 
         let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
-        let (mcu_event_sender, mcu_event_reciever) = cpu.register_events();
-        // prepare the BMC recovery interface emulator
-        let bmc = Bmc::new(
-            caliptra_event_sender,
-            caliptra_event_receiver,
-            mcu_event_sender,
-            mcu_event_reciever,
-        );
+        let (mcu_event_sender, mcu_event_receiver) = cpu.register_events();
+
+        // Use MCU recovery interface (I3C) when flash-based boot is enabled,
+        // otherwise use BMC recovery interface
+        let use_flash_based_boot = params.flash_boot;
+        let bmc = if use_flash_based_boot {
+            // Connect event channels to I3C peripheral for MCU recovery interface
+            cpu.bus
+                .bus
+                .i3c_periph
+                .as_mut()
+                .unwrap()
+                .periph
+                .register_event_channels(
+                    caliptra_event_sender,
+                    caliptra_event_receiver,
+                    mcu_event_sender,
+                    mcu_event_receiver,
+                );
+            None
+        } else {
+            // Use BMC recovery interface emulator
+            let mut bmc = Bmc::new(
+                caliptra_event_sender,
+                caliptra_event_receiver,
+                mcu_event_sender,
+                mcu_event_receiver,
+            );
+            // Push recovery images to BMC for streaming boot
+            if !params.caliptra_firmware.is_empty() {
+                bmc.push_recovery_image(params.caliptra_firmware.to_vec());
+            }
+            if !params.soc_manifest.is_empty() {
+                bmc.push_recovery_image(params.soc_manifest.to_vec());
+            }
+            if !params.mcu_firmware.is_empty() {
+                bmc.push_recovery_image(params.mcu_firmware.to_vec());
+            }
+            Some(bmc)
+        };
 
         let (events_to_caliptra, events_from_caliptra) = mpsc::channel();
 
@@ -347,18 +393,10 @@ impl McuHwModel for ModelEmulated {
         Ok(m)
     }
 
-    fn boot(&mut self, boot_params: crate::BootParams) -> Result<()>
+    fn boot(&mut self) -> Result<()>
     where
         Self: Sized,
     {
-        // load the firmware images and SoC manifest into the recovery interface emulator
-        self.bmc
-            .push_recovery_image(boot_params.fw_image.unwrap_or_default().to_vec());
-        self.bmc
-            .push_recovery_image(boot_params.soc_manifest.unwrap_or_default().to_vec());
-        self.bmc
-            .push_recovery_image(boot_params.mcu_fw_image.unwrap_or_default().to_vec());
-
         self.cpu_enabled.set(true);
 
         if self.check_booted_to_runtime {
@@ -396,7 +434,9 @@ impl McuHwModel for ModelEmulated {
             self.cpu.step(self.caliptra_trace_fn.as_deref_mut());
             self.caliptra_cpu
                 .step(self.caliptra_trace_fn.as_deref_mut());
-            self.bmc.step();
+            if let Some(bmc) = &mut self.bmc {
+                bmc.step();
+            }
         }
         let events = self.events_from_caliptra.try_iter().collect::<Vec<_>>();
         self.collected_events_from_caliptra.extend(events);
