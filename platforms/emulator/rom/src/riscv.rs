@@ -135,6 +135,34 @@ pub extern "C" fn rom_entry() -> ! {
         mcu_rom_common::rom_start(RomParameters {
             flash_partition_driver: Some(&mut flash_image_partition_driver),
             dot_flash,
+            request_flash_boot: true,
+            ..Default::default()
+        });
+    } else if cfg!(feature = "hw-2-1") {
+        // Simple flash-based boot for hw-2-1 without partition tables.
+        // Uses flash image starting at offset 0.
+        let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
+
+        // Create a flash partition covering the entire flash for direct access
+        let mut flash_partition = FlashPartition::new(
+            &primary_flash_ctrl,
+            "Primary Flash",
+            0, // Start at offset 0
+            primary_flash_ctrl.capacity(),
+        )
+        .map_err(|_| {
+            fatal_error(EmulatorError::InitFlashPartitionDriver.into());
+        })
+        .ok()
+        .unwrap();
+
+        romtime::println!("[mcu-rom] Booting from flash");
+
+        mcu_rom_common::rom_start(RomParameters {
+            flash_partition_driver: Some(&mut flash_partition),
+            dot_flash,
+            // Let the generic wire (bit 29 of mci_reg_generic_input_wires[1]) control flash boot
+            // request_flash_boot defaults to false - emulator sets the wire when flash boot is requested
             ..Default::default()
         });
     } else if cfg!(any(

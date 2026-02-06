@@ -5,7 +5,6 @@
 #[cfg(test)]
 mod test {
     use crate::{platform, test::TEST_LOCK};
-    use caliptra_hw_model::BootParams;
     use mcu_builder::firmware;
     use mcu_error::McuError;
     use mcu_hw_model::{InitParams, McuHwModel};
@@ -28,14 +27,11 @@ mod test {
             std::fs::read(&rom_file).unwrap()
         };
 
-        let mut hw = mcu_hw_model::new(
-            InitParams {
-                mcu_rom: &mcu_rom,
-                check_booted_to_runtime: false,
-                ..Default::default()
-            },
-            BootParams::default(),
-        )
+        let mut hw = mcu_hw_model::new(InitParams {
+            mcu_rom: &mcu_rom,
+            check_booted_to_runtime: false,
+            ..Default::default()
+        })
         .unwrap();
 
         hw.step_until(|m| m.cycle_count() > 10_000_000 || m.mci_fw_fatal_error().is_some());
