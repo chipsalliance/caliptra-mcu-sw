@@ -85,10 +85,15 @@ pub struct BuildArgs {
     #[arg(long, env = "OBJCOPY")]
     pub objcopy: Option<PathBuf>,
 
-    /// If specified the features to enable for the binaries being compiled.  Multiple features can
-    /// be specified as follows: `feature_a,feature_b,etc...`.
+    /// If specified the features to enable for the rom binaries (kernel and apps) being compiled.
+    /// Multiple features can be specified as follows: `feature_a,feature_b,etc...`.
     #[arg(long)]
-    pub features: Option<String>,
+    pub rom_features: Option<String>,
+
+    /// If specified the features to enable for the runtime binaries (kernel and apps) being
+    /// compiled.  Multiple features can be specified as follows: `feature_a,feature_b,etc...`.
+    #[arg(long)]
+    pub runtime_features: Option<String>,
 }
 
 /// Arguments required for commands which execute the bundle step of the bundle process.
