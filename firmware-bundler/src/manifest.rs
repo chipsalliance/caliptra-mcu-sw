@@ -29,11 +29,29 @@ pub struct Manifest {
 }
 
 impl Manifest {
+    /// Reserve a section of ITCM space to be unallocatable for instructions.  This is useful for
+    /// things like image headers which consume the initial part of the binary size.
+    ///
+    /// This could fail if the size is larger than the ITCM.
+    pub fn reserve_itcm(&mut self, size: u64) -> Result<()> {
+        let mem = match &mut self.platform.runtime_memory {
+            RuntimeMemory::Sram(s) => s,
+            RuntimeMemory::Tcm { itcm, dtcm: _ } => itcm,
+        };
+
+        if mem.size <= size {
+            bail!(
+                "Reserve of size {size:#x} would overflow instruction memory of size {:#x}",
+                mem.size
+            );
+        }
+
+        Ok(())
+    }
+
     /// Verify that a manifest matches the semantic patterns exceeding the syntax requirements of
     /// parsing.
     pub fn validate(&self) -> Result<()> {
-        const APP_RAM_ALIGNMENT: u64 = 4096;
-
         let dynamic_sizing = self.platform.dynamic_sizing();
 
         if let Some(rom) = &self.rom {
@@ -48,24 +66,6 @@ impl Manifest {
             RuntimeMemory::Sram(s) => s.clone(),
             RuntimeMemory::Tcm { itcm: _itcm, dtcm } => dtcm.clone(),
         };
-
-        if (dtcm.offset % APP_RAM_ALIGNMENT) != 0 {
-            bail!(
-                "Start of kernel RAM ({}) is not aligned with App memory offset requirement ({})",
-                dtcm.offset,
-                APP_RAM_ALIGNMENT
-            );
-        }
-
-        if let Some(data_mem) = &self.kernel.data_mem {
-            if (data_mem.size % APP_RAM_ALIGNMENT) != 0 {
-                bail!(
-                    "Kernel RAM size ({}) is not aligned with App memory offset requirement ({})",
-                    data_mem.size,
-                    APP_RAM_ALIGNMENT
-                );
-            }
-        }
 
         self.kernel.validate(dynamic_sizing)?;
         for app in &self.apps {

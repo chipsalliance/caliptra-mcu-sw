@@ -21,6 +21,11 @@ pub struct Common {
     /// directory highest in the stack with a `Cargo.toml` specified.
     #[arg(long)]
     pub workspace_dir: Option<PathBuf>,
+
+    /// Specify an SVN for the McuImageHeader.  If this is populated the bundle will begin with an
+    /// McuImageHeader with the given svn value, and the binaries moved appropriately.
+    #[arg(long)]
+    pub svn: Option<u16>,
 }
 
 impl Common {
@@ -48,6 +53,7 @@ impl Common {
         Common {
             manifest: workspace_dir.join("manifest.toml"),
             workspace_dir: Some(workspace_dir),
+            svn: None,
         }
     }
 }

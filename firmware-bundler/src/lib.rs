@@ -28,12 +28,13 @@ pub mod ld;
 pub mod manifest;
 pub mod size;
 pub mod tbf;
-pub(crate) mod utils;
+pub mod utils;
 
 use anyhow::{bail, Result};
 use args::{BuildArgs, Common, LdArgs};
 use ld::BuildDefinition;
 use manifest::{AllocationRequest, Manifest};
+use mcu_image_header::McuImageHeader;
 
 use crate::args::Commands;
 
@@ -75,6 +76,10 @@ pub fn execute(cmd: Commands) -> Result<()> {
 /// A utility function to run the logic for a build step.
 fn ld_step(common: &Common, ld: &LdArgs, build: &BuildArgs) -> Result<(Manifest, BuildDefinition)> {
     let mut manifest = common.manifest()?;
+
+    if common.svn.is_some() {
+        manifest.reserve_itcm(size_of::<McuImageHeader>().try_into()?)?;
+    }
 
     if manifest.platform.dynamic_sizing() {
         dynamically_size(&mut manifest, common, ld, build)?;
