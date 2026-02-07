@@ -125,7 +125,10 @@ fn test_get_firmware_version_runtime() {
             println!("All runtime firmware version fields verified successfully!");
         }
         Err(e) => {
-            panic!("Failed to get runtime firmware version via high-level API: {:?}", e);
+            panic!(
+                "Failed to get runtime firmware version via high-level API: {:?}",
+                e
+            );
         }
     }
 

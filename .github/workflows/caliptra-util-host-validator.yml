@@ -9,8 +9,39 @@ on:
   workflow_dispatch:
 
 jobs:
+  precheckin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      CARGO_INCREMENTAL: 0
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Test commit name
+        run: |
+          echo "Lint: release_ref=$(git rev-parse HEAD)"
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git && \
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Run caliptra-util-host precheckin
+        run: |
+          pushd caliptra-util-host
+          cargo xtask precheckin
+          popd
+
   caliptra_util_host_validator_tests:
     runs-on: ubuntu-24.04
+    needs: [precheckin]
 
     env:
       CARGO_INCREMENTAL: 0
