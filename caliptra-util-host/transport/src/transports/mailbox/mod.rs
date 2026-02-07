@@ -6,10 +6,14 @@
 
 pub mod checksum;
 pub mod command_traits;
+pub mod dispatch;
 pub mod transport;
 
 // Device Info Commands
 pub mod device_info;
+
+// SHA Commands
+pub mod sha;
 
 // Re-export main types
 pub use transport::{Mailbox, MailboxDriver, MailboxError};
@@ -22,3 +26,4 @@ pub use command_traits::{
 
 // Re-export external command types for testing
 pub use device_info::*;
+pub use sha::*;

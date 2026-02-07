@@ -100,7 +100,7 @@ pub struct ExtCmdGetDeviceCapabilitiesResponse {
 
     /// Device capabilities as defined in external mailbox spec
     /// - Bytes [0:7]: Reserved for Caliptra RT
-    /// - Bytes [8:11]: Reserved for Caliptra FMC  
+    /// - Bytes [8:11]: Reserved for Caliptra FMC
     /// - Bytes [12:15]: Reserved for Caliptra ROM
     /// - Bytes [16:23]: Reserved for MCU RT
     /// - Bytes [24:27]: Reserved for MCU ROM
@@ -238,7 +238,7 @@ pub struct ExtCmdGetFirmwareVersionRequest {
 
     /// Firmware index:
     /// - 0x00 = Caliptra core firmware
-    /// - 0x01 = MCU runtime firmware  
+    /// - 0x01 = MCU runtime firmware
     /// - 0x02 = SoC firmware
     ///   Additional indexes are firmware-specific
     pub index: u32,
@@ -479,31 +479,3 @@ define_command!(
     ExtCmdGetDeviceInfoRequest,
     ExtCmdGetDeviceInfoResponse
 );
-
-// Type alias for command handler function to reduce complexity
-type CommandHandlerFn = fn(
-    &[u8],
-    &mut dyn crate::transports::mailbox::transport::MailboxDriver,
-    &mut [u8],
-) -> Result<usize, crate::TransportError>;
-
-// Generate command handler mapping manually (macro has issues)
-pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
-    match command_id {
-        1 => Some(process_command_with_metadata::<GetFirmwareVersionCmd>), // GetFirmwareVersion
-        2 => Some(process_command_with_metadata::<GetDeviceCapabilitiesCmd>), // GetDeviceCapabilities
-        3 => Some(process_command_with_metadata::<GetDeviceIdCmd>),           // GetDeviceId
-        4 => Some(process_command_with_metadata::<GetDeviceInfoCmd>),         // GetDeviceInfo
-        _ => None,
-    }
-}
-
-pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
-    match command_id {
-        1 => Some(0x4D46_5756), // GetFirmwareVersion -> MC_FIRMWARE_VERSION ("MFWV")
-        2 => Some(0x4D43_4150), // GetDeviceCapabilities -> MC_DEVICE_CAPABILITIES ("MCAP")
-        3 => Some(0x4D44_4944), // GetDeviceId -> MC_DEVICE_ID ("MDID")
-        4 => Some(0x4D44_494E), // GetDeviceInfo -> MC_DEVICE_INFO ("MDIN")
-        _ => None,
-    }
-}

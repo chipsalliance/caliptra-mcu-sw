@@ -9,9 +9,11 @@ use caliptra_util_host_transport::{MailboxDriver, MailboxError};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 // Buffer length constants
-const RESPONSE_BUFFER_SIZE: usize = 128;
+const RESPONSE_BUFFER_SIZE: usize = 1024; // Increased for SHA context (200 bytes) + overhead
 const CAPABILITIES_ARRAY_SIZE: usize = 32;
 const DEVICE_INFO_DATA_SIZE: usize = 64;
+const SHA_CONTEXT_SIZE: usize = 200; // Matches CMB_SHA_CONTEXT_SIZE from caliptra-api
+const MAX_HASH_SIZE: usize = 64;
 
 /// Calculate checksum for external mailbox commands
 /// Formula: 0 - (SUM(command code bytes) + SUM(response bytes))
@@ -126,19 +128,19 @@ impl MockMailbox {
                 // Mock capabilities response with proper external structure (32-byte caps array)
                 let mut payload = Vec::new();
                 payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
-                
+
                 // Build capabilities array
                 let mut caps = [0u8; CAPABILITIES_ARRAY_SIZE];
                 // capabilities (bytes 0-3)
                 caps[0..4].copy_from_slice(&0x000001F3u32.to_le_bytes());
-                // max_cert_size (bytes 4-7)  
+                // max_cert_size (bytes 4-7)
                 caps[4..8].copy_from_slice(&4096u32.to_le_bytes());
                 // max_csr_size (bytes 8-11)
                 caps[8..12].copy_from_slice(&2048u32.to_le_bytes());
                 // device_lifecycle (bytes 12-15)
                 caps[12..16].copy_from_slice(&1u32.to_le_bytes());
                 // Remaining bytes stay 0
-                
+
                 payload.extend_from_slice(&caps);
 
                 let chksum = calc_checksum(0, &payload);
@@ -156,8 +158,8 @@ impl MockMailbox {
                 // Mock device info response with proper external structure
                 let mut payload = Vec::new();
                 payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
-                payload.extend_from_slice(&16u32.to_le_bytes());          // data_size
-                
+                payload.extend_from_slice(&16u32.to_le_bytes()); // data_size
+
                 // Device info data field
                 let mut data = [0u8; DEVICE_INFO_DATA_SIZE];
                 data[0..16].copy_from_slice(b"Mock Device Info");
@@ -175,18 +177,82 @@ impl MockMailbox {
             }
             0x4D46_5756 => {
                 // MC_FIRMWARE_VERSION ("MFWV")
-                // Mock firmware version response with proper external structure  
+                // Mock firmware version response with proper external structure
                 let mut payload = Vec::new();
                 payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
-                
+
                 // Version string in ASCII format
                 let version_str = b"1.2.3.4-mock_git_commit_sha";
                 let data_len = version_str.len() as u32;
                 payload.extend_from_slice(&data_len.to_le_bytes()); // data_len
                 payload.extend_from_slice(version_str); // version data
-                
+
                 let chksum = calc_checksum(0, &payload);
                 // Complete response with checksum
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
+            0x4D43_5349 => {
+                // MC_SHA_INIT ("MCSI")
+                // Mock SHA init response with context
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0x00000000u32.to_le_bytes()); // fips_status
+
+                // Mock context (512 bytes) - just use zeros with a marker
+                let mut context = [0u8; SHA_CONTEXT_SIZE];
+                context[0..4].copy_from_slice(b"MOCK"); // Marker to identify mock context
+                payload.extend_from_slice(&context);
+
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
+            0x4D43_5355 => {
+                // MC_SHA_UPDATE ("MCSU")
+                // Mock SHA update response (same as init response)
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0x00000000u32.to_le_bytes()); // fips_status
+
+                // Updated context
+                let mut context = [0u8; SHA_CONTEXT_SIZE];
+                context[0..4].copy_from_slice(b"UPDT"); // Marker for updated context
+                payload.extend_from_slice(&context);
+
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
+            0x4D43_5346 => {
+                // MC_SHA_FINAL ("MCSF")
+                // Mock SHA final response with hash
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0x00000000u32.to_le_bytes()); // fips_status
+                payload.extend_from_slice(&48u32.to_le_bytes()); // data_len (SHA384 size)
+
+                // Mock hash (48 bytes for SHA384)
+                let mut hash = [0u8; MAX_HASH_SIZE];
+                // Fill with a recognizable pattern
+                for (i, byte) in hash.iter_mut().take(48).enumerate() {
+                    *byte = (i as u8).wrapping_mul(17);
+                }
+                payload.extend_from_slice(&hash);
+
+                let chksum = calc_checksum(0, &payload);
                 let mut response = Vec::new();
                 response.extend_from_slice(&chksum.to_le_bytes());
                 response.extend_from_slice(&payload);

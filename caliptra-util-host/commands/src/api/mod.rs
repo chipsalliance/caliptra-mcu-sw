@@ -9,9 +9,11 @@
 // Re-export types that API consumers might need
 // Note: These imports might appear unused but are used by other modules or re-exports
 
+pub mod crypto_hash;
 pub mod device_info;
 
 pub use caliptra_util_host_session::CommandSession;
+pub use crypto_hash::*;
 pub use device_info::*;
 
 /// High-level result type for API functions

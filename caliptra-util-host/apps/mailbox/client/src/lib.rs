@@ -16,13 +16,19 @@ pub use validator::{run_basic_validation, run_verbose_validation, ValidationResu
 pub use caliptra_util_host_mailbox_test_config::*;
 
 use anyhow::Result;
+use caliptra_util_host_command_types::crypto_hash::{
+    ShaAlgorithm, ShaFinalResponse, ShaInitResponse, ShaUpdateResponse, SHA_CONTEXT_SIZE,
+};
 use caliptra_util_host_command_types::{
-    GetDeviceIdResponse, GetDeviceInfoResponse, GetDeviceCapabilitiesResponse,
+    GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
     GetFirmwareVersionResponse,
 };
+use caliptra_util_host_commands::api::crypto_hash::{
+    caliptra_cmd_sha_final, caliptra_cmd_sha_init, caliptra_cmd_sha_update,
+};
 use caliptra_util_host_commands::api::device_info::{
-    caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
-    caliptra_cmd_get_device_capabilities, caliptra_cmd_get_firmware_version,
+    caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
+    caliptra_cmd_get_firmware_version,
 };
 use caliptra_util_host_session::CaliptraSession;
 use caliptra_util_host_transport::Mailbox;
@@ -136,8 +142,9 @@ impl<'a> MailboxClient<'a> {
                 println!("  Info length: {} bytes", response.info_length);
                 println!("  FIPS status: {}", response.common.fips_status);
                 if response.info_length > 0 {
-                    let info_str = std::str::from_utf8(&response.info_data[..response.info_length as usize])
-                        .unwrap_or("<binary data>");
+                    let info_str =
+                        std::str::from_utf8(&response.info_data[..response.info_length as usize])
+                            .unwrap_or("<binary data>");
                     println!("  Info data: {}", info_str);
                 }
                 Ok(response)
@@ -175,7 +182,10 @@ impl<'a> MailboxClient<'a> {
             }
             Err(e) => {
                 eprintln!("✗ GetDeviceCapabilities failed: {:?}", e);
-                Err(anyhow::anyhow!("GetDeviceCapabilities command failed: {:?}", e))
+                Err(anyhow::anyhow!(
+                    "GetDeviceCapabilities command failed: {:?}",
+                    e
+                ))
             }
         }
     }
@@ -197,15 +207,138 @@ impl<'a> MailboxClient<'a> {
         match caliptra_cmd_get_firmware_version(&mut session, fw_id) {
             Ok(response) => {
                 println!("✓ GetFirmwareVersion succeeded!");
-                println!("  Version: {}.{}.{}.{}", response.version[0], response.version[1], response.version[2], response.version[3]);
+                println!(
+                    "  Version: {}.{}.{}.{}",
+                    response.version[0],
+                    response.version[1],
+                    response.version[2],
+                    response.version[3]
+                );
                 println!("  Git commit hash: {:02X?}", &response.commit_id[..8]);
                 println!("  FIPS status: {}", response.common.fips_status);
                 Ok(response)
             }
             Err(e) => {
                 eprintln!("✗ GetFirmwareVersion failed: {:?}", e);
-                Err(anyhow::anyhow!("GetFirmwareVersion command failed: {:?}", e))
+                Err(anyhow::anyhow!(
+                    "GetFirmwareVersion command failed: {:?}",
+                    e
+                ))
             }
         }
+    }
+
+    /// Execute SHA Init command
+    ///
+    /// Initializes a SHA hash context with optional initial data.
+    pub fn sha_init(&mut self, algorithm: ShaAlgorithm, data: &[u8]) -> Result<ShaInitResponse> {
+        println!(
+            "Executing SHA Init command (algo={:?}, {} bytes)...",
+            algorithm,
+            data.len()
+        );
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_sha_init(&mut session, algorithm, data) {
+            Ok(response) => {
+                println!("✓ SHA Init succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ SHA Init failed: {:?}", e);
+                Err(anyhow::anyhow!("SHA Init command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Execute SHA Update command
+    ///
+    /// Adds more data to an existing hash context.
+    pub fn sha_update(
+        &mut self,
+        context: &[u8; SHA_CONTEXT_SIZE],
+        data: &[u8],
+    ) -> Result<ShaUpdateResponse> {
+        println!("Executing SHA Update command ({} bytes)...", data.len());
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_sha_update(&mut session, context, data) {
+            Ok(response) => {
+                println!("✓ SHA Update succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ SHA Update failed: {:?}", e);
+                Err(anyhow::anyhow!("SHA Update command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Execute SHA Final command
+    ///
+    /// Finalizes the hash and returns the result.
+    pub fn sha_final(
+        &mut self,
+        context: &[u8; SHA_CONTEXT_SIZE],
+        data: &[u8],
+    ) -> Result<ShaFinalResponse> {
+        println!(
+            "Executing SHA Final command ({} bytes remaining)...",
+            data.len()
+        );
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_sha_final(&mut session, context, data) {
+            Ok(response) => {
+                println!("✓ SHA Final succeeded!");
+                println!("  Hash size: {} bytes", response.hash_size);
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ SHA Final failed: {:?}", e);
+                Err(anyhow::anyhow!("SHA Final command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Compute SHA hash in one operation
+    ///
+    /// Convenience function that performs init and final in a single call.
+    pub fn sha_hash(&mut self, algorithm: ShaAlgorithm, data: &[u8]) -> Result<ShaFinalResponse> {
+        println!(
+            "Executing SHA one-shot hash (algo={:?}, {} bytes)...",
+            algorithm,
+            data.len()
+        );
+
+        let init_resp = self.sha_init(algorithm, data)?;
+        self.sha_final(&init_resp.context, &[])
     }
 }

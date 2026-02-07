@@ -118,6 +118,13 @@ impl Validator {
         let fw_version_result = self.validate_get_firmware_version(&mut client);
         results.push(fw_version_result);
 
+        // Run SHA validation tests
+        let sha384_result = self.validate_sha384(&mut client);
+        results.push(sha384_result);
+
+        let sha512_result = self.validate_sha512(&mut client);
+        results.push(sha512_result);
+
         if self.verbose {
             self.print_summary(&results);
         }
@@ -169,13 +176,16 @@ impl Validator {
                 if let Some(ref config) = self.config {
                     if let Some(ref info_config) = config.device_info {
                         // Extract actual info from response (up to info_length bytes)
-                        let actual_length = std::cmp::min(response.info_length as usize, response.info_data.len());
-                        let actual_info = String::from_utf8_lossy(&response.info_data[..actual_length]);
-                        
+                        let actual_length =
+                            std::cmp::min(response.info_length as usize, response.info_data.len());
+                        let actual_info =
+                            String::from_utf8_lossy(&response.info_data[..actual_length]);
+
                         if actual_info.trim() != info_config.expected_info.trim() {
                             let error_msg = format!(
                                 "Device info mismatch: expected '{}', got '{}'",
-                                info_config.expected_info, actual_info.trim()
+                                info_config.expected_info,
+                                actual_info.trim()
                             );
                             eprintln!("✗ GetDeviceInfo validation FAILED: {}", error_msg);
                             return ValidationResult {
@@ -184,7 +194,7 @@ impl Validator {
                                 error_message: Some(error_msg),
                             };
                         }
-                        
+
                         if self.verbose {
                             println!("  Device info: '{}' ✓", actual_info.trim());
                             println!("  Info length: {} bytes ✓", response.info_length);
@@ -236,7 +246,7 @@ impl Validator {
                                 error_message: Some(error_msg),
                             };
                         }
-                        
+
                         if self.verbose {
                             println!("  Capabilities: 0x{:08X} ✓", response.capabilities);
                         }
@@ -271,12 +281,12 @@ impl Validator {
 
         // Test both ROM (0) and Runtime (1) firmware versions
         let mut errors = Vec::new();
-        
+
         for (fw_name, fw_id) in [("ROM", 0u32), ("Runtime", 1u32)] {
             if self.verbose {
                 println!("Testing {} firmware version (id={})...", fw_name, fw_id);
             }
-            
+
             match client.get_firmware_version(fw_id) {
                 Ok(response) => {
                     // Validate against config if available
@@ -287,14 +297,16 @@ impl Validator {
                             } else {
                                 &fw_config.runtime_version
                             };
-                            
+
                             // Convert version array to string format: "major.minor.patch.build"
                             let response_version = format!(
                                 "{}.{}.{}.{}",
-                                response.version[0], response.version[1], 
-                                response.version[2], response.version[3]
+                                response.version[0],
+                                response.version[1],
+                                response.version[2],
+                                response.version[3]
                             );
-                            
+
                             if response_version != *expected_version {
                                 let error_msg = format!(
                                     "{} version mismatch: expected '{}', got '{}'",
@@ -304,13 +316,13 @@ impl Validator {
                                 errors.push(error_msg);
                                 continue;
                             }
-                            
+
                             if self.verbose {
                                 println!("  {} version: '{}' ✓", fw_name, response_version);
                             }
                         }
                     }
-                    
+
                     println!("✓ {} firmware version validation PASSED", fw_name);
                 }
                 Err(e) => {
@@ -359,6 +371,148 @@ impl Validator {
             }
         } else {
             println!("\n✅ All validations passed!");
+        }
+    }
+
+    /// Validate SHA384 hash command
+    fn validate_sha384(&self, client: &mut MailboxClient) -> ValidationResult {
+        use caliptra_util_host_command_types::crypto_hash::ShaAlgorithm;
+        use sha2::{Digest, Sha384};
+
+        let test_name = "SHA384".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating SHA384 Command ===");
+        }
+
+        // Test data: "a" repeated 129 times (matches existing test pattern)
+        let input = "a".repeat(129);
+        let input_bytes = input.as_bytes();
+
+        // Calculate expected hash using sha2 crate
+        let mut hasher = Sha384::new();
+        hasher.update(input_bytes);
+        let expected = hasher.finalize();
+
+        match client.sha_hash(ShaAlgorithm::Sha384, input_bytes) {
+            Ok(response) => {
+                // Verify hash matches expected (first 48 bytes for SHA384)
+                if response.hash_size != 48 {
+                    let error_msg = format!(
+                        "SHA384 hash size mismatch: expected 48, got {}",
+                        response.hash_size
+                    );
+                    eprintln!("✗ SHA384 validation FAILED: {}", error_msg);
+                    return ValidationResult {
+                        test_name,
+                        passed: false,
+                        error_message: Some(error_msg),
+                    };
+                }
+
+                if &response.hash[..48] != expected.as_slice() {
+                    let error_msg = format!(
+                        "SHA384 hash mismatch: expected {:02X?}..., got {:02X?}...",
+                        &expected[..8],
+                        &response.hash[..8]
+                    );
+                    eprintln!("✗ SHA384 validation FAILED: {}", error_msg);
+                    return ValidationResult {
+                        test_name,
+                        passed: false,
+                        error_message: Some(error_msg),
+                    };
+                }
+
+                if self.verbose {
+                    println!("  Hash: {:02X?}...", &response.hash[..16]);
+                }
+                println!("✓ SHA384 validation PASSED");
+                ValidationResult {
+                    test_name,
+                    passed: true,
+                    error_message: None,
+                }
+            }
+            Err(e) => {
+                eprintln!("✗ SHA384 validation FAILED: {}", e);
+                ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(e.to_string()),
+                }
+            }
+        }
+    }
+
+    /// Validate SHA512 hash command
+    fn validate_sha512(&self, client: &mut MailboxClient) -> ValidationResult {
+        use caliptra_util_host_command_types::crypto_hash::ShaAlgorithm;
+        use sha2::{Digest, Sha512};
+
+        let test_name = "SHA512".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating SHA512 Command ===");
+        }
+
+        // Test data: "a" repeated 129 times
+        let input = "a".repeat(129);
+        let input_bytes = input.as_bytes();
+
+        // Calculate expected hash using sha2 crate
+        let mut hasher = Sha512::new();
+        hasher.update(input_bytes);
+        let expected = hasher.finalize();
+
+        match client.sha_hash(ShaAlgorithm::Sha512, input_bytes) {
+            Ok(response) => {
+                // Verify hash matches expected (64 bytes for SHA512)
+                if response.hash_size != 64 {
+                    let error_msg = format!(
+                        "SHA512 hash size mismatch: expected 64, got {}",
+                        response.hash_size
+                    );
+                    eprintln!("✗ SHA512 validation FAILED: {}", error_msg);
+                    return ValidationResult {
+                        test_name,
+                        passed: false,
+                        error_message: Some(error_msg),
+                    };
+                }
+
+                if &response.hash[..64] != expected.as_slice() {
+                    let error_msg = format!(
+                        "SHA512 hash mismatch: expected {:02X?}..., got {:02X?}...",
+                        &expected[..8],
+                        &response.hash[..8]
+                    );
+                    eprintln!("✗ SHA512 validation FAILED: {}", error_msg);
+                    return ValidationResult {
+                        test_name,
+                        passed: false,
+                        error_message: Some(error_msg),
+                    };
+                }
+
+                if self.verbose {
+                    println!("  Hash: {:02X?}...", &response.hash[..16]);
+                }
+                println!("✓ SHA512 validation PASSED");
+                ValidationResult {
+                    test_name,
+                    passed: true,
+                    error_message: None,
+                }
+            }
+            Err(e) => {
+                eprintln!("✗ SHA512 validation FAILED: {}", e);
+                ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(e.to_string()),
+                }
+            }
         }
     }
 }
