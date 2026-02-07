@@ -276,7 +276,7 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl git dnsmasq && \
+          sudo apt-get install -qy build-essential curl git libclang-dev dnsmasq && \
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
       - name: Install cargo-nextest (prebuilt binary)
