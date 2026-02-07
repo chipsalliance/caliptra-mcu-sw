@@ -311,6 +311,13 @@ enum Commands {
         #[command(subcommand)]
         cmd: BundleCommands,
     },
+    /// Network stack development tools (TAP, DHCP/TFTP server, lwip-rs)
+    #[command(disable_help_flag = true, disable_help_subcommand = true)]
+    Network {
+        /// Arguments to pass to the network xtask (use `cargo xtask network -- --help` for help)
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -545,9 +552,29 @@ fn main() {
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
         Commands::Experimental { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
+        Commands::Network { args } => run_network_xtask(args),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);
         std::process::exit(1);
     });
+}
+
+fn run_network_xtask(args: &[String]) -> anyhow::Result<()> {
+    use std::process::Command;
+
+    let mut cmd = Command::new("cargo");
+    cmd.arg("run")
+        .arg("-p")
+        .arg("network-xtask")
+        .arg("--")
+        .args(args);
+
+    let status = cmd.status()?;
+
+    if !status.success() {
+        anyhow::bail!("Network xtask failed with exit code: {:?}", status.code());
+    }
+
+    Ok(())
 }
