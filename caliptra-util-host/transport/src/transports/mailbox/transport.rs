@@ -8,8 +8,7 @@ use super::dispatch::{get_command_handler, get_external_cmd_code};
 use crate::{Transport, TransportError, TransportResult};
 
 /// Maximum mailbox response buffer size in bytes.
-/// Based on MCU mailbox SRAM size (4KB).
-pub const MAX_MBOX_RESP_BUF: usize = 4 * 1024;
+pub const MAX_MBOX_RESP_BUF: usize = 8 * 1024;
 
 /// Trait for hardware mailbox communication
 pub trait MailboxDriver: Send + Sync {

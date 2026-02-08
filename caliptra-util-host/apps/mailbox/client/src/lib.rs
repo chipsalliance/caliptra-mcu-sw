@@ -16,6 +16,9 @@ pub use validator::{run_basic_validation, run_verbose_validation, ValidationResu
 pub use caliptra_util_host_mailbox_test_config::*;
 
 use anyhow::Result;
+use caliptra_util_host_command_types::crypto_aes::{
+    AesMode, AES_GCM_IV_SIZE, AES_GCM_TAG_SIZE, AES_IV_SIZE,
+};
 use caliptra_util_host_command_types::crypto_delete::DeleteResponse;
 use caliptra_util_host_command_types::crypto_hash::{
     ShaAlgorithm, ShaFinalResponse, ShaInitResponse, ShaUpdateResponse, SHA_CONTEXT_SIZE,
@@ -27,6 +30,10 @@ use caliptra_util_host_command_types::crypto_import::ImportResponse;
 use caliptra_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
     GetFirmwareVersionResponse,
+};
+use caliptra_util_host_commands::api::crypto_aes::{
+    caliptra_aes_decrypt, caliptra_aes_encrypt, caliptra_aes_gcm_decrypt, caliptra_aes_gcm_encrypt,
+    AesEncryptResult, AesGcmDecryptResult, AesGcmEncryptResult,
 };
 use caliptra_util_host_commands::api::crypto_delete::caliptra_cmd_delete;
 use caliptra_util_host_commands::api::crypto_hash::{
@@ -497,6 +504,170 @@ impl<'a> MailboxClient<'a> {
             Err(e) => {
                 eprintln!("✗ Delete failed: {:?}", e);
                 Err(anyhow::anyhow!("Delete command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Execute AES encryption
+    ///
+    /// Encrypts plaintext using AES-CBC or AES-CTR mode.
+    pub fn aes_encrypt(
+        &mut self,
+        cmk: &Cmk,
+        mode: AesMode,
+        plaintext: &[u8],
+    ) -> Result<AesEncryptResult> {
+        println!(
+            "Executing AES encrypt (mode={:?}, {} bytes)...",
+            mode,
+            plaintext.len()
+        );
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_aes_encrypt(&mut session, cmk, mode, plaintext) {
+            Ok(result) => {
+                println!(
+                    "✓ AES encrypt succeeded! {} bytes ciphertext",
+                    result.ciphertext.len()
+                );
+                Ok(result)
+            }
+            Err(e) => {
+                eprintln!("✗ AES encrypt failed: {:?}", e);
+                Err(anyhow::anyhow!("AES encrypt failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Execute AES decryption
+    ///
+    /// Decrypts ciphertext using AES-CBC or AES-CTR mode.
+    pub fn aes_decrypt(
+        &mut self,
+        cmk: &Cmk,
+        mode: AesMode,
+        iv: &[u8; AES_IV_SIZE],
+        ciphertext: &[u8],
+    ) -> Result<Vec<u8>> {
+        println!(
+            "Executing AES decrypt (mode={:?}, {} bytes)...",
+            mode,
+            ciphertext.len()
+        );
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_aes_decrypt(&mut session, cmk, mode, iv, ciphertext) {
+            Ok(plaintext) => {
+                println!(
+                    "✓ AES decrypt succeeded! {} bytes plaintext",
+                    plaintext.len()
+                );
+                Ok(plaintext)
+            }
+            Err(e) => {
+                eprintln!("✗ AES decrypt failed: {:?}", e);
+                Err(anyhow::anyhow!("AES decrypt failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Execute AES-GCM authenticated encryption
+    ///
+    /// Encrypts plaintext and authenticates both plaintext and AAD.
+    pub fn aes_gcm_encrypt(
+        &mut self,
+        cmk: &Cmk,
+        aad: &[u8],
+        plaintext: &[u8],
+    ) -> Result<AesGcmEncryptResult> {
+        println!(
+            "Executing AES-GCM encrypt (aad={} bytes, plaintext={} bytes)...",
+            aad.len(),
+            plaintext.len()
+        );
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_aes_gcm_encrypt(&mut session, cmk, aad, plaintext) {
+            Ok(result) => {
+                println!(
+                    "✓ AES-GCM encrypt succeeded! {} bytes ciphertext",
+                    result.ciphertext.len()
+                );
+                Ok(result)
+            }
+            Err(e) => {
+                eprintln!("✗ AES-GCM encrypt failed: {:?}", e);
+                Err(anyhow::anyhow!("AES-GCM encrypt failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Execute AES-GCM authenticated decryption
+    ///
+    /// Decrypts ciphertext and verifies the authentication tag.
+    pub fn aes_gcm_decrypt(
+        &mut self,
+        cmk: &Cmk,
+        iv: &[u8; AES_GCM_IV_SIZE],
+        aad: &[u8],
+        ciphertext: &[u8],
+        tag: &[u8; AES_GCM_TAG_SIZE],
+    ) -> Result<AesGcmDecryptResult> {
+        println!(
+            "Executing AES-GCM decrypt (aad={} bytes, ciphertext={} bytes)...",
+            aad.len(),
+            ciphertext.len()
+        );
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_aes_gcm_decrypt(&mut session, cmk, iv, aad, ciphertext, tag) {
+            Ok(result) => {
+                println!(
+                    "✓ AES-GCM decrypt succeeded! tag_verified={}, {} bytes plaintext",
+                    result.tag_verified,
+                    result.plaintext.len()
+                );
+                Ok(result)
+            }
+            Err(e) => {
+                eprintln!("✗ AES-GCM decrypt failed: {:?}", e);
+                Err(anyhow::anyhow!("AES-GCM decrypt failed: {:?}", e))
             }
         }
     }

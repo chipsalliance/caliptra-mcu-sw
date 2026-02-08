@@ -12,7 +12,7 @@ use caliptra_util_host_transport::Transport;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 /// Maximum size for command packets
-const MAX_COMMAND_PACKET_SIZE: usize = 1024;
+const MAX_COMMAND_PACKET_SIZE: usize = 8 * 1024;
 
 /// Pack a command request using zerocopy
 fn pack_command_request<T: IntoBytes + Immutable>(
@@ -510,7 +510,7 @@ impl<'t> CaliptraSession<'t> {
     }
 }
 
-/// Session information structure  
+/// Session information structure
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
     pub session_id: u32,

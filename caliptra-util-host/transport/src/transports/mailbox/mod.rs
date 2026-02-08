@@ -24,6 +24,9 @@ pub mod import;
 // Delete Command
 pub mod delete;
 
+// AES Commands
+pub mod aes;
+
 // Re-export main types
 pub use transport::{Mailbox, MailboxDriver, MailboxError};
 
@@ -34,6 +37,7 @@ pub use command_traits::{
 };
 
 // Re-export external command types for testing
+pub use aes::*;
 pub use delete::*;
 pub use device_info::*;
 pub use hmac::*;

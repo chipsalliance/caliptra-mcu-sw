@@ -2,6 +2,8 @@
 
 use crate::{MailboxClient, TestConfig, UdpTransportDriver};
 use anyhow::Result;
+use caliptra_util_host_command_types::crypto_aes::AesMode;
+use caliptra_util_host_command_types::crypto_hmac::CmKeyUsage;
 use std::net::SocketAddr;
 
 /// Hardcoded fallback expected device responses for validation (when config is not available)
@@ -135,6 +137,16 @@ impl Validator {
         // Run HMAC KDF Counter validation test
         let hmac_kdf_counter_result = self.validate_hmac_kdf_counter(&mut client);
         results.push(hmac_kdf_counter_result);
+
+        // Run AES validation tests
+        let aes_cbc_result = self.validate_aes_cbc(&mut client);
+        results.push(aes_cbc_result);
+
+        let aes_ctr_result = self.validate_aes_ctr(&mut client);
+        results.push(aes_ctr_result);
+
+        let aes_gcm_result = self.validate_aes_gcm(&mut client);
+        results.push(aes_gcm_result);
 
         if self.verbose {
             self.print_summary(&results);
@@ -802,6 +814,298 @@ impl Validator {
             }
         } else if self.verbose {
             println!("  Input key deleted successfully");
+        }
+
+        result
+    }
+
+    /// Validate AES-CBC encryption and decryption
+    ///
+    /// Tests round-trip encryption/decryption with AES-CBC mode.
+    fn validate_aes_cbc(&self, client: &mut MailboxClient) -> ValidationResult {
+        let test_name = "AES-CBC".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating AES-CBC Command ===");
+        }
+
+        // Import a 256-bit AES key
+        let key = [0xaa; 32];
+        let cmk = match client.import(CmKeyUsage::Aes, &key) {
+            Ok(resp) => resp.cmk,
+            Err(e) => {
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(format!("Failed to import AES key: {}", e)),
+                };
+            }
+        };
+
+        // Test with a block-aligned plaintext (CBC requires this)
+        let plaintext: Vec<u8> = (0..64).map(|i| (i % 256) as u8).collect();
+
+        // Encrypt
+        let encrypt_result = match client.aes_encrypt(&cmk, AesMode::Cbc, &plaintext) {
+            Ok(result) => result,
+            Err(e) => {
+                let _ = client.delete(&cmk);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(format!("Encryption failed: {}", e)),
+                };
+            }
+        };
+
+        if self.verbose {
+            println!(
+                "  Encrypted {} bytes -> {} bytes ciphertext",
+                plaintext.len(),
+                encrypt_result.ciphertext.len()
+            );
+        }
+
+        // Decrypt
+        let decrypted = match client.aes_decrypt(
+            &cmk,
+            AesMode::Cbc,
+            &encrypt_result.iv,
+            &encrypt_result.ciphertext,
+        ) {
+            Ok(result) => result,
+            Err(e) => {
+                let _ = client.delete(&cmk);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(format!("Decryption failed: {}", e)),
+                };
+            }
+        };
+
+        // Verify round-trip
+        let result = if decrypted == plaintext {
+            println!("✓ AES-CBC validation PASSED");
+            ValidationResult {
+                test_name,
+                passed: true,
+                error_message: None,
+            }
+        } else {
+            ValidationResult {
+                test_name,
+                passed: false,
+                error_message: Some("Decrypted data doesn't match original".to_string()),
+            }
+        };
+
+        // Clean up - delete the key
+        if let Err(e) = client.delete(&cmk) {
+            if self.verbose {
+                eprintln!("  Warning: Failed to delete AES key: {}", e);
+            }
+        } else if self.verbose {
+            println!("  AES key deleted successfully");
+        }
+
+        result
+    }
+
+    /// Validate AES-CTR encryption and decryption
+    ///
+    /// Tests round-trip encryption/decryption with AES-CTR mode.
+    fn validate_aes_ctr(&self, client: &mut MailboxClient) -> ValidationResult {
+        let test_name = "AES-CTR".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating AES-CTR Command ===");
+        }
+
+        // Import a 256-bit AES key
+        let key = [0xbb; 32];
+        let cmk = match client.import(CmKeyUsage::Aes, &key) {
+            Ok(resp) => resp.cmk,
+            Err(e) => {
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(format!("Failed to import AES key: {}", e)),
+                };
+            }
+        };
+
+        // Test with non-block-aligned plaintext (CTR allows any length)
+        let plaintext: Vec<u8> = (0..100).map(|i| (i % 256) as u8).collect();
+
+        // Encrypt
+        let encrypt_result = match client.aes_encrypt(&cmk, AesMode::Ctr, &plaintext) {
+            Ok(result) => result,
+            Err(e) => {
+                let _ = client.delete(&cmk);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(format!("Encryption failed: {}", e)),
+                };
+            }
+        };
+
+        if self.verbose {
+            println!(
+                "  Encrypted {} bytes -> {} bytes ciphertext",
+                plaintext.len(),
+                encrypt_result.ciphertext.len()
+            );
+        }
+
+        // Decrypt
+        let decrypted = match client.aes_decrypt(
+            &cmk,
+            AesMode::Ctr,
+            &encrypt_result.iv,
+            &encrypt_result.ciphertext,
+        ) {
+            Ok(result) => result,
+            Err(e) => {
+                let _ = client.delete(&cmk);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(format!("Decryption failed: {}", e)),
+                };
+            }
+        };
+
+        // Verify round-trip
+        let result = if decrypted == plaintext {
+            println!("✓ AES-CTR validation PASSED");
+            ValidationResult {
+                test_name,
+                passed: true,
+                error_message: None,
+            }
+        } else {
+            ValidationResult {
+                test_name,
+                passed: false,
+                error_message: Some("Decrypted data doesn't match original".to_string()),
+            }
+        };
+
+        // Clean up - delete the key
+        if let Err(e) = client.delete(&cmk) {
+            if self.verbose {
+                eprintln!("  Warning: Failed to delete AES key: {}", e);
+            }
+        } else if self.verbose {
+            println!("  AES key deleted successfully");
+        }
+
+        result
+    }
+
+    /// Validate AES-GCM authenticated encryption and decryption
+    ///
+    /// Tests round-trip encryption/decryption with AES-GCM mode,
+    /// including tag verification.
+    fn validate_aes_gcm(&self, client: &mut MailboxClient) -> ValidationResult {
+        let test_name = "AES-GCM".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating AES-GCM Command ===");
+        }
+
+        // Import a 256-bit AES key
+        let key = [0xcc; 32];
+        let cmk = match client.import(CmKeyUsage::Aes, &key) {
+            Ok(resp) => resp.cmk,
+            Err(e) => {
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(format!("Failed to import AES key: {}", e)),
+                };
+            }
+        };
+
+        // Test data
+        let plaintext: Vec<u8> = (0..64).map(|i| (i % 256) as u8).collect();
+        let aad: Vec<u8> = (0..32).map(|i| ((i + 128) % 256) as u8).collect();
+
+        // Encrypt
+        let encrypt_result = match client.aes_gcm_encrypt(&cmk, &aad, &plaintext) {
+            Ok(result) => result,
+            Err(e) => {
+                let _ = client.delete(&cmk);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(format!("Encryption failed: {}", e)),
+                };
+            }
+        };
+
+        if self.verbose {
+            println!(
+                "  Encrypted {} bytes plaintext with {} bytes AAD",
+                plaintext.len(),
+                aad.len()
+            );
+            println!(
+                "  -> {} bytes ciphertext, 16-byte tag",
+                encrypt_result.ciphertext.len()
+            );
+        }
+
+        // Decrypt and verify tag
+        let decrypt_result = match client.aes_gcm_decrypt(
+            &cmk,
+            &encrypt_result.iv,
+            &aad,
+            &encrypt_result.ciphertext,
+            &encrypt_result.tag,
+        ) {
+            Ok(result) => result,
+            Err(e) => {
+                let _ = client.delete(&cmk);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(format!("Decryption failed: {}", e)),
+                };
+            }
+        };
+
+        // Verify results
+        let result = if !decrypt_result.tag_verified {
+            ValidationResult {
+                test_name,
+                passed: false,
+                error_message: Some("Tag verification failed".to_string()),
+            }
+        } else if decrypt_result.plaintext != plaintext {
+            ValidationResult {
+                test_name,
+                passed: false,
+                error_message: Some("Decrypted data doesn't match original".to_string()),
+            }
+        } else {
+            println!("✓ AES-GCM validation PASSED");
+            ValidationResult {
+                test_name,
+                passed: true,
+                error_message: None,
+            }
+        };
+
+        // Clean up - delete the key
+        if let Err(e) = client.delete(&cmk) {
+            if self.verbose {
+                eprintln!("  Warning: Failed to delete AES key: {}", e);
+            }
+        } else if self.verbose {
+            println!("  AES key deleted successfully");
         }
 
         result

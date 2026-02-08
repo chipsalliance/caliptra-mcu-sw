@@ -8,6 +8,11 @@
 use super::command_traits::process_command_with_metadata;
 
 // Import command metadata types from each command module
+use super::aes::{
+    AesDecryptInitCmd, AesDecryptUpdateCmd, AesEncryptInitCmd, AesEncryptUpdateCmd,
+    AesGcmDecryptFinalCmd, AesGcmDecryptInitCmd, AesGcmDecryptUpdateCmd, AesGcmEncryptFinalCmd,
+    AesGcmEncryptInitCmd, AesGcmEncryptUpdateCmd,
+};
 use super::delete::DeleteCmd;
 use super::device_info::{
     GetDeviceCapabilitiesCmd, GetDeviceIdCmd, GetDeviceInfoCmd, GetFirmwareVersionCmd,
@@ -49,6 +54,18 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x2015 => Some(process_command_with_metadata::<ImportCmd>), // Import
         // Delete Command (0x2016)
         0x2016 => Some(process_command_with_metadata::<DeleteCmd>), // Delete
+        // AES Commands (0x3001-0x3004)
+        0x3001 => Some(process_command_with_metadata::<AesEncryptInitCmd>), // AesEncryptInit
+        0x3002 => Some(process_command_with_metadata::<AesEncryptUpdateCmd>), // AesEncryptUpdate
+        0x3003 => Some(process_command_with_metadata::<AesDecryptInitCmd>), // AesDecryptInit
+        0x3004 => Some(process_command_with_metadata::<AesDecryptUpdateCmd>), // AesDecryptUpdate
+        // AES-GCM Commands (0x3010-0x3015)
+        0x3010 => Some(process_command_with_metadata::<AesGcmEncryptInitCmd>), // AesGcmEncryptInit
+        0x3011 => Some(process_command_with_metadata::<AesGcmEncryptUpdateCmd>), // AesGcmEncryptUpdate
+        0x3012 => Some(process_command_with_metadata::<AesGcmEncryptFinalCmd>), // AesGcmEncryptFinal
+        0x3013 => Some(process_command_with_metadata::<AesGcmDecryptInitCmd>),  // AesGcmDecryptInit
+        0x3014 => Some(process_command_with_metadata::<AesGcmDecryptUpdateCmd>), // AesGcmDecryptUpdate
+        0x3015 => Some(process_command_with_metadata::<AesGcmDecryptFinalCmd>), // AesGcmDecryptFinal
         _ => None,
     }
 }
@@ -79,6 +96,18 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         0x2015 => Some(0x4D43_494D), // Import -> MC_IMPORT ("MCIM")
         // Delete Command
         0x2016 => Some(0x4D43_444C), // Delete -> MC_DELETE ("MCDL")
+        // AES Commands
+        0x3001 => Some(0x4D43_4349), // AesEncryptInit -> MC_AES_ENCRYPT_INIT ("MCCI")
+        0x3002 => Some(0x4D43_4355), // AesEncryptUpdate -> MC_AES_ENCRYPT_UPDATE ("MCCU")
+        0x3003 => Some(0x4D43_414A), // AesDecryptInit -> MC_AES_DECRYPT_INIT ("MCAJ")
+        0x3004 => Some(0x4D43_4155), // AesDecryptUpdate -> MC_AES_DECRYPT_UPDATE ("MCAU")
+        // AES-GCM Commands
+        0x3010 => Some(0x4D43_4749), // AesGcmEncryptInit -> MC_AES_GCM_ENCRYPT_INIT ("MCGI")
+        0x3011 => Some(0x4D43_4755), // AesGcmEncryptUpdate -> MC_AES_GCM_ENCRYPT_UPDATE ("MCGU")
+        0x3012 => Some(0x4D43_4746), // AesGcmEncryptFinal -> MC_AES_GCM_ENCRYPT_FINAL ("MCGF")
+        0x3013 => Some(0x4D43_4449), // AesGcmDecryptInit -> MC_AES_GCM_DECRYPT_INIT ("MCDI")
+        0x3014 => Some(0x4D43_4455), // AesGcmDecryptUpdate -> MC_AES_GCM_DECRYPT_UPDATE ("MCDU")
+        0x3015 => Some(0x4D43_4446), // AesGcmDecryptFinal -> MC_AES_GCM_DECRYPT_FINAL ("MCDF")
         _ => None,
     }
 }

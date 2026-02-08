@@ -69,15 +69,17 @@ pub enum CaliptraCommandId {
     Import = 0x2015,
     Delete = 0x2016,
 
-    // Symmetric Crypto Commands (0x3001-0x302F)
-    AesInit = 0x3001,
-    AesUpdate = 0x3002,
-    AesFinalize = 0x3003,
-    AesOneShot = 0x3004,
-    AesGcmInit = 0x3010,
-    AesGcmUpdateAad = 0x3011,
-    KeyWrap = 0x3020,
-    KeyUnwrap = 0x3021,
+    // Symmetric Crypto Commands (0x3001-0x3015)
+    AesEncryptInit = 0x3001,
+    AesEncryptUpdate = 0x3002,
+    AesDecryptInit = 0x3003,
+    AesDecryptUpdate = 0x3004,
+    AesGcmEncryptInit = 0x3010,
+    AesGcmEncryptUpdate = 0x3011,
+    AesGcmEncryptFinal = 0x3012,
+    AesGcmDecryptInit = 0x3013,
+    AesGcmDecryptUpdate = 0x3014,
+    AesGcmDecryptFinal = 0x3015,
 
     // Asymmetric Crypto Commands (0x4001-0x402F)
     EcdsaSign = 0x4001,
@@ -137,7 +139,7 @@ pub trait CommandRequest: IntoBytes + FromBytes + Immutable + Sized {
     }
 }
 
-/// Trait for command response structures  
+/// Trait for command response structures
 pub trait CommandResponse: IntoBytes + FromBytes + Immutable + Sized {
     /// Parse response from raw bytes
     fn from_bytes(data: &[u8]) -> Result<Self, CommandError> {
