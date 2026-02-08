@@ -99,7 +99,9 @@ fn caliptra_cmd_get_device_capabilities_impl(
     let request = GetDeviceCapabilitiesRequest {};
     session
         .execute_command_with_id(CaliptraCommandId::GetDeviceCapabilities, &request)
-        .map_err(|_| CaliptraApiError::SessionError("GetDeviceCapabilities command execution failed"))
+        .map_err(|_| {
+            CaliptraApiError::SessionError("GetDeviceCapabilities command execution failed")
+        })
 }
 
 /// Get firmware version (Rust version)

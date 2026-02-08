@@ -460,6 +460,7 @@ dependencies = [
  "caliptra-error",
  "caliptra-image-types",
  "caliptra-lms-types",
+ "caliptra-okref",
  "caliptra-registers",
  "cfg-if",
  "dpe",
@@ -737,6 +738,10 @@ dependencies = [
  "zerocopy",
 ]
 
+[[package]]
+name = "caliptra-okref"
+version = "0.1.0"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=2fe38a094bd06188714ff7c040252bc3059d9699#2fe38a094bd06188714ff7c040252bc3059d9699"
 
 [[package]]
 name = "caliptra-registers"

@@ -4,8 +4,11 @@
 //!
 //! This module provides mailbox transport implementation with external mailbox protocol translation.
 
-use super::device_info::{get_command_handler, get_external_cmd_code};
+use super::dispatch::{get_command_handler, get_external_cmd_code};
 use crate::{Transport, TransportError, TransportResult};
+
+/// Maximum mailbox response buffer size in bytes.
+pub const MAX_MBOX_RESP_BUF: usize = 8 * 1024;
 
 /// Trait for hardware mailbox communication
 pub trait MailboxDriver: Send + Sync {
@@ -52,7 +55,7 @@ impl From<MailboxError> for TransportError {
 pub struct Mailbox<'a> {
     mailbox: &'a mut dyn MailboxDriver,
     connected: bool,
-    response_buffer: [u8; 256], // Fixed-size response buffer
+    response_buffer: [u8; MAX_MBOX_RESP_BUF],
     response_len: usize,
     has_response: bool,
 }
@@ -62,7 +65,7 @@ impl<'a> Mailbox<'a> {
         Self {
             mailbox,
             connected: false,
-            response_buffer: [0; 256],
+            response_buffer: [0; MAX_MBOX_RESP_BUF],
             response_len: 0,
             has_response: false,
         }

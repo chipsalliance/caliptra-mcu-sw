@@ -93,7 +93,9 @@ fn test_get_device_info_session_not_connected() {
 
     match device_info_result {
         Ok(_) => {
-            panic!("Expected GetDeviceInfo to fail when session is not connected, but it succeeded");
+            panic!(
+                "Expected GetDeviceInfo to fail when session is not connected, but it succeeded"
+            );
         }
         Err(e) => {
             println!(
