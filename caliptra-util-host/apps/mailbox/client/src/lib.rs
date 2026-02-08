@@ -19,6 +19,10 @@ use anyhow::Result;
 use caliptra_util_host_command_types::crypto_aes::{
     AesMode, AES_GCM_IV_SIZE, AES_GCM_TAG_SIZE, AES_IV_SIZE,
 };
+use caliptra_util_host_command_types::crypto_asymmetric::{
+    EcdhFinishResponse, EcdhGenerateResponse, EcdsaPublicKeyResponse, EcdsaSignResponse,
+    CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, ECC384_SCALAR_BYTE_SIZE,
+};
 use caliptra_util_host_command_types::crypto_delete::DeleteResponse;
 use caliptra_util_host_command_types::crypto_hash::{
     ShaAlgorithm, ShaFinalResponse, ShaInitResponse, ShaUpdateResponse, SHA_CONTEXT_SIZE,
@@ -34,6 +38,10 @@ use caliptra_util_host_command_types::{
 use caliptra_util_host_commands::api::crypto_aes::{
     caliptra_aes_decrypt, caliptra_aes_encrypt, caliptra_aes_gcm_decrypt, caliptra_aes_gcm_encrypt,
     AesEncryptResult, AesGcmDecryptResult, AesGcmEncryptResult,
+};
+use caliptra_util_host_commands::api::crypto_asymmetric::{
+    caliptra_cmd_ecdh_finish, caliptra_cmd_ecdh_generate, caliptra_cmd_ecdsa_public_key,
+    caliptra_cmd_ecdsa_sign, caliptra_cmd_ecdsa_verify,
 };
 use caliptra_util_host_commands::api::crypto_delete::caliptra_cmd_delete;
 use caliptra_util_host_commands::api::crypto_hash::{
@@ -668,6 +676,163 @@ impl<'a> MailboxClient<'a> {
             Err(e) => {
                 eprintln!("✗ AES-GCM decrypt failed: {:?}", e);
                 Err(anyhow::anyhow!("AES-GCM decrypt failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Get the public key from an ECDSA CMK
+    ///
+    /// Extracts the public key (X, Y coordinates) from an encrypted ECDSA CMK.
+    pub fn ecdsa_public_key(&mut self, cmk: &Cmk) -> Result<EcdsaPublicKeyResponse> {
+        println!("Executing ECDSA public key command...");
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_ecdsa_public_key(&mut session, cmk) {
+            Ok(response) => {
+                println!("✓ ECDSA public key succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ ECDSA public key failed: {:?}", e);
+                Err(anyhow::anyhow!("ECDSA public key command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Sign a message with an ECDSA CMK
+    ///
+    /// Signs the provided message using ECDSA-P384.
+    pub fn ecdsa_sign(&mut self, cmk: &Cmk, message: &[u8]) -> Result<EcdsaSignResponse> {
+        println!("Executing ECDSA sign command ({} bytes)...", message.len());
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_ecdsa_sign(&mut session, cmk, message) {
+            Ok(response) => {
+                println!("✓ ECDSA sign succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ ECDSA sign failed: {:?}", e);
+                Err(anyhow::anyhow!("ECDSA sign command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Verify an ECDSA signature
+    ///
+    /// Verifies a signature over a message using the public key derived from the CMK.
+    pub fn ecdsa_verify(
+        &mut self,
+        cmk: &Cmk,
+        message: &[u8],
+        signature_r: &[u8; ECC384_SCALAR_BYTE_SIZE],
+        signature_s: &[u8; ECC384_SCALAR_BYTE_SIZE],
+    ) -> Result<()> {
+        println!(
+            "Executing ECDSA verify command ({} bytes)...",
+            message.len()
+        );
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_ecdsa_verify(&mut session, cmk, message, signature_r, signature_s) {
+            Ok(_) => {
+                println!("✓ ECDSA verify succeeded!");
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("✗ ECDSA verify failed: {:?}", e);
+                Err(anyhow::anyhow!("ECDSA verify command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Generate an ephemeral ECDH keypair
+    ///
+    /// Returns the context (for finish) and exchange data (public key to send to peer).
+    pub fn ecdh_generate(&mut self) -> Result<EcdhGenerateResponse> {
+        println!("Executing ECDH generate command...");
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_ecdh_generate(&mut session) {
+            Ok(response) => {
+                println!("✓ ECDH generate succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ ECDH generate failed: {:?}", e);
+                Err(anyhow::anyhow!("ECDH generate command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Complete ECDH key exchange and derive shared secret
+    ///
+    /// Uses the context from ecdh_generate and the peer's public key to derive a shared CMK.
+    pub fn ecdh_finish(
+        &mut self,
+        context: &[u8; CMB_ECDH_ENCRYPTED_CONTEXT_SIZE],
+        key_usage: CmKeyUsage,
+        incoming_exchange_data: &[u8; CMB_ECDH_EXCHANGE_DATA_MAX_SIZE],
+    ) -> Result<EcdhFinishResponse> {
+        println!(
+            "Executing ECDH finish command (key_usage={:?})...",
+            key_usage
+        );
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_ecdh_finish(&mut session, context, key_usage, incoming_exchange_data) {
+            Ok(response) => {
+                println!("✓ ECDH finish succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ ECDH finish failed: {:?}", e);
+                Err(anyhow::anyhow!("ECDH finish command failed: {:?}", e))
             }
         }
     }

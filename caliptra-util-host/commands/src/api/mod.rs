@@ -10,6 +10,7 @@
 // Note: These imports might appear unused but are used by other modules or re-exports
 
 pub mod crypto_aes;
+pub mod crypto_asymmetric;
 pub mod crypto_delete;
 pub mod crypto_hash;
 pub mod crypto_hmac;
@@ -18,6 +19,7 @@ pub mod device_info;
 
 pub use caliptra_util_host_session::CommandSession;
 pub use crypto_aes::*;
+pub use crypto_asymmetric::*;
 pub use crypto_delete::*;
 pub use crypto_hash::*;
 pub use crypto_hmac::*;

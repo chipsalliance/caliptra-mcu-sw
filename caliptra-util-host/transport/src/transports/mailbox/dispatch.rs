@@ -13,6 +13,9 @@ use super::aes::{
     AesGcmDecryptFinalCmd, AesGcmDecryptInitCmd, AesGcmDecryptUpdateCmd, AesGcmEncryptFinalCmd,
     AesGcmEncryptInitCmd, AesGcmEncryptUpdateCmd,
 };
+use super::crypto_asymmetric::{
+    EcdhFinishCmd, EcdhGenerateCmd, EcdsaPublicKeyCmd, EcdsaSignCmd, EcdsaVerifyCmd,
+};
 use super::delete::DeleteCmd;
 use super::device_info::{
     GetDeviceCapabilitiesCmd, GetDeviceIdCmd, GetDeviceInfoCmd, GetFirmwareVersionCmd,
@@ -66,6 +69,12 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x3013 => Some(process_command_with_metadata::<AesGcmDecryptInitCmd>),  // AesGcmDecryptInit
         0x3014 => Some(process_command_with_metadata::<AesGcmDecryptUpdateCmd>), // AesGcmDecryptUpdate
         0x3015 => Some(process_command_with_metadata::<AesGcmDecryptFinalCmd>), // AesGcmDecryptFinal
+        // ECDSA Commands (0x4001-0x4004)
+        0x4001 => Some(process_command_with_metadata::<EcdsaSignCmd>), // EcdsaSign
+        0x4002 => Some(process_command_with_metadata::<EcdsaVerifyCmd>), // EcdsaVerify
+        0x4003 => Some(process_command_with_metadata::<EcdhGenerateCmd>), // EcdhGenerate
+        0x4004 => Some(process_command_with_metadata::<EcdsaPublicKeyCmd>), // EcdsaPublicKey
+        0x4005 => Some(process_command_with_metadata::<EcdhFinishCmd>), // EcdhFinish
         _ => None,
     }
 }
@@ -108,6 +117,12 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         0x3013 => Some(0x4D43_4449), // AesGcmDecryptInit -> MC_AES_GCM_DECRYPT_INIT ("MCDI")
         0x3014 => Some(0x4D43_4455), // AesGcmDecryptUpdate -> MC_AES_GCM_DECRYPT_UPDATE ("MCDU")
         0x3015 => Some(0x4D43_4446), // AesGcmDecryptFinal -> MC_AES_GCM_DECRYPT_FINAL ("MCDF")
+        // ECDSA/ECDH Commands
+        0x4001 => Some(0x4D43_4553), // EcdsaSign -> MC_ECDSA_CMK_SIGN ("MCES")
+        0x4002 => Some(0x4D43_4556), // EcdsaVerify -> MC_ECDSA_CMK_VERIFY ("MCEV")
+        0x4003 => Some(0x4D43_4547), // EcdhGenerate -> MC_ECDH_GENERATE ("MCEG")
+        0x4004 => Some(0x4D43_4550), // EcdsaPublicKey -> MC_ECDSA_CMK_PUBLIC_KEY ("MCEP")
+        0x4005 => Some(0x4D43_4546), // EcdhFinish -> MC_ECDH_FINISH ("MCEF")
         _ => None,
     }
 }

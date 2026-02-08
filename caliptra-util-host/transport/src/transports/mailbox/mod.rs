@@ -27,6 +27,9 @@ pub mod delete;
 // AES Commands
 pub mod aes;
 
+// Asymmetric Crypto Commands (ECDSA, ECDH)
+pub mod crypto_asymmetric;
+
 // Re-export main types
 pub use transport::{Mailbox, MailboxDriver, MailboxError};
 
@@ -38,6 +41,7 @@ pub use command_traits::{
 
 // Re-export external command types for testing
 pub use aes::*;
+pub use crypto_asymmetric::*;
 pub use delete::*;
 pub use device_info::*;
 pub use hmac::*;

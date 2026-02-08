@@ -84,8 +84,9 @@ pub enum CaliptraCommandId {
     // Asymmetric Crypto Commands (0x4001-0x402F)
     EcdsaSign = 0x4001,
     EcdsaVerify = 0x4002,
-    EcdhDerive = 0x4003,
-    EccKeygen = 0x4004,
+    EcdhGenerate = 0x4003,
+    EcdsaPublicKey = 0x4004,
+    EcdhFinish = 0x4005,
     LmsKeygen = 0x4010,
     LmsSign = 0x4011,
     LmsVerify = 0x4012,

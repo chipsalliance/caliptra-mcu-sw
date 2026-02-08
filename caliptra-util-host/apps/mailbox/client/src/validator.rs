@@ -148,6 +148,14 @@ impl Validator {
         let aes_gcm_result = self.validate_aes_gcm(&mut client);
         results.push(aes_gcm_result);
 
+        // Run ECDSA validation tests
+        let ecdsa_result = self.validate_ecdsa_sign_verify(&mut client);
+        results.push(ecdsa_result);
+
+        // Run ECDH validation tests
+        let ecdh_result = self.validate_ecdh(&mut client);
+        results.push(ecdh_result);
+
         if self.verbose {
             self.print_summary(&results);
         }
@@ -1109,6 +1117,328 @@ impl Validator {
         }
 
         result
+    }
+
+    /// Validate ECDSA sign and verify commands
+    ///
+    /// Tests the full ECDSA workflow: import key, get public key, sign, verify.
+    fn validate_ecdsa_sign_verify(&self, client: &mut MailboxClient) -> ValidationResult {
+        let test_name = "ECDSA-Sign-Verify".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating ECDSA Sign/Verify Commands ===");
+        }
+
+        // Import an ECDSA key (48 bytes for P-384)
+        let ecdsa_key = [0u8; 48]; // Test key seed
+        let cmk = match client.import(CmKeyUsage::Ecdsa, &ecdsa_key) {
+            Ok(resp) => {
+                if self.verbose {
+                    println!("  ECDSA key imported successfully");
+                }
+                resp.cmk
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to import ECDSA key: {}", e);
+                eprintln!("✗ ECDSA validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+        };
+
+        // Get the public key
+        let _pub_key_resp = match client.ecdsa_public_key(&cmk) {
+            Ok(resp) => {
+                if self.verbose {
+                    println!("  Got public key X: {:02X?}...", &resp.pub_key_x[..8]);
+                    println!("  Got public key Y: {:02X?}...", &resp.pub_key_y[..8]);
+                }
+                resp
+            }
+            Err(e) => {
+                let _ = client.delete(&cmk);
+                let error_msg = format!("Failed to get public key: {}", e);
+                eprintln!("✗ ECDSA validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+        };
+
+        // Sign a message
+        let message = b"Test message for ECDSA signing";
+        let sign_resp = match client.ecdsa_sign(&cmk, message) {
+            Ok(resp) => {
+                if self.verbose {
+                    println!("  Signature R: {:02X?}...", &resp.signature_r[..8]);
+                    println!("  Signature S: {:02X?}...", &resp.signature_s[..8]);
+                }
+                resp
+            }
+            Err(e) => {
+                let _ = client.delete(&cmk);
+                let error_msg = format!("Failed to sign message: {}", e);
+                eprintln!("✗ ECDSA validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+        };
+
+        // Verify the signature (should succeed)
+        match client.ecdsa_verify(
+            &cmk,
+            message,
+            &sign_resp.signature_r,
+            &sign_resp.signature_s,
+        ) {
+            Ok(_) => {
+                if self.verbose {
+                    println!("  Signature verification succeeded ✓");
+                }
+            }
+            Err(e) => {
+                let _ = client.delete(&cmk);
+                let error_msg = format!("Signature verification failed: {}", e);
+                eprintln!("✗ ECDSA validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+        }
+
+        // Verify with tampered message (should fail)
+        let tampered_message = b"Tampered message for ECDSA signing";
+        match client.ecdsa_verify(
+            &cmk,
+            tampered_message,
+            &sign_resp.signature_r,
+            &sign_resp.signature_s,
+        ) {
+            Ok(_) => {
+                let _ = client.delete(&cmk);
+                let error_msg = "Verification with tampered message should have failed".to_string();
+                eprintln!("✗ ECDSA validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+            Err(_) => {
+                if self.verbose {
+                    println!("  Tampered message verification correctly failed ✓");
+                }
+            }
+        }
+
+        // Clean up
+        if let Err(e) = client.delete(&cmk) {
+            if self.verbose {
+                eprintln!("  Warning: Failed to delete ECDSA key: {}", e);
+            }
+        } else if self.verbose {
+            println!("  ECDSA key deleted successfully");
+        }
+
+        println!("✓ ECDSA Sign/Verify validation PASSED");
+        ValidationResult {
+            test_name,
+            passed: true,
+            error_message: None,
+        }
+    }
+
+    /// Validate ECDH key exchange commands
+    ///
+    /// Tests ECDH generate and finish, then verifies the derived key works with AES-GCM.
+    fn validate_ecdh(&self, client: &mut MailboxClient) -> ValidationResult {
+        let test_name = "ECDH-KeyExchange".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating ECDH Key Exchange Commands ===");
+        }
+
+        // Generate our ECDH keypair
+        let our_generate_resp = match client.ecdh_generate() {
+            Ok(resp) => {
+                if self.verbose {
+                    println!("  Generated ECDH keypair");
+                    println!("  Exchange data: {:02X?}...", &resp.exchange_data[..16]);
+                }
+                resp
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to generate ECDH keypair: {}", e);
+                eprintln!("✗ ECDH validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+        };
+
+        // Generate peer's ECDH keypair (simulating the peer)
+        let peer_generate_resp = match client.ecdh_generate() {
+            Ok(resp) => {
+                if self.verbose {
+                    println!("  Generated peer ECDH keypair");
+                    println!(
+                        "  Peer exchange data: {:02X?}...",
+                        &resp.exchange_data[..16]
+                    );
+                }
+                resp
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to generate peer ECDH keypair: {}", e);
+                eprintln!("✗ ECDH validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+        };
+
+        // Complete ECDH from our side using peer's public key
+        let our_finish_resp = match client.ecdh_finish(
+            &our_generate_resp.context,
+            CmKeyUsage::Aes,
+            &peer_generate_resp.exchange_data,
+        ) {
+            Ok(resp) => {
+                if self.verbose {
+                    println!("  Completed ECDH key exchange (our side)");
+                }
+                resp
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to complete ECDH (our side): {}", e);
+                eprintln!("✗ ECDH validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+        };
+
+        // Complete ECDH from peer's side using our public key
+        let peer_finish_resp = match client.ecdh_finish(
+            &peer_generate_resp.context,
+            CmKeyUsage::Aes,
+            &our_generate_resp.exchange_data,
+        ) {
+            Ok(resp) => {
+                if self.verbose {
+                    println!("  Completed ECDH key exchange (peer side)");
+                }
+                resp
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to complete ECDH (peer side): {}", e);
+                eprintln!("✗ ECDH validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+        };
+
+        // Verify both sides derived the same shared secret by using them for AES-GCM
+        let test_data = b"ECDH shared secret verification test data";
+        let aad = b"additional authenticated data";
+
+        // Encrypt with our derived key
+        let encrypt_result = match client.aes_gcm_encrypt(&our_finish_resp.output, aad, test_data) {
+            Ok(result) => {
+                if self.verbose {
+                    println!("  Encrypted test data with our derived key");
+                }
+                result
+            }
+            Err(e) => {
+                let _ = client.delete(&our_finish_resp.output);
+                let _ = client.delete(&peer_finish_resp.output);
+                let error_msg = format!("Failed to encrypt with derived key: {}", e);
+                eprintln!("✗ ECDH validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+        };
+
+        // Decrypt with peer's derived key (should work if they derived the same key)
+        match client.aes_gcm_decrypt(
+            &peer_finish_resp.output,
+            &encrypt_result.iv,
+            aad,
+            &encrypt_result.ciphertext,
+            &encrypt_result.tag,
+        ) {
+            Ok(result) => {
+                if result.plaintext == test_data {
+                    if self.verbose {
+                        println!("  Decrypted successfully with peer's derived key ✓");
+                        println!("  Both sides derived the same shared secret!");
+                    }
+                } else {
+                    let _ = client.delete(&our_finish_resp.output);
+                    let _ = client.delete(&peer_finish_resp.output);
+                    let error_msg = "Decrypted data doesn't match original".to_string();
+                    eprintln!("✗ ECDH validation FAILED: {}", error_msg);
+                    return ValidationResult {
+                        test_name,
+                        passed: false,
+                        error_message: Some(error_msg),
+                    };
+                }
+            }
+            Err(e) => {
+                let _ = client.delete(&our_finish_resp.output);
+                let _ = client.delete(&peer_finish_resp.output);
+                let error_msg = format!("Failed to decrypt with peer's derived key: {}", e);
+                eprintln!("✗ ECDH validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+        }
+
+        // Clean up
+        if let Err(e) = client.delete(&our_finish_resp.output) {
+            if self.verbose {
+                eprintln!("  Warning: Failed to delete our derived key: {}", e);
+            }
+        }
+        if let Err(e) = client.delete(&peer_finish_resp.output) {
+            if self.verbose {
+                eprintln!("  Warning: Failed to delete peer's derived key: {}", e);
+            }
+        }
+
+        println!("✓ ECDH Key Exchange validation PASSED");
+        ValidationResult {
+            test_name,
+            passed: true,
+            error_message: None,
+        }
     }
 }
 
