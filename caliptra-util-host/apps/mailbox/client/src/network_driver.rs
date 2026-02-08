@@ -4,6 +4,8 @@ use caliptra_util_host_transport::{MailboxDriver, MailboxError};
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
 
+const UDP_DRV_BUF_SIZE: usize = 8 * 1024;
+
 /// UDP-based mailbox driver for network communication
 pub struct UdpTransportDriver {
     socket: Option<UdpSocket>,
@@ -17,7 +19,7 @@ impl UdpTransportDriver {
         Self {
             socket: None,
             server_addr,
-            buffer: vec![0u8; 4096],
+            buffer: vec![0u8; UDP_DRV_BUF_SIZE],
             connected: false,
         }
     }

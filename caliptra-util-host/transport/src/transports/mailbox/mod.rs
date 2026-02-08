@@ -6,10 +6,26 @@
 
 pub mod checksum;
 pub mod command_traits;
+pub mod dispatch;
 pub mod transport;
 
 // Device Info Commands
 pub mod device_info;
+
+// SHA Commands
+pub mod sha;
+
+// HMAC Commands
+pub mod hmac;
+
+// Import Command
+pub mod import;
+
+// Delete Command
+pub mod delete;
+
+// AES Commands
+pub mod aes;
 
 // Re-export main types
 pub use transport::{Mailbox, MailboxDriver, MailboxError};
@@ -21,4 +37,9 @@ pub use command_traits::{
 };
 
 // Re-export external command types for testing
+pub use aes::*;
+pub use delete::*;
 pub use device_info::*;
+pub use hmac::*;
+pub use import::*;
+pub use sha::*;

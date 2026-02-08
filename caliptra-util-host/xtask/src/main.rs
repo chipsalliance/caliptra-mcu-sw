@@ -99,6 +99,9 @@ enum Commands {
         quick: bool,
     },
 
+    /// Run pre-check-in checks (format, clippy, build)
+    Precheckin,
+
     /// Run the mailbox server
     Server {
         /// Server address to bind to
@@ -156,6 +159,7 @@ fn main() -> Result<()> {
         Commands::Clippy { fix, deny_warnings } => run_clippy(fix, deny_warnings),
         Commands::Cbindings { force } => run_cbindings(force),
         Commands::Check { quick } => run_check(quick),
+        Commands::Precheckin => run_precheckin(),
         Commands::Server {
             address,
             config,
@@ -281,6 +285,22 @@ fn run_check(quick: bool) -> Result<()> {
     }
 
     println!("✓ All checks passed!");
+    Ok(())
+}
+
+fn run_precheckin() -> Result<()> {
+    println!("Starting pre-check-in checks");
+
+    // Format check
+    run_fmt(true)?;
+
+    // Clippy check with denied warnings
+    run_clippy(false, true)?;
+
+    // Build check
+    build::run(false, vec![], true)?;
+
+    println!("✓ Pre-check-in passed!");
     Ok(())
 }
 

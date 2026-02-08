@@ -16,7 +16,10 @@ pub use zerocopy::{
 pub mod certificate;
 pub mod crypto_aes;
 pub mod crypto_asymmetric;
+pub mod crypto_delete;
 pub mod crypto_hash;
+pub mod crypto_hmac;
+pub mod crypto_import;
 pub mod debug;
 pub mod device_info;
 pub mod error;
@@ -26,7 +29,10 @@ pub mod fuse;
 pub use certificate::*;
 pub use crypto_aes::*;
 pub use crypto_asymmetric::*;
+pub use crypto_delete::*;
 pub use crypto_hash::*;
+pub use crypto_hmac::*;
+pub use crypto_import::*;
 pub use debug::*;
 pub use device_info::*;
 pub use error::*;
@@ -52,25 +58,28 @@ pub enum CaliptraCommandId {
     GetCertificate = 0x1012, // Generic get certificate
     SetCertificate = 0x1013, // Generic set certificate
 
-    // Hash Commands (0x2001-0x201F)
+    // Hash Commands (0x2001-0x2003)
     HashInit = 0x2001,
     HashUpdate = 0x2002,
     HashFinalize = 0x2003,
-    HashOneShot = 0x2004,
-    HmacInit = 0x2010,
-    HmacUpdate = 0x2011,
-    HmacFinalize = 0x2012,
-    HmacOneShot = 0x2013,
 
-    // Symmetric Crypto Commands (0x3001-0x302F)
-    AesInit = 0x3001,
-    AesUpdate = 0x3002,
-    AesFinalize = 0x3003,
-    AesOneShot = 0x3004,
-    AesGcmInit = 0x3010,
-    AesGcmUpdateAad = 0x3011,
-    KeyWrap = 0x3020,
-    KeyUnwrap = 0x3021,
+    // HMAC and Key Commands (0x2013-0x2016)
+    Hmac = 0x2013,
+    HmacKdfCounter = 0x2014,
+    Import = 0x2015,
+    Delete = 0x2016,
+
+    // Symmetric Crypto Commands (0x3001-0x3015)
+    AesEncryptInit = 0x3001,
+    AesEncryptUpdate = 0x3002,
+    AesDecryptInit = 0x3003,
+    AesDecryptUpdate = 0x3004,
+    AesGcmEncryptInit = 0x3010,
+    AesGcmEncryptUpdate = 0x3011,
+    AesGcmEncryptFinal = 0x3012,
+    AesGcmDecryptInit = 0x3013,
+    AesGcmDecryptUpdate = 0x3014,
+    AesGcmDecryptFinal = 0x3015,
 
     // Asymmetric Crypto Commands (0x4001-0x402F)
     EcdsaSign = 0x4001,
@@ -130,7 +139,7 @@ pub trait CommandRequest: IntoBytes + FromBytes + Immutable + Sized {
     }
 }
 
-/// Trait for command response structures  
+/// Trait for command response structures
 pub trait CommandResponse: IntoBytes + FromBytes + Immutable + Sized {
     /// Parse response from raw bytes
     fn from_bytes(data: &[u8]) -> Result<Self, CommandError> {
