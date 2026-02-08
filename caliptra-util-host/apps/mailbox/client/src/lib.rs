@@ -16,16 +16,26 @@ pub use validator::{run_basic_validation, run_verbose_validation, ValidationResu
 pub use caliptra_util_host_mailbox_test_config::*;
 
 use anyhow::Result;
+use caliptra_util_host_command_types::crypto_delete::DeleteResponse;
 use caliptra_util_host_command_types::crypto_hash::{
     ShaAlgorithm, ShaFinalResponse, ShaInitResponse, ShaUpdateResponse, SHA_CONTEXT_SIZE,
 };
+use caliptra_util_host_command_types::crypto_hmac::{
+    CmKeyUsage, Cmk, HmacAlgorithm, HmacKdfCounterResponse, HmacResponse,
+};
+use caliptra_util_host_command_types::crypto_import::ImportResponse;
 use caliptra_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
     GetFirmwareVersionResponse,
 };
+use caliptra_util_host_commands::api::crypto_delete::caliptra_cmd_delete;
 use caliptra_util_host_commands::api::crypto_hash::{
     caliptra_cmd_sha_final, caliptra_cmd_sha_init, caliptra_cmd_sha_update,
 };
+use caliptra_util_host_commands::api::crypto_hmac::{
+    caliptra_cmd_hmac, caliptra_cmd_hmac_kdf_counter,
+};
+use caliptra_util_host_commands::api::crypto_import::caliptra_cmd_import;
 use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
     caliptra_cmd_get_firmware_version,
@@ -340,5 +350,154 @@ impl<'a> MailboxClient<'a> {
 
         let init_resp = self.sha_init(algorithm, data)?;
         self.sha_final(&init_resp.context, &[])
+    }
+
+    /// Execute HMAC command
+    ///
+    /// Computes HMAC over the provided data using the specified key and algorithm.
+    pub fn hmac(
+        &mut self,
+        cmk: &Cmk,
+        algorithm: HmacAlgorithm,
+        data: &[u8],
+    ) -> Result<HmacResponse> {
+        println!(
+            "Executing HMAC command (algo={:?}, {} bytes)...",
+            algorithm,
+            data.len()
+        );
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_hmac(&mut session, cmk, algorithm, data) {
+            Ok(response) => {
+                println!("✓ HMAC succeeded!");
+                println!("  MAC size: {} bytes", response.mac_size);
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ HMAC failed: {:?}", e);
+                Err(anyhow::anyhow!("HMAC command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Execute HMAC KDF Counter command
+    ///
+    /// Derives a key using HMAC-based KDF in counter mode (NIST SP 800-108).
+    /// `key_size` is in bytes (e.g., 32 for 256-bit key).
+    pub fn hmac_kdf_counter(
+        &mut self,
+        kin: &Cmk,
+        algorithm: HmacAlgorithm,
+        key_usage: CmKeyUsage,
+        key_size: u32,
+        label: &[u8],
+    ) -> Result<HmacKdfCounterResponse> {
+        println!(
+            "Executing HMAC KDF Counter command (algo={:?}, usage={:?}, size={} bytes, label={} bytes)...",
+            algorithm,
+            key_usage,
+            key_size,
+            label.len()
+        );
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_hmac_kdf_counter(
+            &mut session,
+            kin,
+            algorithm,
+            key_usage,
+            key_size,
+            label,
+        ) {
+            Ok(response) => {
+                println!("✓ HMAC KDF Counter succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ HMAC KDF Counter failed: {:?}", e);
+                Err(anyhow::anyhow!("HMAC KDF Counter command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Execute Import command
+    ///
+    /// Imports a raw key and returns an encrypted CMK (Cryptographic Mailbox Key)
+    /// that can be used for HMAC, HKDF, and other cryptographic operations.
+    pub fn import(&mut self, key_usage: CmKeyUsage, key: &[u8]) -> Result<ImportResponse> {
+        println!(
+            "Executing Import command (usage={:?}, {} bytes)...",
+            key_usage,
+            key.len()
+        );
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_import(&mut session, key_usage, key) {
+            Ok(response) => {
+                println!("✓ Import succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ Import failed: {:?}", e);
+                Err(anyhow::anyhow!("Import command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Execute Delete command
+    ///
+    /// Deletes an encrypted CMK from storage. This frees up storage slots
+    /// and should be called when a key is no longer needed.
+    pub fn delete(&mut self, cmk: &Cmk) -> Result<DeleteResponse> {
+        println!("Executing Delete command...");
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_delete(&mut session, cmk) {
+            Ok(response) => {
+                println!("✓ Delete succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ Delete failed: {:?}", e);
+                Err(anyhow::anyhow!("Delete command failed: {:?}", e))
+            }
+        }
     }
 }

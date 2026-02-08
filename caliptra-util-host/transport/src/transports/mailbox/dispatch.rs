@@ -8,9 +8,12 @@
 use super::command_traits::process_command_with_metadata;
 
 // Import command metadata types from each command module
+use super::delete::DeleteCmd;
 use super::device_info::{
     GetDeviceCapabilitiesCmd, GetDeviceIdCmd, GetDeviceInfoCmd, GetFirmwareVersionCmd,
 };
+use super::hmac::{HmacCmd, HmacKdfCounterCmd};
+use super::import::ImportCmd;
 use super::sha::{ShaFinalCmd, ShaInitCmd, ShaUpdateCmd};
 
 /// Type alias for command handler function to reduce complexity
@@ -39,6 +42,13 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x2001 => Some(process_command_with_metadata::<ShaInitCmd>), // HashInit
         0x2002 => Some(process_command_with_metadata::<ShaUpdateCmd>), // HashUpdate
         0x2003 => Some(process_command_with_metadata::<ShaFinalCmd>), // HashFinalize
+        // HMAC Commands (0x2013-0x2014)
+        0x2013 => Some(process_command_with_metadata::<HmacCmd>), // Hmac
+        0x2014 => Some(process_command_with_metadata::<HmacKdfCounterCmd>), // HmacKdfCounter
+        // Import Command (0x2015)
+        0x2015 => Some(process_command_with_metadata::<ImportCmd>), // Import
+        // Delete Command (0x2016)
+        0x2016 => Some(process_command_with_metadata::<DeleteCmd>), // Delete
         _ => None,
     }
 }
@@ -62,6 +72,13 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         0x2001 => Some(0x4D43_5349), // HashInit -> MC_SHA_INIT ("MCSI")
         0x2002 => Some(0x4D43_5355), // HashUpdate -> MC_SHA_UPDATE ("MCSU")
         0x2003 => Some(0x4D43_5346), // HashFinalize -> MC_SHA_FINAL ("MCSF")
+        // HMAC Commands
+        0x2013 => Some(0x4D43_484D), // Hmac -> MC_HMAC ("MCHM")
+        0x2014 => Some(0x4D43_4B43), // HmacKdfCounter -> MC_HMAC_KDF_COUNTER ("MCKC")
+        // Import Command
+        0x2015 => Some(0x4D43_494D), // Import -> MC_IMPORT ("MCIM")
+        // Delete Command
+        0x2016 => Some(0x4D43_444C), // Delete -> MC_DELETE ("MCDL")
         _ => None,
     }
 }

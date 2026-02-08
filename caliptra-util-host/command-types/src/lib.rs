@@ -16,7 +16,10 @@ pub use zerocopy::{
 pub mod certificate;
 pub mod crypto_aes;
 pub mod crypto_asymmetric;
+pub mod crypto_delete;
 pub mod crypto_hash;
+pub mod crypto_hmac;
+pub mod crypto_import;
 pub mod debug;
 pub mod device_info;
 pub mod error;
@@ -26,7 +29,10 @@ pub mod fuse;
 pub use certificate::*;
 pub use crypto_aes::*;
 pub use crypto_asymmetric::*;
+pub use crypto_delete::*;
 pub use crypto_hash::*;
+pub use crypto_hmac::*;
+pub use crypto_import::*;
 pub use debug::*;
 pub use device_info::*;
 pub use error::*;
@@ -52,15 +58,16 @@ pub enum CaliptraCommandId {
     GetCertificate = 0x1012, // Generic get certificate
     SetCertificate = 0x1013, // Generic set certificate
 
-    // Hash Commands (0x2001-0x201F)
+    // Hash Commands (0x2001-0x2003)
     HashInit = 0x2001,
     HashUpdate = 0x2002,
     HashFinalize = 0x2003,
-    HashOneShot = 0x2004,
-    HmacInit = 0x2010,
-    HmacUpdate = 0x2011,
-    HmacFinalize = 0x2012,
-    HmacOneShot = 0x2013,
+
+    // HMAC and Key Commands (0x2013-0x2016)
+    Hmac = 0x2013,
+    HmacKdfCounter = 0x2014,
+    Import = 0x2015,
+    Delete = 0x2016,
 
     // Symmetric Crypto Commands (0x3001-0x302F)
     AesInit = 0x3001,

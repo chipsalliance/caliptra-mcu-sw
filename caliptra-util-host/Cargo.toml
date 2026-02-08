@@ -45,6 +45,7 @@ clap = { version = "4.5.23", features = [
     "unicode",
     "wrap_help",
 ] }
+hmac = "0.12"
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
 sha2 = "0.10"

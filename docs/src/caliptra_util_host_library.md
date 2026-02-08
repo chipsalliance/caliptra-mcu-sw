@@ -327,11 +327,16 @@ pub enum CaliptraCommandId {
     GetCertChain = 0x1010,
     StoreCertificate = 0x1011,
 
-    // Hash Commands (0x2001-0x201F)
+    // Hash Commands (0x2001-0x2003)
     HashInit = 0x2001,
     HashUpdate = 0x2002,
     HashFinalize = 0x2003,
-    HashOneShot = 0x2004,
+
+    // HMAC and Key Commands (0x2013-0x2016)
+    Hmac = 0x2013,
+    HmacKdfCounter = 0x2014,
+    Import = 0x2015,
+    Delete = 0x2016,
 
     // Symmetric Crypto Commands (0x3001-0x302F)
     AesInit = 0x3001,

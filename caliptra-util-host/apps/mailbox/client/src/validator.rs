@@ -125,6 +125,17 @@ impl Validator {
         let sha512_result = self.validate_sha512(&mut client);
         results.push(sha512_result);
 
+        // Run HMAC validation tests
+        let hmac_sha384_result = self.validate_hmac_sha384(&mut client);
+        results.push(hmac_sha384_result);
+
+        let hmac_sha512_result = self.validate_hmac_sha512(&mut client);
+        results.push(hmac_sha512_result);
+
+        // Run HMAC KDF Counter validation test
+        let hmac_kdf_counter_result = self.validate_hmac_kdf_counter(&mut client);
+        results.push(hmac_kdf_counter_result);
+
         if self.verbose {
             self.print_summary(&results);
         }
@@ -514,6 +525,286 @@ impl Validator {
                 }
             }
         }
+    }
+
+    /// Validate HMAC-SHA384 command
+    fn validate_hmac_sha384(&self, client: &mut MailboxClient) -> ValidationResult {
+        use caliptra_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
+
+        let test_name = "HMAC-SHA384".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating HMAC-SHA384 Command ===");
+        }
+
+        // Test data
+        let key_data = [0x0Bu8; 48]; // Test key (48 bytes for SHA384)
+        let input = b"Test message for HMAC-SHA384 validation";
+
+        // First, import the key to get a valid CMK
+        let cmk = match client.import(CmKeyUsage::Hmac, &key_data) {
+            Ok(response) => {
+                if self.verbose {
+                    println!("  Key imported successfully");
+                }
+                response.cmk
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to import key: {}", e);
+                eprintln!("✗ HMAC-SHA384 validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+        };
+
+        // Now use the imported CMK for HMAC
+        let result = match client.hmac(&cmk, HmacAlgorithm::Sha384, input) {
+            Ok(response) => {
+                // Verify MAC size
+                if response.mac_size != 48 {
+                    let error_msg = format!(
+                        "HMAC-SHA384 MAC size mismatch: expected 48, got {}",
+                        response.mac_size
+                    );
+                    eprintln!("✗ HMAC-SHA384 validation FAILED: {}", error_msg);
+                    ValidationResult {
+                        test_name: test_name.clone(),
+                        passed: false,
+                        error_message: Some(error_msg),
+                    }
+                } else {
+                    // The CMK is encrypted, so we can't compare the MAC value directly
+                    // with a software HMAC calculation. Just verify the structure is valid.
+                    if self.verbose {
+                        println!("  MAC size: {} bytes ✓", response.mac_size);
+                        println!("  MAC: {:02X?}...", &response.mac[..16]);
+                    }
+
+                    println!("✓ HMAC-SHA384 validation PASSED");
+                    ValidationResult {
+                        test_name: test_name.clone(),
+                        passed: true,
+                        error_message: None,
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("✗ HMAC-SHA384 validation FAILED: {}", e);
+                ValidationResult {
+                    test_name: test_name.clone(),
+                    passed: false,
+                    error_message: Some(e.to_string()),
+                }
+            }
+        };
+
+        // Clean up - delete the imported key
+        if let Err(e) = client.delete(&cmk) {
+            if self.verbose {
+                eprintln!("  Warning: Failed to delete key: {}", e);
+            }
+        } else if self.verbose {
+            println!("  Key deleted successfully");
+        }
+
+        result
+    }
+
+    /// Validate HMAC-SHA512 command
+    fn validate_hmac_sha512(&self, client: &mut MailboxClient) -> ValidationResult {
+        use caliptra_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
+
+        let test_name = "HMAC-SHA512".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating HMAC-SHA512 Command ===");
+        }
+
+        // Test data
+        let key_data = [0x0Cu8; 64]; // Test key (64 bytes for SHA512)
+        let input = b"Test message for HMAC-SHA512 validation";
+
+        // First, import the key to get a valid CMK
+        let cmk = match client.import(CmKeyUsage::Hmac, &key_data) {
+            Ok(response) => {
+                if self.verbose {
+                    println!("  Key imported successfully");
+                }
+                response.cmk
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to import key: {}", e);
+                eprintln!("✗ HMAC-SHA512 validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+        };
+
+        // Now use the imported CMK for HMAC
+        let result = match client.hmac(&cmk, HmacAlgorithm::Sha512, input) {
+            Ok(response) => {
+                // Verify MAC size
+                if response.mac_size != 64 {
+                    let error_msg = format!(
+                        "HMAC-SHA512 MAC size mismatch: expected 64, got {}",
+                        response.mac_size
+                    );
+                    eprintln!("✗ HMAC-SHA512 validation FAILED: {}", error_msg);
+                    ValidationResult {
+                        test_name: test_name.clone(),
+                        passed: false,
+                        error_message: Some(error_msg),
+                    }
+                } else {
+                    if self.verbose {
+                        println!("  MAC size: {} bytes ✓", response.mac_size);
+                        println!("  MAC: {:02X?}...", &response.mac[..16]);
+                    }
+
+                    println!("✓ HMAC-SHA512 validation PASSED");
+                    ValidationResult {
+                        test_name: test_name.clone(),
+                        passed: true,
+                        error_message: None,
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("✗ HMAC-SHA512 validation FAILED: {}", e);
+                ValidationResult {
+                    test_name: test_name.clone(),
+                    passed: false,
+                    error_message: Some(e.to_string()),
+                }
+            }
+        };
+
+        // Clean up - delete the imported key
+        if let Err(e) = client.delete(&cmk) {
+            if self.verbose {
+                eprintln!("  Warning: Failed to delete key: {}", e);
+            }
+        } else if self.verbose {
+            println!("  Key deleted successfully");
+        }
+
+        result
+    }
+
+    /// Validate HMAC KDF Counter command
+    fn validate_hmac_kdf_counter(&self, client: &mut MailboxClient) -> ValidationResult {
+        use caliptra_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
+
+        let test_name = "HMAC-KDF-Counter".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating HMAC KDF Counter Command ===");
+        }
+
+        // Test data - use a 48-byte key for SHA384
+        let key_data = [0x0Du8; 48]; // Input key
+
+        // First, import the key to get a valid CMK
+        let kin = match client.import(CmKeyUsage::Hmac, &key_data) {
+            Ok(response) => {
+                if self.verbose {
+                    println!("  Input key imported successfully");
+                }
+                response.cmk
+            }
+            Err(e) => {
+                let error_msg = format!("Failed to import key: {}", e);
+                eprintln!("✗ HMAC KDF Counter validation FAILED: {}", error_msg);
+                return ValidationResult {
+                    test_name,
+                    passed: false,
+                    error_message: Some(error_msg),
+                };
+            }
+        };
+
+        let label = b"key derivation test label";
+        let key_size = 32; // 32 bytes for AES-256 key
+
+        let (result, derived_cmk) = match client.hmac_kdf_counter(
+            &kin,
+            HmacAlgorithm::Sha384,
+            CmKeyUsage::Aes,
+            key_size,
+            label,
+        ) {
+            Ok(response) => {
+                // Verify we got a valid CMK back (128 bytes)
+                if response.kout.0.len() != 128 {
+                    let error_msg = format!(
+                        "HMAC KDF Counter output key size mismatch: expected 128, got {}",
+                        response.kout.0.len()
+                    );
+                    eprintln!("✗ HMAC KDF Counter validation FAILED: {}", error_msg);
+                    (
+                        ValidationResult {
+                            test_name: test_name.clone(),
+                            passed: false,
+                            error_message: Some(error_msg),
+                        },
+                        Some(response.kout),
+                    )
+                } else {
+                    if self.verbose {
+                        println!("  Output key (CMK): {:02X?}...", &response.kout.0[..16]);
+                    }
+
+                    println!("✓ HMAC KDF Counter validation PASSED");
+                    (
+                        ValidationResult {
+                            test_name: test_name.clone(),
+                            passed: true,
+                            error_message: None,
+                        },
+                        Some(response.kout),
+                    )
+                }
+            }
+            Err(e) => {
+                eprintln!("✗ HMAC KDF Counter validation FAILED: {}", e);
+                (
+                    ValidationResult {
+                        test_name: test_name.clone(),
+                        passed: false,
+                        error_message: Some(e.to_string()),
+                    },
+                    None,
+                )
+            }
+        };
+
+        // Clean up - delete the derived key if it was created
+        if let Some(ref kout) = derived_cmk {
+            if let Err(e) = client.delete(kout) {
+                if self.verbose {
+                    eprintln!("  Warning: Failed to delete derived key: {}", e);
+                }
+            } else if self.verbose {
+                println!("  Derived key deleted successfully");
+            }
+        }
+
+        // Clean up - delete the input key
+        if let Err(e) = client.delete(&kin) {
+            if self.verbose {
+                eprintln!("  Warning: Failed to delete input key: {}", e);
+            }
+        } else if self.verbose {
+            println!("  Input key deleted successfully");
+        }
+
+        result
     }
 }
 
