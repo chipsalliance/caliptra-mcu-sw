@@ -7,6 +7,7 @@
 pub mod aes;
 pub mod checksum;
 pub mod command_traits;
+pub mod crypto_asymmetric;
 pub mod delete;
 pub mod device_info;
 pub mod dispatch;
@@ -26,6 +27,7 @@ pub use command_traits::{
 
 // Re-export external command types for testing
 pub use aes::*;
+pub use crypto_asymmetric::*;
 pub use delete::*;
 pub use device_info::*;
 pub use hmac::*;
