@@ -22,27 +22,13 @@ use caliptra_util_host_command_types::crypto_hmac::{
 use caliptra_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-// External mailbox command codes
-pub const MC_HMAC: u32 = 0x4D43_484D; // "MCHM"
-pub const MC_HMAC_KDF_COUNTER: u32 = 0x4D43_4B43; // "MCKC"
-
-// ============================================================================
-// MC_HMAC Command
-// ============================================================================
-
-/// External HMAC request format
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdHmacRequest {
-    /// Checksum over input data
     pub chksum: u32,
-    /// Cryptographic mailbox key (encrypted)
     pub cmk: [u8; CMK_SIZE],
-    /// Hash algorithm (1 = SHA384, 2 = SHA512)
     pub hash_algorithm: u32,
-    /// Size of input data in bytes
     pub data_size: u32,
-    /// Input data
     pub data: [u8; MAX_HMAC_INPUT_SIZE],
 }
 
@@ -58,17 +44,12 @@ impl Default for ExtCmdHmacRequest {
     }
 }
 
-/// External HMAC response format (variable size)
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdHmacResponse {
-    /// Checksum field
     pub chksum: u32,
-    /// FIPS status
     pub fips_status: u32,
-    /// Size of MAC in bytes
     pub data_len: u32,
-    /// MAC output
     pub mac: [u8; MAX_HMAC_SIZE],
 }
 
@@ -90,7 +71,7 @@ impl FromInternalRequest<HmacRequest> for ExtCmdHmacRequest {
         payload.extend_from_slice(&internal.cmk.0);
         payload.extend_from_slice(&internal.hash_algorithm.to_le_bytes());
         payload.extend_from_slice(&internal.data_size.to_le_bytes());
-        let data_len = internal.data_size as usize;
+        let data_len = core::cmp::min(internal.data_size as usize, MAX_HMAC_INPUT_SIZE);
         payload.extend_from_slice(&internal.data[..data_len]);
 
         let chksum = calc_checksum(command_code, &payload);
@@ -165,27 +146,15 @@ impl VariableSizeBytes for ExtCmdHmacResponse {
     }
 }
 
-// ============================================================================
-// MC_HMAC_KDF_COUNTER Command
-// ============================================================================
-
-/// External HMAC KDF Counter request format
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdHmacKdfCounterRequest {
-    /// Checksum over input data
     pub chksum: u32,
-    /// Input key (encrypted CMK)
     pub kin: [u8; CMK_SIZE],
-    /// Hash algorithm (1 = SHA384, 2 = SHA512)
     pub hash_algorithm: u32,
-    /// Key usage for the derived key
     pub key_usage: u32,
-    /// Size of the derived key in bits
     pub key_size: u32,
-    /// Size of the label in bytes
     pub label_size: u32,
-    /// Label data
     pub label: [u8; MAX_HMAC_INPUT_SIZE],
 }
 
@@ -203,15 +172,11 @@ impl Default for ExtCmdHmacKdfCounterRequest {
     }
 }
 
-/// External HMAC KDF Counter response format (fixed size)
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdHmacKdfCounterResponse {
-    /// Checksum field
     pub chksum: u32,
-    /// FIPS status
     pub fips_status: u32,
-    /// Output key (encrypted CMK)
     pub kout: [u8; CMK_SIZE],
 }
 

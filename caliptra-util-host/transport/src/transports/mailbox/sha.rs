@@ -12,10 +12,9 @@
 
 extern crate alloc;
 
-use alloc::vec::Vec;
-
 use super::checksum::calc_checksum;
 use super::command_traits::*;
+use alloc::vec::Vec;
 use caliptra_util_host_command_types::crypto_hash::{
     ShaFinalRequest, ShaFinalResponse, ShaInitRequest, ShaInitResponse, ShaUpdateRequest,
     ShaUpdateResponse, MAX_HASH_SIZE, MAX_SHA_INPUT_SIZE, SHA_CONTEXT_SIZE,
@@ -23,26 +22,12 @@ use caliptra_util_host_command_types::crypto_hash::{
 use caliptra_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-// External mailbox command codes
-pub const MC_SHA_INIT: u32 = 0x4D43_5349; // "MCSI"
-pub const MC_SHA_UPDATE: u32 = 0x4D43_5355; // "MCSU"
-pub const MC_SHA_FINAL: u32 = 0x4D43_5346; // "MCSF"
-
-// ============================================================================
-// MC_SHA_INIT Command
-// ============================================================================
-
-/// External SHA Init request format
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdShaInitRequest {
-    /// Checksum over input data
     pub chksum: u32,
-    /// Hash algorithm (1 = SHA384, 2 = SHA512)
     pub hash_algorithm: u32,
-    /// Size of input data in bytes
     pub input_size: u32,
-    /// Input data
     pub input: [u8; MAX_SHA_INPUT_SIZE],
 }
 
@@ -57,15 +42,11 @@ impl Default for ExtCmdShaInitRequest {
     }
 }
 
-/// External SHA Init response format
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdShaInitResponse {
-    /// Checksum field
     pub chksum: u32,
-    /// FIPS status
     pub fips_status: u32,
-    /// Opaque context for subsequent operations
     pub context: [u8; SHA_CONTEXT_SIZE],
 }
 
@@ -85,7 +66,7 @@ impl FromInternalRequest<ShaInitRequest> for ExtCmdShaInitRequest {
         let mut payload = Vec::new();
         payload.extend_from_slice(&internal.algorithm.to_le_bytes());
         payload.extend_from_slice(&internal.input_size.to_le_bytes());
-        let input_len = internal.input_size as usize;
+        let input_len = core::cmp::min(internal.input_size as usize, MAX_SHA_INPUT_SIZE);
         payload.extend_from_slice(&internal.input[..input_len]);
 
         let chksum = calc_checksum(command_code, &payload);
@@ -113,21 +94,12 @@ impl ToInternalResponse<ShaInitResponse> for ExtCmdShaInitResponse {
 impl VariableSizeBytes for ExtCmdShaInitRequest {}
 impl VariableSizeBytes for ExtCmdShaInitResponse {}
 
-// ============================================================================
-// MC_SHA_UPDATE Command
-// ============================================================================
-
-/// External SHA Update request format
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdShaUpdateRequest {
-    /// Checksum over input data
     pub chksum: u32,
-    /// Context from previous operation
     pub context: [u8; SHA_CONTEXT_SIZE],
-    /// Size of input data in bytes
     pub input_size: u32,
-    /// Input data
     pub input: [u8; MAX_SHA_INPUT_SIZE],
 }
 
@@ -142,7 +114,6 @@ impl Default for ExtCmdShaUpdateRequest {
     }
 }
 
-/// External SHA Update response format (same as init response)
 pub type ExtCmdShaUpdateResponse = ExtCmdShaInitResponse;
 
 impl FromInternalRequest<ShaUpdateRequest> for ExtCmdShaUpdateRequest {
@@ -151,7 +122,7 @@ impl FromInternalRequest<ShaUpdateRequest> for ExtCmdShaUpdateRequest {
         let mut payload = Vec::new();
         payload.extend_from_slice(&internal.context);
         payload.extend_from_slice(&internal.input_size.to_le_bytes());
-        let input_len = internal.input_size as usize;
+        let input_len = core::cmp::min(internal.input_size as usize, MAX_SHA_INPUT_SIZE);
         payload.extend_from_slice(&internal.input[..input_len]);
 
         let chksum = calc_checksum(command_code, &payload);
@@ -165,27 +136,14 @@ impl FromInternalRequest<ShaUpdateRequest> for ExtCmdShaUpdateRequest {
     }
 }
 
-// Note: ToInternalResponse<ShaUpdateResponse> for ExtCmdShaUpdateResponse is not needed
-// because ShaUpdateResponse = ShaInitResponse and ExtCmdShaUpdateResponse = ExtCmdShaInitResponse,
-// so the trait implementation from ExtCmdShaInitResponse applies.
-
 impl VariableSizeBytes for ExtCmdShaUpdateRequest {}
 
-// ============================================================================
-// MC_SHA_FINAL Command
-// ============================================================================
-
-/// External SHA Final request format
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdShaFinalRequest {
-    /// Checksum over input data
     pub chksum: u32,
-    /// Context from previous operation
     pub context: [u8; SHA_CONTEXT_SIZE],
-    /// Size of any remaining input data in bytes
     pub input_size: u32,
-    /// Any remaining input data
     pub input: [u8; MAX_SHA_INPUT_SIZE],
 }
 
@@ -200,17 +158,12 @@ impl Default for ExtCmdShaFinalRequest {
     }
 }
 
-/// External SHA Final response format
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdShaFinalResponse {
-    /// Checksum field
     pub chksum: u32,
-    /// FIPS status
     pub fips_status: u32,
-    /// Size of hash in bytes (48 for SHA384, 64 for SHA512)
     pub data_len: u32,
-    /// Hash output
     pub hash: [u8; MAX_HASH_SIZE],
 }
 
@@ -231,7 +184,7 @@ impl FromInternalRequest<ShaFinalRequest> for ExtCmdShaFinalRequest {
         let mut payload = Vec::new();
         payload.extend_from_slice(&internal.context);
         payload.extend_from_slice(&internal.input_size.to_le_bytes());
-        let input_len = internal.input_size as usize;
+        let input_len = core::cmp::min(internal.input_size as usize, MAX_SHA_INPUT_SIZE);
         payload.extend_from_slice(&internal.input[..input_len]);
 
         let chksum = calc_checksum(command_code, &payload);

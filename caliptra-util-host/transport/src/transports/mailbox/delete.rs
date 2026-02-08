@@ -21,20 +21,10 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 use crate::define_command;
 
-// External command codes for Delete
-pub const MC_DELETE: u32 = 0x4D43_444C; // "MCDL"
-
-// ============================================================================
-// MC_DELETE Command
-// ============================================================================
-
-/// External Delete request format
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdDeleteRequest {
-    /// Checksum over input data
     pub chksum: u32,
-    /// CMK to delete
     pub cmk: [u8; CMK_SIZE],
 }
 
@@ -47,13 +37,10 @@ impl Default for ExtCmdDeleteRequest {
     }
 }
 
-/// External Delete response format (fixed size)
 #[repr(C)]
 #[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdDeleteResponse {
-    /// Checksum field
     pub chksum: u32,
-    /// FIPS status
     pub fips_status: u32,
 }
 
@@ -82,9 +69,7 @@ impl ToInternalResponse<DeleteResponse> for ExtCmdDeleteResponse {
     }
 }
 
-impl VariableSizeBytes for ExtCmdDeleteResponse {
-    // Fixed size response - use default implementation
-}
+impl VariableSizeBytes for ExtCmdDeleteResponse {}
 
 // ============================================================================
 // Command Metadata

@@ -9,26 +9,13 @@ use crate::crypto_hmac::{CmKeyUsage, Cmk, CMK_SIZE};
 use crate::{CaliptraCommandId, CommandRequest, CommandResponse, CommonResponse};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-/// Maximum key size for import (512 bits = 64 bytes)
 pub const MAX_IMPORT_KEY_SIZE: usize = 64;
 
-// ============================================================================
-// Import Command
-// ============================================================================
-
-/// Import request - imports a raw key and returns an encrypted CMK
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ImportRequest {
-    /// Key usage for the imported key
     pub key_usage: u32,
-    /// Size of the input key in bytes
     pub input_size: u32,
-    /// Input key data (up to 64 bytes)
     pub input: [u8; MAX_IMPORT_KEY_SIZE],
 }
 
@@ -43,7 +30,6 @@ impl Default for ImportRequest {
 }
 
 impl ImportRequest {
-    /// Create a new import request with the given key and usage
     pub fn new(key_usage: CmKeyUsage, key: &[u8]) -> Self {
         let mut input = [0u8; MAX_IMPORT_KEY_SIZE];
         let len = core::cmp::min(key.len(), MAX_IMPORT_KEY_SIZE);
@@ -56,13 +42,10 @@ impl ImportRequest {
     }
 }
 
-/// Import response - contains the encrypted CMK
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ImportResponse {
-    /// Common response header
     pub common: CommonResponse,
-    /// Output CMK (encrypted key handle)
     pub cmk: Cmk,
 }
 

@@ -23,24 +23,12 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 use crate::define_command;
 
-// External command codes for Import
-pub const MC_IMPORT: u32 = 0x4D43_494D; // "MCIM"
-
-// ============================================================================
-// MC_IMPORT Command
-// ============================================================================
-
-/// External Import request format
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdImportRequest {
-    /// Checksum over input data
     pub chksum: u32,
-    /// Key usage for the imported key
     pub key_usage: u32,
-    /// Size of the input key in bytes
     pub input_size: u32,
-    /// Input key data (up to 64 bytes)
     pub input: [u8; MAX_IMPORT_KEY_SIZE],
 }
 
@@ -55,15 +43,11 @@ impl Default for ExtCmdImportRequest {
     }
 }
 
-/// External Import response format (fixed size)
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdImportResponse {
-    /// Checksum field
     pub chksum: u32,
-    /// FIPS status
     pub fips_status: u32,
-    /// Output CMK (encrypted key handle)
     pub cmk: [u8; CMK_SIZE],
 }
 
@@ -107,9 +91,7 @@ impl ToInternalResponse<ImportResponse> for ExtCmdImportResponse {
     }
 }
 
-impl VariableSizeBytes for ExtCmdImportResponse {
-    // Fixed size response - use default implementation
-}
+impl VariableSizeBytes for ExtCmdImportResponse {}
 
 // ============================================================================
 // Command Metadata

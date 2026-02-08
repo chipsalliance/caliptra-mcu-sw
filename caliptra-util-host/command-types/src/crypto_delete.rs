@@ -9,15 +9,9 @@ use crate::crypto_hmac::{Cmk, CMK_SIZE};
 use crate::{CaliptraCommandId, CommandRequest, CommandResponse, CommonResponse};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-// ============================================================================
-// Delete Command
-// ============================================================================
-
-/// Delete request - deletes an encrypted CMK from storage
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct DeleteRequest {
-    /// CMK to delete
     pub cmk: Cmk,
 }
 
@@ -30,17 +24,14 @@ impl Default for DeleteRequest {
 }
 
 impl DeleteRequest {
-    /// Create a new delete request for the given CMK
     pub fn new(cmk: &Cmk) -> Self {
         Self { cmk: cmk.clone() }
     }
 }
 
-/// Delete response - just contains FIPS status
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct DeleteResponse {
-    /// Common response header
     pub common: CommonResponse,
 }
 
