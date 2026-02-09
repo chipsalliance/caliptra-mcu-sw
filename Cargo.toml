@@ -23,8 +23,11 @@ members = [
     "firmware-bundler",
     "hw/model",
     "hw/model/test-fw",
+    "network/app/example",
     "network/config",
+    "network/net/lwip-rs",
     "network/rom",
+    "network/xtask",
     "platforms/common",
     "platforms/emulator/config",
     "platforms/emulator/mcu-image-header",
@@ -95,6 +98,7 @@ arrayvec = { version = "0.7.4", default-features = false }
 async-trait = "0.1.87"
 bitfield = "0.14.0"
 bitflags = "2.4.0"
+bindgen = "0.69"
 bit-vec = "0.6.3"
 cargo_metadata = "0.20.0"
 cbindgen = "0.24"
@@ -155,6 +159,7 @@ sha2 = { version = "0.10.8", default-features = false }
 sha3 = "0.10.8"
 simple_logger = "5.0.0"
 smlang = "0.8.0"
+spin = { version = "0.9", default-features = false, features = ["spin_mutex", "mutex"] }
 static_cell = "2.1.0"
 subst = "0.3.8"
 sudo = "0.6.0"
@@ -210,8 +215,10 @@ mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" 
 mcu-platforms-common = { path = "platforms/common" }
 mcu-rom-common = { path = "rom" }
 mcu-test-harness = {path = "platforms/test_harness"}
+lwip-rs = { path = "network/net/lwip-rs" }
 network-config = { path = "network/config" }
 network-rom = { path = "network/rom" }
+network-xtask = { path = "network/xtask" }
 mcu-testing-common = { path = "common/testing" }
 mcu-tock-veer = { path = "runtime/kernel/veer" }
 mctp-vdm-common = { path = "common/mctp-vdm" }
