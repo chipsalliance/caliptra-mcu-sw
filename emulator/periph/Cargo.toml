@@ -21,6 +21,7 @@ emulator-registers-generated.workspace = true
 lazy_static.workspace = true
 mcu-config-emulator.workspace = true
 mcu-testing-common.workspace = true
+network-config.workspace = true
 num_enum.workspace = true
 registers-generated.workspace = true
 semver.workspace = true

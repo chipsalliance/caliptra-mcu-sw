@@ -339,6 +339,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
             caliptra_rom,
             caliptra_fw: blank.to_vec(),
             soc_manifest: blank.to_vec(),
+            network_rom: vec![],
             test_roms: vec![],
             caliptra_test_roms: vec![],
             test_runtimes: vec![],

@@ -30,12 +30,13 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_bmc::Bmc;
 use emulator_caliptra::BytesOrPath;
 use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
-use emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
+use emulator_consts::{DEFAULT_CPU_ARGS, NETWORK_CPU_ARGS, RAM_ORG, ROM_SIZE};
 #[allow(unused_imports)]
 use emulator_periph::MciMailboxRequester;
 use emulator_periph::{
     CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
-    McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp, OtpArgs,
+    McuRootBus, McuRootBusArgs, McuRootBusOffsets, NetworkRootBus, NetworkRootBusArgs,
+    NetworkRootBusOffsets, Otp, OtpArgs,
 };
 use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
@@ -127,6 +128,11 @@ pub struct EmulatorArgs {
     /// The Firmware path for the Caliptra CPU.
     #[arg(long)]
     pub caliptra_firmware: PathBuf,
+
+    /// Optional ROM path for the Network Coprocessor CPU.
+    /// When provided, enables the Network Coprocessor for network boot recovery.
+    #[arg(long)]
+    pub network_rom: Option<PathBuf>,
 
     #[arg(long)]
     pub soc_manifest: PathBuf,
@@ -269,6 +275,9 @@ pub struct EmulatorArgs {
 pub struct Emulator {
     pub mcu_cpu: Cpu<AutoRootBus>,
     pub caliptra_cpu: Cpu<CaliptraMainRootBus>,
+    /// Optional Network Coprocessor CPU for network boot recovery.
+    /// This CPU runs the Network ROM firmware which implements DHCP/TFTP clients.
+    pub network_cpu: Option<Cpu<NetworkRootBus>>,
     pub bmc: Option<Bmc>,
     pub timer: Timer,
     pub trace_file: Option<File>,
@@ -857,6 +866,55 @@ impl Emulator {
         cpu.write_pc(mcu_root_bus_offsets.rom_offset);
         cpu.register_events();
 
+        // Create the Network Coprocessor CPU if network_rom is provided
+        let network_cpu = if let Some(ref network_rom_path) = cli.network_rom {
+            if !Path::new(network_rom_path).exists() {
+                println!("Network ROM File {:?} does not exist", network_rom_path);
+                exit(-1);
+            }
+
+            let network_rom_buffer = read_binary(network_rom_path, 0)?;
+            if network_rom_buffer.len() > emulator_consts::NETWORK_ROM_SIZE as usize {
+                println!(
+                    "Network ROM File Size must not exceed {} bytes",
+                    emulator_consts::NETWORK_ROM_SIZE
+                );
+                exit(-1);
+            }
+            println!(
+                "Loaded Network ROM File {:?} of size {}",
+                network_rom_path,
+                network_rom_buffer.len(),
+            );
+
+            let network_pic = Rc::new(Pic::new());
+            let network_bus_args = NetworkRootBusArgs {
+                offsets: NetworkRootBusOffsets::default(),
+                rom: network_rom_buffer,
+                log_dir: args_log_dir.clone(),
+                uart_output: None, // Network Coprocessor has separate UART output
+                uart_rx: None,
+                pic: network_pic.clone(),
+                clock: clock.clone(),
+            };
+            let network_root_bus = NetworkRootBus::new(network_bus_args).unwrap();
+
+            let network_cpu_args = NETWORK_CPU_ARGS;
+            let mut network_cpu = Cpu::new(
+                network_root_bus,
+                clock.clone(),
+                network_pic.clone(),
+                network_cpu_args,
+            );
+            network_cpu.write_pc(emulator_consts::NETWORK_ROM_ORG);
+            network_cpu.register_events();
+
+            println!("Network Coprocessor CPU initialized");
+            Some(network_cpu)
+        } else {
+            None
+        };
+
         let mut bmc;
         if is_flash_based_boot {
             println!("Emulator is using MCU recovery interface");
@@ -980,6 +1038,7 @@ impl Emulator {
         Ok(Self::new(
             cpu,
             caliptra_cpu,
+            network_cpu,
             instr_trace,
             stdin_uart,
             bmc,
@@ -998,6 +1057,7 @@ impl Emulator {
     pub fn new(
         mcu_cpu: Cpu<AutoRootBus>,
         caliptra_cpu: Cpu<CaliptraMainRootBus>,
+        network_cpu: Option<Cpu<NetworkRootBus>>,
         trace_path: Option<PathBuf>,
         stdin_uart: Option<Arc<Mutex<Option<u8>>>>,
         bmc: Option<Bmc>,
@@ -1020,6 +1080,7 @@ impl Emulator {
         Self {
             mcu_cpu,
             caliptra_cpu,
+            network_cpu,
             bmc,
             timer,
             trace_file,
@@ -1105,6 +1166,31 @@ impl Emulator {
             StepAction::Continue => {}
             _ => {
                 println!("Caliptra CPU Halted");
+            }
+        }
+
+        // Step the Network Coprocessor CPU if present
+        if let Some(ref mut network_cpu) = self.network_cpu {
+            let network_action = if self.trace_file.is_some() {
+                let network_trace_fn: &mut dyn FnMut(u32, caliptra_emu_cpu::RvInstr) =
+                    &mut |pc, instr| match instr {
+                        caliptra_emu_cpu::RvInstr::Instr32(instr32) => {
+                            println!("{{network cpu}}  {}", disassemble(pc, instr32));
+                        }
+                        caliptra_emu_cpu::RvInstr::Instr16(instr16) => {
+                            println!("{{network cpu}}  {}", disassemble(pc, instr16 as u32));
+                        }
+                    };
+                network_cpu.step(Some(network_trace_fn))
+            } else {
+                network_cpu.step(None)
+            };
+
+            match network_action {
+                StepAction::Continue => {}
+                _ => {
+                    println!("Network Coprocessor CPU Halted");
+                }
             }
         }
 

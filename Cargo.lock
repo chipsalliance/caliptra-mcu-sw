@@ -1791,6 +1791,7 @@ name = "emulator-consts"
 version = "0.1.0"
 dependencies = [
  "caliptra-emu-cpu",
+ "network-config",
 ]
 
 [[package]]
@@ -1821,6 +1822,7 @@ dependencies = [
  "lazy_static",
  "mcu-config-emulator",
  "mcu-testing-common",
+ "network-config",
  "num_enum",
  "registers-generated",
  "semver",
@@ -3080,6 +3082,7 @@ dependencies = [
  "ecdsa",
  "emulator-bmc",
  "emulator-caliptra",
+ "emulator-consts",
  "emulator-periph",
  "emulator-registers-generated",
  "fips204",
@@ -3091,6 +3094,7 @@ dependencies = [
  "mcu-config-fpga",
  "mcu-rom-common",
  "mcu-testing-common",
+ "network-config",
  "nix 0.26.4",
  "p384",
  "poll-common",
@@ -3448,6 +3452,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "network-config"
+version = "0.1.0"
+
+[[package]]
 name = "network-interface"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3457,6 +3465,13 @@ dependencies = [
  "libc",
  "thiserror 1.0.69",
  "winapi",
+]
+
+[[package]]
+name = "network-rom"
+version = "0.1.0"
+dependencies = [
+ "network-config",
 ]
 
 [[package]]
@@ -4849,12 +4864,17 @@ dependencies = [
  "caliptra-api",
  "caliptra-api-types",
  "caliptra-builder",
+ "caliptra-emu-bus",
+ "caliptra-emu-cpu",
+ "caliptra-emu-types",
  "caliptra-hw-model",
  "caliptra-hw-model-types",
  "caliptra-image-fake-keys",
  "caliptra-image-types",
  "chrono",
  "crc",
+ "emulator-consts",
+ "emulator-periph",
  "fips204",
  "flash-image",
  "hex",
@@ -4873,6 +4893,7 @@ dependencies = [
  "mcu-mbox-common",
  "mcu-rom-common",
  "mcu-testing-common",
+ "network-config",
  "openssl",
  "p384",
  "pldm-common",

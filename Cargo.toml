@@ -23,6 +23,8 @@ members = [
     "firmware-bundler",
     "hw/model",
     "hw/model/test-fw",
+    "network/config",
+    "network/rom",
     "platforms/common",
     "platforms/emulator/config",
     "platforms/emulator/mcu-image-header",
@@ -209,6 +211,8 @@ mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" 
 mcu-platforms-common = { path = "platforms/common" }
 mcu-rom-common = { path = "rom" }
 mcu-test-harness = {path = "platforms/test_harness"}
+network-config = { path = "network/config" }
+network-rom = { path = "network/rom" }
 mcu-testing-common = { path = "common/testing" }
 mcu-tock-veer = { path = "runtime/kernel/veer" }
 mctp-vdm-common = { path = "common/mctp-vdm" }

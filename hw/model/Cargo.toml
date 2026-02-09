@@ -30,6 +30,7 @@ caliptra-registers.workspace = true
 ecdsa.workspace = true
 emulator-bmc.workspace = true
 emulator-caliptra.workspace = true
+emulator-consts.workspace = true
 emulator-periph.workspace = true
 emulator-registers-generated.workspace = true
 fips204.workspace = true
@@ -41,6 +42,7 @@ mcu-config-fpga = { workspace = true, optional = true }
 mcu-config.workspace = true
 mcu-rom-common.workspace = true
 mcu-testing-common.workspace = true
+network-config.workspace = true
 p384.workspace = true
 poll-common.workspace = true
 rand.workspace = true

@@ -4,6 +4,8 @@ mod i3c_socket;
 #[cfg(feature = "fpga_realtime")]
 mod jtag;
 #[cfg(test)]
+mod network;
+#[cfg(test)]
 mod rom;
 mod test_dot;
 mod test_exception_handler;
@@ -52,6 +54,7 @@ mod test {
         pub i3c_port: Option<u16>,
         pub dot_flash_initial_contents: Option<Vec<u8>>,
         pub rom_only: bool,
+        pub include_network_rom: bool,
         pub flash_boot: bool,
     }
 
@@ -176,6 +179,7 @@ mod test {
         mcu_rom: Vec<u8>,
         soc_manifest: Vec<u8>,
         mcu_runtime: Vec<u8>,
+        network_rom: Vec<u8>,
     }
 
     fn prebuilt_binaries(
@@ -192,6 +196,7 @@ mod test {
             mcu_rom: binaries.mcu_rom.clone(),
             soc_manifest: binaries.soc_manifest.clone(),
             mcu_runtime: binaries.mcu_runtime.clone(),
+            network_rom: binaries.network_rom.clone(),
         };
 
         // check for prebuilt binaries for our test feature
@@ -247,6 +252,12 @@ mod test {
             .expect("Invalid hex string for vendor_pk_hash");
         let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
 
+        // Network ROM is optional - build it if the build system supports it
+        let network_rom = match mcu_builder::network_rom_build() {
+            Ok(path) => std::fs::read(path).unwrap_or_default(),
+            Err(_) => Vec::new(),
+        };
+
         TestBinaries {
             vendor_pk_hash_u8,
             caliptra_rom,
@@ -254,6 +265,7 @@ mod test {
             mcu_rom,
             soc_manifest,
             mcu_runtime,
+            network_rom,
         }
     }
 
@@ -268,6 +280,7 @@ mod test {
             mcu_rom,
             soc_manifest,
             mcu_runtime,
+            network_rom,
         } = match FirmwareBinaries::from_env() {
             Ok(binaries) => prebuilt_binaries(params.feature, binaries),
             _ => {
@@ -286,7 +299,12 @@ mod test {
             .collect();
         let vendor_pk_hash: [u32; 12] = vendor_pk_hash.as_slice().try_into().unwrap();
 
-        // TODO: read the PQC type
+        // Only include network ROM if requested
+        let network_rom_slice: &[u8] = if params.include_network_rom {
+            &network_rom
+        } else {
+            &[]
+        };
 
         // Build flash image for flash-based boot, or use individual images for streaming boot
         let (flash_image, caliptra_firmware, soc_manifest_bytes, mcu_firmware) =
@@ -302,6 +320,7 @@ mod test {
                 (None, caliptra_fw, soc_manifest, mcu_runtime)
             };
 
+        // TODO: read the PQC type
         mcu_hw_model::new(InitParams {
             fuses: Fuses {
                 fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
@@ -313,14 +332,15 @@ mod test {
             caliptra_firmware: &caliptra_firmware,
             soc_manifest: &soc_manifest_bytes,
             mcu_firmware: &mcu_firmware,
+            network_rom: network_rom_slice,
             vendor_pk_hash: Some(vendor_pk_hash_u8.try_into().unwrap()),
             active_mode: true,
             vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
             i3c_port: params.i3c_port,
             enable_mcu_uart_log: true,
             dot_flash_initial_contents: params.dot_flash_initial_contents,
-            primary_flash_initial_contents: flash_image,
             check_booted_to_runtime: !params.rom_only,
+            primary_flash_initial_contents: flash_image,
             flash_boot: params.flash_boot,
             ..Default::default()
         })
@@ -640,7 +660,7 @@ mod test {
         let soc_manifest_path = target_dir.join(format!("soc_manifest_{}_prebuilt.bin", feature));
         std::fs::write(&soc_manifest_path, soc_manifest_bytes).ok()?;
 
-        let vendor_pk_hash = binaries.vendor_pk_hash().map(|h| hex::encode(h));
+        let vendor_pk_hash = binaries.vendor_pk_hash().map(hex::encode);
 
         Some(CaliptraBuilder::new(
             false,
