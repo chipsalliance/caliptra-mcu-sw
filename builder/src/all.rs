@@ -256,6 +256,15 @@ impl FirmwareBinaries {
         }
     }
 
+    /// Returns the owner public key hash from the Caliptra firmware bundle.
+    pub fn owner_pk_hash(&self) -> Option<[u8; 48]> {
+        if let Ok((manifest, _)) = ImageManifest::ref_from_prefix(&self.caliptra_fw) {
+            CaliptraBuilder::owner_pk_hash(manifest).ok()
+        } else {
+            None
+        }
+    }
+
     pub fn test_rom(&self, fwid: &FwId) -> Result<Vec<u8>> {
         let expected_name = format!("mcu-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
         for (name, data) in self.test_roms.iter() {

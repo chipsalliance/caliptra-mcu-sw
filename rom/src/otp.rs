@@ -661,6 +661,18 @@ impl Otp {
         Ok(data)
     }
 
+    /// Read from vendor non-secret prod partition
+    pub fn read_vendor_non_secret_prod_partition(&self, data: &mut [u8]) -> McuResult<()> {
+        let len = data
+            .len()
+            .min(fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE);
+        self.read_data(
+            fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
+            len,
+            data,
+        )
+    }
+
     pub fn read_fuses(&self) -> McuResult<Fuses> {
         let mut fuses = Fuses::default();
 
@@ -691,11 +703,12 @@ impl Otp {
             fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
             &mut fuses.vendor_revocations_prod_partition,
         )?;
-        // self.read_data(
-        //     fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
-        //     fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE,
-        //     &mut fuses.vendor_non_secret_prod_partition,
-        // )?;
+        romtime::println!("[mcu-rom-otp] Reading vendor non-secret production partition");
+        self.read_data(
+            fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
+            fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE,
+            &mut fuses.vendor_non_secret_prod_partition,
+        )?;
         Ok(fuses)
     }
 

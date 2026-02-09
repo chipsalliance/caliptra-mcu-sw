@@ -422,6 +422,9 @@ impl<'a> CmdInterface<'a> {
                 .await
             }
             // TODO: add more command handlers.
+            // TODO: DOT runtime commands (DOT_CAK_INSTALL, DOT_LOCK, DOT_DISABLE,
+            // DOT_UNLOCK_CHALLENGE, DOT_UNLOCK) are not yet handled here. These require
+            // Ownership_Storage support and CommandId definitions to be added first.
             _ => Err(MsgHandlerError::UnsupportedCommand),
         };
 
