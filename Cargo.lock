@@ -3203,6 +3203,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-registers-generator-new"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "mcu-registers-systemrdl-new",
+ "proc-macro2",
+ "quote",
+ "registers-systemrdl",
+ "tempfile",
+ "winnow 0.7.13",
+]
+
+[[package]]
 name = "mcu-registers-systemrdl-new"
 version = "0.1.0"
 dependencies = [
@@ -5881,6 +5894,7 @@ dependencies = [
  "mcu-firmware-bundler",
  "mcu-fuses-generator",
  "mcu-hw-model",
+ "mcu-registers-generator-new",
  "mcu-rom-common",
  "pldm-fw-pkg",
  "proc-macro2",

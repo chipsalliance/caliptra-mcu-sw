@@ -137,6 +137,9 @@ fn fix_file(path: &Path) -> Result<(), Error> {
 
 fn allow(file: &DirEntry) -> bool {
     let file_path = remove_root(file.path());
+    if is_in_venv(file.path()) {
+        return false;
+    }
     if IGNORED_PATHS.contains(&file_path.as_str()) {
         return false;
     }
@@ -149,6 +152,11 @@ fn allow(file: &DirEntry) -> bool {
         }
     }
     true
+}
+
+fn is_in_venv(path: &Path) -> bool {
+    path.components()
+        .any(|component| component.as_os_str() == "venv")
 }
 
 pub(crate) fn find_files(

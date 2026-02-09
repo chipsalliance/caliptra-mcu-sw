@@ -21,6 +21,8 @@ mod header;
 mod network;
 mod pldm_fw_pkg;
 mod precheckin;
+mod rdl_gen;
+mod rdl_gen_firmware;
 mod registers;
 mod rom;
 mod runtime;
@@ -297,6 +299,46 @@ enum Commands {
         #[command(subcommand)]
         cmd: network::NetworkCommands,
     },
+    /// [Temporary] Generate registers from RDL using the new generator
+    RdlGen {
+        /// Path to the RDL file
+        #[arg(short, long, required = true)]
+        file: PathBuf,
+
+        /// Name of the addrmap to generate
+        #[arg(short, long, required = true)]
+        addrmap: String,
+
+        /// Base address for the addrmap
+        #[arg(short, long, value_parser = maybe_hex::<usize>, default_value = "0")]
+        base_addr: usize,
+
+        /// Output file (if not specified, prints to stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Additional suffixes to strip from names (case-insensitive).
+        /// Default suffixes (_csr, _reg, _top, _ifc, _ctrl, csr) are always stripped.
+        #[arg(long = "strip-suffix")]
+        strip_suffixes: Vec<String>,
+
+        /// Prefixes to strip from names (case-insensitive).
+        /// Example: --strip-prefix caliptra_
+        #[arg(long = "strip-prefix")]
+        strip_prefixes: Vec<String>,
+
+        /// Disable default suffix stripping.
+        /// By default, common suffixes like _csr, _reg, _top, _ifc, _ctrl, csr are stripped.
+        #[arg(long)]
+        no_default_strip: bool,
+    },
+
+    /// [Temporary] Generate all firmware registers using the new generator
+    RdlGenFirmware {
+        /// Check mode - don't write files, just verify generation works
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -508,6 +550,27 @@ fn main() {
         },
         Commands::Experimental { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
         Commands::Network { cmd } => network::run(cmd.clone()),
+        Commands::RdlGen {
+            file,
+            addrmap,
+            base_addr,
+            output,
+            strip_suffixes,
+            strip_prefixes,
+            no_default_strip,
+        } => rdl_gen::generate(
+            file,
+            addrmap,
+            *base_addr,
+            output.as_deref(),
+            strip_suffixes,
+            strip_prefixes,
+            *no_default_strip,
+        ),
+        Commands::RdlGenFirmware { check } => {
+            let project_root = std::env::current_dir().expect("Failed to get current directory");
+            rdl_gen_firmware::generate(&project_root, *check)
+        }
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);

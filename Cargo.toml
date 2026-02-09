@@ -47,6 +47,7 @@ members = [
     "registers/generated-emulator",
     "registers/generated-firmware",
     "registers/generator",
+    "registers/generator-new",
     "registers/systemrdl-new",
     "registers/systemrdl",
     "rom",
@@ -229,6 +230,8 @@ registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }
 registers-systemrdl-new = { path = "registers/systemrdl-new" }
+mcu-registers-systemrdl-new = { path = "registers/systemrdl-new" }
+mcu-registers-generator-new = { path = "registers/generator-new" }
 romtime = { path = "romtime" }
 xtask = { path = "xtask" }
 
