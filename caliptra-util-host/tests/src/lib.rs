@@ -23,3 +23,12 @@ pub mod test_get_device_capabilities;
 
 #[cfg(test)]
 pub mod test_get_firmware_version;
+
+#[cfg(test)]
+pub mod test_aes;
+
+#[cfg(test)]
+pub mod test_hmac;
+
+#[cfg(test)]
+pub mod test_sha;

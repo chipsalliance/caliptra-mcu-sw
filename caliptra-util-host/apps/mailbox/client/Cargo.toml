@@ -24,4 +24,6 @@ caliptra-util-host-session.workspace = true
 caliptra-util-host-transport.workspace = true
 caliptra-util-host-commands.workspace = true
 caliptra-util-host-command-types.workspace = true
+hmac.workspace = true
+sha2.workspace = true
 zerocopy.workspace = true
