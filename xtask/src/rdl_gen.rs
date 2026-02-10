@@ -3,10 +3,13 @@
 //! Temporary command to test the new RDL-based register generator.
 
 use anyhow::Result;
-use mcu_registers_generator_new::{generate_tock_registers_from_file_with_config, NameConfig};
+use mcu_registers_generator_new::{
+    generate_tock_registers_from_file_with_filter, FilterConfig, NameConfig,
+};
 use std::path::Path;
 
 /// Generate registers from an RDL file using the new generator.
+#[allow(clippy::too_many_arguments)]
 pub fn generate(
     rdl_file: &Path,
     addrmap: &str,
@@ -15,6 +18,9 @@ pub fn generate(
     strip_suffixes: &[String],
     strip_prefixes: &[String],
     no_default_strip: bool,
+    include_offset_ranges: &[(usize, usize)],
+    exclude_offset_ranges: &[(usize, usize)],
+    exclude_names: &[String],
 ) -> Result<()> {
     println!("Generating registers from: {}", rdl_file.display());
     println!("Addrmap: {}, Base address: 0x{:x}", addrmap, base_addr);
@@ -36,10 +42,27 @@ pub fn generate(
         name_config = name_config.add_prefix(prefix);
     }
 
-    let code = generate_tock_registers_from_file_with_config(
+    // Build filter configuration
+    let mut filter_config = FilterConfig::new();
+    for (start, end) in include_offset_ranges {
+        filter_config = filter_config.include_offset_range(*start, *end);
+    }
+    for (start, end) in exclude_offset_ranges {
+        filter_config = filter_config.exclude_offset_range(*start, *end);
+    }
+    for name in exclude_names {
+        filter_config = filter_config.exclude_name(name);
+    }
+
+    if !filter_config.is_empty() {
+        println!("Filter: {:?}", filter_config);
+    }
+
+    let code = generate_tock_registers_from_file_with_filter(
         rdl_file,
         &[(addrmap, base_addr)],
         &name_config,
+        &filter_config,
     )?;
 
     if let Some(output_path) = output {

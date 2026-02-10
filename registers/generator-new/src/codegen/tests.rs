@@ -1396,4 +1396,235 @@ addrmap width_types {
         compile_generated_code(&code, "width_types")
             .expect("Width types register code should compile");
     }
+
+    /// Test filtering by offset range (include only).
+    #[test]
+    fn test_filter_include_offset_range() {
+        use super::super::World;
+
+        let input = r#"
+addrmap test_filter {
+    reg my_reg_t {
+        field { sw=rw; hw=r; } data[32] = 0;
+    };
+
+    my_reg_t reg_a @ 0x0;
+    my_reg_t reg_b @ 0x4;
+    my_reg_t reg_c @ 0x100;
+    my_reg_t reg_d @ 0x200;
+};
+"#;
+        let root = mcu_registers_systemrdl_new::parse(input).unwrap();
+        let world = World::parse(&root).unwrap();
+
+        let filter = FilterConfig::new().include_offset_range(0x0, 0x10);
+
+        let code = world
+            .generate_addrmap_code_with_config(
+                "test_filter",
+                0,
+                &crate::config::NameConfig::with_defaults(),
+                &filter,
+            )
+            .unwrap()
+            .unwrap();
+        println!("Filtered code:\n{}", code);
+
+        assert!(
+            code.contains("reg_a"),
+            "reg_a should be included (offset 0x0)"
+        );
+        assert!(
+            code.contains("reg_b"),
+            "reg_b should be included (offset 0x4)"
+        );
+        assert!(
+            !code.contains("reg_c"),
+            "reg_c should be excluded (offset 0x100)"
+        );
+        assert!(
+            !code.contains("reg_d"),
+            "reg_d should be excluded (offset 0x200)"
+        );
+    }
+
+    /// Test filtering by offset range (exclude).
+    #[test]
+    fn test_filter_exclude_offset_range() {
+        use super::super::World;
+
+        let input = r#"
+addrmap test_filter_ex {
+    reg my_reg_t {
+        field { sw=rw; hw=r; } data[32] = 0;
+    };
+
+    my_reg_t reg_a @ 0x0;
+    my_reg_t reg_b @ 0x4;
+    my_reg_t reg_c @ 0x100;
+    my_reg_t reg_d @ 0x200;
+};
+"#;
+        let root = mcu_registers_systemrdl_new::parse(input).unwrap();
+        let world = World::parse(&root).unwrap();
+
+        let filter = FilterConfig::new().exclude_offset_range(0x100, 0x200);
+
+        let code = world
+            .generate_addrmap_code_with_config(
+                "test_filter_ex",
+                0,
+                &crate::config::NameConfig::with_defaults(),
+                &filter,
+            )
+            .unwrap()
+            .unwrap();
+        println!("Filtered code:\n{}", code);
+
+        assert!(code.contains("reg_a"), "reg_a should be included");
+        assert!(code.contains("reg_b"), "reg_b should be included");
+        assert!(
+            !code.contains("reg_c"),
+            "reg_c should be excluded (offset 0x100)"
+        );
+        assert!(
+            !code.contains("reg_d"),
+            "reg_d should be excluded (offset 0x200)"
+        );
+    }
+
+    /// Test filtering by name.
+    #[test]
+    fn test_filter_exclude_name() {
+        use super::super::World;
+
+        let input = r#"
+addrmap test_filter_name {
+    reg status_reg_t {
+        field { sw=r; hw=rw; } ready[1] = 0;
+        field { sw=r; hw=rw; } error[1] = 0;
+    };
+    reg debug_reg_t {
+        field { sw=rw; hw=r; } trace[32] = 0;
+    };
+
+    status_reg_t status @ 0x0;
+    debug_reg_t debug_port @ 0x4;
+    status_reg_t status2 @ 0x8;
+};
+"#;
+        let root = mcu_registers_systemrdl_new::parse(input).unwrap();
+        let world = World::parse(&root).unwrap();
+
+        let filter = FilterConfig::new().exclude_name("debug_port");
+
+        let code = world
+            .generate_addrmap_code_with_config(
+                "test_filter_name",
+                0,
+                &crate::config::NameConfig::with_defaults(),
+                &filter,
+            )
+            .unwrap()
+            .unwrap();
+        println!("Filtered code:\n{}", code);
+
+        assert!(code.contains("status"), "status should be included");
+        assert!(code.contains("status2"), "status2 should be included");
+        assert!(
+            !code.contains("debug_port"),
+            "debug_port should be excluded by name"
+        );
+        // debug_reg_t bitfield type should be removed since no instances reference it
+        assert!(
+            !code.contains("DebugRegT"),
+            "debug_reg_t type should be removed (unreferenced)"
+        );
+    }
+
+    /// Test combined offset and name filtering.
+    #[test]
+    fn test_filter_combined() {
+        use super::super::World;
+
+        let input = r#"
+addrmap test_combined {
+    reg data_reg_t {
+        field { sw=rw; hw=r; } data[32] = 0;
+    };
+
+    data_reg_t reg_a @ 0x0;
+    data_reg_t debug_reg @ 0x4;
+    data_reg_t reg_c @ 0x100;
+    data_reg_t reg_d @ 0x200;
+};
+"#;
+        let root = mcu_registers_systemrdl_new::parse(input).unwrap();
+        let world = World::parse(&root).unwrap();
+
+        let filter = FilterConfig::new()
+            .include_offset_range(0x0, 0x10)
+            .exclude_name("debug_reg");
+
+        let code = world
+            .generate_addrmap_code_with_config(
+                "test_combined",
+                0,
+                &crate::config::NameConfig::with_defaults(),
+                &filter,
+            )
+            .unwrap()
+            .unwrap();
+        println!("Filtered code:\n{}", code);
+
+        assert!(code.contains("reg_a"), "reg_a should be included");
+        assert!(
+            !code.contains("debug_reg"),
+            "debug_reg should be excluded by name"
+        );
+        assert!(
+            !code.contains("reg_c"),
+            "reg_c should be excluded by offset"
+        );
+        assert!(
+            !code.contains("reg_d"),
+            "reg_d should be excluded by offset"
+        );
+    }
+
+    /// Test that no filter means everything passes.
+    #[test]
+    fn test_filter_empty_includes_all() {
+        use super::super::World;
+
+        let input = r#"
+addrmap test_all {
+    reg my_reg_t {
+        field { sw=rw; hw=r; } data[32] = 0;
+    };
+
+    my_reg_t reg_a @ 0x0;
+    my_reg_t reg_b @ 0x100;
+    my_reg_t reg_c @ 0x200;
+};
+"#;
+        let root = mcu_registers_systemrdl_new::parse(input).unwrap();
+        let world = World::parse(&root).unwrap();
+
+        let filter = FilterConfig::new();
+
+        let code = world
+            .generate_addrmap_code_with_config(
+                "test_all",
+                0,
+                &crate::config::NameConfig::with_defaults(),
+                &filter,
+            )
+            .unwrap()
+            .unwrap();
+
+        assert!(code.contains("reg_a"));
+        assert!(code.contains("reg_b"));
+        assert!(code.contains("reg_c"));
+    }
 }

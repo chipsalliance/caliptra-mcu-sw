@@ -6,7 +6,9 @@
 //! and outputs to `registers/generated-firmware-new`.
 
 use anyhow::{bail, Result};
-use mcu_registers_generator_new::{generate_tock_registers_from_file_with_config, NameConfig};
+use mcu_registers_generator_new::{
+    generate_tock_registers_from_file_with_filter, FilterConfig, NameConfig,
+};
 use std::fs;
 use std::path::Path;
 
@@ -22,6 +24,28 @@ struct RegisterConfig {
     base_addr: usize,
     /// Output file name (without .rs extension)
     output_name: &'static str,
+    /// Offset ranges to include (empty = include all)
+    include_offset_ranges: &'static [(usize, usize)],
+    /// Offset ranges to exclude
+    exclude_offset_ranges: &'static [(usize, usize)],
+    /// Register/block names to exclude (case-insensitive)
+    exclude_names: &'static [&'static str],
+}
+
+impl RegisterConfig {
+    fn filter_config(&self) -> FilterConfig {
+        let mut config = FilterConfig::new();
+        for (start, end) in self.include_offset_ranges {
+            config = config.include_offset_range(*start, *end);
+        }
+        for (start, end) in self.exclude_offset_ranges {
+            config = config.exclude_offset_range(*start, *end);
+        }
+        for name in self.exclude_names {
+            config = config.exclude_name(name);
+        }
+        config
+    }
 }
 
 /// All register files to generate for firmware.
@@ -33,42 +57,63 @@ const REGISTER_CONFIGS: &[RegisterConfig] = &[
         addrmap: "I3CCSR",
         base_addr: 0x2000_4000,
         output_name: "i3c",
+        include_offset_ranges: &[],
+        exclude_offset_ranges: &[],
+        exclude_names: &[],
     },
     RegisterConfig {
         rdl_file: "hw/caliptra-ss/src/mci/rtl/mci_top.rdl",
         addrmap: "mci_top",
         base_addr: 0x2100_0000,
         output_name: "mci",
+        include_offset_ranges: &[],
+        exclude_offset_ranges: &[],
+        exclude_names: &[],
     },
     RegisterConfig {
         rdl_file: "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/mbox_csr.rdl",
         addrmap: "mbox_csr",
         base_addr: 0xa002_0000,
         output_name: "mbox",
+        include_offset_ranges: &[],
+        exclude_offset_ranges: &[],
+        exclude_names: &[],
     },
     RegisterConfig {
         rdl_file: "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/sha512_acc_csr.rdl",
         addrmap: "sha512_acc_csr",
         base_addr: 0xa002_1000,
         output_name: "sha512_acc",
+        include_offset_ranges: &[],
+        exclude_offset_ranges: &[],
+        exclude_names: &[],
     },
     RegisterConfig {
         rdl_file: "hw/caliptra-ss/third_party/caliptra-rtl/src/soc_ifc/rtl/soc_ifc_reg.rdl",
         addrmap: "soc_ifc_reg",
         base_addr: 0xa003_0000,
         output_name: "soc",
+        include_offset_ranges: &[],
+        exclude_offset_ranges: &[],
+        exclude_names: &[],
     },
     RegisterConfig {
         rdl_file: "hw/caliptra-ss/src/fuse_ctrl/rtl/otp_ctrl.rdl",
         addrmap: "otp_ctrl",
         base_addr: 0x7000_0000,
         output_name: "otp_ctrl",
+        include_offset_ranges: &[],
+        exclude_offset_ranges: &[],
+        exclude_names: &[],
     },
     RegisterConfig {
         rdl_file: "hw/caliptra-ss/src/lc_ctrl/rtl/lc_ctrl.rdl",
         addrmap: "lc_ctrl",
         base_addr: 0x7000_0400,
         output_name: "lc_ctrl",
+        include_offset_ranges: &[],
+        exclude_offset_ranges: &[],
+        exclude_names: &[],
     },
     // From mcu.rdl
     RegisterConfig {
@@ -76,30 +121,45 @@ const REGISTER_CONFIGS: &[RegisterConfig] = &[
         addrmap: "el2_pic_ctrl",
         base_addr: 0x6000_0000,
         output_name: "el2_pic_ctrl",
+        include_offset_ranges: &[],
+        exclude_offset_ranges: &[],
+        exclude_names: &[],
     },
     RegisterConfig {
         rdl_file: "hw/flash_ctrl.rdl",
         addrmap: "flash_ctrl",
         base_addr: 0x2000_8000,
         output_name: "primary_flash_ctrl",
+        include_offset_ranges: &[],
+        exclude_offset_ranges: &[],
+        exclude_names: &[],
     },
     RegisterConfig {
         rdl_file: "hw/flash_ctrl.rdl",
         addrmap: "flash_ctrl",
         base_addr: 0x2000_8800,
         output_name: "secondary_flash_ctrl",
+        include_offset_ranges: &[],
+        exclude_offset_ranges: &[],
+        exclude_names: &[],
     },
     RegisterConfig {
         rdl_file: "hw/axicdma.rdl",
         addrmap: "axicdma",
         base_addr: 0xa408_1000,
         output_name: "axicdma",
+        include_offset_ranges: &[],
+        exclude_offset_ranges: &[],
+        exclude_names: &[],
     },
     RegisterConfig {
         rdl_file: "hw/doe_mbox.rdl",
         addrmap: "doe_mbox",
         base_addr: 0x2F00_0000,
         output_name: "doe_mbox",
+        include_offset_ranges: &[],
+        exclude_offset_ranges: &[],
+        exclude_names: &[],
     },
 ];
 
@@ -137,10 +197,11 @@ pub fn generate(project_root: &Path, check: bool) -> Result<()> {
             config.output_name, config.rdl_file, config.addrmap, config.base_addr
         );
 
-        match generate_tock_registers_from_file_with_config(
+        match generate_tock_registers_from_file_with_filter(
             &rdl_path,
             &[(config.addrmap, config.base_addr)],
             &name_config,
+            &config.filter_config(),
         ) {
             Ok(code) => {
                 let output_path = dest_dir.join(format!("{}.rs", config.output_name));

@@ -1,11 +1,14 @@
 // Licensed under the Apache-2.0 license
 
-//! Configuration for name transformations during code generation.
+//! Configuration for name transformations and filtering during code generation.
 //!
 //! This module provides [`NameConfig`] which controls how register, regfile,
 //! and addrmap names are transformed when generating Rust code. Common use
 //! cases include stripping suffixes like `_csr` or `_reg` to produce cleaner
 //! struct names.
+//!
+//! It also provides [`FilterConfig`] which controls which registers and address
+//! map blocks are included or excluded from code generation.
 
 /// Configuration for name transformations during code generation.
 ///
@@ -129,6 +132,108 @@ impl NameConfig {
     }
 }
 
+/// Configuration for filtering which registers and blocks are generated.
+///
+/// This allows limiting code generation to specific offset ranges or
+/// excluding certain register/block names.
+///
+/// # Example
+///
+/// ```
+/// use mcu_registers_generator_new::config::FilterConfig;
+///
+/// // Only generate registers in a specific offset range
+/// let config = FilterConfig::new()
+///     .include_offset_range(0x0, 0x100);
+///
+/// // Exclude specific register or block names
+/// let config = FilterConfig::new()
+///     .exclude_name("debug_reg")
+///     .exclude_name("test_block");
+///
+/// // Exclude an offset range
+/// let config = FilterConfig::new()
+///     .exclude_offset_range(0x200, 0x300);
+/// ```
+#[derive(Clone, Debug, Default)]
+pub struct FilterConfig {
+    /// Only include registers whose offsets fall within these ranges (inclusive).
+    /// If empty, all offsets are included (subject to exclude_offset_ranges).
+    pub include_offset_ranges: Vec<(usize, usize)>,
+
+    /// Exclude registers whose offsets fall within these ranges (inclusive).
+    pub exclude_offset_ranges: Vec<(usize, usize)>,
+
+    /// Exclude registers or addrmap blocks whose names match (case-insensitive).
+    pub exclude_names: Vec<String>,
+}
+
+impl FilterConfig {
+    /// Create a new FilterConfig with no filtering (everything included).
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add an inclusive offset range. Only registers with offsets in at least
+    /// one of the included ranges will be generated. If no include ranges are
+    /// specified, all offsets are included (subject to exclude ranges).
+    pub fn include_offset_range(mut self, start: usize, end: usize) -> Self {
+        self.include_offset_ranges.push((start, end));
+        self
+    }
+
+    /// Add an exclusive offset range. Registers with offsets falling within
+    /// any excluded range will be skipped.
+    pub fn exclude_offset_range(mut self, start: usize, end: usize) -> Self {
+        self.exclude_offset_ranges.push((start, end));
+        self
+    }
+
+    /// Exclude registers or blocks whose name matches (case-insensitive).
+    pub fn exclude_name(mut self, name: &str) -> Self {
+        self.exclude_names.push(name.to_lowercase());
+        self
+    }
+
+    /// Returns true if this filter has no constraints (everything passes).
+    pub fn is_empty(&self) -> bool {
+        self.include_offset_ranges.is_empty()
+            && self.exclude_offset_ranges.is_empty()
+            && self.exclude_names.is_empty()
+    }
+
+    /// Check whether a register at the given offset with the given name
+    /// should be included in code generation.
+    pub fn should_include(&self, offset: usize, name: &str) -> bool {
+        // Check name exclusion
+        let name_lower = name.to_lowercase();
+        if self.exclude_names.iter().any(|n| *n == name_lower) {
+            return false;
+        }
+
+        // Check offset exclusion
+        if self
+            .exclude_offset_ranges
+            .iter()
+            .any(|(start, end)| offset >= *start && offset <= *end)
+        {
+            return false;
+        }
+
+        // Check offset inclusion (empty means include all)
+        if !self.include_offset_ranges.is_empty()
+            && !self
+                .include_offset_ranges
+                .iter()
+                .any(|(start, end)| offset >= *start && offset <= *end)
+        {
+            return false;
+        }
+
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,5 +266,59 @@ mod tests {
     fn test_preserves_case() {
         let config = NameConfig::with_defaults();
         assert_eq!(config.transform("MyModule_CSR"), "MyModule");
+    }
+
+    #[test]
+    fn test_filter_config_empty() {
+        let config = FilterConfig::new();
+        assert!(config.is_empty());
+        assert!(config.should_include(0x0, "any_name"));
+        assert!(config.should_include(0xFFFF_FFFF, "another_name"));
+    }
+
+    #[test]
+    fn test_filter_config_include_offset_range() {
+        let config = FilterConfig::new().include_offset_range(0x100, 0x200);
+        assert!(!config.should_include(0x0, "reg"));
+        assert!(!config.should_include(0xFF, "reg"));
+        assert!(config.should_include(0x100, "reg"));
+        assert!(config.should_include(0x150, "reg"));
+        assert!(config.should_include(0x200, "reg"));
+        assert!(!config.should_include(0x201, "reg"));
+    }
+
+    #[test]
+    fn test_filter_config_exclude_offset_range() {
+        let config = FilterConfig::new().exclude_offset_range(0x100, 0x200);
+        assert!(config.should_include(0x0, "reg"));
+        assert!(config.should_include(0xFF, "reg"));
+        assert!(!config.should_include(0x100, "reg"));
+        assert!(!config.should_include(0x150, "reg"));
+        assert!(!config.should_include(0x200, "reg"));
+        assert!(config.should_include(0x201, "reg"));
+    }
+
+    #[test]
+    fn test_filter_config_exclude_name() {
+        let config = FilterConfig::new()
+            .exclude_name("debug_reg")
+            .exclude_name("Test_Block");
+        assert!(config.should_include(0x0, "normal_reg"));
+        assert!(!config.should_include(0x0, "debug_reg"));
+        assert!(!config.should_include(0x0, "DEBUG_REG")); // case-insensitive
+        assert!(!config.should_include(0x0, "test_block"));
+    }
+
+    #[test]
+    fn test_filter_config_combined() {
+        let config = FilterConfig::new()
+            .include_offset_range(0x0, 0x200)
+            .exclude_name("debug_reg");
+        // In range, not excluded
+        assert!(config.should_include(0x100, "normal_reg"));
+        // In range, but excluded by name
+        assert!(!config.should_include(0x100, "debug_reg"));
+        // Out of range
+        assert!(!config.should_include(0x300, "normal_reg"));
     }
 }

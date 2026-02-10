@@ -18,6 +18,7 @@ impl World {
             addrmap_name,
             base_offset,
             &NameConfig::with_defaults(),
+            &FilterConfig::new(),
         )
     }
 
@@ -26,6 +27,7 @@ impl World {
         addrmap_name: &str,
         base_offset: usize,
         name_config: &NameConfig,
+        filter_config: &FilterConfig,
     ) -> Result<Option<String>, anyhow::Error> {
         // Find the addrmap component
         for component_idx in self.child_components.iter().copied() {
@@ -43,7 +45,25 @@ impl World {
                 };
 
                 // Collect register types and instances from this addrmap
-                self.collect_addrmap_registers(component_idx, &mut generated, name_config)?;
+                self.collect_addrmap_registers(
+                    component_idx,
+                    &mut generated,
+                    name_config,
+                    filter_config,
+                )?;
+
+                // When filtering is active, remove register types that are no longer
+                // referenced by any register instance
+                if !filter_config.is_empty() {
+                    let referenced_types: std::collections::HashSet<&str> = generated
+                        .registers
+                        .iter()
+                        .filter_map(|r| r.type_name.as_deref())
+                        .collect();
+                    generated
+                        .register_types
+                        .retain(|rt| referenced_types.contains(rt.name.as_str()));
+                }
 
                 return Ok(Some(generated.generate_code(&format!(
                     "crate::{}::",
@@ -59,10 +79,20 @@ impl World {
         addrmap_idx: ComponentIdx,
         generated: &mut GeneratedAddrMap,
         name_config: &NameConfig,
+        filter_config: &FilterConfig,
     ) -> Result<(), anyhow::Error> {
-        self.collect_addrmap_registers_with_offset(addrmap_idx, 0, "", None, generated, name_config)
+        self.collect_addrmap_registers_with_offset(
+            addrmap_idx,
+            0,
+            "",
+            None,
+            generated,
+            name_config,
+            filter_config,
+        )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn collect_addrmap_registers_with_offset(
         &self,
         addrmap_idx: ComponentIdx,
@@ -71,6 +101,7 @@ impl World {
         first_level_prefix: Option<&str>,
         generated: &mut GeneratedAddrMap,
         name_config: &NameConfig,
+        filter_config: &FilterConfig,
     ) -> Result<(), anyhow::Error> {
         let addrmap = self.component_arena[addrmap_idx]
             .as_addrmap()
@@ -109,6 +140,11 @@ impl World {
 
             match component.component_type() {
                 ComponentType::Reg => {
+                    // Check filter before including this register
+                    if !filter_config.should_include(inst_offset, &inst_name) {
+                        continue;
+                    }
+
                     let type_name = component.name().map(|s| s.to_string());
 
                     // Determine read/write access from properties
@@ -139,6 +175,11 @@ impl World {
                     // registers should be named intr_block_rf_foo, not mci_reg_intr_block_rf_foo.
                     let regfile_name = inst.name.clone();
 
+                    // Check filter on the regfile block name itself
+                    if !filter_config.should_include(inst_offset, &regfile_name) {
+                        continue;
+                    }
+
                     // Track the first-level regfile prefix for potential stripping of nested regfile prefixes
                     let new_first_level = first_level_prefix.or(Some(&regfile_name));
 
@@ -151,9 +192,15 @@ impl World {
                         new_first_level,
                         generated,
                         name_config,
+                        filter_config,
                     )?;
                 }
                 ComponentType::AddrMap => {
+                    // Check filter on the addrmap block name
+                    if !filter_config.should_include(inst_offset, &inst_name) {
+                        continue;
+                    }
+
                     // Recursively collect from nested addrmap instances with accumulated offset
                     self.collect_addrmap_registers_with_offset(
                         inst.type_idx,
@@ -162,6 +209,7 @@ impl World {
                         first_level_prefix,
                         generated,
                         name_config,
+                        filter_config,
                     )?;
                 }
                 ComponentType::Mem => {
@@ -266,6 +314,7 @@ impl World {
     /// Collect register instances from a regfile, adding base_offset to each register's offset
     /// The regfile_instance_name is used to prefix register names for uniqueness
     /// first_level_prefix tracks the first regfile name for potential stripping
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn collect_regfile_instances(
         &self,
         regfile_idx: ComponentIdx,
@@ -274,6 +323,7 @@ impl World {
         first_level_prefix: Option<&str>,
         generated: &mut GeneratedAddrMap,
         name_config: &NameConfig,
+        filter_config: &FilterConfig,
     ) -> Result<(), anyhow::Error> {
         let component = &self.component_arena[regfile_idx];
         if let AllComponent::RegFile(regfile) = component {
@@ -314,13 +364,20 @@ impl World {
                             combined_name
                         };
 
+                        let reg_offset = base_offset + reg_inst.offset;
+
+                        // Check filter before including this register
+                        if !filter_config.should_include(reg_offset, &final_name) {
+                            continue;
+                        }
+
                         let array_size = reg_inst.array_size.as_ref().map(|v| v.iter().product());
 
                         let width = self.get_register_width_bits(reg_inst.type_idx);
 
                         generated.registers.push(GeneratedRegister {
                             name: final_name,
-                            offset: base_offset + reg_inst.offset,
+                            offset: reg_offset,
                             type_name,
                             can_read,
                             can_write,
@@ -342,6 +399,7 @@ impl World {
                             first_level_prefix,
                             generated,
                             name_config,
+                            filter_config,
                         )?;
                     }
                     _ => {
