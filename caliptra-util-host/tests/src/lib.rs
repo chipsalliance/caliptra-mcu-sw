@@ -32,3 +32,6 @@ pub mod test_hmac;
 
 #[cfg(test)]
 pub mod test_sha;
+
+#[cfg(test)]
+pub mod test_crypto_asymmetric;
