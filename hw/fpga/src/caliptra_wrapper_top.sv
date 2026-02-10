@@ -1975,6 +1975,22 @@ mcu_rom (
         endcase
     end
 
+    // Flash controller interrupts: AND interrupt state with enable
+    logic primary_flash_irq;
+    logic secondary_flash_irq;
+    assign primary_flash_irq = |(
+        {hwif_out.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value,
+         hwif_out.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value} &
+        {hwif_out.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value,
+         hwif_out.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value}
+    );
+    assign secondary_flash_irq = |(
+        {hwif_out.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value,
+         hwif_out.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value} &
+        {hwif_out.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value,
+         hwif_out.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value}
+    );
+
     // Spare I3C core
     logic spare_i3c_irq_o;
     assign hwif_in.interface_regs.spare_i3c_control_sts.irq_o.next = spare_i3c_irq_o;
@@ -2250,7 +2266,7 @@ caliptra_ss_top #(
     .cptra_ss_all_error_fatal_o(hwif_in.interface_regs.ss_all_error.ss_all_error_fatal.next),
     .cptra_ss_all_error_non_fatal_o(hwif_in.interface_regs.ss_all_error.ss_all_error_non_fatal.next),
 
-    .cptra_ss_mcu_ext_int({252'b0, spare_i3c_irq_o}),
+    .cptra_ss_mcu_ext_int({250'b0, secondary_flash_irq, primary_flash_irq, spare_i3c_irq_o}),
     // MCU JTAG
     .cptra_ss_mcu_jtag_tck_i(mcu_jtag_tck_i),
     .cptra_ss_mcu_jtag_tms_i(mcu_jtag_tms_i),

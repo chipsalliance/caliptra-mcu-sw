@@ -291,24 +291,29 @@ module caliptra_fpga_realtime_regs (
         } secondary_flash_ctrl_regs;
     } decoded_reg_strb_t;
     decoded_reg_strb_t decoded_reg_strb;
+    logic decoded_err;
     logic decoded_req;
     logic decoded_req_is_wr;
     logic [31:0] decoded_wr_data;
     logic [31:0] decoded_wr_biten;
 
     always_comb begin
-        decoded_reg_strb.interface_regs.fpga_magic = cpuif_req_masked & (cpuif_addr == 32'ha4010000);
-        decoded_reg_strb.interface_regs.fpga_version = cpuif_req_masked & (cpuif_addr == 32'ha4010004);
+        automatic logic is_valid_addr;
+        automatic logic is_invalid_rw;
+        is_valid_addr = '1; // No error checking on valid address access
+        is_invalid_rw = '0;
+        decoded_reg_strb.interface_regs.fpga_magic = cpuif_req_masked & (cpuif_addr == 32'ha4010000) & !cpuif_req_is_wr;
+        decoded_reg_strb.interface_regs.fpga_version = cpuif_req_masked & (cpuif_addr == 32'ha4010004) & !cpuif_req_is_wr;
         decoded_reg_strb.interface_regs.control = cpuif_req_masked & (cpuif_addr == 32'ha4010008);
-        decoded_reg_strb.interface_regs.status = cpuif_req_masked & (cpuif_addr == 32'ha401000c);
+        decoded_reg_strb.interface_regs.status = cpuif_req_masked & (cpuif_addr == 32'ha401000c) & !cpuif_req_is_wr;
         decoded_reg_strb.interface_regs.arm_user = cpuif_req_masked & (cpuif_addr == 32'ha4010010);
         decoded_reg_strb.interface_regs.itrng_divisor = cpuif_req_masked & (cpuif_addr == 32'ha4010014);
-        decoded_reg_strb.interface_regs.cycle_count = cpuif_req_masked & (cpuif_addr == 32'ha4010018);
+        decoded_reg_strb.interface_regs.cycle_count = cpuif_req_masked & (cpuif_addr == 32'ha4010018) & !cpuif_req_is_wr;
         for(int i0=0; i0<2; i0++) begin
             decoded_reg_strb.interface_regs.generic_input_wires[i0] = cpuif_req_masked & (cpuif_addr == 32'ha4010030 + (32)'(i0) * 32'h4);
         end
         for(int i0=0; i0<2; i0++) begin
-            decoded_reg_strb.interface_regs.generic_output_wires[i0] = cpuif_req_masked & (cpuif_addr == 32'ha4010038 + (32)'(i0) * 32'h4);
+            decoded_reg_strb.interface_regs.generic_output_wires[i0] = cpuif_req_masked & (cpuif_addr == 32'ha4010038 + (32)'(i0) * 32'h4) & !cpuif_req_is_wr;
         end
         for(int i0=0; i0<8; i0++) begin
             decoded_reg_strb.interface_regs.cptra_obf_key[i0] = cpuif_req_masked & (cpuif_addr == 32'ha4010040 + (32)'(i0) * 32'h4);
@@ -328,7 +333,7 @@ module caliptra_fpga_realtime_regs (
         decoded_reg_strb.interface_regs.soc_config_user = cpuif_req_masked & (cpuif_addr == 32'ha401010c);
         decoded_reg_strb.interface_regs.sram_config_user = cpuif_req_masked & (cpuif_addr == 32'ha4010110);
         decoded_reg_strb.interface_regs.mcu_reset_vector = cpuif_req_masked & (cpuif_addr == 32'ha4010114);
-        decoded_reg_strb.interface_regs.ss_all_error = cpuif_req_masked & (cpuif_addr == 32'ha4010118);
+        decoded_reg_strb.interface_regs.ss_all_error = cpuif_req_masked & (cpuif_addr == 32'ha4010118) & !cpuif_req_is_wr;
         decoded_reg_strb.interface_regs.mcu_config = cpuif_req_masked & (cpuif_addr == 32'ha401011c);
         decoded_reg_strb.interface_regs.uds_seed_base_addr = cpuif_req_masked & (cpuif_addr == 32'ha4010120);
         decoded_reg_strb.interface_regs.prod_debug_unlock_auth_pk_hash_reg_bank_offset = cpuif_req_masked & (cpuif_addr == 32'ha4010124);
@@ -337,11 +342,11 @@ module caliptra_fpga_realtime_regs (
             decoded_reg_strb.interface_regs.mci_generic_input_wires[i0] = cpuif_req_masked & (cpuif_addr == 32'ha401012c + (32)'(i0) * 32'h4);
         end
         for(int i0=0; i0<2; i0++) begin
-            decoded_reg_strb.interface_regs.mci_generic_output_wires[i0] = cpuif_req_masked & (cpuif_addr == 32'ha4010134 + (32)'(i0) * 32'h4);
+            decoded_reg_strb.interface_regs.mci_generic_output_wires[i0] = cpuif_req_masked & (cpuif_addr == 32'ha4010134 + (32)'(i0) * 32'h4) & !cpuif_req_is_wr;
         end
-        decoded_reg_strb.interface_regs.ss_key_release_base_addr = cpuif_req_masked & (cpuif_addr == 32'ha401013c);
-        decoded_reg_strb.interface_regs.ss_key_release_key_size = cpuif_req_masked & (cpuif_addr == 32'ha4010140);
-        decoded_reg_strb.interface_regs.ss_external_staging_area_base_addr = cpuif_req_masked & (cpuif_addr == 32'ha4010144);
+        decoded_reg_strb.interface_regs.ss_key_release_base_addr = cpuif_req_masked & (cpuif_addr == 32'ha401013c) & !cpuif_req_is_wr;
+        decoded_reg_strb.interface_regs.ss_key_release_key_size = cpuif_req_masked & (cpuif_addr == 32'ha4010140) & !cpuif_req_is_wr;
+        decoded_reg_strb.interface_regs.ss_external_staging_area_base_addr = cpuif_req_masked & (cpuif_addr == 32'ha4010144) & !cpuif_req_is_wr;
         decoded_reg_strb.interface_regs.cptra_ss_mcu_ext_int = cpuif_req_masked & (cpuif_addr == 32'ha4010148);
         for(int i0=0; i0<4; i0++) begin
             decoded_reg_strb.interface_regs.cptra_ss_raw_unlock_token_hash[i0] = cpuif_req_masked & (cpuif_addr == 32'ha401014c + (32)'(i0) * 32'h4);
@@ -350,16 +355,16 @@ module caliptra_fpga_realtime_regs (
         for(int i0=0; i0<16; i0++) begin
             decoded_reg_strb.interface_regs.ocp_lock_key_release_reg[i0] = cpuif_req_masked & (cpuif_addr == 32'ha4010200 + (32)'(i0) * 32'h4);
         end
-        decoded_reg_strb.fifo_regs.log_fifo_data = cpuif_req_masked & (cpuif_addr == 32'ha4011000);
-        decoded_reg_strb.fifo_regs.log_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha4011004);
+        decoded_reg_strb.fifo_regs.log_fifo_data = cpuif_req_masked & (cpuif_addr == 32'ha4011000) & !cpuif_req_is_wr;
+        decoded_reg_strb.fifo_regs.log_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha4011004) & !cpuif_req_is_wr;
         decoded_reg_strb.fifo_regs.itrng_fifo_data = cpuif_req_masked & (cpuif_addr == 32'ha4011008);
         decoded_reg_strb.fifo_regs.itrng_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha401100c);
-        decoded_reg_strb.fifo_regs.dbg_fifo_pop = cpuif_req_masked & (cpuif_addr == 32'ha4011010);
+        decoded_reg_strb.fifo_regs.dbg_fifo_pop = cpuif_req_masked & (cpuif_addr == 32'ha4011010) & !cpuif_req_is_wr;
         decoded_reg_strb.fifo_regs.dbg_fifo_push = cpuif_req_masked & (cpuif_addr == 32'ha4011014);
-        decoded_reg_strb.fifo_regs.dbg_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha4011018);
-        decoded_reg_strb.fifo_regs.msg_fifo_pop = cpuif_req_masked & (cpuif_addr == 32'ha401101c);
+        decoded_reg_strb.fifo_regs.dbg_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha4011018) & !cpuif_req_is_wr;
+        decoded_reg_strb.fifo_regs.msg_fifo_pop = cpuif_req_masked & (cpuif_addr == 32'ha401101c) & !cpuif_req_is_wr;
         decoded_reg_strb.fifo_regs.msg_fifo_push = cpuif_req_masked & (cpuif_addr == 32'ha4011020);
-        decoded_reg_strb.fifo_regs.msg_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha4011024);
+        decoded_reg_strb.fifo_regs.msg_fifo_status = cpuif_req_masked & (cpuif_addr == 32'ha4011024) & !cpuif_req_is_wr;
         decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_STATE = cpuif_req_masked & (cpuif_addr == 32'ha4012000);
         decoded_reg_strb.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE = cpuif_req_masked & (cpuif_addr == 32'ha4012004);
         decoded_reg_strb.primary_flash_ctrl_regs.PAGE_SIZE = cpuif_req_masked & (cpuif_addr == 32'ha4012008);
@@ -384,6 +389,7 @@ module caliptra_fpga_realtime_regs (
         for(int i0=0; i0<64; i0++) begin
             decoded_reg_strb.secondary_flash_ctrl_regs.FLASH_BUF[i0] = cpuif_req_masked & (cpuif_addr == 32'ha4013100 + (32)'(i0) * 32'h4);
         end
+        decoded_err = (~is_valid_addr | is_invalid_rw) & decoded_req;
     end
 
     // Pass down signals to next stage
@@ -3194,6 +3200,7 @@ module caliptra_fpga_realtime_regs (
             end
         end
     end
+    assign hwif_out.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value = field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value;
     // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT
     always_comb begin
         automatic logic [0:0] next_c;
@@ -3216,6 +3223,7 @@ module caliptra_fpga_realtime_regs (
             end
         end
     end
+    assign hwif_out.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value = field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value;
     // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR
     always_comb begin
         automatic logic [0:0] next_c;
@@ -3238,6 +3246,7 @@ module caliptra_fpga_realtime_regs (
             end
         end
     end
+    assign hwif_out.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value = field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value;
     // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT
     always_comb begin
         automatic logic [0:0] next_c;
@@ -3260,6 +3269,7 @@ module caliptra_fpga_realtime_regs (
             end
         end
     end
+    assign hwif_out.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value = field_storage.primary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value;
     // Field: caliptra_fpga_realtime_regs.primary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE
     always_comb begin
         automatic logic [31:0] next_c;
@@ -3504,6 +3514,7 @@ module caliptra_fpga_realtime_regs (
             end
         end
     end
+    assign hwif_out.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value = field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.ERROR.value;
     // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT
     always_comb begin
         automatic logic [0:0] next_c;
@@ -3526,6 +3537,7 @@ module caliptra_fpga_realtime_regs (
             end
         end
     end
+    assign hwif_out.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value = field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_STATE.EVENT.value;
     // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR
     always_comb begin
         automatic logic [0:0] next_c;
@@ -3548,6 +3560,7 @@ module caliptra_fpga_realtime_regs (
             end
         end
     end
+    assign hwif_out.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value = field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.ERROR.value;
     // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT
     always_comb begin
         automatic logic [0:0] next_c;
@@ -3570,6 +3583,7 @@ module caliptra_fpga_realtime_regs (
             end
         end
     end
+    assign hwif_out.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value = field_storage.secondary_flash_ctrl_regs.FL_INTERRUPT_ENABLE.EVENT.value;
     // Field: caliptra_fpga_realtime_regs.secondary_flash_ctrl_regs.PAGE_SIZE.PAGE_SIZE
     always_comb begin
         automatic logic [31:0] next_c;

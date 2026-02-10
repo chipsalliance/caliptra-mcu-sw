@@ -252,12 +252,12 @@ regfile flash_ctrl_regs {
     reg {
         field {
             sw = rw;
-            hw = na;
+            hw = r;
             desc = "Error-related interrupts";
         } ERROR[0:0] = 1'b0;
         field {
             sw = rw;
-            hw = na;
+            hw = r;
             desc = "Event-related interrupts";
         } EVENT[1:1] = 1'b0;
     } FL_INTERRUPT_STATE @ 0x00;
@@ -265,12 +265,12 @@ regfile flash_ctrl_regs {
     reg {
         field {
             sw = rw;
-            hw = na;
+            hw = r;
             desc = "Enable error interrupt";
         } ERROR[0:0] = 1'b0;
         field {
             sw = rw;
-            hw = na;
+            hw = r;
             desc = "Enable event interrupt";
         } EVENT[1:1] = 1'b0;
     } FL_INTERRUPT_ENABLE @ 0x04;
