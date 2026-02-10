@@ -33,6 +33,8 @@ use crate::output::{
 use crate::util::snake_case;
 use crate::value::Value;
 
+use crate::config::FilterConfig;
+
 const TRUE: Integer = Integer { width: 1, value: 1 };
 const FALSE: Integer = Integer { width: 1, value: 0 };
 
@@ -580,6 +582,19 @@ pub fn generate_tock_registers_from_file_with_config(
     addrmaps: &[(&str, usize)],
     name_config: &NameConfig,
 ) -> anyhow::Result<String> {
+    generate_tock_registers_from_file_with_filter(file, addrmaps, name_config, &FilterConfig::new())
+}
+
+/// Generate tock-registers code from an RDL file with custom name and filter configuration.
+///
+/// The `name_config` controls how addrmap names are transformed (e.g., stripping suffixes).
+/// The `filter_config` controls which registers/blocks are included or excluded.
+pub fn generate_tock_registers_from_file_with_filter(
+    file: &Path,
+    addrmaps: &[(&str, usize)],
+    name_config: &NameConfig,
+    filter_config: &FilterConfig,
+) -> anyhow::Result<String> {
     let src = FsFileSource::new();
     let root = Root::from_file(&src, file)?;
 
@@ -588,9 +603,12 @@ pub fn generate_tock_registers_from_file_with_config(
     let mut output = String::new();
 
     for (addrmap_name, base_offset) in addrmaps.iter() {
-        if let Some(result) =
-            world.generate_addrmap_code_with_config(addrmap_name, *base_offset, name_config)?
-        {
+        if let Some(result) = world.generate_addrmap_code_with_config(
+            addrmap_name,
+            *base_offset,
+            name_config,
+            filter_config,
+        )? {
             output += &result;
         }
     }

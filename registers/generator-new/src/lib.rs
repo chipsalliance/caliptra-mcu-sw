@@ -50,7 +50,9 @@ mod value;
 // Re-export main public API
 pub use codegen::{
     generate_tock_registers_from_file, generate_tock_registers_from_file_with_config,
+    generate_tock_registers_from_file_with_filter,
 };
+pub use config::FilterConfig;
 pub use config::NameConfig;
 pub use output::{
     GeneratedAddrMap, GeneratedField, GeneratedMemory, GeneratedRegister, GeneratedRegisterType,
