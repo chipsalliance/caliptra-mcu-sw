@@ -2,8 +2,8 @@
 
 [package]
 name = "lwip-rs-example"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 description = "DHCP + TFTP boot example application using lwip-rs"
 
 [[bin]]

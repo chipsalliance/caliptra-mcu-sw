@@ -12,38 +12,31 @@ use crate::ffi;
 pub struct Ipv4Addr(pub(crate) ffi::ip4_addr_t);
 
 impl Ipv4Addr {
-    /// Create a new IPv4 address
     pub fn new(a: u8, b: u8, c: u8, d: u8) -> Self {
         let addr = ((d as u32) << 24) | ((c as u32) << 16) | ((b as u32) << 8) | (a as u32);
         Ipv4Addr(ffi::ip4_addr_t { addr })
     }
 
-    /// Create a zero (any) address
     pub fn any() -> Self {
         Ipv4Addr(ffi::ip4_addr_t { addr: 0 })
     }
 
-    /// Check if this is the any/zero address
     pub fn is_any(&self) -> bool {
         self.0.addr == 0
     }
 
-    /// Get raw address value
     pub fn raw(&self) -> u32 {
         self.0.addr
     }
 
-    /// Get pointer to inner struct (for C API)
     pub fn as_ptr(&self) -> *const ffi::ip4_addr_t {
         &self.0
     }
 
-    /// Get mutable pointer to inner struct (for C API)
     pub fn as_mut_ptr(&mut self) -> *mut ffi::ip4_addr_t {
         &mut self.0
     }
 
-    /// Get the address octets
     pub fn octets(&self) -> [u8; 4] {
         self.0.addr.to_le_bytes()
     }
@@ -74,7 +67,6 @@ impl From<[u8; 4]> for Ipv4Addr {
 pub struct Ipv6Addr(pub(crate) ffi::ip6_addr_t);
 
 impl Ipv6Addr {
-    /// Create a new IPv6 address from 16-bit segments
     pub fn new(segments: [u16; 8]) -> Self {
         let mut addr = ffi::ip6_addr_t::default();
         addr.addr[0] = ((segments[1] as u32) << 16) | (segments[0] as u32);
@@ -84,30 +76,23 @@ impl Ipv6Addr {
         Ipv6Addr(addr)
     }
 
-    /// Create a zero (any) address
     pub fn any() -> Self {
         Ipv6Addr(ffi::ip6_addr_t::default())
     }
 
-    /// Check if this is a link-local address
     pub fn is_link_local(&self) -> bool {
         // Link-local: fe80::/10
-        // IPv6 stored in network byte order; on little-endian, u32 reads are byte-swapped
-        // 0xffc0 mask and 0xfe80 prefix become 0xc0ff and 0x80fe when swapped
         (self.0.addr[0] & 0xc0ff) == 0x80fe
     }
 
-    /// Get pointer to inner struct
     pub fn as_ptr(&self) -> *const ffi::ip6_addr_t {
         &self.0
     }
 
-    /// Get mutable pointer
     pub fn as_mut_ptr(&mut self) -> *mut ffi::ip6_addr_t {
         &mut self.0
     }
 
-    /// Get the address segments
     pub fn segments(&self) -> [u16; 8] {
         let mut segments = [0u16; 8];
         for i in 0..4 {

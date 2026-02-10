@@ -3445,14 +3445,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "network-xtask"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap 4.5.51",
-]
-
-[[package]]
 name = "nix"
 version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4835,7 +4827,6 @@ dependencies = [
  "mcu-rom-common",
  "mcu-testing-common",
  "network-config",
- "network-xtask",
  "openssl",
  "p384",
  "pldm-common",
@@ -4850,6 +4841,7 @@ dependencies = [
  "tempfile",
  "uio",
  "uuid",
+ "xtask",
  "zerocopy",
 ]
 

@@ -19,6 +19,7 @@ mod format;
 mod fpga;
 mod fuses;
 mod header;
+mod network;
 mod pldm_fw_pkg;
 mod precheckin;
 mod registers;
@@ -134,8 +135,6 @@ enum Commands {
         #[arg(long)]
         features: Option<String>,
     },
-    /// Build Network Coprocessor ROM
-    NetworkRomBuild,
     /// Build and Run ROM image
     Rom {
         /// Run with tracing options
@@ -312,11 +311,9 @@ enum Commands {
         cmd: BundleCommands,
     },
     /// Network stack development tools (TAP, DHCP/TFTP server, lwip-rs)
-    #[command(disable_help_flag = true, disable_help_subcommand = true)]
     Network {
-        /// Arguments to pass to the network xtask (use `cargo xtask network -- --help` for help)
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
+        #[command(subcommand)]
+        cmd: network::NetworkCommands,
     },
 }
 
@@ -482,7 +479,6 @@ fn main() {
             mcu_builder::rom_build(platform.as_deref(), features.as_deref().unwrap_or(""))
                 .map(|_| ())
         }
-        Commands::NetworkRomBuild => mcu_builder::network_rom_build().map(|_| ()),
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
                 caliptra_fw,
@@ -552,29 +548,10 @@ fn main() {
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
         Commands::Experimental { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
-        Commands::Network { args } => run_network_xtask(args),
+        Commands::Network { cmd } => network::run(cmd.clone()),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);
         std::process::exit(1);
     });
-}
-
-fn run_network_xtask(args: &[String]) -> anyhow::Result<()> {
-    use std::process::Command;
-
-    let mut cmd = Command::new("cargo");
-    cmd.arg("run")
-        .arg("-p")
-        .arg("network-xtask")
-        .arg("--")
-        .args(args);
-
-    let status = cmd.status()?;
-
-    if !status.success() {
-        anyhow::bail!("Network xtask failed with exit code: {:?}", status.code());
-    }
-
-    Ok(())
 }

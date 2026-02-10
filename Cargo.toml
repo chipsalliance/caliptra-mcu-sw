@@ -27,7 +27,6 @@ members = [
     "network/config",
     "network/net/lwip-rs",
     "network/rom",
-    "network/xtask",
     "platforms/common",
     "platforms/emulator/config",
     "platforms/emulator/mcu-image-header",
@@ -218,7 +217,6 @@ mcu-test-harness = {path = "platforms/test_harness"}
 lwip-rs = { path = "network/net/lwip-rs" }
 network-config = { path = "network/config" }
 network-rom = { path = "network/rom" }
-network-xtask = { path = "network/xtask" }
 mcu-testing-common = { path = "common/testing" }
 mcu-tock-veer = { path = "runtime/kernel/veer" }
 mctp-vdm-common = { path = "common/mctp-vdm" }
@@ -231,6 +229,7 @@ registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }
 registers-systemrdl-new = { path = "registers/systemrdl-new" }
 romtime = { path = "romtime" }
+xtask = { path = "xtask" }
 
 # App related dependencies
 external-cmds-common = { path = "runtime/userspace/api/external-cmds-common" }

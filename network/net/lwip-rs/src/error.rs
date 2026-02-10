@@ -8,46 +8,27 @@ use core::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i8)]
 pub enum LwipError {
-    /// No error, everything OK
     Ok = 0,
-    /// Out of memory error
     OutOfMemory = -1,
-    /// Buffer error
     Buffer = -2,
-    /// Timeout
     Timeout = -3,
-    /// Routing problem
     Routing = -4,
-    /// Operation in progress
     InProgress = -5,
-    /// Illegal value
     IllegalValue = -6,
-    /// Operation would block
     WouldBlock = -7,
-    /// Address in use
     AddressInUse = -8,
-    /// Already connecting
     AlreadyConnecting = -9,
-    /// Connection already established
     AlreadyConnected = -10,
-    /// Not connected
     NotConnected = -11,
-    /// Low-level netif error
     Interface = -12,
-    /// Connection aborted
     Aborted = -13,
-    /// Connection reset
     Reset = -14,
-    /// Connection closed
     Closed = -15,
-    /// Illegal argument
     IllegalArgument = -16,
-    /// Unknown error
     Unknown = -127,
 }
 
 impl LwipError {
-    /// Convert from raw error code
     pub fn from_raw(err: i8) -> Self {
         match err {
             0 => LwipError::Ok,
@@ -71,12 +52,10 @@ impl LwipError {
         }
     }
 
-    /// Check if this is an error
     pub fn is_err(&self) -> bool {
         *self != LwipError::Ok
     }
 
-    /// Check if this is ok
     pub fn is_ok(&self) -> bool {
         *self == LwipError::Ok
     }

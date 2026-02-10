@@ -2,13 +2,8 @@
 
 //! lwip-rs: Rust bindings for lwIP (Lightweight IP stack)
 //!
-//! This crate provides safe Rust wrappers around the lwIP C library,
-//! enabling network stack functionality including DHCP and TFTP.
-//!
-//! # Features
-//!
-//! - `alloc` (default): Enable heap allocation (Box, String, Vec)
-//! - `tftp`: Enable TFTP client (requires `alloc`)
+//! Provides safe Rust wrappers for network stack functionality
+//! including DHCP and TFTP.
 
 #![no_std]
 #![allow(non_upper_case_globals)]
@@ -23,7 +18,6 @@ extern crate alloc;
 use core::ffi::CStr;
 use core::ffi::{c_char, c_int, c_void};
 
-/// Raw FFI bindings from bindgen
 pub mod ffi {
     #![allow(non_upper_case_globals)]
     #![allow(non_camel_case_types)]
@@ -60,18 +54,15 @@ pub use dhcp::DhcpClient;
 #[cfg(feature = "tftp")]
 pub use tftp::{TftpClient, TftpStorageOps};
 
-/// Initialize the lwIP stack
-///
-/// This must be called before using any other lwIP functions.
+/// Initialize the lwIP stack. Must be called before any other lwIP functions.
 pub fn init() {
     unsafe {
         ffi::lwip_init();
     }
 }
 
-/// Platform assertion handler (called from C code)
 #[no_mangle]
-#[allow(clippy::not_unsafe_ptr_arg_deref)] // C callback, cannot be marked unsafe
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn lwip_platform_assert(msg: *const c_char, line: c_int, file: *const c_char) {
     let msg_str = if msg.is_null() {
         "unknown"

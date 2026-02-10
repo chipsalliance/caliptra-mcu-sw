@@ -1,34 +1,23 @@
 // Licensed under the Apache-2.0 license
 
-//! Network xtask - Command-line toolkit for network stack development
+//! Network stack development tools
 //!
 //! Provides utilities for:
-//! - Building network applications
+//! - Building network applications (lwip-rs, examples)
 //! - Managing TAP interfaces
 //! - Managing DHCP/TFTP servers (dnsmasq)
 //! - Running example applications
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::Subcommand;
 use std::path::PathBuf;
 
-mod build;
-mod server;
-mod tap;
+pub mod build;
+pub mod server;
+pub mod tap;
 
-#[derive(Parser)]
-#[command(
-    name = "network-xtask",
-    version,
-    about = "Command-line toolkit for network stack development"
-)]
-struct Xtask {
-    #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Subcommand)]
-enum Commands {
+#[derive(Clone, Subcommand)]
+pub enum NetworkCommands {
     /// Build network applications
     Build {
         /// Build in release mode
@@ -72,10 +61,13 @@ enum Commands {
 
     /// Full teardown: server stop + tap teardown (uses sudo)
     Teardown,
+
+    /// Build Network Coprocessor ROM
+    RomBuild,
 }
 
-#[derive(Subcommand)]
-enum TapCommands {
+#[derive(Clone, Subcommand)]
+pub enum TapCommands {
     /// Create and configure TAP interface (uses sudo)
     Setup {
         /// TAP interface name
@@ -106,9 +98,9 @@ enum TapCommands {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Clone, Subcommand)]
 #[allow(clippy::large_enum_variant)]
-enum ServerCommands {
+pub enum ServerCommands {
     /// Install dnsmasq (DHCP/TFTP server)
     Install,
 
@@ -174,15 +166,14 @@ enum ServerCommands {
     Status,
 }
 
-fn main() -> Result<()> {
-    let args = Xtask::parse();
-
-    match args.command {
-        Commands::Build { release, lib_only } => {
+/// Execute network commands
+pub fn run(cmd: NetworkCommands) -> Result<()> {
+    match cmd {
+        NetworkCommands::Build { release, lib_only } => {
             build::build(release, lib_only)?;
         }
 
-        Commands::Tap { action } => match action {
+        NetworkCommands::Tap { action } => match action {
             TapCommands::Setup {
                 interface,
                 ipv4,
@@ -198,7 +189,7 @@ fn main() -> Result<()> {
             }
         },
 
-        Commands::Server { action } => match action {
+        NetworkCommands::Server { action } => match action {
             ServerCommands::Install => {
                 server::install()?;
             }
@@ -268,11 +259,11 @@ fn main() -> Result<()> {
             }
         },
 
-        Commands::Run { package, release } => {
+        NetworkCommands::Run { package, release } => {
             build::run_example(&package, release)?;
         }
 
-        Commands::Setup { tftp_root } => {
+        NetworkCommands::Setup { tftp_root } => {
             println!("=== Full Setup ===");
             tap::setup("tap0", "192.168.100.1", true)?;
 
@@ -281,14 +272,18 @@ fn main() -> Result<()> {
                 ..Default::default()
             };
             server::start(&server_options)?;
-            println!("\nSetup complete! You can now run: cargo xtask run");
+            println!("\nSetup complete! You can now run: cargo xtask network run");
         }
 
-        Commands::Teardown => {
+        NetworkCommands::Teardown => {
             println!("=== Full Teardown ===");
             server::stop()?;
             tap::teardown("tap0")?;
             println!("\nTeardown complete!");
+        }
+
+        NetworkCommands::RomBuild => {
+            mcu_builder::network_rom_build()?;
         }
     }
 

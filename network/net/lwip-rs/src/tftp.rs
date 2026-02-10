@@ -2,41 +2,7 @@
 
 //! TFTP client wrapper (no_std compatible)
 //!
-//! This module provides a TFTP client that works in no_std environments.
 //! Users must provide storage callbacks to handle file I/O operations.
-//!
-//! # Example
-//!
-//! ```ignore
-//! use lwip_rs::tftp::{TftpClient, TftpStorageOps};
-//! use core::ffi::c_void;
-//!
-//! // Define your storage operations
-//! fn my_open(filename: &str) -> *mut c_void {
-//!     // Open/create file and return handle
-//!     1 as *mut c_void  // Return non-null on success
-//! }
-//!
-//! fn my_write(handle: *mut c_void, data: &[u8]) -> bool {
-//!     // Write data to file
-//!     true  // Return true on success
-//! }
-//!
-//! fn my_close(handle: *mut c_void) {
-//!     // Close the file
-//! }
-//!
-//! static OPS: TftpStorageOps = TftpStorageOps {
-//!     open: my_open,
-//!     write: my_write,
-//!     close: my_close,
-//! };
-//!
-//! fn main() {
-//!     let mut client = TftpClient::new(&OPS).unwrap();
-//!     client.get(server_addr, "file.bin").unwrap();
-//! }
-//! ```
 
 use alloc::ffi::CString;
 use alloc::string::String;
@@ -50,48 +16,21 @@ use crate::error::{check_err, LwipError, Result};
 use crate::ffi;
 use crate::ip::Ipv4Addr;
 
-/// TFTP port
 const TFTP_PORT: u16 = 69;
-
-/// TFTP mode octet (binary)
 const TFTP_MODE_OCTET: u32 = 0;
 
-/// Storage operations for TFTP file handling
-///
-/// Implement these callbacks to handle TFTP file transfers in your environment.
-/// These are raw function pointers for maximum flexibility and no_std compatibility.
-///
-/// For baremetal or embedded OS targets, implement these to write to flash,
-/// RAM buffer, or any other storage medium.
+/// Storage operations for TFTP file handling.
+/// Implement these callbacks to handle file transfers in your environment.
 #[derive(Clone, Copy)]
 pub struct TftpStorageOps {
-    /// Open a file for writing (download)
-    ///
-    /// # Arguments
-    /// * `filename` - The filename from the TFTP request
-    ///
-    /// # Returns
-    /// An opaque handle pointer (must be non-null on success, null on failure)
+    /// Open a file for writing. Returns opaque handle (non-null on success).
     pub open: fn(filename: &str) -> *mut c_void,
-
-    /// Write data to the file
-    ///
-    /// # Arguments
-    /// * `handle` - The handle returned from `open`
-    /// * `data` - Data slice to write
-    ///
-    /// # Returns
-    /// `true` on success, `false` on failure
+    /// Write data to file. Returns true on success.
     pub write: fn(handle: *mut c_void, data: &[u8]) -> bool,
-
-    /// Close the file
-    ///
-    /// # Arguments
-    /// * `handle` - The handle returned from `open`
+    /// Close the file.
     pub close: fn(handle: *mut c_void),
 }
 
-/// Internal state for TFTP transfer
 struct TftpState {
     ops: TftpStorageOps,
     handle: *mut c_void,
@@ -100,20 +39,16 @@ struct TftpState {
     complete: bool,
 }
 
-// Safety: TftpState is only accessed through the Mutex
 unsafe impl Send for TftpState {}
 
-// Global state for TFTP callbacks
 static TFTP_STATE: Mutex<Option<TftpState>> = Mutex::new(None);
 
-/// TFTP open callback (called from lwIP)
 extern "C" fn tftp_open_callback(
     fname: *const c_char,
     _mode: *const c_char,
     is_write: u8,
 ) -> *mut c_void {
     if is_write == 0 {
-        // Read (upload) not supported
         return ptr::null_mut();
     }
 
@@ -140,7 +75,6 @@ extern "C" fn tftp_open_callback(
     ptr::null_mut()
 }
 
-/// TFTP close callback (called from lwIP)
 extern "C" fn tftp_close_callback(handle: *mut c_void) {
     let mut state = TFTP_STATE.lock();
     if let Some(ref mut s) = *state {
@@ -152,12 +86,10 @@ extern "C" fn tftp_close_callback(handle: *mut c_void) {
     }
 }
 
-/// TFTP read callback (not used for downloads)
 extern "C" fn tftp_read_callback(_handle: *mut c_void, _buf: *mut c_void, _bytes: c_int) -> c_int {
-    -1 // Read (upload) not supported
+    -1
 }
 
-/// TFTP write callback (called from lwIP for each received data block)
 extern "C" fn tftp_write_callback(_handle: *mut c_void, p: *mut ffi::pbuf) -> c_int {
     let mut state = TFTP_STATE.lock();
     if let Some(ref mut s) = *state {
@@ -165,7 +97,6 @@ extern "C" fn tftp_write_callback(_handle: *mut c_void, p: *mut ffi::pbuf) -> c_
             return -1;
         }
 
-        // Walk the pbuf chain
         let mut current = p;
         while !current.is_null() {
             let (payload, len, next) = unsafe {
@@ -186,7 +117,6 @@ extern "C" fn tftp_write_callback(_handle: *mut c_void, p: *mut ffi::pbuf) -> c_
     -1
 }
 
-/// TFTP error callback (called from lwIP on error)
 extern "C" fn tftp_error_callback(
     _handle: *mut c_void,
     err: c_int,
@@ -207,7 +137,6 @@ extern "C" fn tftp_error_callback(
     }
 }
 
-/// TFTP context for lwIP callbacks
 static TFTP_CONTEXT: ffi::tftp_context = ffi::tftp_context {
     open: Some(tftp_open_callback),
     close: Some(tftp_close_callback),
@@ -216,30 +145,13 @@ static TFTP_CONTEXT: ffi::tftp_context = ffi::tftp_context {
     error: Some(tftp_error_callback),
 };
 
-/// TFTP client
-///
-/// Provides TFTP download functionality using user-provided storage callbacks.
+/// TFTP client for downloading files
 pub struct TftpClient {
     initialized: bool,
 }
 
 impl TftpClient {
-    /// Create a new TFTP client with the given storage operations
-    ///
-    /// # Arguments
-    /// * `ops` - Storage operations callbacks for handling file I/O
-    ///
-    /// # Example
-    /// ```ignore
-    /// let ops = TftpStorageOps {
-    ///     open: my_open_fn,
-    ///     write: my_write_fn,
-    ///     close: my_close_fn,
-    /// };
-    /// let mut client = TftpClient::new(&ops)?;
-    /// ```
     pub fn new(ops: &TftpStorageOps) -> Result<Self> {
-        // Initialize state with user callbacks
         {
             let mut state = TFTP_STATE.lock();
             *state = Some(TftpState {
@@ -257,17 +169,8 @@ impl TftpClient {
         Ok(TftpClient { initialized: true })
     }
 
-    /// Download a file from TFTP server
-    ///
-    /// This initiates a TFTP GET request. The actual data will be received
-    /// asynchronously through lwIP's main loop. Use `is_complete()` to check
-    /// when the transfer finishes.
-    ///
-    /// # Arguments
-    /// * `server` - TFTP server IPv4 address
-    /// * `filename` - Name of the file to download
+    /// Initiate a TFTP GET request. Use is_complete() to check when done.
     pub fn get(&mut self, server: Ipv4Addr, filename: &str) -> Result<()> {
-        // Reset state for new transfer
         {
             let mut state = TFTP_STATE.lock();
             if let Some(ref mut s) = *state {
@@ -281,16 +184,14 @@ impl TftpClient {
         let c_filename = CString::new(filename).map_err(|_| LwipError::IllegalArgument)?;
         let c_mode = CString::new("octet").map_err(|_| LwipError::IllegalArgument)?;
 
-        // Open file first - this is REQUIRED before calling tftp_get
         let handle = tftp_open_callback(c_filename.as_ptr(), c_mode.as_ptr(), 1);
         if handle.is_null() {
             return Err(LwipError::OutOfMemory);
         }
 
-        // Create ip_addr_t for server
         let mut server_addr: ffi::ip_addr_t = unsafe { core::mem::zeroed() };
         server_addr.u_addr.ip4 = server.0;
-        server_addr.type_ = 0; // IPADDR_TYPE_V4
+        server_addr.type_ = 0;
 
         let err = unsafe {
             ffi::tftp_get(
@@ -303,32 +204,27 @@ impl TftpClient {
         };
 
         if err != 0 {
-            // Close on error
             tftp_close_callback(handle);
         }
 
         check_err(err)
     }
 
-    /// Check if transfer is complete
     pub fn is_complete(&self) -> bool {
         let state = TFTP_STATE.lock();
         state.as_ref().map(|s| s.complete).unwrap_or(false)
     }
 
-    /// Check if transfer has error
     pub fn has_error(&self) -> bool {
         let state = TFTP_STATE.lock();
         state.as_ref().map(|s| s.error.is_some()).unwrap_or(false)
     }
 
-    /// Get error if any
     pub fn error(&self) -> Option<(i32, String)> {
         let state = TFTP_STATE.lock();
         state.as_ref().and_then(|s| s.error.clone())
     }
 
-    /// Get bytes received so far
     pub fn bytes_received(&self) -> usize {
         let state = TFTP_STATE.lock();
         state.as_ref().map(|s| s.bytes_received).unwrap_or(0)
@@ -341,7 +237,6 @@ impl Drop for TftpClient {
             unsafe {
                 ffi::tftp_cleanup();
             }
-            // Clear the global state
             let mut state = TFTP_STATE.lock();
             *state = None;
         }

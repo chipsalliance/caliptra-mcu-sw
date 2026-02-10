@@ -11,7 +11,6 @@
 
 #[cfg(test)]
 mod test {
-    use network_xtask::{build, server, tap, ServerOptions};
     use std::fs;
     use std::io::{self, Write};
     use std::path::{Path, PathBuf};
@@ -19,6 +18,7 @@ mod test {
     use std::thread;
     use std::time::Duration;
     use tempfile::TempDir;
+    use xtask::network::{build, server, server::ServerOptions, tap};
 
     // Mutex to ensure tests don't run in parallel (they share dnsmasq)
     static TEST_LOCK: Mutex<()> = Mutex::new(());
