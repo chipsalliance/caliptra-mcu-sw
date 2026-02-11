@@ -4,20 +4,20 @@ This section covers how to perform common MCU flows on an FPGA. You can always f
 
 ## Pre Requisites
 
-### Host System 
+### Host System
 
 The machine that is used for development and cross compilation should have:
 
 - Rust
 - Podman
   - Alternatively you can use docker, but it will need to support rootless commands. Here are the steps [here](https://docs.docker.com/engine/security/rootless/).
-  - Make sure you pull the FPGA build image: `$ podman pull ghcr.io/chipsalliance/caliptra-build-image:latest` or `$ docker pull ghcr.io/chipsalliance/caliptra-build-image:latest` 
+  - Make sure you pull the FPGA build image: `$ podman pull ghcr.io/chipsalliance/caliptra-build-image:latest` or `$ docker pull ghcr.io/chipsalliance/caliptra-build-image:latest`
 - rsync
 - git
 - Cargo-nextest
   - `$ cargo +1.93 install cargo-nextest --locked`
 
-### FPGA System 
+### FPGA System
 
 The FPGA should have the following installed (If you are not using a Caliptra image):
 
@@ -247,3 +247,13 @@ There is an example fully provisioned (UDS and FE burned and transitioned into
 production) `.vmem` file for loading into the OTP via the `--otp` in the
 repository in
 [`otp-prod-fe.vmem`](https://github.com/chipsalliance/caliptra-mcu-sw/blob/main/otp-prod-fe.mem).
+
+
+## Troubleshooting
+
+### Error: fatal: unable to access 'https://github.com/chipsalliance/caliptra-mcu-sw/': server certificate verification failed. CAfile: none CRLfile: none
+
+This error while bootstrapping could be due to the time on the the FPGA being incorrect. The clock can be resynchronized by running
+```
+$ sudo timedatectl set-ntp true
+```
