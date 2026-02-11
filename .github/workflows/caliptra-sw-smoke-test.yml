@@ -1,0 +1,16 @@
+# Licensed under the Apache-2.0 license
+
+name: Caliptra SW Smoke Test
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  caliptra-sw-mcu-rom-smoke-test:
+    uses: chipsalliance/caliptra-sw/.github/workflows/fpga-subsystem.yml@caliptra-2.0
+    with:
+      mcu-commit: ${{ github.event.pull_request.head.sha || github.sha }}
+      branch: caliptra-2.0
+      fpga-itrng: true
+      extra-features: itrng
