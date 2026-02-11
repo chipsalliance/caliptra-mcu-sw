@@ -17,11 +17,11 @@ use tock_registers::interfaces::{ReadWriteable, Readable};
 
 const RESET_STATUS_MCU_RESET_MASK: u32 = 0x2;
 
-/// Clamp a timer period to i64::MAX to avoid overflow in the timer scheduler.
+/// Clamp a timer period to below i64::MAX to avoid overflow in the timer scheduler.
 /// This can happen when software writes timer registers in two halves,
 /// creating a temporary very large value.
 fn clamp_timer_period(period: u64) -> u64 {
-    period.min(i64::MAX as u64)
+    period.min((i64::MAX as u64) - 1)
 }
 
 pub struct Mci {
@@ -43,6 +43,7 @@ pub struct Mci {
     op_mtimecmp_due_action: Option<ActionHandle>,
     mcu_mailbox1: Option<McuMailbox0Internal>,
     soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
+    #[allow(dead_code)]
     generic_input_wires: [u32; 2],
     reset_requested: bool,
 }
@@ -59,6 +60,7 @@ impl Mci {
     ) -> Self {
         // Clear the reset status, MCU and Caiptra are out of reset
         ext_mci_regs.regs.borrow_mut().reset_status = 0;
+        ext_mci_regs.regs.borrow_mut().generic_input_wires = generic_input_wires;
 
         let mut reset_reason = ResetReasonEmulator::new(ext_mci_regs.clone());
         reset_reason.handle_power_up();
@@ -68,9 +70,11 @@ impl Mci {
         // Reasonable default: ~4B ticks in the future (within scheduling horizon).
         let default_mtimecmp = timer.now().wrapping_add(1u64 << 32);
 
+        let generated = MciGenerated::default();
+
         Self {
             ext_mci_regs,
-            generated: MciGenerated::default(),
+            generated,
 
             error0_internal_intr_r: ReadWriteRegister::new(0),
             timer: Timer::new(clock),
@@ -79,6 +83,7 @@ impl Mci {
             reset_reason,
             irq,
             mcu_mailbox0,
+            generic_input_wires,
             reset_requested: false,
 
             // --- init mtimecmp ---
@@ -86,7 +91,6 @@ impl Mci {
             op_mtimecmp_due_action: None,
             mcu_mailbox1,
             soc_regs,
-            generic_input_wires,
         }
     }
 
@@ -105,10 +109,10 @@ impl Mci {
         let delay = if now >= self.mtimecmp {
             1
         } else {
-            // Clamp to i64::MAX to avoid overflow in the timer scheduler.
+            // Clamp to below i64::MAX to avoid overflow in the timer scheduler.
             // This can happen when software writes mtimecmp in two halves,
             // creating a temporary very large value.
-            (self.mtimecmp - now).min(i64::MAX as u64)
+            (self.mtimecmp - now).min((i64::MAX as u64) - 1)
         };
 
         // Directly schedule the machine timer interrupt
@@ -125,7 +129,7 @@ impl MciPeripheral for Mci {
     }
 
     fn read_mci_reg_generic_input_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
-        self.generic_input_wires[index]
+        self.ext_mci_regs.regs.borrow().generic_input_wires[index]
     }
 
     fn read_mci_reg_fw_flow_status(&mut self) -> caliptra_emu_types::RvData {

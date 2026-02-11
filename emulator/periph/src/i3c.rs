@@ -870,9 +870,11 @@ impl I3cPeripheral for I3c {
         u32,
         registers_generated::i3c::bits::IndirectFifoStatus0::Register,
     > {
-        // Always report FIFO as empty (bit 0 set) since the emulator immediately buffers data.
-        // This allows the ROM to continue writing without waiting for the FIFO to drain.
-        caliptra_emu_bus::ReadWriteRegister::new(1)
+        caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0
+                .reg
+                .get(),
+        )
     }
 
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1(
