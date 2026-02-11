@@ -109,4 +109,29 @@ pub trait UnifiedCommandHandler {
         &self,
         capabilities: &mut DeviceCapabilities,
     ) -> Result<(), CommandError>;
+
+    /// Retrieves log entries from the specified log.
+    ///
+    /// Reads as many complete log entries as fit into `data`, truncating at
+    /// entry boundaries (no partial entries). Only `log_type=0` (DebugLog)
+    /// is currently supported.
+    ///
+    /// # Arguments
+    /// * `log_type` - The type of log to retrieve (0 = DebugLog).
+    /// * `data` - Mutable buffer to store the log data.
+    ///
+    /// # Returns
+    /// * `Result<usize, CommandError>` - Number of bytes written on success, or an error.
+    async fn get_log(&self, log_type: u32, data: &mut [u8]) -> Result<usize, CommandError>;
+
+    /// Clears the specified log.
+    ///
+    /// Only `log_type=0` (DebugLog) is currently supported.
+    ///
+    /// # Arguments
+    /// * `log_type` - The type of log to clear (0 = DebugLog).
+    ///
+    /// # Returns
+    /// * `Result<(), CommandError>` - Ok on success, or an error.
+    async fn clear_log(&self, log_type: u32) -> Result<(), CommandError>;
 }

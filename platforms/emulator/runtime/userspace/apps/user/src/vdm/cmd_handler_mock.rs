@@ -4,20 +4,30 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use core::fmt::Write;
 use external_cmds_common::{
     CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
     UnifiedCommandHandler, MAX_FW_VERSION_LEN, MAX_UID_LEN,
 };
+use libsyscall_caliptra::logging::LoggingSyscall;
+use libsyscall_caliptra::DefaultSyscalls;
+use libtock_console::Console;
 use mcu_mbox_common::config;
 
 #[derive(Default)]
 pub struct NonCryptoCmdHandlerMock;
+
+/// Max size for a single log entry read buffer.
+const LOG_ENTRY_BUF_SIZE: usize = 256;
 
 /// Mock implementation of the `UnifiedCommandHandler` trait.
 ///
 /// This handler provides mock responses for firmware version queries,
 /// device ID, device information, and device capabilities. Intended to use for
 /// integration testing on the emulator platform.
+///
+/// For logging commands, the handler uses the real `LoggingSyscall` API to
+/// read/clear entries from the flash-backed logging driver.
 #[async_trait]
 impl UnifiedCommandHandler for NonCryptoCmdHandlerMock {
     async fn get_firmware_version(
@@ -83,5 +93,65 @@ impl UnifiedCommandHandler for NonCryptoCmdHandlerMock {
         capabilities.mcu_rom = test_capabilities.mcu_rom;
         capabilities.reserved = test_capabilities.reserved;
         Ok(())
+    }
+
+    async fn get_log(&self, log_type: u32, data: &mut [u8]) -> Result<usize, CommandError> {
+        if log_type != 0 {
+            return Err(CommandError::InvalidParams);
+        }
+
+        let mut console_writer = Console::<DefaultSyscalls>::writer();
+        writeln!(console_writer, "GetLog: start log_type={}", log_type).unwrap();
+
+        let log: LoggingSyscall = LoggingSyscall::new();
+
+        if log.exists().is_err() {
+            // Logging driver not available — return empty data
+            writeln!(console_writer, "GetLog: logging driver not available").unwrap();
+            return Ok(0);
+        }
+
+        log.seek_beginning()
+            .await
+            .map_err(|_| CommandError::InternalError)?;
+        writeln!(console_writer, "GetLog: seek_beginning OK").unwrap();
+
+        let mut offset = 0;
+        let mut entry_buf = [0u8; LOG_ENTRY_BUF_SIZE];
+        loop {
+            match log.read_entry(&mut entry_buf).await {
+                Ok(len) => {
+                    if offset + len > data.len() {
+                        writeln!(
+                            console_writer,
+                            "GetLog: buffer full offset={} len={} data_len={}",
+                            offset,
+                            len,
+                            data.len()
+                        )
+                        .unwrap();
+                        break;
+                    }
+                    data[offset..offset + len].copy_from_slice(&entry_buf[..len]);
+                    offset += len;
+                }
+                Err(_) => {
+                    break;
+                }
+            }
+        }
+
+        writeln!(console_writer, "GetLog: done bytes_read={}", offset).unwrap();
+
+        Ok(offset)
+    }
+
+    async fn clear_log(&self, log_type: u32) -> Result<(), CommandError> {
+        if log_type != 0 {
+            return Err(CommandError::InvalidParams);
+        }
+
+        let log: LoggingSyscall = LoggingSyscall::new();
+        log.clear().await.map_err(|_| CommandError::InternalError)
     }
 }

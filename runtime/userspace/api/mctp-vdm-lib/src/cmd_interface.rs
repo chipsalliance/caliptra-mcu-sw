@@ -9,8 +9,9 @@ use external_cmds_common::{
 };
 use mctp_vdm_common::codec::VdmCodec;
 use mctp_vdm_common::message::{
-    DeviceCapabilitiesResponse, DeviceIdResponse, DeviceInfoRequest, DeviceInfoResponse,
-    FirmwareVersionRequest, FirmwareVersionResponse, DEVICE_CAPS_SIZE,
+    ClearLogRequest, ClearLogResponse, DeviceCapabilitiesResponse, DeviceIdResponse,
+    DeviceInfoRequest, DeviceInfoResponse, FirmwareVersionRequest, FirmwareVersionResponse,
+    GetLogRequest, GetLogResponse, DEVICE_CAPS_SIZE, MAX_LOG_DATA_SIZE,
 };
 use mctp_vdm_common::protocol::{
     VdmCommand, VdmCompletionCode, VdmFailureResponse, VdmMsgHeader, VDM_MSG_HEADER_LEN,
@@ -119,6 +120,8 @@ impl<'a> CmdInterface<'a> {
             }
             VdmCommand::DeviceId => self.handle_device_id(msg_buf, vdm_req_len).await,
             VdmCommand::DeviceInfo => self.handle_device_info(msg_buf, vdm_req_len).await,
+            VdmCommand::GetLog => self.handle_get_log(msg_buf, vdm_req_len).await,
+            VdmCommand::ClearLog => self.handle_clear_log(msg_buf, vdm_req_len).await,
             _ => self.send_error_response(
                 msg_buf,
                 hdr.command_code,
@@ -262,6 +265,65 @@ impl<'a> CmdInterface<'a> {
         self.encode_device_info_response(msg_buf, &resp)
     }
 
+    /// Handle Get Log command.
+    async fn handle_get_log(
+        &self,
+        msg_buf: &mut [u8],
+        req_len: usize,
+    ) -> Result<usize, VdmLibError> {
+        // Extract VDM message portion.
+        let vdm_msg = extract_vdm_msg(msg_buf).map_err(|_| VdmLibError::DecodingError)?;
+
+        // Decode the request.
+        let req = GetLogRequest::decode(&vdm_msg[..req_len])
+            .map_err(|_| VdmLibError::DecodingError)?;
+
+        // Get the log data using the unified handler.
+        let mut data = [0u8; MAX_LOG_DATA_SIZE];
+        let log_type = req.log_type;
+        let result = self.unified_handler.get_log(log_type, &mut data).await;
+
+        // Build the response.
+        let (completion_code, log_data) = match result {
+            Ok(len) => (VdmCompletionCode::Success, &data[..len]),
+            Err(_) => (VdmCompletionCode::InvalidData, &[][..]),
+        };
+
+        let resp = GetLogResponse::new(completion_code as u32, log_data);
+
+        // Encode the response into the MCTP payload.
+        self.encode_get_log_response(msg_buf, &resp)
+    }
+
+    /// Handle Clear Log command.
+    async fn handle_clear_log(
+        &self,
+        msg_buf: &mut [u8],
+        req_len: usize,
+    ) -> Result<usize, VdmLibError> {
+        // Extract VDM message portion.
+        let vdm_msg = extract_vdm_msg(msg_buf).map_err(|_| VdmLibError::DecodingError)?;
+
+        // Decode the request.
+        let req = ClearLogRequest::decode(&vdm_msg[..req_len])
+            .map_err(|_| VdmLibError::DecodingError)?;
+
+        // Clear the log using the unified handler.
+        let log_type = req.log_type;
+        let result = self.unified_handler.clear_log(log_type).await;
+
+        // Build the response.
+        let completion_code = match result {
+            Ok(()) => VdmCompletionCode::Success,
+            Err(_) => VdmCompletionCode::InvalidData,
+        };
+
+        let resp = ClearLogResponse::new(completion_code as u32);
+
+        // Encode the response into the MCTP payload.
+        self.encode_response(msg_buf, &resp)
+    }
+
     /// Send an error response.
     fn send_error_response(
         &self,
@@ -296,6 +358,24 @@ impl<'a> CmdInterface<'a> {
         &self,
         msg_buf: &mut [u8],
         resp: &DeviceInfoResponse,
+    ) -> Result<usize, VdmLibError> {
+        // Construct MCTP header and get VDM message slice.
+        let vdm_msg = construct_mctp_vdm_msg(msg_buf).map_err(|_| VdmLibError::EncodingError)?;
+
+        // Encode the response.
+        let resp_len = resp
+            .encode(vdm_msg)
+            .map_err(|_| VdmLibError::EncodingError)?;
+
+        // Return total MCTP payload length (1 byte MCTP header + VDM response).
+        Ok(VDM_MSG_OFFSET + resp_len)
+    }
+
+    /// Encode a GetLogResponse (variable length) into the MCTP payload buffer.
+    fn encode_get_log_response(
+        &self,
+        msg_buf: &mut [u8],
+        resp: &GetLogResponse,
     ) -> Result<usize, VdmLibError> {
         // Construct MCTP header and get VDM message slice.
         let vdm_msg = construct_mctp_vdm_msg(msg_buf).map_err(|_| VdmLibError::EncodingError)?;

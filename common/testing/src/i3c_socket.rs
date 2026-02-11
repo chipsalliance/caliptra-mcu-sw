@@ -203,6 +203,25 @@ impl BufferedStream {
     }
 
     pub fn receive_ibi(&mut self, target_addr: u8) -> bool {
+        // First check the read_buffer for a pre-buffered IBI
+        // (receive_private_read may have buffered IBIs it encountered)
+        let mut found_idx = None;
+        for (i, pkt) in self.read_buffer.iter().enumerate() {
+            if pkt.header.from_addr == target_addr && pkt.header.ibi != 0 {
+                found_idx = Some(i);
+                break;
+            }
+        }
+        if let Some(idx) = found_idx {
+            self.read_buffer.remove(idx);
+            let pvt_read_cmd = prepare_private_read_cmd(target_addr);
+            self.stream.set_nonblocking(false).unwrap();
+            self.stream.write_all(&pvt_read_cmd).unwrap();
+            self.stream.set_nonblocking(true).unwrap();
+            return true;
+        }
+
+        // No buffered IBI; try reading from socket
         loop {
             match self.read_packet(target_addr) {
                 Some(packet) => {
@@ -224,33 +243,60 @@ impl BufferedStream {
     }
 
     pub fn receive_private_read(&mut self, target_addr: u8) -> Option<Vec<u8>> {
-        let mut packet = None;
-        while !self.read_buffer.is_empty() {
-            let read = self.read_buffer.pop_front().unwrap();
-            if read.header.from_addr == target_addr {
-                packet = Some(read);
+        // First check the read_buffer for a non-IBI data packet for this target.
+        let mut found_idx = None;
+        for (i, pkt) in self.read_buffer.iter().enumerate() {
+            if pkt.header.from_addr == target_addr && pkt.header.ibi == 0 {
+                found_idx = Some(i);
                 break;
             }
         }
 
-        match packet.or_else(|| self.read_packet(target_addr)) {
-            Some(Packet { data, .. }) => {
-                if data.is_empty() {
-                    println!("Received empty data packet");
-                    return None;
-                }
-                let pec = calculate_crc8((target_addr << 1) | 1, &data[..data.len() - 1]);
-                if pec != data[data.len() - 1] {
-                    println!(
-                        "Received data with invalid CRC8: calclulated {:X} != received {:X}",
-                        pec,
-                        data[data.len() - 1]
-                    );
-                    return None;
-                }
-                Some(data[..data.len() - 1].to_vec())
+        if let Some(idx) = found_idx {
+            let pkt = self.read_buffer.remove(idx).unwrap();
+            let data = pkt.data;
+            if data.is_empty() {
+                return None;
             }
-            _ => None,
+            let pec = calculate_crc8((target_addr << 1) | 1, &data[..data.len() - 1]);
+            if pec != data[data.len() - 1] {
+                println!(
+                    "Received data with invalid CRC8: calclulated {:X} != received {:X}",
+                    pec,
+                    data[data.len() - 1]
+                );
+                return None;
+            }
+            return Some(data[..data.len() - 1].to_vec());
+        }
+
+        // No buffered data packet; try reading from the socket.
+        // Keep reading past IBI packets, buffering them for receive_ibi().
+        loop {
+            match self.read_packet(target_addr) {
+                Some(pkt) => {
+                    if pkt.header.ibi != 0 {
+                        // This is an IBI; preserve it for receive_ibi().
+                        self.read_buffer.push_back(pkt);
+                        continue;
+                    }
+                    let data = pkt.data;
+                    if data.is_empty() {
+                        return None;
+                    }
+                    let pec = calculate_crc8((target_addr << 1) | 1, &data[..data.len() - 1]);
+                    if pec != data[data.len() - 1] {
+                        println!(
+                            "Received data with invalid CRC8: calclulated {:X} != received {:X}",
+                            pec,
+                            data[data.len() - 1]
+                        );
+                        return None;
+                    }
+                    return Some(data[..data.len() - 1].to_vec());
+                }
+                _ => return None,
+            }
         }
     }
 

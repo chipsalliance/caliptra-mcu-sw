@@ -161,21 +161,100 @@ impl MctpUtil {
                 }
                 I3cControllerState::ReceivePrivateRead => {
                     if let Some(data) = stream.receive_private_read(target_addr) {
+                        let mctp_hdr: MCTPHdr<[u8; MCTP_HDR_SIZE]> =
+                            MCTPHdr::read_from_bytes(&data[0..MCTP_HDR_SIZE]).unwrap();
+                        let pkt_payload_len = data.len().saturating_sub(MCTP_HDR_SIZE);
+                        let next_seq = |seq: u8| (seq + 1) % 4;
+                        let is_middle =
+                            |hdr: &MCTPHdr<[u8; MCTP_HDR_SIZE]>| hdr.som() == 0 && hdr.eom() == 0;
+
+                        if mctp_hdr.msg_tag() != msg_tag || mctp_hdr.tag_owner() != 0 {
+                            i3c_state = I3cControllerState::WaitForIbi;
+                            continue;
+                        }
+
                         if data[4] == msg_type {
-                            let mut resp_pkts = VecDeque::new();
-                            let message_identifier = MessageIdentifier {
-                                dest_eid: self.src_eid, // Destination is the requester
-                                src_eid: self.dest_eid, // Source is the responder
-                                msg_tag,                // The message tag sent in the request
-                                tag_owner: 0,           // Not tag owner for response
-                            };
-                            resp_pkts.push_back(data);
                             self.new_resp();
+
+                            if mctp_hdr.som() == 1 {
+                                // Start (or restart) message assembly on SOM.
+                                assembling = true;
+                                resp_pkts.clear();
+                                message_identifier.dest_eid = mctp_hdr.dest_eid();
+                                message_identifier.src_eid = mctp_hdr.src_eid();
+                                message_identifier.msg_tag = mctp_hdr.msg_tag();
+                                message_identifier.tag_owner = mctp_hdr.tag_owner();
+                                expected_seq = next_seq(mctp_hdr.pkt_seq());
+                                start_payload_len = pkt_payload_len;
+                            } else if !assembling {
+                                // Drop middle/end packet without a start packet.
+                                i3c_state = I3cControllerState::WaitForIbi;
+                                continue;
+                            } else {
+                                // Validate sequence and payload length for ongoing assembly.
+                                if mctp_hdr.pkt_seq() != expected_seq {
+                                    assembling = false;
+                                    resp_pkts.clear();
+                                    i3c_state = I3cControllerState::WaitForIbi;
+                                    continue;
+                                }
+                                if is_middle(&mctp_hdr) && pkt_payload_len != start_payload_len {
+                                    assembling = false;
+                                    resp_pkts.clear();
+                                    i3c_state = I3cControllerState::WaitForIbi;
+                                    continue;
+                                }
+                                expected_seq = next_seq(mctp_hdr.pkt_seq());
+                            }
+
+                            let mut last_pkt =
+                                self.receive_packet(&mut resp_pkts, data, &mut message_identifier);
+                            while !last_pkt && retry > 0 {
+                                if stream.receive_ibi(target_addr) {
+                                    if let Some(next_data) =
+                                        stream.receive_private_read(target_addr)
+                                    {
+                                        let next_hdr: MCTPHdr<[u8; MCTP_HDR_SIZE]> =
+                                            MCTPHdr::read_from_bytes(&next_data[0..MCTP_HDR_SIZE])
+                                                .unwrap();
+                                        let next_len =
+                                            next_data.len().saturating_sub(MCTP_HDR_SIZE);
+
+                                        if next_hdr.msg_tag() != msg_tag
+                                            || next_hdr.tag_owner() != 0
+                                            || next_hdr.som() == 1
+                                            || next_hdr.pkt_seq() != expected_seq
+                                            || (is_middle(&next_hdr)
+                                                && next_len != start_payload_len)
+                                        {
+                                            assembling = false;
+                                            resp_pkts.clear();
+                                            i3c_state = I3cControllerState::WaitForIbi;
+                                            break;
+                                        }
+
+                                        expected_seq = next_seq(next_hdr.pkt_seq());
+                                        last_pkt = self.receive_packet(
+                                            &mut resp_pkts,
+                                            next_data,
+                                            &mut message_identifier,
+                                        );
+                                        retry = retry_limit;
+                                    }
+                                } else {
+                                    retry -= 1;
+                                    println!("MCTP_UTIL: IBI not received. Retrying {}...", retry);
+                                }
+                            }
+
+                            if !last_pkt {
+                                return None;
+                            }
                             let resp = self.assemble(resp_pkts, &message_identifier);
                             return Some(resp);
                         }
 
-                        i3c_state = I3cControllerState::Finish;
+                        i3c_state = I3cControllerState::WaitForIbi;
                     }
                 }
                 I3cControllerState::Finish => {
@@ -354,6 +433,10 @@ impl MctpUtil {
         let mut pkt = data.clone();
         let mctp_hdr: &mut MCTPHdr<[u8; MCTP_HDR_SIZE]> =
             MCTPHdr::mut_from_bytes(&mut pkt[0..MCTP_HDR_SIZE]).unwrap();
+
+        if pkts.is_empty() && mctp_hdr.som() == 0 {
+            return false;
+        }
 
         if mctp_hdr.som() == 1 {
             pkts.clear();

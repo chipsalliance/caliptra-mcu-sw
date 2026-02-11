@@ -10,6 +10,7 @@ pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use log::{info, LevelFilter};
     use mctp_vdm_common::codec::VdmCodec;
+    use mctp_vdm_common::message::clear_log::{ClearLogRequest, ClearLogResponse};
     use mctp_vdm_common::message::device_capabilities::{
         DeviceCapabilitiesRequest, DeviceCapabilitiesResponse,
     };
@@ -18,6 +19,7 @@ pub mod test {
     use mctp_vdm_common::message::firmware_version::{
         FirmwareVersionRequest, FirmwareVersionResponse,
     };
+    use mctp_vdm_common::message::get_log::{GetLogRequest, GetLogResponse};
     use mctp_vdm_common::protocol::header::VdmCompletionCode;
     use mcu_hw_model::McuHwModel;
     use mcu_mbox_common::config;
@@ -248,12 +250,63 @@ pub mod test {
             Ok(())
         }
 
+        /// Test Get Log command.
+        fn test_get_log(&mut self) -> Result<(), VdmTransportError> {
+            info!("Testing Get Log command...");
+
+            // Test GetLog with log_type=0 (DebugLog)
+            // No pre-populated data, so we expect 0 bytes
+            let request = GetLogRequest::new(0);
+            let response: GetLogResponse = self.send_request_expect_success(&request)?;
+            let data_size = response.data_size();
+            info!("  GetLog: received {} bytes", data_size);
+
+            // Test GetLog with invalid log_type
+            let request = GetLogRequest::new(99);
+            self.send_request_expect_error(&request, VdmCompletionCode::InvalidData)?;
+            info!("  GetLog invalid log_type correctly returns InvalidData");
+
+            Ok(())
+        }
+
+        /// Test Clear Log command.
+        fn test_clear_log(&mut self) -> Result<(), VdmTransportError> {
+            info!("Testing Clear Log command...");
+
+            // Clear the log
+            let request = ClearLogRequest::new(0);
+            let response: ClearLogResponse = self.send_request_expect_success(&request)?;
+            let completion_code = response.completion_code;
+            Self::assert_eq(
+                &completion_code,
+                &(VdmCompletionCode::Success as u32),
+                "ClearLog completion code",
+            )?;
+            info!("  ClearLog: success");
+
+            // Verify log is empty after clear
+            let get_request = GetLogRequest::new(0);
+            let get_response: GetLogResponse = self.send_request_expect_success(&get_request)?;
+            let data_size = get_response.data_size();
+            Self::assert_eq(&data_size, &0usize, "GetLog after ClearLog data size")?;
+            info!("  GetLog after ClearLog: empty (correct)");
+
+            // Test ClearLog with invalid log_type
+            let request = ClearLogRequest::new(99);
+            self.send_request_expect_error(&request, VdmCompletionCode::InvalidData)?;
+            info!("  ClearLog invalid log_type correctly returns InvalidData");
+
+            Ok(())
+        }
+
         /// Run all VDM command tests.
         pub fn run_all_tests(&mut self) -> Result<(), VdmTransportError> {
+            self.test_get_log()?;
             self.test_get_firmware_version()?;
             self.test_get_device_id()?;
             self.test_get_device_info()?;
             self.test_get_device_capabilities()?;
+
             self.test_unsupported_command()?;
             Ok(())
         }

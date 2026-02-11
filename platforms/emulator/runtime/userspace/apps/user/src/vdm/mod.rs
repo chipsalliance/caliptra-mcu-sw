@@ -31,6 +31,10 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
 
     #[cfg(feature = "test-mctp-vdm-cmds")]
     {
+        // Note: Log pre-population disabled for now — flash ops are too slow
+        // in the emulator. Tests will work with empty log data.
+        // TODO: Enable when flash DMA performance is improved in the emulator.
+
         // Use static storage to ensure 'static lifetime for handler, transport, and cmd_interface.
         static HANDLER: StaticCell<cmd_handler_mock::NonCryptoCmdHandlerMock> = StaticCell::new();
         static TRANSPORT: StaticCell<mctp_vdm_lib::transport::MctpVdmTransport> = StaticCell::new();
