@@ -1,8 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::DefaultSyscalls;
+use core::fmt::Write;
 use core::{hint::black_box, marker::PhantomData};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+use libtock_console::Console;
 use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
 use libtockasync::TockSubscribe;
 
@@ -82,6 +84,8 @@ impl<S: Syscalls> McuMbox<S> {
         if data.is_empty() {
             return Err(ErrorCode::Invalid);
         }
+        let mut c = Console::<DefaultSyscalls>::writer();
+        writeln!(c, "McuMbox.receive_command").unwrap();
 
         let mutex = MCU_MBOX_MUTEX.lock().await;
         let (command, recv_len, _) = share::scope::<(), _, _>(|_handle| {
@@ -92,12 +96,14 @@ impl<S: Syscalls> McuMbox<S> {
                 data,
             );
 
+            writeln!(c, "McuMbox Subscribed").unwrap();
             if let Err(e) = S::command(self.driver_num, command::RECEIVE_REQUEST, 0, 0)
                 .to_result::<(), ErrorCode>()
             {
                 sub.cancel();
                 Err(e)?;
             }
+            writeln!(c, "McuMbox Syscall sent").unwrap();
 
             Ok(TockSubscribe::subscribe_finish(sub))
         })?
@@ -105,6 +111,7 @@ impl<S: Syscalls> McuMbox<S> {
 
         black_box(*mutex); // Ensure the mutex is not optimized away
 
+        writeln!(c, "McuMbox Done").unwrap();
         Ok((command, recv_len as usize))
     }
 

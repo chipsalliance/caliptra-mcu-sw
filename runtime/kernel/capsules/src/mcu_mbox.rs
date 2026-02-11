@@ -233,6 +233,7 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
 
 impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
     fn request_received(&self, command: u32, rx_buf: &'static mut [u32], dlen: usize) {
+        println!("Kernel syscall: MCU_MBOX_CAPSULE: request_received");
         let dw_len = dlen.div_ceil(4);
         if dw_len > rx_buf.len() {
             println!(
@@ -333,6 +334,7 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
         match command_num {
             0 => CommandReturn::success(),
             1 => {
+                println!("Kernel syscall: MCU_MBOX_CAPSULE: receive_request");
                 // Receive request message
                 let res = self.apps.enter(process_id, |app, kernel_data| {
                     if app.waiting_rx.get() {

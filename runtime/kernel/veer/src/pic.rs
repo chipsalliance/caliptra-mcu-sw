@@ -123,12 +123,14 @@ impl Pic {
 
     /// Enable all interrupts.
     pub fn enable_all(&self) {
+        romtime::println!("[mcu-runtime-veer] Enabling all interrupts");
         for enable in self.registers.meie.iter().skip(1) {
             enable.write(Meie::Inten::SET);
         }
     }
     /// Disable all interrupts.
     pub fn disable_all(&self) {
+        romtime::println!("[mcu-runtime-veer] Disabling all interrupts");
         for enable in self.registers.meie.iter().skip(1) {
             enable.write(Meie::Inten::CLEAR);
         }
