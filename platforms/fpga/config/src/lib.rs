@@ -8,7 +8,7 @@ use mcu_config::{McuMemoryMap, McuStraps, MemoryRegionType};
 pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     rom_offset: 0xb004_0000,
     rom_size: 128 * 1024,
-    rom_stack_size: 0x3000,
+    rom_stack_size: 0x2d00,
     rom_estack_size: 0x200,
     rom_properties: MemoryRegionType::MEMORY,
 
