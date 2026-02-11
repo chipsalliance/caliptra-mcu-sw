@@ -12,10 +12,16 @@ use mcu_config::McuMemoryMap;
 use mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 
 pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<PathBuf> {
-    let rom = format!(
+    let feature_suffix = match &features {
+        Some(f) => format!("-{f}"),
+        None => String::new(),
+    };
+
+    let target_name = format!(
         "mcu-rom-{}",
         platform.clone().unwrap_or_else(|| "emulator".to_string())
     );
+    let rom = format!("{target_name}{feature_suffix}");
     let manifest = manifest_file(platform.as_deref(), false)?;
     let common = Common {
         manifest,
@@ -29,10 +35,15 @@ pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<P
             rom_features: features.clone(),
             ..Default::default()
         },
-        target: Some(rom),
+        target: Some(target_name.clone()),
     };
 
     mcu_firmware_bundler::execute(build_cmd)?;
+    std::fs::rename(
+        rom_binary.with_file_name(format!("{target_name}.bin")),
+        &rom_binary,
+    )?;
+    assert!(rom_binary.exists(), "{rom_binary:?} does not exist");
     Ok(rom_binary)
 }
 
