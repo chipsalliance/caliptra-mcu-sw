@@ -76,14 +76,7 @@ impl Bus for EmuCtrl {
     fn write(&mut self, _size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
         match addr {
             EmuCtrl::ADDR_EXIT => {
-                // Ensure non-zero values produce non-zero exit codes
-                // (Unix exit codes are masked to 8 bits, so 0x000F0000 would become 0)
-                let exit_code = if val != 0 && (val & 0xFF) == 0 {
-                    1
-                } else {
-                    val as i32
-                };
-                exit(exit_code);
+                exit(val as i32);
             }
             _ => Err(BusError::StoreAccessFault)?,
         }
