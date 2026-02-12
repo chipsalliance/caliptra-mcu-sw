@@ -661,6 +661,18 @@ impl Otp {
         Ok(data)
     }
 
+    /// Read from vendor non-secret prod partition
+    pub fn read_vendor_non_secret_prod_partition(&self, data: &mut [u8]) -> McuResult<()> {
+        let len = data
+            .len()
+            .min(fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE);
+        self.read_data(
+            fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
+            len,
+            data,
+        )
+    }
+
     pub fn read_fuses(&self) -> McuResult<Fuses> {
         let mut fuses = Fuses::default();
 
@@ -741,14 +753,12 @@ impl Otp {
             fuses::CPTRA_SS_LOCK_HEK_PROD_7_BYTE_SIZE,
             &mut fuses.cptra_ss_lock_hek_prod_7,
         )?;
-        // We use non secret production fuses to have caliptra tests pass some initial fuse values
-        if cfg!(feature = "core_test") {
-            self.read_data(
-                fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
-                fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE,
-                &mut fuses.vendor_non_secret_prod_partition,
-            )?;
-        }
+        crate::println!("[mcu-rom-otp] Reading vendor non-secret production partition");
+        self.read_data(
+            fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
+            fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE,
+            &mut fuses.vendor_non_secret_prod_partition,
+        )?;
         Ok(fuses)
     }
 

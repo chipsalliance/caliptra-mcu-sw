@@ -20,10 +20,12 @@ use emulator_registers_generated::otp::OtpGenerated;
 use registers_generated::fuses::{self};
 use registers_generated::otp_ctrl::bits::{DirectAccessCmd, OtpStatus};
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::Seek;
 use std::path::PathBuf;
+use std::rc::Rc;
 #[allow(unused_imports)] // Rust compiler doesn't like these
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -128,7 +130,7 @@ pub struct Otp {
     direct_access_cmd: ReadWriteRegister<u32, DirectAccessCmd::Register>,
     status: ReadWriteRegister<u32, OtpStatus::Register>,
     timer: Timer,
-    partitions: Vec<u8>,
+    partitions: Rc<RefCell<Vec<u8>>>,
     digests: [u32; PARTITIONS.len() * 2],
     /// Partitions to calculate digests for on reset.
     calculate_digests_on_reset: HashSet<usize>,
@@ -173,6 +175,8 @@ impl Otp {
             partitions[..raw_memory.len()].copy_from_slice(&raw_memory);
         }
 
+        let partitions = Rc::new(RefCell::new(partitions));
+
         let mut otp = Self {
             file,
             direct_access_address: 0,
@@ -181,14 +185,14 @@ impl Otp {
             status: OtpStatus::DaiIdle::SET.value.into(),
             calculate_digests_on_reset: HashSet::new(),
             timer: Timer::new(clock),
-            partitions: vec![0u8; TOTAL_SIZE],
+            partitions,
             digests: [0; PARTITIONS.len() * 2],
             generated: OtpGenerated::default(),
         };
         otp.read_from_file()?;
         if let Some(mut vendor_pk_hash) = args.vendor_pk_hash {
             swap_endianness(&mut vendor_pk_hash);
-            otp.partitions[fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET
+            otp.partitions.borrow_mut()[fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET
                 ..fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48]
                 .copy_from_slice(&vendor_pk_hash);
         }
@@ -197,29 +201,32 @@ impl Otp {
             FwVerificationPqcKeyType::MLDSA => 0,
             FwVerificationPqcKeyType::LMS => 1,
         };
-        otp.partitions[fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48] = val;
-        otp.partitions[fuses::SVN_PARTITION_BYTE_OFFSET + 36] =
-            args.soc_manifest_max_svn.unwrap_or(0);
-        if let Some(soc_manifest_svn) = args.soc_manifest_svn {
-            let svn_bitmap = Self::svn_to_bitmap(soc_manifest_svn as u32);
-            otp.partitions
-                [fuses::SVN_PARTITION_BYTE_OFFSET + 20..fuses::SVN_PARTITION_BYTE_OFFSET + 36]
-                .copy_from_slice(&svn_bitmap);
-        }
+        {
+            let mut partitions = otp.partitions.borrow_mut();
+            partitions[fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48] = val;
+            partitions[fuses::SVN_PARTITION_BYTE_OFFSET + 36] =
+                args.soc_manifest_max_svn.unwrap_or(0);
+            if let Some(soc_manifest_svn) = args.soc_manifest_svn {
+                let svn_bitmap = Self::svn_to_bitmap(soc_manifest_svn as u32);
+                partitions
+                    [fuses::SVN_PARTITION_BYTE_OFFSET + 20..fuses::SVN_PARTITION_BYTE_OFFSET + 36]
+                    .copy_from_slice(&svn_bitmap);
+            }
 
-        if let Some(vendor_hashes_prod_partition) = args.vendor_hashes_prod_partition {
-            let dst_start = fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET;
-            let max_len = fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE;
-            let copy_len = vendor_hashes_prod_partition.len().min(max_len);
-            otp.partitions[dst_start..dst_start + copy_len]
-                .copy_from_slice(&vendor_hashes_prod_partition[..copy_len]);
-        }
-        if let Some(vendor_test_partition) = args.vendor_test_partition {
-            let dst_start = fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET;
-            let max_len = fuses::VENDOR_TEST_PARTITION_BYTE_SIZE;
-            let copy_len = vendor_test_partition.len().min(max_len);
-            otp.partitions[dst_start..dst_start + copy_len]
-                .copy_from_slice(&vendor_test_partition[..copy_len]);
+            if let Some(vendor_hashes_prod_partition) = args.vendor_hashes_prod_partition {
+                let dst_start = fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET;
+                let max_len = fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE;
+                let copy_len = vendor_hashes_prod_partition.len().min(max_len);
+                partitions[dst_start..dst_start + copy_len]
+                    .copy_from_slice(&vendor_hashes_prod_partition[..copy_len]);
+            }
+            if let Some(vendor_test_partition) = args.vendor_test_partition {
+                let dst_start = fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET;
+                let max_len = fuses::VENDOR_TEST_PARTITION_BYTE_SIZE;
+                let copy_len = vendor_test_partition.len().min(max_len);
+                partitions[dst_start..dst_start + copy_len]
+                    .copy_from_slice(&vendor_test_partition[..copy_len]);
+            }
         }
 
         // if there were digests that were pending a reset, then calculate them now
@@ -230,6 +237,12 @@ impl Otp {
     /// Memory map size.
     pub fn mmap_size(&self) -> RvAddr {
         4096
+    }
+
+    /// Returns a clone of the shared partitions reference.
+    /// This allows the model to hold a reference to the OTP memory.
+    pub fn partitions_ref(&self) -> Rc<RefCell<Vec<u8>>> {
+        self.partitions.clone()
     }
 
     fn calculate_digests(&mut self) -> Result<(), std::io::Error> {
@@ -246,22 +259,23 @@ impl Otp {
             return;
         }
         let (addr, size) = PARTITIONS[partition];
+        let partitions = self.partitions.borrow();
         let digest =
-            otp_digest::otp_digest(&self.partitions[addr..addr + size], DIGEST_IV, DIGEST_CONST);
+            otp_digest::otp_digest(&partitions[addr..addr + size], DIGEST_IV, DIGEST_CONST);
         self.digests[partition * 2] = (digest & 0xffff_ffff) as u32;
         self.digests[partition * 2 + 1] = (digest >> 32) as u32;
     }
 
     fn get_state(&self) -> OtpState {
         OtpState {
-            partitions: self.partitions.clone(),
+            partitions: self.partitions.borrow().clone(),
             calculate_digests_on_reset: self.calculate_digests_on_reset.clone(),
             digests: self.digests.to_vec(),
         }
     }
 
     fn load_state(&mut self, state: &OtpState) {
-        self.partitions = state.partitions.clone();
+        *self.partitions.borrow_mut() = state.partitions.clone();
         self.calculate_digests_on_reset = state.calculate_digests_on_reset.clone();
         self.digests.copy_from_slice(&state.digests);
     }
@@ -370,11 +384,17 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
             // clear bottom two bits
             let addr = (self.direct_access_address & 0xffff_fffc) as usize;
             if addr + 4 <= TOTAL_SIZE {
-                // refuse to write twice
-                if self.partitions[addr..addr + 4].iter().all(|x| *x == 0) {
-                    self.partitions[addr..addr + 4]
-                        .copy_from_slice(&self.direct_access_buffer.to_le_bytes());
-                }
+                // OTP can only burn bits from 0 to 1, never clear bits.
+                // We OR the new value with the existing value to emulate this behavior.
+                let mut partitions = self.partitions.borrow_mut();
+                let current = u32::from_le_bytes([
+                    partitions[addr],
+                    partitions[addr + 1],
+                    partitions[addr + 2],
+                    partitions[addr + 3],
+                ]);
+                let new_value = current | self.direct_access_buffer;
+                partitions[addr..addr + 4].copy_from_slice(&new_value.to_le_bytes());
             }
             // reset direct access
             self.direct_access_cmd.reg.set(0);
@@ -386,7 +406,8 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
             let addr = (self.direct_access_address & 0xffff_fffc) as usize;
             if addr + 4 <= TOTAL_SIZE {
                 let mut buf = [0; 4];
-                buf.copy_from_slice(&self.partitions[addr..addr + 4]);
+                let partitions = self.partitions.borrow();
+                buf.copy_from_slice(&partitions[addr..addr + 4]);
                 self.direct_access_buffer = u32::from_le_bytes(buf);
             }
             // reset direct access

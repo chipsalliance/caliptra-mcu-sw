@@ -45,6 +45,16 @@ mod test {
 
     const TEST_HW_REVISION: &str = "2.1.0";
 
+    /// Custom Caliptra firmware bundle for testing with custom keys.
+    pub struct CustomCaliptraFw {
+        /// The firmware bundle bytes
+        pub fw_bytes: Vec<u8>,
+        /// The vendor public key hash (48 bytes / 384 bits)
+        pub vendor_pk_hash: [u8; 48],
+        /// The SoC manifest bytes (re-signed with custom owner keys)
+        pub soc_manifest: Vec<u8>,
+    }
+
     #[derive(Default)]
     pub struct TestParams<'a> {
         pub feature: Option<&'a str>,
@@ -53,6 +63,12 @@ mod test {
         pub rom_only: bool,
         pub include_network_rom: bool,
         pub flash_boot: bool,
+        /// If true, set the DOT initialized fuse to enable DOT flow
+        pub dot_enabled: bool,
+        /// Custom Caliptra firmware bundle to use instead of prebuilt/compiled.
+        pub custom_caliptra_fw: Option<CustomCaliptraFw>,
+        /// Custom OTP memory contents. If provided, takes precedence over dot_enabled.
+        pub otp_memory: Option<Vec<u8>>,
     }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -278,6 +294,18 @@ mod test {
             }
         };
 
+        // Use custom Caliptra FW if provided, otherwise use prebuilt/compiled
+        let (caliptra_fw, vendor_pk_hash_u8, soc_manifest) =
+            if let Some(custom) = params.custom_caliptra_fw {
+                (
+                    custom.fw_bytes,
+                    custom.vendor_pk_hash.to_vec(),
+                    custom.soc_manifest,
+                )
+            } else {
+                (caliptra_fw, vendor_pk_hash_u8, soc_manifest)
+            };
+
         let vendor_pk_hash: Vec<u32> = vendor_pk_hash_u8
             .chunks(4)
             .map(|chunk| {
@@ -293,6 +321,20 @@ mod test {
             &network_rom
         } else {
             &[]
+        };
+        // Set up OTP memory: use custom otp_memory if provided, otherwise auto-generate from dot_enabled
+        let otp_memory = if let Some(custom_otp) = params.otp_memory {
+            Some(custom_otp)
+        } else if params.dot_enabled {
+            // TODO: move this when we add the fuse-burning scripts
+            use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
+            // Create OTP memory large enough to include the vendor non-secret prod partition
+            let mut otp = vec![0u8; VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 256];
+            // Set dot_initialized to 1 at the start of the vendor non-secret prod partition
+            otp[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET] = 1;
+            Some(otp)
+        } else {
+            None
         };
 
         // Build flash image for flash-based boot, or use individual images for streaming boot
@@ -329,6 +371,7 @@ mod test {
             enable_mcu_uart_log: true,
             dot_flash_initial_contents: params.dot_flash_initial_contents,
             check_booted_to_runtime: !params.rom_only,
+            otp_memory: otp_memory.as_deref(),
             primary_flash_initial_contents: flash_image,
             flash_boot: params.flash_boot,
             ..Default::default()

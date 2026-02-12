@@ -87,6 +87,7 @@ pub struct ModelEmulated {
     i3c_address: Option<u8>,
     i3c_controller_join_handle: Option<JoinHandle<()>>,
     dot_flash: Rc<RefCell<Ram>>,
+    otp_partitions: Rc<RefCell<Vec<u8>>>,
     check_booted_to_runtime: bool,
 }
 
@@ -156,7 +157,15 @@ impl McuHwModel for ModelEmulated {
 
         let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
 
-        let mut otp_mem = vec![0u8; fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE];
+        let otp_size = fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE;
+        let mut otp_mem = if let Some(initial_otp) = params.otp_memory {
+            // Start with provided OTP memory contents, extended to full size if needed
+            let mut mem = initial_otp.to_vec();
+            mem.resize(otp_size, 0);
+            mem
+        } else {
+            vec![0u8; otp_size]
+        };
         if let Some(state) = params.lifecycle_controller_state {
             println!("Setting lifecycle controller state to {}", state);
             let mem = lc_generate_memory(state, 1)?;
@@ -188,6 +197,9 @@ impl McuHwModel for ModelEmulated {
                 ..Default::default()
             },
         )?;
+
+        // Get the partitions reference before passing OTP to the bus
+        let otp_partitions = otp.partitions_ref();
 
         let create_flash_controller =
             |default_path: &str,
@@ -416,6 +428,7 @@ impl McuHwModel for ModelEmulated {
             i3c_address: Some(i3c_dynamic_address.into()),
             i3c_controller_join_handle: None,
             dot_flash,
+            otp_partitions,
             check_booted_to_runtime: params.check_booted_to_runtime,
         };
         // Turn tracing on if the trace path was set
@@ -540,7 +553,7 @@ impl McuHwModel for ModelEmulated {
     }
 
     fn read_otp_memory(&self) -> Vec<u8> {
-        unimplemented!()
+        self.otp_partitions.borrow().clone()
     }
 
     fn read_dot_flash(&self) -> Vec<u8> {

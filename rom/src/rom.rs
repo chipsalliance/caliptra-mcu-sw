@@ -269,31 +269,8 @@ impl Soc {
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_mldsa_revocation.set(word);
 
-        // Owner PK Hash.
-        // TBD: Device Ownership Transfer
-        // First check if it's all zeros by reading the first word
-        let first_word = otp
-            .read_u32_at(registers_generated::fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET)
-            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-
-        // Only proceed if the first word is non-zero (quick check)
-        if first_word != 0 {
-            romtime::print!("[mcu-fuse-write] Writing fuse key owner PK hash: ");
-            romtime::print!("{}", HexWord(first_word));
-            self.registers.cptra_owner_pk_hash[0].set(first_word);
-
-            for i in 1..self.registers.cptra_owner_pk_hash.len() {
-                let word = otp
-                    .read_u32_at(
-                        registers_generated::fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET
-                            + i * 4,
-                    )
-                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-                romtime::print!("{}", HexWord(word));
-                self.registers.cptra_owner_pk_hash[i].set(word);
-            }
-            romtime::println!("");
-        }
+        // Owner PK Hash is written separately after Device Ownership Transfer flow.
+        // See set_owner_pk_hash() method.
 
         // TODO: load HEK Seed CSRs.
         // SoC Stepping ID (only 16-bits are relevant).
@@ -453,6 +430,29 @@ impl Soc {
         self.set_cptra_trng_axi_user_lock(1);
         romtime::println!("[mcu-rom] Setting DMA user");
         self.set_ss_caliptra_dma_axi_user(dma_user);
+    }
+
+    /// Sets the owner public key hash in Caliptra's SoC interface registers.
+    ///
+    /// This is called after Device Ownership Transfer (DOT) flow completes to set
+    /// the owner PK hash from either the DOT blob or the fuses.
+    ///
+    /// # Arguments
+    /// * `owner_pk_hash` - The owner public key hash to set.
+    pub fn set_owner_pk_hash(&self, owner_pk_hash: &crate::fuses::OwnerPkHash) {
+        romtime::print!("[mcu-fuse-write] Writing owner PK hash: ");
+        for (i, word) in owner_pk_hash.0.iter().enumerate() {
+            romtime::print!("{}", HexWord(*word));
+            self.registers.cptra_owner_pk_hash[i].set(*word);
+        }
+        romtime::println!("");
+    }
+
+    /// Locks the owner public key hash register.
+    ///
+    /// Once locked, the owner PK hash cannot be modified until the next reset.
+    pub fn lock_owner_pk_hash(&self) {
+        self.registers.cptra_owner_pk_hash_lock.set(1);
     }
 
     pub fn fuse_write_done(&self) {

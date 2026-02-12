@@ -14,27 +14,78 @@ use caliptra_auth_man_types::{
 };
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_fake_keys::*;
-use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
-use caliptra_image_types::{FwVerificationPqcKeyType, ImageManifest};
+use caliptra_image_gen::{
+    from_hw_format, ImageGenerator, ImageGeneratorConfig, ImageGeneratorCrypto,
+    ImageGeneratorExecutable, ImageGeneratorOwnerConfig,
+};
+use caliptra_image_types::{
+    FwVerificationPqcKeyType, ImageBundle, ImageManifest, ImageRevision, IMAGE_MANIFEST_BYTE_SIZE,
+};
 use cargo_metadata::MetadataCommand;
 use flash_image::MCU_RT_IDENTIFIER;
 use hex::ToHex;
 use std::{num::ParseIntError, path::PathBuf, str::FromStr};
-use zerocopy::{transmute, IntoBytes};
+use zerocopy::{transmute, FromBytes, IntoBytes};
 
-#[derive(Clone, Debug)]
+/// A wrapper for raw firmware bytes that implements ImageGeneratorExecutable.
+/// Used to re-sign existing FW bundles without recompiling.
+struct RawExecutable {
+    version: u32,
+    rev: ImageRevision,
+    load_addr: u32,
+    entry_point: u32,
+    content: Vec<u8>,
+}
+
+impl ImageGeneratorExecutable for RawExecutable {
+    fn version(&self) -> u32 {
+        self.version
+    }
+    fn rev(&self) -> &ImageRevision {
+        &self.rev
+    }
+    fn load_addr(&self) -> u32 {
+        self.load_addr
+    }
+    fn entry_point(&self) -> u32 {
+        self.entry_point
+    }
+    fn content(&self) -> &Vec<u8> {
+        &self.content
+    }
+    fn size(&self) -> u32 {
+        self.content.len() as u32
+    }
+}
+
+/// Configuration for owner keys used in auth manifest (SoC manifest) signing.
+/// This parallels `ImageGeneratorOwnerConfig` but uses the auth manifest key types.
+#[derive(Clone)]
+pub struct AuthManifestOwnerConfig {
+    pub pub_keys: AuthManifestPubKeysConfig,
+    pub priv_keys: Option<AuthManifestPrivKeysConfig>,
+}
+
+#[derive(Clone)]
 pub struct CaliptraBuilder {
     fpga: bool,
     caliptra_rom: Option<PathBuf>,
     caliptra_firmware: Option<PathBuf>,
     soc_manifest: Option<PathBuf>,
     vendor_pk_hash: Option<String>,
+    owner_pk_hash: Option<String>,
     mcu_firmware: Option<PathBuf>,
     soc_images: Option<Vec<ImageCfg>>,
     mcu_image_cfg: Option<ImageCfg>,
     soc_manifest_svn: Option<u32>,
     vendor: String,
     model: String,
+    /// Optional custom owner configuration for re-signing FW bundles.
+    /// If provided, the FW bundle will be re-signed with these owner keys.
+    owner_config: Option<ImageGeneratorOwnerConfig>,
+    /// Optional custom owner configuration for re-signing auth manifests (SoC manifest).
+    /// If provided, the auth manifest will be signed with these owner keys.
+    auth_manifest_owner_config: Option<AuthManifestOwnerConfig>,
 }
 
 impl CaliptraBuilder {
@@ -58,13 +109,38 @@ impl CaliptraBuilder {
             caliptra_firmware,
             soc_manifest,
             vendor_pk_hash,
+            owner_pk_hash: None,
             mcu_firmware,
             soc_images,
             mcu_image_cfg,
             soc_manifest_svn,
             vendor: vendor.unwrap_or_else(|| "ChipsAlliance".to_string()),
             model: model.unwrap_or_else(|| "Caliptra-SS".to_string()),
+            owner_config: None,
+            auth_manifest_owner_config: None,
         }
+    }
+
+    /// Sets a custom owner configuration for re-signing the FW bundle.
+    /// When set, the FW bundle will be re-signed with the specified owner keys.
+    pub fn with_owner_config(mut self, owner_config: ImageGeneratorOwnerConfig) -> Self {
+        self.owner_config = Some(owner_config);
+        self
+    }
+
+    /// Sets a custom owner configuration for signing the auth manifest (SoC manifest).
+    /// When set, the auth manifest will be signed with the specified owner keys.
+    pub fn with_auth_manifest_owner_config(
+        mut self,
+        auth_manifest_owner_config: AuthManifestOwnerConfig,
+    ) -> Self {
+        self.auth_manifest_owner_config = Some(auth_manifest_owner_config);
+        self
+    }
+
+    /// Returns the owner public key hash if available.
+    pub fn get_owner_pk_hash(&self) -> Option<&str> {
+        self.owner_pk_hash.as_deref()
     }
 
     pub fn get_caliptra_rom(&self) -> Result<PathBuf> {
@@ -79,19 +155,55 @@ impl CaliptraBuilder {
     }
 
     pub fn get_caliptra_fw(&mut self) -> Result<PathBuf> {
-        if let Some(caliptra_firmware) = self.caliptra_firmware.as_ref() {
+        // First, get the base FW bundle (cached/prebuilt or compiled)
+        let base_bundle_path = if let Some(caliptra_firmware) = self.caliptra_firmware.as_ref() {
             if !caliptra_firmware.exists() {
                 bail!("Caliptra runtime bundle not found: {:?}", caliptra_firmware);
             }
-            if self.vendor_pk_hash.is_none() {
-                bail!("Vendor public key hash is required for active mode if Caliptra FW is passed as an argument");
-            }
+            caliptra_firmware.clone()
         } else {
             let (path, vendor_pk_hash) = Self::compile_caliptra_fw_cached(self.fpga)?;
             self.vendor_pk_hash = Some(vendor_pk_hash);
-            self.caliptra_firmware = Some(path);
+            self.caliptra_firmware = Some(path.clone());
+            path
+        };
+
+        // If we have a custom owner_config, re-sign the bundle
+        if let Some(owner_config) = self.owner_config.take() {
+            let existing_bundle = std::fs::read(&base_bundle_path)?;
+            let (new_bundle, vendor_hash, owner_hash) =
+                Self::resign_fw_bundle(&existing_bundle, owner_config, self.fpga)?;
+
+            // Write the re-signed bundle to a new path
+            let path = target_dir().join("caliptra-fw-bundle-resigned.bin");
+            let fw_bytes = new_bundle.to_bytes()?;
+            std::fs::write(&path, fw_bytes)?;
+
+            self.vendor_pk_hash = Some(vendor_hash);
+            self.owner_pk_hash = Some(owner_hash);
+            self.caliptra_firmware = Some(path.clone());
+
+            println!(
+                "Re-signed Caliptra FW bundle with custom owner config, owner_pk_hash: {}",
+                self.owner_pk_hash.as_ref().unwrap()
+            );
+
+            return Ok(path);
         }
-        Ok(self.caliptra_firmware.clone().unwrap())
+
+        // No custom owner config - compute owner_pk_hash from existing bundle if needed
+        if self.owner_pk_hash.is_none() {
+            let bundle_bytes = std::fs::read(&base_bundle_path)?;
+            let (manifest, _) = ImageManifest::ref_from_prefix(&bundle_bytes)
+                .map_err(|_| anyhow::anyhow!("Failed to parse manifest"))?;
+            self.owner_pk_hash = Some(Self::owner_pk_hash_str(manifest)?);
+        }
+
+        if self.vendor_pk_hash.is_none() {
+            bail!("Vendor public key hash is required for active mode if Caliptra FW is passed as an argument");
+        }
+
+        Ok(base_bundle_path)
     }
 
     fn get_soc_images_metadata(&self) -> Result<Vec<AuthManifestImageMetadata>> {
@@ -127,6 +239,7 @@ impl CaliptraBuilder {
                 metadata.clone(),
                 self.soc_manifest_svn.unwrap_or(0),
                 name,
+                self.auth_manifest_owner_config.as_ref(),
             )?;
             self.write_fw_components_config(&metadata)?;
             self.soc_manifest = Some(path);
@@ -236,8 +349,10 @@ impl CaliptraBuilder {
         metadata: Vec<AuthManifestImageMetadata>,
         svn: u32,
         name: Option<&str>,
+        owner_config: Option<&AuthManifestOwnerConfig>,
     ) -> Result<PathBuf> {
-        let manifest = Self::create_auth_manifest_with_metadata(metadata, svn);
+        let manifest =
+            Self::create_auth_manifest_with_metadata_and_owner(metadata, svn, owner_config);
 
         let path = name
             .map(PathBuf::from)
@@ -416,6 +531,96 @@ impl CaliptraBuilder {
         Ok(Self::vendor_pk_hash(&manifest)?.encode_hex())
     }
 
+    /// Computes the SHA384 hash of the owner public keys from the firmware bundle manifest.
+    pub fn owner_pk_hash(manifest: &ImageManifest) -> Result<[u8; 48]> {
+        let crypto = Crypto::default();
+        Ok(from_hw_format(&crypto.sha384_digest(
+            manifest.preamble.owner_pub_keys.as_bytes(),
+        )?))
+    }
+
+    fn owner_pk_hash_str(manifest: &ImageManifest) -> Result<String> {
+        Ok(Self::owner_pk_hash(manifest)?.encode_hex())
+    }
+
+    /// Re-signs an existing FW bundle with a custom owner configuration.
+    /// This extracts the FMC and runtime binaries from the existing bundle
+    /// and generates a new bundle with the specified owner keys.
+    ///
+    /// # Arguments
+    /// * `existing_bundle` - Path to the existing FW bundle to re-sign
+    /// * `owner_config` - Custom owner configuration with keys for signing
+    /// * `fpga` - Whether this is for FPGA or emulator
+    ///
+    /// # Returns
+    /// A tuple of (new bundle, vendor_pk_hash, owner_pk_hash)
+    fn resign_fw_bundle(
+        existing_bundle: &[u8],
+        owner_config: ImageGeneratorOwnerConfig,
+        _fpga: bool,
+    ) -> Result<(ImageBundle, String, String)> {
+        // Parse the existing manifest
+        let manifest_size = IMAGE_MANIFEST_BYTE_SIZE;
+        if existing_bundle.len() < manifest_size {
+            bail!("FW bundle too small to contain manifest");
+        }
+
+        let manifest: ImageManifest = {
+            let bytes: [u8; IMAGE_MANIFEST_BYTE_SIZE] = existing_bundle[..manifest_size]
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("Failed to read manifest bytes"))?;
+            transmute!(bytes)
+        };
+
+        // Extract FMC and runtime from the bundle
+        let fmc_offset = manifest.fmc.offset as usize;
+        let fmc_size = manifest.fmc.size as usize;
+        let rt_offset = manifest.runtime.offset as usize;
+        let rt_size = manifest.runtime.size as usize;
+
+        if fmc_offset + fmc_size > existing_bundle.len()
+            || rt_offset + rt_size > existing_bundle.len()
+        {
+            bail!("FW bundle truncated - FMC or runtime extends beyond bundle size");
+        }
+
+        let fmc_content = existing_bundle[fmc_offset..fmc_offset + fmc_size].to_vec();
+        let rt_content = existing_bundle[rt_offset..rt_offset + rt_size].to_vec();
+
+        // Create RawExecutable wrappers
+        let fmc_exe = RawExecutable {
+            version: manifest.fmc.version,
+            rev: manifest.fmc.revision,
+            load_addr: manifest.fmc.load_addr,
+            entry_point: manifest.fmc.entry_point,
+            content: fmc_content,
+        };
+
+        let rt_exe = RawExecutable {
+            version: manifest.runtime.version,
+            rev: manifest.runtime.revision,
+            load_addr: manifest.runtime.load_addr,
+            entry_point: manifest.runtime.entry_point,
+            content: rt_content,
+        };
+
+        // Generate new bundle with custom owner config
+        let gen = ImageGenerator::new(Crypto::default());
+        let new_bundle = gen.generate(&ImageGeneratorConfig {
+            fmc: fmc_exe,
+            runtime: rt_exe,
+            fw_svn: manifest.header.svn,
+            vendor_config: caliptra_image_fake_keys::VENDOR_CONFIG_KEY_0,
+            owner_config: Some(owner_config),
+            pqc_key_type: FwVerificationPqcKeyType::LMS,
+        })?;
+
+        let vendor_hash = Self::vendor_pk_hash_str(new_bundle.manifest)?;
+        let owner_hash = Self::owner_pk_hash_str(&new_bundle.manifest)?;
+
+        Ok((new_bundle, vendor_hash, owner_hash))
+    }
+
     fn compile_caliptra_fw_uncached(fpga: bool) -> Result<(PathBuf, String)> {
         let opts = caliptra_builder::ImageOptions {
             pqc_key_type: FwVerificationPqcKeyType::LMS,
@@ -498,6 +703,78 @@ impl CaliptraBuilder {
                     mldsa_priv_key: OWNER_MLDSA_KEY_PRIVATE,
                 }),
             });
+
+        let gen_config: AuthManifestGeneratorConfig = AuthManifestGeneratorConfig {
+            vendor_fw_key_info: Some(vendor_fw_key_info),
+            vendor_man_key_info: Some(vendor_man_key_info),
+            owner_fw_key_info,
+            owner_man_key_info,
+            image_metadata_list,
+            version: 1,
+            flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
+            pqc_key_type: FwVerificationPqcKeyType::LMS,
+            svn,
+        };
+
+        let gen = AuthManifestGenerator::new(Crypto::default());
+        gen.generate(&gen_config).unwrap()
+    }
+
+    /// Creates an auth manifest with optional custom owner keys.
+    /// If owner_config is None, uses default owner keys.
+    fn create_auth_manifest_with_metadata_and_owner(
+        image_metadata_list: Vec<AuthManifestImageMetadata>,
+        svn: u32,
+        owner_config: Option<&AuthManifestOwnerConfig>,
+    ) -> AuthorizationManifest {
+        let vendor_fw_key_info: AuthManifestGeneratorKeyConfig = AuthManifestGeneratorKeyConfig {
+            pub_keys: AuthManifestPubKeysConfig {
+                ecc_pub_key: VENDOR_ECC_KEY_0_PUBLIC,
+                lms_pub_key: VENDOR_LMS_KEY_0_PUBLIC,
+                mldsa_pub_key: VENDOR_MLDSA_KEY_0_PUBLIC,
+            },
+            priv_keys: Some(AuthManifestPrivKeysConfig {
+                ecc_priv_key: VENDOR_ECC_KEY_0_PRIVATE,
+                lms_priv_key: VENDOR_LMS_KEY_0_PRIVATE,
+                mldsa_priv_key: VENDOR_MLDSA_KEY_0_PRIVATE,
+            }),
+        };
+
+        let vendor_man_key_info: AuthManifestGeneratorKeyConfig = AuthManifestGeneratorKeyConfig {
+            pub_keys: AuthManifestPubKeysConfig {
+                ecc_pub_key: VENDOR_ECC_KEY_1_PUBLIC,
+                lms_pub_key: VENDOR_LMS_KEY_1_PUBLIC,
+                mldsa_pub_key: VENDOR_MLDSA_KEY_0_PUBLIC,
+            },
+            priv_keys: Some(AuthManifestPrivKeysConfig {
+                ecc_priv_key: VENDOR_ECC_KEY_1_PRIVATE,
+                lms_priv_key: VENDOR_LMS_KEY_1_PRIVATE,
+                mldsa_priv_key: VENDOR_MLDSA_KEY_0_PRIVATE,
+            }),
+        };
+
+        // Use custom owner keys if provided, otherwise use defaults
+        let (owner_fw_key_info, owner_man_key_info) = if let Some(cfg) = owner_config {
+            let key_config = AuthManifestGeneratorKeyConfig {
+                pub_keys: cfg.pub_keys,
+                priv_keys: cfg.priv_keys,
+            };
+            (Some(key_config.clone()), Some(key_config))
+        } else {
+            let default_owner_key = AuthManifestGeneratorKeyConfig {
+                pub_keys: AuthManifestPubKeysConfig {
+                    ecc_pub_key: OWNER_ECC_KEY_PUBLIC,
+                    lms_pub_key: OWNER_LMS_KEY_PUBLIC,
+                    mldsa_pub_key: OWNER_MLDSA_KEY_PUBLIC,
+                },
+                priv_keys: Some(AuthManifestPrivKeysConfig {
+                    ecc_priv_key: OWNER_ECC_KEY_PRIVATE,
+                    lms_priv_key: OWNER_LMS_KEY_PRIVATE,
+                    mldsa_priv_key: OWNER_MLDSA_KEY_PRIVATE,
+                }),
+            };
+            (Some(default_owner_key.clone()), Some(default_owner_key))
+        };
 
         let gen_config: AuthManifestGeneratorConfig = AuthManifestGeneratorConfig {
             vendor_fw_key_info: Some(vendor_fw_key_info),
