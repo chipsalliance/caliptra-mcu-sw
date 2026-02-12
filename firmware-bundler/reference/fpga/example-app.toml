@@ -1,0 +1,34 @@
+
+# Licensed under the Apache-2.0 license
+
+[platform]
+name = "fpga-example-app"
+tuple = "riscv32imc-unknown-none-elf"
+dynamic_sizing = true
+page_size = 256
+
+[platform.rom]
+offset = 0xb004_0000
+size = 0x2_0000
+
+[platform.runtime_memory]
+sram = { offset = 0xa8c0_0000, size = 0x8_0000 }
+
+[platform.dccm]
+offset = 0x5000_0000
+size = 0x4000
+
+# This section is optional.
+[rom]
+name = "mcu-rom-fpga"
+stack = 0x2d00
+exception_stack = 0x200
+
+[kernel]
+name = "mcu-runtime-fpga"
+stack = 0x0_7000
+
+[[app]]
+name = "example-app"
+stack = 0x9000
+

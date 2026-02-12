@@ -3,7 +3,6 @@
 use caliptra_api_types::DeviceLifecycle;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
-use core::panic;
 use mcu_builder::ImageCfg;
 use mcu_firmware_bundler::args::Commands as BundleCommands;
 use std::path::PathBuf;
@@ -93,9 +92,6 @@ enum Commands {
         #[arg(long)]
         flash_image: Option<PathBuf>,
 
-        #[arg(long, default_value_t = false)]
-        use_dccm_for_stack: bool,
-
         #[arg(long, value_parser=maybe_hex::<u32>)]
         dccm_offset: Option<u32>,
 
@@ -114,15 +110,6 @@ enum Commands {
         /// Platform to build for. Default: emulator
         #[arg(long)]
         platform: Option<String>,
-
-        #[arg(long, default_value_t = false)]
-        use_dccm_for_stack: bool,
-
-        #[arg(long, value_parser=maybe_hex::<u32>)]
-        dccm_offset: Option<u32>,
-
-        #[arg(long, value_parser=maybe_hex::<u32>)]
-        dccm_size: Option<u32>,
     },
     /// Build ROM
     RomBuild {
@@ -159,15 +146,6 @@ enum Commands {
         /// Platform to build for. Default: emulator
         #[arg(long)]
         platform: Option<String>,
-
-        #[arg(long, default_value_t = false)]
-        use_dccm_for_stack: bool,
-
-        #[arg(long, value_parser=maybe_hex::<u32>)]
-        dccm_offset: Option<u32>,
-
-        #[arg(long, value_parser=maybe_hex::<u32>)]
-        dccm_size: Option<u32>,
 
         #[arg(long)]
         rom_features: Option<String>,
@@ -408,9 +386,6 @@ fn main() {
         Commands::AllBuild {
             output,
             platform,
-            use_dccm_for_stack,
-            dccm_offset,
-            dccm_size,
             rom_features,
             runtime_features,
             separate_runtimes,
@@ -420,9 +395,6 @@ fn main() {
         } => mcu_builder::all_build(mcu_builder::AllBuildArgs {
             output: output.as_deref(),
             platform: platform.as_deref(),
-            use_dccm_for_stack: *use_dccm_for_stack,
-            dccm_offset: *dccm_offset,
-            dccm_size: *dccm_size,
             rom_features: rom_features.as_deref(),
             runtime_features: runtime_features.as_deref(),
             separate_runtimes: *separate_runtimes,
@@ -441,9 +413,6 @@ fn main() {
             features,
             output,
             platform,
-            use_dccm_for_stack,
-            dccm_offset,
-            dccm_size,
         } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
             mcu_builder::runtime_build_with_apps(
@@ -451,29 +420,13 @@ fn main() {
                 output.clone(),
                 false,
                 platform.as_deref(),
-                match platform.as_deref() {
-                    None | Some("emulator") => Some(&mcu_config_emulator::EMULATOR_MEMORY_MAP),
-                    Some("fpga") => Some(&mcu_config_fpga::FPGA_MEMORY_MAP),
-                    _ => panic!("Unsupported platform"),
-                },
-                *use_dccm_for_stack,
-                *dccm_offset,
-                *dccm_size,
-                match platform.as_deref() {
-                    None | Some("emulator") => {
-                        Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG)
-                    }
-                    Some("fpga") => None,
-                    _ => panic!("Unsupported platform"),
-                },
                 None,
             )
             .map(|_| ())
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild { platform, features } => {
-            mcu_builder::rom_build(platform.as_deref(), features.as_deref().unwrap_or(""))
-                .map(|_| ())
+            mcu_builder::rom_build(platform.clone(), features.clone()).map(|_| ())
         }
         Commands::NetworkRomBuild => mcu_builder::network_rom_build().map(|_| ()),
         Commands::FlashImage { subcommand } => match subcommand {

@@ -28,12 +28,13 @@ pub mod ld;
 pub mod manifest;
 pub mod size;
 pub mod tbf;
-pub(crate) mod utils;
+pub mod utils;
 
 use anyhow::{bail, Result};
 use args::{BuildArgs, Common, LdArgs};
 use ld::BuildDefinition;
 use manifest::{AllocationRequest, Manifest};
+use mcu_image_header::McuImageHeader;
 
 use crate::args::Commands;
 
@@ -75,6 +76,10 @@ pub fn execute(cmd: Commands) -> Result<()> {
 /// A utility function to run the logic for a build step.
 fn ld_step(common: &Common, ld: &LdArgs, build: &BuildArgs) -> Result<(Manifest, BuildDefinition)> {
     let mut manifest = common.manifest()?;
+
+    if common.svn.is_some() {
+        manifest.reserve_itcm(size_of::<McuImageHeader>().try_into()?)?;
+    }
 
     if manifest.platform.dynamic_sizing() {
         dynamically_size(&mut manifest, common, ld, build)?;
@@ -132,18 +137,21 @@ fn dynamically_size(
         .zip(sizes.apps)
         .zip(maximal_build_definition.apps)
         .try_for_each(|((manifest_app, size_app), built_app)| {
+            let grant_space = manifest_app.grant_space();
+            let manifest_binary = &mut manifest_app.binary;
+
             // As a sanity test ensure we are talking about the same binary.  Each round iterates
             // through the apps in the same order, so this should always succeed.
-            if manifest_app.name != size_app.name {
+            if manifest_binary.name != size_app.name {
                 bail!(
                     "Manifest and size application are not aligned ({}, {})",
-                    manifest_app.name,
+                    manifest_binary.name,
                     size_app.name
                 );
             }
 
             let header_len = built_app.header.generate()?.get_ref().len();
-            manifest_app.exec_mem = Some(AllocationRequest {
+            manifest_binary.exec_mem = Some(AllocationRequest {
                 // Account for the header length, which is placed within the flash block, but not
                 // accounted for by the instruction count.
                 size: (size_app.instructions + (header_len as u64))
@@ -151,8 +159,8 @@ fn dynamically_size(
                 alignment: None,
             });
 
-            manifest_app.data_mem = Some(AllocationRequest {
-                size: size_app.data.next_multiple_of(TOCK_ALIGNMENT),
+            manifest_binary.data_mem = Some(AllocationRequest {
+                size: (size_app.data + grant_space).next_multiple_of(TOCK_ALIGNMENT),
                 alignment: None,
             });
 

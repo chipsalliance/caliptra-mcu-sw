@@ -151,7 +151,7 @@ pub(crate) fn test_hello_c_emulator() -> Result<()> {
 }
 
 pub(crate) fn test_panic_missing() -> Result<()> {
-    rom_build(None, "")?;
+    rom_build(None, None)?;
     let rom_elf = PROJECT_ROOT
         .join("target")
         .join(TARGET)

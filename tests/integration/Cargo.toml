@@ -42,6 +42,7 @@ mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true
 mctp-vdm-common.workspace = true
 mcu-error.workspace = true
+mcu-firmware-bundler.workspace = true
 mcu-hw-model.workspace = true
 mcu-image-header.workspace = true
 mcu-mbox-common.workspace = true

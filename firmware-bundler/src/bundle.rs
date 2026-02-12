@@ -6,6 +6,9 @@
 use std::cmp::Ordering;
 
 use anyhow::{bail, Result};
+use zerocopy::IntoBytes;
+
+use mcu_image_header::McuImageHeader;
 
 use crate::{
     args::{BundleArgs, Common},
@@ -27,24 +30,34 @@ pub fn bundle(
 ) -> Result<()> {
     // Determine the release directory which elf files will be placed by `rustc` and where we
     // wish to place binaries.
-    let binary_dir = match &common.workspace_dir {
-        Some(oc) => oc.to_path_buf(),
-        None => common.workspace_dir()?,
-    }
-    .join(&manifest.platform.tuple)
-    .join("release");
+    let binary_dir = common.release_dir()?;
 
     // Note: The ROM is a single application, so we don't have to do any bundling.  As such skip it.
 
     // Build the binary into a byte vector.  The size of the embedded application at most in the
     // Megabytes so this isn't too expensive and will save multiple disk operations.
-    let mut runtime = std::fs::read(&output.kernel.0.binary)?;
+    let mut runtime = Vec::new();
+
+    // Detect if the svn option is set.  If so populate the McuImageHeader and prepend it to the
+    // bundled binary.
+    if let Some(svn) = common.svn {
+        runtime.extend_from_slice(
+            McuImageHeader {
+                svn,
+                ..Default::default()
+            }
+            .as_bytes(),
+        );
+    }
+    let header_len: u64 = runtime.len().try_into()?;
+    runtime.append(&mut std::fs::read(&output.kernel.0.binary)?);
 
     let base_addr = output.kernel.1.offset;
     for app in output.apps.clone().into_iter() {
         // Find the location the the binary should occupy in the blob.  There could be padding
         // between the end of one application and the beginning of the next.
-        let app_start: usize = (app.instruction_block.offset - base_addr).try_into()?;
+        let app_start: usize =
+            (app.instruction_block.offset - base_addr + header_len).try_into()?;
         match runtime.len().cmp(&app_start) {
             Ordering::Less => runtime.resize(app_start, 0),
             Ordering::Greater => bail!(
@@ -67,8 +80,8 @@ pub fn bundle(
         runtime.extend(app.into_iter());
     }
 
-    // Firmware validated by Caliptra is required to be 4 byte aligned.
-    let aligned_bin_len = runtime.len().next_multiple_of(4);
+    // Firmware validated by Caliptra is required to be 256 byte aligned.
+    let aligned_bin_len = runtime.len().next_multiple_of(256);
     if aligned_bin_len != runtime.len() {
         runtime.resize(aligned_bin_len, 0);
     }

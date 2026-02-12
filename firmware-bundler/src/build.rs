@@ -86,21 +86,25 @@ pub fn build_single_target(
     let mut binaries = build_definition
         .apps
         .iter()
-        .map(|a| (a.linker.clone(), APP_OBJCOPY_FLAGS))
+        .map(|a| (a.linker.clone(), &build.runtime_features, APP_OBJCOPY_FLAGS))
         .collect::<Vec<_>>();
-    binaries.push((build_definition.kernel.0.clone(), KERNEL_OBJCOPY_FLAGS));
+    binaries.push((
+        build_definition.kernel.0.clone(),
+        &build.runtime_features,
+        KERNEL_OBJCOPY_FLAGS,
+    ));
     if let Some(rom) = &build_definition.rom {
-        binaries.push((rom.clone(), ROM_OBJCOPY_FLAGS));
+        binaries.push((rom.clone(), &build.rom_features, ROM_OBJCOPY_FLAGS));
     }
 
     // Find the package to build, if none of the binaries matches the specified target error out.
-    let (target_to_build, objcopy_flags) = binaries
+    let (target_to_build, features, objcopy_flags) = binaries
         .into_iter()
-        .find(|(b, _)| b.name == target)
+        .find(|(b, _, _)| b.name == target)
         .ok_or_else(|| anyhow!("Binary target {target} not found in manifest file."))?;
 
     let pass = BuildPass::new(manifest, build_definition, common, build)?;
-    pass.build_binary(&target_to_build, objcopy_flags)
+    pass.build_binary(&target_to_build, features, objcopy_flags)
         .map(|_| ())
 }
 
@@ -123,12 +127,7 @@ impl<'a> BuildPass<'a> {
     ) -> Result<Self> {
         // Determine the release directory which elf files will be placed by `rustc` and where we
         // wish to place binaries.
-        let binary_dir = match &common.workspace_dir {
-            Some(oc) => oc.to_path_buf(),
-            None => common.workspace_dir()?,
-        }
-        .join(&manifest.platform.tuple)
-        .join("release");
+        let binary_dir = common.release_dir()?;
 
         let objcopy = match &build_args.objcopy {
             Some(o) => o.clone(),
@@ -151,12 +150,16 @@ impl<'a> BuildPass<'a> {
             .build_definition
             .rom
             .as_ref()
-            .map(|r| self.build_binary(r, ROM_OBJCOPY_FLAGS))
+            .map(|r| self.build_binary(r, &self.build_args.rom_features, ROM_OBJCOPY_FLAGS))
             .transpose()?;
 
         let (kernal_linker, kernel_instructions) = &self.build_definition.kernel;
         let kernel = (
-            self.build_binary(kernal_linker, KERNEL_OBJCOPY_FLAGS)?,
+            self.build_binary(
+                kernal_linker,
+                &self.build_args.runtime_features,
+                KERNEL_OBJCOPY_FLAGS,
+            )?,
             kernel_instructions.clone(),
         );
 
@@ -166,7 +169,11 @@ impl<'a> BuildPass<'a> {
             .iter()
             .map(|a| {
                 Ok(BuiltApp {
-                    binary: self.build_binary(&a.linker, APP_OBJCOPY_FLAGS)?,
+                    binary: self.build_binary(
+                        &a.linker,
+                        &self.build_args.runtime_features,
+                        APP_OBJCOPY_FLAGS,
+                    )?,
                     header: a.header.clone(),
                     instruction_block: a.instruction_block.clone(),
                 })
@@ -177,7 +184,12 @@ impl<'a> BuildPass<'a> {
     }
 
     /// Execute the build step for a single binary.
-    fn build_binary(&self, app: &LinkerScript, objcopy_flags: &str) -> Result<BuiltBinary> {
+    fn build_binary(
+        &self,
+        app: &LinkerScript,
+        features: &Option<String>,
+        objcopy_flags: &str,
+    ) -> Result<BuiltBinary> {
         // Setup the linker args based on the associated path provided by the linker generation
         // phase.
         let linker_args = format!(
@@ -198,8 +210,8 @@ impl<'a> BuildPass<'a> {
             .arg(&self.manifest.platform.tuple)
             .arg("--release");
 
-        if let Some(features) = &self.build_args.features {
-            cmd.arg("--features").arg(features);
+        if let Some(f) = features {
+            cmd.arg("--features").arg(f);
         }
 
         cmd.arg("--").args(linker_args.split(' '));

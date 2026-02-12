@@ -1,0 +1,37 @@
+# Licensed under the Apache-2.0 license
+
+[platform]
+name = "emulator-user-app"
+tuple = "riscv32imc-unknown-none-elf"
+dynamic_sizing = true
+page_size = 256
+
+[platform.rom]
+offset = 0x8000_0000
+size = 0x2_0000
+
+[platform.runtime_memory]
+sram = { offset = 0x4000_0000, size = 0x8_0000 }
+
+[platform.dccm]
+offset = 0x5000_0000
+size = 0x4000
+
+[platform.flash]
+offset = 0x3BFE_0000
+size = 0x2_0000
+
+# This section is optional.
+[rom]
+name = "mcu-rom-emulator"
+stack = 0x2d00
+exception_stack = 0x200
+
+[kernel]
+name = "mcu-runtime-emulator"
+stack = 0x0_7000
+
+[[app]]
+name = "user-app"
+stack = 0xae00
+

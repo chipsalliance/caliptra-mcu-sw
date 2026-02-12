@@ -1,69 +1,50 @@
 // Licensed under the Apache-2.0 license
 
-use crate::objcopy;
-use crate::{PROJECT_ROOT, TARGET};
+use std::{path::PathBuf, process::Command};
+
 use anyhow::{bail, Result};
+
+use crate::objcopy;
+use crate::utils::manifest_file;
+use crate::{PROJECT_ROOT, TARGET};
 use caliptra_builder::FwId;
 use mcu_config::McuMemoryMap;
-use std::process::Command;
+use mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 
-pub fn rom_build(platform: Option<&str>, feature: &str) -> Result<String> {
-    let platform = platform.unwrap_or("emulator");
-    let platform_pkg = format!("mcu-rom-{}", platform);
-    let feature_suffix = if feature.is_empty() {
-        "".to_string()
-    } else {
-        format!("-{}", feature)
+pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<PathBuf> {
+    let feature_suffix = match &features {
+        Some(f) => format!("-{f}"),
+        None => String::new(),
     };
 
-    let platform_bin = format!("mcu-rom-{}{}.bin", platform, feature_suffix);
-    let mut cmd = Command::new("cargo");
-    cmd.current_dir(&*PROJECT_ROOT).args([
-        "build",
-        "-p",
-        &platform_pkg,
-        "--release",
-        "--target",
-        TARGET,
-    ]);
-    if !feature.is_empty() {
-        cmd.args(["--features", feature]);
-    }
-    let status = cmd.status()?;
-    if !status.success() {
-        bail!("build ROM binary failed");
-    }
-    let rom_elf = PROJECT_ROOT
-        .join("target")
-        .join(TARGET)
-        .join("release")
-        .join(&platform_pkg);
-
-    let rom_binary = PROJECT_ROOT
-        .join("target")
-        .join(TARGET)
-        .join("release")
-        .join(&platform_bin);
-
-    let objcopy = objcopy()?;
-    let objcopy_flags = "--strip-sections --strip-all";
-    let mut objcopy_cmd = Command::new(objcopy);
-    objcopy_cmd
-        .arg("--output-target=binary")
-        .args(objcopy_flags.split(' '))
-        .arg(&rom_elf)
-        .arg(&rom_binary);
-    println!("Executing {:?}", &objcopy_cmd);
-    if !objcopy_cmd.status()?.success() {
-        bail!("objcopy failed to build ROM");
-    }
-    println!(
-        "ROM binary ({}) is at {:?} ({} bytes)",
-        platform,
-        &rom_binary,
-        std::fs::metadata(&rom_binary)?.len()
+    let target_name = format!(
+        "mcu-rom-{}",
+        platform.clone().unwrap_or_else(|| "emulator".to_string())
     );
-    Ok(rom_binary.to_string_lossy().to_string())
+    let rom = format!("{target_name}{feature_suffix}");
+    let manifest = manifest_file(platform.as_deref(), false)?;
+    let common = Common {
+        manifest,
+        ..Default::default()
+    };
+    let rom_binary = common.release_dir().map(|t| t.join(format!("{rom}.bin")))?;
+    let build_cmd = Commands::Build {
+        common,
+        ld: LdArgs::default(),
+        build: BuildArgs {
+            rom_features: features.clone(),
+            ..Default::default()
+        },
+        target: Some(target_name.clone()),
+    };
+
+    mcu_firmware_bundler::execute(build_cmd)?;
+    std::fs::rename(
+        rom_binary.with_file_name(format!("{target_name}.bin")),
+        &rom_binary,
+    )?;
+    assert!(rom_binary.exists(), "{rom_binary:?} does not exist");
+    Ok(rom_binary)
 }
 
 pub fn test_rom_build(platform: Option<&str>, fwid: &FwId) -> Result<String> {

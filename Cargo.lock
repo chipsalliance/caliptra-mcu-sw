@@ -2970,6 +2970,7 @@ dependencies = [
  "mcu-config",
  "mcu-config-emulator",
  "mcu-config-fpga",
+ "mcu-firmware-bundler",
  "pldm-fw-pkg",
  "semver",
  "serde",
@@ -3039,6 +3040,7 @@ dependencies = [
  "anyhow",
  "clap 4.5.51",
  "elf",
+ "mcu-image-header",
  "serde",
  "subst",
  "tbf-header",
@@ -3046,6 +3048,7 @@ dependencies = [
  "toml 0.8.23",
  "uuid",
  "walkdir",
+ "zerocopy",
 ]
 
 [[package]]
@@ -4888,6 +4891,7 @@ dependencies = [
  "mcu-config-emulator",
  "mcu-config-fpga",
  "mcu-error",
+ "mcu-firmware-bundler",
  "mcu-hw-model",
  "mcu-image-header",
  "mcu-mbox-common",
