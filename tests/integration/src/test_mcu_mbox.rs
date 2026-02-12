@@ -1238,7 +1238,8 @@ pub mod test {
             ciphertext
                 .extend_from_slice(&final_resp.data[FINAL_HEADER_SIZE..FINAL_HEADER_SIZE + ct_len]);
 
-            Ok((iv, final_hdr.tag, ciphertext))
+            let tag: [u8; 16] = FromBytes::read_from_bytes(final_hdr.tag.as_bytes()).unwrap();
+            Ok((iv, tag, ciphertext))
         }
 
         /// Perform AES-GCM decryption using Init, Update (optional), and Final commands.
@@ -1258,7 +1259,7 @@ pub mod test {
                 hdr: MailboxReqHeader::default(),
                 flags: 0,
                 cmk: cmk.clone(),
-                iv: *iv,
+                iv: FromBytes::read_from_bytes(iv.as_bytes()).unwrap(),
                 aad_size: aad.len() as u32,
                 aad: [0u8; MAX_CMB_DATA_SIZE],
             };
@@ -1348,7 +1349,7 @@ pub mod test {
                 hdr: MailboxReqHeader::default(),
                 context,
                 tag_len: 16,
-                tag: *tag,
+                tag: FromBytes::read_from_bytes(tag.as_bytes()).unwrap(),
                 ciphertext_size: remaining.len() as u32,
                 ciphertext: [0u8; MAX_CMB_DATA_SIZE],
             };
