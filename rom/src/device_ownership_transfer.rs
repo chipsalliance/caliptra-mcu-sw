@@ -19,6 +19,7 @@ use caliptra_api::mailbox::{
     CommandId, MailboxReqHeader,
 };
 use mcu_error::{McuError, McuResult};
+use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
 use romtime::otp::Otp;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
