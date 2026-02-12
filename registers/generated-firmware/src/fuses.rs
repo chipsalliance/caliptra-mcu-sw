@@ -564,6 +564,31 @@ pub struct FuseField {
     pub name: &'static str,
     pub bits: Bits,
 }
+/// Layout type for interpreting raw fuse bits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FuseLayoutType {
+    Single { bits: u32 },
+    OneHot { bits: u32 },
+    LinearMajorityVote { bits: u32, duplication: u32 },
+    OneHotLinearMajorityVote { bits: u32, duplication: u32 },
+    WordMajorityVote { bits: u32, duplication: u32 },
+}
+/// Entry in the fuse lookup table mapping (partition, entry) to OTP location and layout.
+#[derive(Debug, Clone)]
+pub struct FuseEntryInfo {
+    /// Partition number (index into OTP partitions)
+    pub partition_num: usize,
+    /// Entry number within the partition
+    pub entry_num: usize,
+    /// Byte offset from start of OTP
+    pub byte_offset: usize,
+    /// Size in bytes of the raw fuse storage
+    pub byte_size: usize,
+    /// Field name
+    pub name: &'static str,
+    /// Layout for interpreting the raw bits
+    pub layout: FuseLayoutType,
+}
 pub const PARTITIONS: &[Partition] = &[];
 pub const SECRET_VENDOR_FUSES: &[Fuse] = &[Fuse {
     name: "vendor_recovery_pk_hash",
@@ -593,3 +618,40 @@ pub const FUSE_FIELDS: &[FuseField] = &[
         bits: Bits(384),
     },
 ];
+/// Lookup table mapping (partition_num, entry_num) to OTP addresses and layout.
+/// Only populated for fields that have a partition assignment in fuses.hjson.
+pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
+    FuseEntryInfo {
+        partition_num: 14,
+        entry_num: 0,
+        byte_offset: 0xa78,
+        byte_size: 32,
+        name: "dot_initialized",
+        layout: FuseLayoutType::LinearMajorityVote {
+            bits: 1,
+            duplication: 3,
+        },
+    },
+    FuseEntryInfo {
+        partition_num: 14,
+        entry_num: 1,
+        byte_offset: 0xa98,
+        byte_size: 32,
+        name: "dot_fuse_array",
+        layout: FuseLayoutType::OneHot { bits: 256 },
+    },
+    FuseEntryInfo {
+        partition_num: 13,
+        entry_num: 0,
+        byte_offset: 0x870,
+        byte_size: 32,
+        name: "vendor_recovery_pk_hash",
+        layout: FuseLayoutType::Single { bits: 384 },
+    },
+];
+/// Fuse entry for `dot_initialized`.
+pub const DOT_INITIALIZED: &FuseEntryInfo = &FUSE_ENTRY_TABLE[0];
+/// Fuse entry for `dot_fuse_array`.
+pub const DOT_FUSE_ARRAY: &FuseEntryInfo = &FUSE_ENTRY_TABLE[1];
+/// Fuse entry for `vendor_recovery_pk_hash`.
+pub const VENDOR_RECOVERY_PK_HASH: &FuseEntryInfo = &FUSE_ENTRY_TABLE[2];

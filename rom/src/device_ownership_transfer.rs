@@ -20,7 +20,6 @@ use caliptra_api::mailbox::{
     CommandId, MailboxReqHeader,
 };
 use mcu_error::{McuError, McuResult};
-use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
 const DOT_LABEL: &[u8] = b"Caliptra DOT stable key";
@@ -48,50 +47,45 @@ impl DotFuses {
     pub fn is_unlocked(&self) -> bool {
         self.burned & 1 == 0
     }
+
+    /// Load DOT fuses from OTP using the generated FuseEntryInfo constants.
+    pub fn load_from_otp(otp: &Otp) -> McuResult<Self> {
+        use registers_generated::fuses;
+
+        // dot_initialized: LinearMajorityVote(1 bit, 3x) → logical 0 or 1
+        let enabled = otp.read_entry(fuses::DOT_INITIALIZED)? != 0;
+
+        // dot_fuse_array: OneHot(256 bits) → count of burned bits
+        // This is a multi-word field; read raw and count ones
+        let mut raw = [0u8; 32];
+        otp.read_entry_raw(fuses::DOT_FUSE_ARRAY, &mut raw)?;
+        let burned = raw.iter().map(|b| b.count_ones() as u16).sum::<u16>();
+
+        // vendor_recovery_pk_hash: 48 bytes (384 bits), spans 2 OTP slots
+        // Read first 32 bytes from slot 0, then 16 from slot 1
+        let mut pk_buf = [0u8; 48];
+        otp.read_entry_raw(fuses::VENDOR_RECOVERY_PK_HASH, &mut pk_buf[..32])?;
+        // Second 16 bytes are in the next OTP slot
+        let next_offset =
+            fuses::VENDOR_RECOVERY_PK_HASH.byte_offset + fuses::VENDOR_RECOVERY_PK_HASH.byte_size;
+        otp.read_otp_data(next_offset, &mut pk_buf[32..48])?;
+
+        let recovery_pk_hash = if pk_buf.iter().all(|&b| b == 0) {
+            None
+        } else {
+            let hash: [u32; 12] = zerocopy::transmute!(pk_buf);
+            Some(RecoveryPkHash(hash))
+        };
+
+        Ok(DotFuses {
+            enabled,
+            burned,
+            total: 256,
+            recovery_pk_hash,
+        })
+    }
 }
 
-/// Loads the DOT fuses from the vendor non-secret production partition.
-/// TODO: Use the proper fuse reading, writing, and definition infrastructure from
-/// a more flexible place.
-///
-/// This function reads the DOT fuse state including the enabled flag,
-/// burned fuse count, and recovery public key hash from the vendor-specific
-/// fuse partition.
-///
-/// # Arguments
-/// * `fuses` - The fuse data structure containing all fuse partitions.
-///
-/// # Returns
-/// * `DotFuses` - The loaded DOT fuse state.
-pub fn load_dot_fuses(otp: &Otp) -> McuResult<DotFuses> {
-    // Copy the DOT fuse partition bytes and transmute to structured data
-    let mut raw_bytes = [0u8; DOT_FUSE_PARTITION_DATA_SIZE.next_multiple_of(4)];
-    otp.read_vendor_non_secret_prod_partition(&mut raw_bytes)?;
-    let (raw_data, _) = DotFusePartitionData::ref_from_prefix(&raw_bytes).unwrap();
-
-    // Copy fields from packed struct to avoid unaligned access
-    let dot_initialized = raw_data.dot_initialized;
-    let dot_fuse_array = raw_data.dot_fuse_array;
-    let recovery_pk_hash_data = raw_data.recovery_pk_hash;
-
-    // Count burned fuses in the fuse array (8 u32s = 256 bits)
-    let burned_count = dot_fuse_array.iter().map(|w| w.count_ones()).sum::<u32>() as u16;
-    let total_count = (dot_fuse_array.len() * 32) as u16;
-
-    // Use recovery public key hash directly (already u32 array)
-    let recovery_pk_hash = if recovery_pk_hash_data.iter().all(|&x| x == 0) {
-        None
-    } else {
-        Some(RecoveryPkHash(recovery_pk_hash_data))
-    };
-
-    Ok(DotFuses {
-        enabled: dot_initialized != 0,
-        burned: burned_count,
-        total: total_count,
-        recovery_pk_hash,
-    })
-}
 ///
 /// This retrieves the owner PK hash from the OTP fuses, a.k.a., the
 /// Code Authentication Key (CAK). This hash is used to
@@ -435,27 +429,6 @@ fn dot_determine_owner(
     }
 }
 
-/// Raw DOT fuse data as stored in the vendor non-secret production partition.
-/// This struct mirrors the fuse layout and can be transmuted directly from bytes.
-/// Layout: dot_initialized (1 byte) + dot_fuse_array (32 bytes) + recovery_pk_hash (48 bytes) = 81 bytes
-#[repr(C, packed)]
-#[derive(Clone, Copy, Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
-pub struct DotFusePartitionData {
-    /// Whether DOT has been initialized (non-zero = enabled)
-    pub dot_initialized: u8,
-    /// Array of fuses tracking state transitions (256 bits = 32 bytes = 8 u32s)
-    pub dot_fuse_array: [u32; 8],
-    /// Recovery public key hash (48 bytes = 384 bits = 12 u32s)
-    pub recovery_pk_hash: [u32; 12],
-}
-
-/// Size of the DOT fuse partition data structure.
-pub const DOT_FUSE_PARTITION_DATA_SIZE: usize = core::mem::size_of::<DotFusePartitionData>();
-
-/// Byte offset of dot_fuse_array within the vendor non-secret production partition.
-/// The layout is: dot_initialized (1 byte) + dot_fuse_array (32 bytes).
-const DOT_FUSE_ARRAY_PARTITION_OFFSET: usize = 1;
-
 /// Burns DOT fuses to complete a pending state transition.
 ///
 /// This function is called when a state change is needed based on the current
@@ -525,9 +498,8 @@ fn burn_dot_fuses(env: &mut RomEnv, dot_fuses: &DotFuses, blob: &DotBlob) -> Mcu
 /// * `Ok(())` - If the fuse was successfully burned.
 /// * `Err(McuError)` - If the OTP write operation fails.
 fn burn_dot_lock_fuse(env: &RomEnv, dot_fuses: &DotFuses) -> McuResult<()> {
-    // The dot_fuse_array is at byte offset DOT_FUSE_ARRAY_PARTITION_OFFSET within
-    // the vendor non-secret prod partition. Each state transition burns the next
-    // sequential bit. The bit to burn is determined by the current burned count.
+    use registers_generated::fuses;
+    // Each state transition burns the next sequential bit in the dot_fuse_array.
     let next_bit = dot_fuses.burned as u32;
     if next_bit >= (dot_fuses.total as u32) {
         romtime::println!("[mcu-rom-dot] No more DOT fuse bits available");
@@ -535,29 +507,24 @@ fn burn_dot_lock_fuse(env: &RomEnv, dot_fuses: &DotFuses) -> McuResult<()> {
     }
 
     // Calculate which word and bit within that word to burn.
-    // dot_fuse_array starts at byte offset 1 in the partition (after dot_initialized).
-    // Each u32 word holds 32 fuse bits.
-    let fuse_array_bit_offset = (DOT_FUSE_ARRAY_PARTITION_OFFSET * 8) as u32;
-    let absolute_bit = fuse_array_bit_offset + next_bit;
-    let word_index = absolute_bit / 32;
-    let bit_in_word = absolute_bit % 32;
+    let word_index = next_bit / 32;
+    let bit_in_word = next_bit % 32;
 
-    let partition_word_addr =
-        (VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET / 4) + word_index as usize;
+    let fuse_array_word_addr = (fuses::DOT_FUSE_ARRAY.byte_offset / 4) + word_index as usize;
 
     // Read the current value at this word address.
-    let current_value = env.otp.read_word(partition_word_addr)?;
+    let current_value = env.otp.read_word(fuse_array_word_addr)?;
 
     let new_value = current_value | (1u32 << bit_in_word);
 
     romtime::println!(
         "[mcu-rom-dot] Burning DOT lock fuse at word addr {:#x}, value {:#x} -> {:#x}",
-        partition_word_addr,
+        fuse_array_word_addr,
         current_value,
         new_value
     );
 
-    env.otp.write_word(partition_word_addr, new_value)?;
+    env.otp.write_word(fuse_array_word_addr, new_value)?;
 
     Ok(())
 }

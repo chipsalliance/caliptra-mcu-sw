@@ -408,6 +408,42 @@ pub fn extract_fuse_value<const N: usize>(
     }
 }
 
+/// Convert from the generated `FuseLayoutType` to the runtime `FuseLayout`.
+///
+/// Returns `None` if the bits or duplication value is zero (which shouldn't
+/// happen for well-formed generated code).
+impl FuseLayout {
+    pub fn from_generated(layout: &registers_generated::fuses::FuseLayoutType) -> Option<Self> {
+        use registers_generated::fuses::FuseLayoutType;
+        match *layout {
+            FuseLayoutType::Single { bits } => {
+                Some(FuseLayout::Single(Bits(NonZero::new(bits as usize)?)))
+            }
+            FuseLayoutType::OneHot { bits } => {
+                Some(FuseLayout::OneHot(Bits(NonZero::new(bits as usize)?)))
+            }
+            FuseLayoutType::LinearMajorityVote { bits, duplication } => {
+                Some(FuseLayout::LinearMajorityVote(
+                    Bits(NonZero::new(bits as usize)?),
+                    Duplication(NonZero::new(duplication as usize)?),
+                ))
+            }
+            FuseLayoutType::OneHotLinearMajorityVote { bits, duplication } => {
+                Some(FuseLayout::OneHotLinearMajorityVote(
+                    Bits(NonZero::new(bits as usize)?),
+                    Duplication(NonZero::new(duplication as usize)?),
+                ))
+            }
+            FuseLayoutType::WordMajorityVote { bits, duplication } => {
+                Some(FuseLayout::WordMajorityVote(
+                    Bits(NonZero::new(bits as usize)?),
+                    Duplication(NonZero::new(duplication as usize)?),
+                ))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

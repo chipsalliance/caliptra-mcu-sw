@@ -320,7 +320,7 @@ mod test {
             // Create OTP memory large enough to include the vendor non-secret prod partition
             let mut otp = vec![0u8; VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 256];
             // Set dot_initialized to 1 at the start of the vendor non-secret prod partition
-            otp[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET] = 1;
+            otp[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET] = 0x7; // backed by 3 bits
             Some(otp)
         } else {
             None

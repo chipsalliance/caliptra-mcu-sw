@@ -67,8 +67,12 @@ pub(crate) fn autogen_fuses(
         PROJECT_ROOT.join(OTP_CTRL_DEFAULT_PATH)
     };
 
+    // Parse OTP mmap for partition info
+    let otp: OtpMmap = serde_hjson::from_str(std::fs::read_to_string(&mmap_hjson)?.as_str())?;
+    let partition_mmap = build_partition_mmap(&otp);
+
     // Generate partition fuses output
-    let partition_output = generate_fuse_partitions(&mmap_hjson)?;
+    let partition_output = generate_fuse_partitions_from_otp(&otp)?;
 
     // Generate detailed fuses output if the file exists
     let fuses_hjson = if let Some(path) = fuses_hjson_path {
@@ -78,7 +82,7 @@ pub(crate) fn autogen_fuses(
     };
 
     let detailed_output = if fuses_hjson.exists() {
-        Some(generate_detailed_fuses(fuses_hjson_path)?)
+        Some(generate_detailed_fuses(fuses_hjson_path, &partition_mmap)?)
     } else {
         None
     };
@@ -114,9 +118,74 @@ pub(crate) fn autogen_fuses(
     Ok(())
 }
 
-/// Autogenerate fuse map code from hjson file used to generate OTP controller config.
-fn generate_fuse_partitions(mmap_hjson: &Path) -> Result<String> {
-    let otp: OtpMmap = serde_hjson::from_str(std::fs::read_to_string(mmap_hjson)?.as_str())?;
+/// Build a map of partition name → PartitionMmapInfo from the parsed OTP mmap.
+fn build_partition_mmap(
+    otp: &OtpMmap,
+) -> std::collections::HashMap<String, mcu_fuses_generator::codegen::PartitionMmapInfo> {
+    use mcu_fuses_generator::codegen::{PartitionItemInfo, PartitionMmapInfo};
+
+    let mut map = std::collections::HashMap::new();
+    let mut offset: usize = 0;
+
+    for (partition_index, partition) in otp.partitions.iter().enumerate() {
+        let digest_size: usize = if partition.hw_digest || partition.sw_digest {
+            8
+        } else {
+            0
+        };
+        let calculated_size: usize = partition
+            .items
+            .iter()
+            .map(|i| i.size.parse::<usize>().unwrap())
+            .sum();
+
+        let calculated_size = if digest_size == 8 {
+            calculated_size.next_multiple_of(8) + digest_size
+        } else {
+            calculated_size.next_multiple_of(4)
+        };
+
+        let size = partition
+            .size
+            .as_ref()
+            .map(|s| s.parse::<usize>().unwrap())
+            .unwrap_or(calculated_size);
+
+        let mut items = Vec::new();
+        let mut item_offset = offset;
+        for (entry_num, item) in partition.items.iter().enumerate() {
+            let item_size = item.size.parse::<usize>().unwrap();
+            let item_name_lower = snake_case(&item.name);
+            if item_name_lower.to_ascii_lowercase().ends_with("digest") {
+                item_offset = item_offset.next_multiple_of(8);
+            }
+            items.push(PartitionItemInfo {
+                name: item.name.clone(),
+                byte_offset: item_offset,
+                byte_size: item_size,
+                entry_num,
+            });
+            item_offset += item_size;
+        }
+
+        map.insert(
+            partition.name.clone(),
+            PartitionMmapInfo {
+                partition_index,
+                byte_offset: offset,
+                byte_size: size,
+                items,
+            },
+        );
+
+        offset += size;
+    }
+
+    map
+}
+
+/// Autogenerate fuse map code from pre-parsed OTP mmap.
+fn generate_fuse_partitions_from_otp(otp: &OtpMmap) -> Result<String> {
     let mut output = "".to_string();
 
     output += "use zeroize::Zeroize;\n";
@@ -217,7 +286,13 @@ fn generate_fuse_partitions(mmap_hjson: &Path) -> Result<String> {
 }
 
 /// Generate more detailed fuse definitions from the MCU-specific file.
-fn generate_detailed_fuses(fuses_hjson_path: Option<&Path>) -> Result<String> {
+fn generate_detailed_fuses(
+    fuses_hjson_path: Option<&Path>,
+    partition_mmap: &std::collections::HashMap<
+        String,
+        mcu_fuses_generator::codegen::PartitionMmapInfo,
+    >,
+) -> Result<String> {
     let fuses_hjson = if let Some(path) = fuses_hjson_path {
         path.to_path_buf()
     } else {
@@ -226,7 +301,8 @@ fn generate_detailed_fuses(fuses_hjson_path: Option<&Path>) -> Result<String> {
 
     let hjson_content = std::fs::read_to_string(&fuses_hjson)?;
     let config = mcu_fuses_generator::schema::parse_fuse_hjson_str(&hjson_content)?;
-    let generated_code = mcu_fuses_generator::codegen::generate_fuses(&config)?;
+    let generated_code =
+        mcu_fuses_generator::codegen::generate_fuses(&config, Some(partition_mmap))?;
 
     Ok(generated_code)
 }

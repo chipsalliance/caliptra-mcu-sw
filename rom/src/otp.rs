@@ -3,12 +3,12 @@
 use core::fmt::Write;
 use mcu_error::{McuError, McuResult};
 use registers_generated::fuses;
-use registers_generated::fuses::Fuses;
+use registers_generated::fuses::{FuseEntryInfo, Fuses};
 use registers_generated::otp_ctrl;
 use romtime::{HexBytes, HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
-use crate::{LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_OFFSET};
+use crate::{FuseLayout, LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_OFFSET};
 
 // TODO: use the Lifecycle controller to read the Lifecycle state
 
@@ -151,10 +151,13 @@ impl Otp {
     }
 
     fn read_data(&self, addr: usize, len: usize, data: &mut [u8]) -> McuResult<()> {
-        if data.len() < len || len % 4 != 0 {
+        if len % 4 != 0 {
             return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
         }
-        for (i, chunk) in data[..len].chunks_exact_mut(4).enumerate() {
+        let data = data
+            .get_mut(..len)
+            .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+        for (i, chunk) in data.chunks_exact_mut(4).enumerate() {
             let word = self.read_word(addr / 4 + i)?;
             let word_bytes = word.to_le_bytes();
             chunk.copy_from_slice(&word_bytes[..chunk.len()]);
@@ -671,6 +674,47 @@ impl Otp {
             len,
             data,
         )
+    }
+
+    // -------------------------------------------------------------------------
+    // Generic fuse entry read/write using generated FuseEntryInfo
+    // -------------------------------------------------------------------------
+
+    /// Read a fuse entry's logical value using its generated FuseEntryInfo.
+    ///
+    /// Reads raw bytes from OTP at the entry's byte_offset, then applies
+    /// FuseLayout extraction to produce the logical value.
+    /// Suitable for entries whose logical value fits in a single u32.
+    pub fn read_entry(&self, entry: &FuseEntryInfo) -> McuResult<u32> {
+        let layout = FuseLayout::from_generated(&entry.layout)
+            .ok_or(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT)?;
+        let raw = self.read_word(entry.byte_offset / 4)?;
+        crate::extract_single_fuse_value(layout, raw)
+    }
+
+    /// Read a fuse entry's raw bytes into a caller-provided buffer.
+    ///
+    /// Reads `entry.byte_size` bytes from OTP at `entry.byte_offset`.
+    /// No layout extraction is applied — the caller gets the raw OTP data.
+    /// Note that this will round up to the next multiple of 4 bytes to be read.
+    pub fn read_entry_raw(&self, entry: &FuseEntryInfo, buf: &mut [u8]) -> McuResult<()> {
+        let read_len = entry.byte_size.next_multiple_of(4);
+        if buf.len() < read_len {
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+        self.read_data(entry.byte_offset, read_len, buf)
+    }
+
+    /// Write a logical value to a fuse entry using its generated FuseEntryInfo.
+    ///
+    /// Applies FuseLayout encoding to produce the raw fuse value, then writes
+    /// it to OTP via DAI. Suitable for entries whose value fits in a single u32.
+    pub fn write_entry(&self, entry: &FuseEntryInfo, value: u32) -> McuResult<()> {
+        let layout = FuseLayout::from_generated(&entry.layout)
+            .ok_or(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT)?;
+        let raw = crate::write_single_fuse_value(layout, value)?;
+        self.write_word(entry.byte_offset / 4, raw)?;
+        Ok(())
     }
 
     pub fn read_fuses(&self) -> McuResult<Fuses> {

@@ -296,7 +296,7 @@ impl BootFlow for ColdBoot {
 
         // Load DOT fuses from vendor non-secret partition
         // TODO: read these from a place specified by ROM configuration
-        let dot_fuses = match device_ownership_transfer::load_dot_fuses(&env.otp) {
+        let dot_fuses = match device_ownership_transfer::DotFuses::load_from_otp(&env.otp) {
             Ok(dot_fuses) => dot_fuses,
             Err(_) => {
                 romtime::println!("[mcu-rom] Error reading DOT fuses");
