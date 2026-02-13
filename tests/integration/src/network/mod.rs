@@ -2,3 +2,4 @@
 
 mod test_lwip_dhcp_tftp;
 mod test_network_rom;
+mod test_network_rom_dhcp;

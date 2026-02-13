@@ -1,0 +1,11 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "dhcp-test"
+version.workspace = true
+edition.workspace = true
+description = "Simple DHCP discovery test application for Network Coprocessor"
+
+[dependencies]
+network-drivers.workspace = true
+network-hil.workspace = true

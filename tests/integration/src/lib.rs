@@ -31,6 +31,7 @@ pub fn platform() -> &'static str {
 mod test {
     use caliptra_hw_model::BootParams;
     use caliptra_image_types::FwVerificationPqcKeyType;
+    use emulator_periph::TapDevice;
     use mcu_builder::{CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET};
     use mcu_config::McuMemoryMap;
     use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
@@ -38,7 +39,7 @@ mod test {
     use mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
     use random_port::PortPicker;
     use std::sync::atomic::{AtomicU32, Ordering};
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use std::{
         path::{Path, PathBuf},
         process::Command,
@@ -49,10 +50,12 @@ mod test {
     #[derive(Default)]
     pub struct TestParams<'a> {
         pub feature: Option<&'a str>,
+        pub network_rom_feature: Option<&'a str>,
         pub i3c_port: Option<u16>,
         pub dot_flash_initial_contents: Option<Vec<u8>>,
         pub rom_only: bool,
         pub include_network_rom: bool,
+        pub network_tap_device: Option<Arc<Mutex<Box<dyn TapDevice>>>>,
     }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -173,6 +176,7 @@ mod test {
 
     fn prebuilt_binaries(
         feature: Option<&str>,
+        network_rom_feature: Option<&str>,
         binaries: &'static FirmwareBinaries,
     ) -> TestBinaries {
         let mut test_binaries = TestBinaries {
@@ -198,10 +202,15 @@ mod test {
             test_binaries.mcu_runtime = binaries.test_runtime(feature).expect(&err).clone();
         }
 
+        // check for prebuilt network ROM with feature
+        if let Some(net_feature) = network_rom_feature {
+            test_binaries.network_rom = binaries.test_feature_network_rom(net_feature);
+        }
+
         test_binaries
     }
 
-    fn build_test_binaries(feature: Option<&str>) -> TestBinaries {
+    fn build_test_binaries(feature: Option<&str>, network_rom_feature: Option<&str>) -> TestBinaries {
         let mcu_runtime = compile_runtime(feature, false);
         let mut builder = CaliptraBuilder::new(
             cfg!(feature = "fpga_realtime"),
@@ -242,7 +251,7 @@ mod test {
         let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
 
         // Network ROM is optional - build it if the build system supports it
-        let network_rom = match mcu_builder::network_rom_build() {
+        let network_rom = match mcu_builder::network_rom_build(network_rom_feature) {
             Ok(path) => std::fs::read(path).unwrap_or_default(),
             Err(_) => Vec::new(),
         };
@@ -271,10 +280,10 @@ mod test {
             mcu_runtime,
             network_rom,
         } = match FirmwareBinaries::from_env() {
-            Ok(binaries) => prebuilt_binaries(params.feature, binaries),
+            Ok(binaries) => prebuilt_binaries(params.feature, params.network_rom_feature, binaries),
             _ => {
                 println!("Could not find prebuilt firmware binaries, building firmware...");
-                build_test_binaries(params.feature)
+                build_test_binaries(params.feature, params.network_rom_feature)
             }
         };
 
@@ -306,6 +315,7 @@ mod test {
                 caliptra_rom: &caliptra_rom,
                 mcu_rom: &mcu_rom,
                 network_rom: network_rom_slice,
+                network_tap_device: params.network_tap_device,
                 vendor_pk_hash: Some(vendor_pk_hash_u8.try_into().unwrap()),
                 active_mode: true,
                 vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),

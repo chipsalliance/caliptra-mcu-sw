@@ -5,6 +5,7 @@
 pub mod axicdma;
 pub mod doe_mbox;
 pub mod el2_pic;
+pub mod ethernet;
 pub mod i3c;
 pub mod lc;
 pub mod mbox;

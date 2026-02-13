@@ -94,6 +94,13 @@ pub struct NetworkMemoryMap {
     pub pic_size: u32,
     /// PIC memory properties
     pub pic_properties: MemoryRegionType,
+
+    /// Ethernet peripheral base address (for TAP network interface)
+    pub eth_offset: u32,
+    /// Ethernet peripheral size
+    pub eth_size: u32,
+    /// Ethernet peripheral memory properties
+    pub eth_properties: MemoryRegionType,
 }
 
 impl Default for NetworkMemoryMap {
@@ -130,6 +137,11 @@ impl Default for NetworkMemoryMap {
             pic_offset: 0x6000_0000,
             pic_size: 0x5400,
             pic_properties: MemoryRegionType::MMIO,
+
+            // Ethernet peripheral for TAP network interface
+            eth_offset: 0x1000_3000,
+            eth_size: 0x1000,
+            eth_properties: MemoryRegionType::MMIO,
         }
     }
 }
@@ -209,6 +221,7 @@ impl NetworkMemoryMap {
         process_region(self.uart_offset, self.uart_size, self.uart_properties);
         process_region(self.ctrl_offset, self.ctrl_size, self.ctrl_properties);
         process_region(self.pic_offset, self.pic_size, self.pic_properties);
+        process_region(self.eth_offset, self.eth_size, self.eth_properties);
 
         // Build the 32-bit MRAC value
         let mut mrac_value = 0u32;
@@ -268,6 +281,10 @@ impl NetworkMemoryMap {
         // PIC configuration
         map.insert("PIC_OFFSET".to_string(), format!("0x{:x}", self.pic_offset));
 
+        // Ethernet configuration
+        map.insert("ETH_OFFSET".to_string(), format!("0x{:x}", self.eth_offset));
+        map.insert("ETH_SIZE".to_string(), format!("0x{:x}", self.eth_size));
+
         // The computed MRAC value
         map.insert(
             "MRAC_VALUE".to_string(),
@@ -305,6 +322,10 @@ pub const DEFAULT_NETWORK_MEMORY_MAP: NetworkMemoryMap = NetworkMemoryMap {
     pic_offset: 0x6000_0000,
     pic_size: 0x5400,
     pic_properties: MemoryRegionType::MMIO,
+
+    eth_offset: 0x1000_3000,
+    eth_size: 0x1000,
+    eth_properties: MemoryRegionType::MMIO,
 };
 
 #[cfg(test)]

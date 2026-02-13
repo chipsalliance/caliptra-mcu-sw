@@ -330,6 +330,7 @@ impl McuHwModel for ModelEmulated {
                 pic: network_pic.clone(),
                 clock: network_clock.clone(),
                 uart_output: Some(network_uart_output.clone()),
+                tap_device: params.network_tap_device.clone(),
                 ..Default::default()
             };
 
@@ -546,9 +547,18 @@ impl McuHwModel for ModelEmulated {
     }
 
     fn network_uart_output(&self) -> Option<String> {
-        self.network_uart_output
-            .as_ref()
-            .map(|output| String::from_utf8_lossy(&output.borrow()).to_string())
+        self.network_uart_output.as_ref().and_then(|output| {
+            let data = output.borrow();
+            // Only return if there's a newline in the buffer
+            if data.contains(&b'\n') {
+                let result = String::from_utf8_lossy(&data).to_string();
+                drop(data); // Release borrow before mutating
+                output.borrow_mut().clear();
+                Some(result)
+            } else {
+                None
+            }
+        })
     }
 
     fn warm_reset(&mut self) {

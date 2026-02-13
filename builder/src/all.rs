@@ -162,6 +162,7 @@ pub struct FirmwareBinaries {
     pub network_rom: Vec<u8>,
     pub soc_manifest: Vec<u8>,
     pub test_roms: Vec<(String, Vec<u8>)>,
+    pub test_network_roms: Vec<(String, Vec<u8>)>,
     pub caliptra_test_roms: Vec<(String, Vec<u8>)>,
     pub test_soc_manifests: Vec<(String, Vec<u8>)>,
     pub test_runtimes: Vec<(String, Vec<u8>)>,
@@ -240,6 +241,9 @@ impl FirmwareBinaries {
                 }
                 name if name.contains("mcu-test-flash-image") => {
                     binaries.test_flash_images.push((name.to_string(), data));
+                }
+                name if name.contains("network-rom-feature-") => {
+                    binaries.test_network_roms.push((name.to_string(), data));
                 }
                 _ => continue,
             }
@@ -357,6 +361,18 @@ impl FirmwareBinaries {
         }
         self.mcu_rom.clone()
     }
+
+    /// Get a feature-specific Network ROM. Falls back to the generic Network ROM
+    /// if no feature-specific ROM was built.
+    pub fn test_feature_network_rom(&self, feature: &str) -> Vec<u8> {
+        let expected_name = format!("network-rom-feature-{}.bin", feature);
+        for (name, data) in self.test_network_roms.iter() {
+            if &expected_name == name {
+                return data.clone();
+            }
+        }
+        self.network_rom.clone()
+    }
 }
 
 /// Prebuilt emulator binaries stored in a separate ZIP file (emulators.zip).
@@ -428,6 +444,7 @@ pub struct AllBuildArgs<'a> {
     pub dccm_size: Option<u32>,
     pub platform: Option<&'a str>,
     pub rom_features: Option<&'a str>,
+    pub network_rom_features: Option<&'a str>,
     pub runtime_features: Option<&'a str>,
     pub separate_runtimes: bool,
     pub soc_images: Option<Vec<ImageCfg>>,
@@ -444,6 +461,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         dccm_size,
         platform,
         rom_features,
+        network_rom_features,
         runtime_features,
         separate_runtimes,
         soc_images,
@@ -455,7 +473,16 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let platform = platform.unwrap_or("emulator");
     let rom_features = rom_features.unwrap_or_default();
     let mcu_rom = crate::rom_build(Some(platform), rom_features)?;
-    let network_rom = crate::network_rom_build()?;
+    
+    // Build base network ROM (without features)
+    let network_rom = crate::network_rom_build(None)?;
+    
+    // Parse network ROM features as comma-separated list
+    let network_rom_feature_list: Vec<&str> = match network_rom_features {
+        Some(f) if !f.is_empty() => f.split(',').collect(),
+        _ => vec![],
+    };
+    
     let memory_map = match platform {
         "emulator" => &mcu_config_emulator::EMULATOR_MEMORY_MAP,
         "fpga" => &mcu_config_fpga::FPGA_MEMORY_MAP,
@@ -592,6 +619,24 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             Err(e) => {
                 println!(
                     "Skipping feature ROM for {}: {} (will use generic ROM)",
+                    feature, e
+                );
+            }
+        }
+    }
+
+    // Build feature-specific Network ROMs
+    let mut test_network_roms: Vec<(PathBuf, String)> = vec![];
+    for feature in network_rom_feature_list.iter() {
+        match crate::network_rom_build(Some(feature)) {
+            Ok(rom_path) => {
+                let rom_name = format!("network-rom-feature-{}.bin", feature);
+                println!("Built feature Network ROM: {} -> {}", rom_path, rom_name);
+                test_network_roms.push((PathBuf::from(rom_path), rom_name));
+            }
+            Err(e) => {
+                println!(
+                    "Skipping Network ROM for feature {}: {} (will use generic Network ROM)",
                     feature, e
                 );
             }
@@ -780,6 +825,10 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     )?;
     for (test_rom, name) in test_roms {
         add_to_zip(&test_rom, &name, &mut zip, options)?;
+    }
+
+    for (network_rom_path, name) in test_network_roms {
+        add_to_zip(&network_rom_path, &name, &mut zip, options)?;
     }
 
     for (feature, runtime, soc_manifest, flash_image, pldm_fw_pkg, update_flash_image) in

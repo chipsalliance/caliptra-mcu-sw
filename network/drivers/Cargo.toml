@@ -1,0 +1,17 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "network-drivers"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+network-config.workspace = true
+network-hil.workspace = true
+registers-generated.workspace = true
+romtime.workspace = true
+tock-registers.workspace = true
+
+[features]
+default = []
