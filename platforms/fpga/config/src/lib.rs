@@ -13,7 +13,7 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     rom_properties: MemoryRegionType::MEMORY,
 
     dccm_offset: 0x5000_0000,
-    dccm_size: 16 * 1024,
+    dccm_size: 32 * 1024,
     dccm_properties: MemoryRegionType::MEMORY,
 
     sram_offset: 0xa8c0_0000,

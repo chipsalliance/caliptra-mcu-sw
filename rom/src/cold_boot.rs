@@ -20,7 +20,9 @@ use crate::{
     verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, BootFlow, DotBlob, DotFuses,
     McuBootMilestones, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
-use caliptra_api::mailbox::{CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader};
+use caliptra_api::mailbox::{
+    CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader, MailboxRespHeader,
+};
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
@@ -31,6 +33,11 @@ use mcu_error::McuError;
 use romtime::{CaliptraSoC, HexWord};
 use tock_registers::interfaces::Readable;
 use zerocopy::{transmute, IntoBytes};
+
+/// Bit in `mci_reg_generic_input_wires[1]` that signals encrypted firmware boot.
+/// When set, MCU ROM sends `RI_DOWNLOAD_ENCRYPTED_FIRMWARE` instead of `RI_DOWNLOAD_FIRMWARE`,
+/// then decrypts the firmware in MCU SRAM after Caliptra RT finishes loading.
+const ENCRYPTED_BOOT_WIRE_BIT: u32 = 1 << 28;
 
 pub struct ColdBoot {}
 
@@ -50,23 +57,18 @@ impl ColdBoot {
                 partition
             );
 
-            let req = FeProgReq {
+            let mut req = FeProgReq {
                 partition: partition as u32,
                 ..Default::default()
             };
-            let req = req.as_bytes();
-            let chksum = caliptra_api::calc_checksum(CommandId::FE_PROG.into(), req);
-            // set the checksum
-            let req = FeProgReq {
-                hdr: MailboxReqHeader { chksum },
-                partition: partition as u32,
-            };
-            let req: [u32; 2] = transmute!(req);
-            if let Err(err) = soc_manager.start_mailbox_req(
+            let chksum = caliptra_api::calc_checksum(
                 CommandId::FE_PROG.into(),
-                req.len() * 4,
-                req.iter().copied(),
-            ) {
+                &req.as_bytes()[core::mem::size_of::<MailboxReqHeader>()..],
+            );
+            req.hdr.chksum = chksum;
+            if let Err(err) =
+                soc_manager.start_mailbox_req_bytes(CommandId::FE_PROG.into(), req.as_bytes())
+            {
                 match err {
                     CaliptraApiError::MailboxCmdFailed(code) => {
                         romtime::println!(
@@ -80,20 +82,23 @@ impl ColdBoot {
                 }
                 fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_START);
             }
-            if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
-                match err {
-                    CaliptraApiError::MailboxCmdFailed(code) => {
-                        romtime::println!(
-                            "[mcu-rom] Error finishing mailbox command: {}",
-                            HexWord(code)
-                        );
+            {
+                let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
+                if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+                    match err {
+                        CaliptraApiError::MailboxCmdFailed(code) => {
+                            romtime::println!(
+                                "[mcu-rom] Error finishing mailbox command: {}",
+                                HexWord(code)
+                            );
+                        }
+                        _ => {
+                            romtime::println!("[mcu-rom] Error finishing mailbox command");
+                        }
                     }
-                    _ => {
-                        romtime::println!("[mcu-rom] Error finishing mailbox command");
-                    }
+                    fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
                 }
-                fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
-            };
+            }
 
             // Set status for each partition completion
             let partition_status = match partition {
@@ -371,11 +376,26 @@ impl BootFlow for ColdBoot {
         let soc = &env.soc;
         let soc_manager = &mut env.soc_manager;
 
-        // tell Caliptra to download firmware from the recovery interface
-        romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command",);
-        if let Err(err) =
-            soc_manager.start_mailbox_req(CommandId::RI_DOWNLOAD_FIRMWARE.into(), 0, [].into_iter())
-        {
+        // Check GPIO wire for encrypted firmware boot mode (core_test only).
+        // When the encrypted boot wire is set, MCU ROM sends RI_DOWNLOAD_ENCRYPTED_FIRMWARE
+        // which tells Caliptra RT to load firmware without activating MCU.
+        let encrypted_boot = cfg!(feature = "core_test")
+            && mci.registers.mci_reg_generic_input_wires[1].get() & ENCRYPTED_BOOT_WIRE_BIT != 0;
+
+        // Tell Caliptra to download firmware from the recovery interface.
+        // Use RI_DOWNLOAD_ENCRYPTED_FIRMWARE when encrypted boot is requested.
+        let ri_cmd = if encrypted_boot {
+            // RI_DOWNLOAD_ENCRYPTED_FIRMWARE (0x5249_4645 / "RIFE")
+            // Not yet in the pinned caliptra-api, so we use the raw value.
+            const RI_DOWNLOAD_ENCRYPTED_FIRMWARE_CMD: u32 = 0x5249_4645;
+            romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_ENCRYPTED_FIRMWARE command");
+            RI_DOWNLOAD_ENCRYPTED_FIRMWARE_CMD
+        } else {
+            romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command");
+            CommandId::RI_DOWNLOAD_FIRMWARE.into()
+        };
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(ri_cmd, &[]) {
             match err {
                 CaliptraApiError::MailboxCmdFailed(code) => {
                     romtime::println!("[mcu-rom] Error sending mailbox command: {}", HexWord(code));
@@ -389,25 +409,28 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::RiDownloadFirmwareCommandSent.into());
 
         romtime::println!(
-            "[mcu-rom] Done sending RI_DOWNLOAD_FIRMWARE command: status {}",
+            "[mcu-rom] Done sending RI download command: status {}",
             HexWord(u32::from(
                 soc_manager.soc_mbox().status().read().mbox_fsm_ps()
             ))
         );
-        if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
-            match err {
-                CaliptraApiError::MailboxCmdFailed(code) => {
-                    romtime::println!(
-                        "[mcu-rom] Error finishing mailbox command: {}",
-                        HexWord(code)
-                    );
+        {
+            let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
+            if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+                match err {
+                    CaliptraApiError::MailboxCmdFailed(code) => {
+                        romtime::println!(
+                            "[mcu-rom] Error finishing mailbox command: {}",
+                            HexWord(code)
+                        );
+                    }
+                    _ => {
+                        romtime::println!("[mcu-rom] Error finishing mailbox command");
+                    }
                 }
-                _ => {
-                    romtime::println!("[mcu-rom] Error finishing mailbox command");
-                }
+                fatal_error(McuError::ROM_COLD_BOOT_FINISH_RI_DOWNLOAD_ERROR);
             }
-            fatal_error(McuError::ROM_COLD_BOOT_FINISH_RI_DOWNLOAD_ERROR);
-        };
+        }
         mci.set_flow_checkpoint(McuRomBootStatus::RiDownloadFirmwareComplete.into());
         mci.set_flow_milestone(McuBootMilestones::RI_DOWNLOAD_COMPLETED.into());
 
@@ -427,6 +450,41 @@ impl BootFlow for ColdBoot {
             }
         }
 
+        if encrypted_boot {
+            // --- Encrypted firmware boot flow ---
+            // In encrypted mode, Caliptra RT loads firmware to MCU SRAM but does NOT
+            // set FW_EXEC_CTRL[2] and does NOT reset MCU. We skip wait_for_firmware_ready()
+            // and instead wait for Caliptra RT to be ready for runtime commands, then
+            // decrypt the firmware and activate it.
+            romtime::println!("[mcu-rom] Encrypted boot: waiting for Caliptra RT to be ready");
+            while !soc.ready_for_runtime() {}
+            mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
+
+            // program field entropy if requested
+            if params.program_field_entropy.iter().any(|x| *x) {
+                romtime::println!("[mcu-rom] Programming field entropy");
+                mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingStarted.into());
+                Self::program_field_entropy(&params.program_field_entropy, soc_manager, mci);
+                mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingComplete.into());
+            }
+
+            // Host/test side handles decryption via the HwModel trait's
+            // decrypt_encrypted_mcu_firmware (CM_IMPORT + CM_AES_GCM_DECRYPT_DMA).
+            // MCU ROM just waits for ACTIVATE_FIRMWARE reset below.
+
+            env.i3c.disable_recovery();
+
+            // ACTIVATE_FIRMWARE triggers MCU reset from Caliptra side.
+            // Loop forever waiting for the reset.
+            romtime::println!(
+                "[mcu-rom] Encrypted boot: waiting for MCU reset from ACTIVATE_FIRMWARE"
+            );
+            mci.set_flow_checkpoint(McuRomBootStatus::ColdBootFlowComplete.into());
+            mci.set_flow_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
+            loop {}
+        }
+
+        // --- Normal (unencrypted) firmware boot flow ---
         romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
         soc.wait_for_firmware_ready(mci);
         romtime::println!("[mcu-rom] Firmware is ready");

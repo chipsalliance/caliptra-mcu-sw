@@ -226,23 +226,26 @@ fn cm_derive_stable_key(
     info[LABEL_LEN] = fuse_slice[0];
     info[LABEL_LEN + 1] = fuse_slice[1];
 
-    let mut resp = [0u32; core::mem::size_of::<CmDeriveStableKeyResp>() / 4];
-    let req = CmDeriveStableKeyReq {
+    let mut req = CmDeriveStableKeyReq {
         info,
         key_type: key_type.into(),
         ..Default::default()
     };
-    let mut req32: [u32; core::mem::size_of::<CmDeriveStableKeyReq>() / 4] = transmute!(req);
+    let mut resp_buf = [0u8; core::mem::size_of::<CmDeriveStableKeyResp>()];
 
-    if let Err(err) = env.soc_manager.exec_mailbox_req_u32(
-        CommandId::CM_DERIVE_STABLE_KEY.into(),
-        &mut req32,
-        &mut resp,
-    ) {
-        romtime::println!("[mcu-rom] Error deriving DOT stable key: {:?}", err);
-        return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
-    }
-    let resp: CmDeriveStableKeyResp = transmute!(resp);
+    let resp_len = env
+        .soc_manager
+        .exec_mailbox_req(
+            CommandId::CM_DERIVE_STABLE_KEY.into(),
+            req.as_mut_bytes(),
+            &mut resp_buf,
+        )
+        .map_err(|err| {
+            romtime::println!("[mcu-rom] Error deriving DOT stable key: {:?}", err);
+            McuError::ROM_COLD_BOOT_DOT_ERROR
+        })?;
+    let resp = CmDeriveStableKeyResp::read_from_bytes(&resp_buf[..resp_len])
+        .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
     let dot_effective_key = DotEffectiveKey(Cmk(transmute!(resp.cmk)));
     Ok(dot_effective_key)
 }
@@ -272,7 +275,6 @@ impl Default for CmHmacReq {
 
 /// Calls Caliptra to compute an HMAC.
 fn cm_hmac(env: &mut RomEnv, key: &Cmk, data: &[u8]) -> McuResult<[u32; 16]> {
-    let mut resp = [0u32; core::mem::size_of::<CmHmacResp>() / 4];
     let mut req = CmHmacReq {
         cmk: transmute!(key.0),
         hash_algorithm: CmHashAlgorithm::Sha512.into(),
@@ -293,16 +295,17 @@ fn cm_hmac(env: &mut RomEnv, key: &Cmk, data: &[u8]) -> McuResult<[u32; 16]> {
         .ok_or(McuError::ROM_COLD_BOOT_DOT_ERROR)?
         .copy_from_slice(&data[..len]);
 
-    let mut req: [u32; core::mem::size_of::<CmHmacReq>() / 4] = transmute!(req);
+    let mut resp_buf = [0u8; core::mem::size_of::<CmHmacResp>()];
 
-    if let Err(err) =
-        env.soc_manager
-            .exec_mailbox_req_u32(CommandId::CM_HMAC.into(), &mut req, &mut resp)
-    {
-        romtime::println!("[mcu-rom] Error computing HMAC: {:?}", err);
-        return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
-    }
-    let resp: CmHmacResp = transmute!(resp);
+    let resp_len = env
+        .soc_manager
+        .exec_mailbox_req(CommandId::CM_HMAC.into(), req.as_mut_bytes(), &mut resp_buf)
+        .map_err(|err| {
+            romtime::println!("[mcu-rom] Error computing HMAC: {:?}", err);
+            McuError::ROM_COLD_BOOT_DOT_ERROR
+        })?;
+    let resp = CmHmacResp::read_from_bytes(&resp_buf[..resp_len])
+        .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
     Ok(transmute!(resp.mac))
 }
 

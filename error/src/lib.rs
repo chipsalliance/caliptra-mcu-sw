@@ -323,6 +323,31 @@ impl McuError {
             "SOC field entropy length mismatch"
         ),
         (
+            ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR,
+            0x1_0010,
+            "Cold boot encrypted firmware decrypt DMA start error"
+        ),
+        (
+            ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_FINISH_ERROR,
+            0x1_0011,
+            "Cold boot encrypted firmware decrypt DMA finish error"
+        ),
+        (
+            ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_TAG_MISMATCH,
+            0x1_0012,
+            "Cold boot encrypted firmware GCM tag verification failed"
+        ),
+        (
+            ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_START_ERROR,
+            0x1_0013,
+            "Cold boot encrypted firmware activate start error"
+        ),
+        (
+            ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR,
+            0x1_0014,
+            "Cold boot encrypted firmware activate finish error"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"

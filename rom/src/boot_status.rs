@@ -21,6 +21,7 @@ const CALIPTRA_SETUP_BASE: u16 = 193;
 const FIRMWARE_LOADING_BASE: u16 = 257;
 const FIELD_ENTROPY_BASE: u16 = 321;
 const BOOT_FLOW_BASE: u16 = 385;
+const ENCRYPTED_FIRMWARE_BASE: u16 = 449;
 
 /// Status codes used by MCU ROM to log boot progress.
 #[repr(u16)]
@@ -93,6 +94,12 @@ pub enum McuRomBootStatus {
     FirmwareBootFlowComplete = BOOT_FLOW_BASE + 5,
     HitlessUpdateFlowStarted = BOOT_FLOW_BASE + 6,
     HitlessUpdateFlowComplete = BOOT_FLOW_BASE + 7,
+
+    // Encrypted Firmware Boot (core_test only)
+    EncryptedFirmwareDecryptStarted = ENCRYPTED_FIRMWARE_BASE,
+    EncryptedFirmwareDecryptComplete = ENCRYPTED_FIRMWARE_BASE + 1,
+    EncryptedFirmwareActivateStarted = ENCRYPTED_FIRMWARE_BASE + 2,
+    EncryptedFirmwareActivateComplete = ENCRYPTED_FIRMWARE_BASE + 3,
 }
 
 impl From<McuRomBootStatus> for u16 {

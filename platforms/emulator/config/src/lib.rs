@@ -13,7 +13,7 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     rom_properties: MemoryRegionType::MEMORY,
 
     dccm_offset: 0x5000_0000,
-    dccm_size: 16 * 1024,
+    dccm_size: 20 * 1024,
     dccm_properties: MemoryRegionType::MEMORY,
 
     sram_offset: 0x4000_0000,

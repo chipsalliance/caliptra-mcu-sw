@@ -120,6 +120,29 @@ impl CaliptraSoC {
         Ok(())
     }
 
+    /// Send a command to the mailbox from a byte buffer. The bytes are written
+    /// as native-endian dwords; a partial trailing chunk is zero-padded.
+    pub fn start_mailbox_req_bytes(
+        &mut self,
+        cmd: u32,
+        req: &[u8],
+    ) -> core::result::Result<(), CaliptraApiError> {
+        let len = req.len();
+        let dword_count = len.div_ceil(4);
+        self.start_mailbox_req(
+            cmd,
+            len,
+            (0..dword_count).map(|i| {
+                let offset = i * 4;
+                let remaining = len - offset;
+                let mut word_bytes = [0u8; 4];
+                let valid = remaining.min(4);
+                word_bytes[..valid].copy_from_slice(&req[offset..offset + valid]);
+                u32::from_ne_bytes(word_bytes)
+            }),
+        )
+    }
+
     pub fn execute_ext_mailbox_req(
         &mut self,
         cmd: u32,
@@ -206,20 +229,10 @@ impl CaliptraSoC {
         Ok(())
     }
 
-    /// Finished a mailbox request, validating the checksum of the response.
-    pub fn finish_mailbox_resp(
-        &mut self,
-        resp_min_size: usize,
-        resp_size: usize,
-    ) -> core::result::Result<Option<CaliptraMailboxResponse>, CaliptraApiError> {
-        if resp_size < mem::size_of::<MailboxRespHeader>() {
-            return Err(CaliptraApiError::MailboxRespTypeTooSmall);
-        }
-        if resp_min_size < mem::size_of::<MailboxRespHeader>() {
-            return Err(CaliptraApiError::MailboxRespTypeTooSmall);
-        }
-
-        // Wait for the microcontroller to finish executing
+    /// Wait for the mailbox response status. Returns `Ok(Some(dlen))` if
+    /// data is ready, `Ok(None)` if the command completed with no data,
+    /// or an error on failure/timeout.
+    fn wait_for_resp_status(&mut self) -> core::result::Result<Option<usize>, CaliptraApiError> {
         let mut timeout_cycles = Self::MAX_WAIT_CYCLES; // 100ms @400MHz
         while self.soc_mbox().status().read().status().cmd_busy() {
             self.delay();
@@ -247,15 +260,33 @@ impl CaliptraSoC {
         if !status.data_ready() {
             return Err(CaliptraApiError::UnknownCommandStatus(status as u32));
         }
+        Ok(Some(self.soc_mbox().dlen().read() as usize))
+    }
 
-        let dlen_bytes = self.soc_mbox().dlen().read();
+    /// Finished a mailbox request, validating the checksum of the response.
+    pub fn finish_mailbox_resp(
+        &mut self,
+        resp_min_size: usize,
+        resp_size: usize,
+    ) -> core::result::Result<Option<CaliptraMailboxResponse>, CaliptraApiError> {
+        if resp_size < mem::size_of::<MailboxRespHeader>() {
+            return Err(CaliptraApiError::MailboxRespTypeTooSmall);
+        }
+        if resp_min_size < mem::size_of::<MailboxRespHeader>() {
+            return Err(CaliptraApiError::MailboxRespTypeTooSmall);
+        }
+
+        let dlen_bytes = match self.wait_for_resp_status()? {
+            Some(dlen) => dlen,
+            None => return Ok(None),
+        };
 
         let expected_checksum = self.soc_mbox().dataout().read();
 
         Ok(Some(CaliptraMailboxResponse {
             soc_mbox: self.soc_mbox(),
             idx: 0,
-            dlen_bytes: dlen_bytes as usize,
+            dlen_bytes,
             checksum: 0,
             expected_checksum,
         }))
@@ -296,6 +327,87 @@ impl CaliptraSoC {
             Err(err) => Err(err),
             _ => Err(CaliptraApiError::MailboxNoResponseData),
         }
+    }
+
+    /// Read the full mailbox response into a byte buffer, verifying the checksum.
+    ///
+    /// Returns the number of bytes in the response, or 0 if the command completed
+    /// with no response data (`cmd_complete` status).
+    ///
+    /// The response (including `MailboxRespHeader`) is written to `resp`.
+    /// The caller should use `zerocopy::FromBytes::read_from_bytes` to parse the
+    /// response into a typed struct.
+    pub fn finish_mailbox_resp_bytes(
+        &mut self,
+        resp: &mut [u8],
+    ) -> core::result::Result<usize, CaliptraApiError> {
+        let dlen_bytes = match self.wait_for_resp_status()? {
+            Some(dlen) => dlen,
+            None => return Ok(0),
+        };
+
+        if dlen_bytes > resp.len() {
+            self.soc_mbox().execute().write(|w| w.execute(false));
+            return Err(CaliptraApiError::MailboxRespTypeTooSmall);
+        }
+
+        // Read all dwords from the dataout FIFO into the response buffer.
+        let dword_count = dlen_bytes.div_ceil(4);
+        for i in 0..dword_count {
+            let word = self.soc_mbox().dataout().read();
+            let offset = i * 4;
+            let remaining = dlen_bytes - offset;
+            let valid = remaining.min(4);
+            let bytes = word.to_ne_bytes();
+            resp[offset..offset + valid].copy_from_slice(&bytes[..valid]);
+        }
+
+        // Verify the response checksum.
+        // Layout: [chksum: u32] [fips_status: u32] [payload ...]
+        // The checksum satisfies: chksum + sum_of_individual_bytes(rest) == 0
+        if dlen_bytes >= mem::size_of::<MailboxRespHeader>() {
+            let expected_checksum = u32::from_ne_bytes([resp[0], resp[1], resp[2], resp[3]]);
+            let mut data_sum = 0u32;
+            for &b in resp[4..dlen_bytes].iter() {
+                data_sum = data_sum.wrapping_add(b as u32);
+            }
+            let computed = 0u32.wrapping_sub(data_sum);
+            if computed != expected_checksum {
+                self.soc_mbox().execute().write(|w| w.execute(false));
+                return Err(CaliptraApiError::MailboxRespInvalidChecksum {
+                    expected: expected_checksum,
+                    actual: computed,
+                });
+            }
+        }
+
+        // Release the lock
+        self.soc_mbox().execute().write(|w| w.execute(false));
+        Ok(dlen_bytes)
+    }
+
+    /// Execute a complete mailbox request/response cycle using byte buffers.
+    ///
+    /// Fills in the checksum in the request header, sends the request, waits for
+    /// the response, reads it into `resp`, and verifies the checksum.
+    ///
+    /// Returns the number of response bytes written to `resp`.
+    pub fn exec_mailbox_req(
+        &mut self,
+        cmd: u32,
+        req: &mut [u8],
+        resp: &mut [u8],
+    ) -> core::result::Result<usize, CaliptraApiError> {
+        if req.len() < mem::size_of::<MailboxReqHeader>() {
+            return Err(CaliptraApiError::MailboxReqTypeTooSmall);
+        }
+
+        // Fill in the checksum header.
+        let chksum = calc_checksum(cmd, &req[mem::size_of::<MailboxReqHeader>()..]);
+        req[..mem::size_of::<MailboxReqHeader>()].copy_from_slice(&chksum.to_ne_bytes());
+
+        self.start_mailbox_req_bytes(cmd, req)?;
+        self.finish_mailbox_resp_bytes(resp)
     }
 }
 
