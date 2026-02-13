@@ -46,7 +46,7 @@ addrmap flash_ctrl {
     reg {
         field {
             sw = rw;
-            desc = "\"0\" = Read page , \"1\" = Write Page, \"2\" Erase Page";
+            desc = "\"1\" = Read page , \"2\" = Write Page, \"3\" Erase Page";
         } OP[2:1];
         field {
             sw = rw;

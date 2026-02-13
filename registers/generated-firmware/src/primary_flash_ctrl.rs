@@ -15,7 +15,7 @@ pub mod bits {
                 En OFFSET(0) NUMBITS(1) [],
             ],
             pub FlControl [
-                /// "0" = Read page , "1" = Write Page, "2" Erase Page
+                /// "1" = Read page , "2" = Write Page, "3" Erase Page
                 Op OFFSET(1) NUMBITS(2) [],
                 /// Start the operation
                 Start OFFSET(0) NUMBITS(1) [],
