@@ -48,16 +48,22 @@ The following diagram illustrates the high-level flow using the `BootSourceProvi
 ```mermaid
 sequenceDiagram
     participant MCU as MCU ROM
+    participant STG as Staging Memory
     participant NET as Network ROM<br>(BootSourceProvider)
     participant IMG as Image Server
 
-    MCU->>NET: Initiate boot request
+    MCU->>NET: Initiate boot request (flags: FlashWriteBack)
     NET->>IMG: Network Configuration Request (DHCPv4/DHCPv6 Discovery)
     IMG-->>NET: Network Configuration Response (DHCPv4/DHCPv6 Offer)
     NET->>IMG: TFTP GET config file (TOC)
     IMG-->>NET: TOC (FW ID mappings)
     NET->>NET: Store FW ID to filename mappings
     NET-->>MCU: Network boot available
+
+    opt FlashWriteBack enabled
+        MCU->>STG: Initialize staging memory
+        MCU->>STG: Write flash header and image headers to staging
+    end
 ```
 
 - **Early firmware image transfer**
@@ -68,6 +74,7 @@ Once the boot source is initialized, the MCU ROM uses the `BootSourceProvider` m
 sequenceDiagram
     participant CRIF as Caliptra Recovery I/F
     participant MCU as MCU ROM
+    participant STG as Staging Memory
     participant NET as Network ROM<br>(BootSourceProvider)
     participant IMG as Image Server
 
@@ -86,7 +93,10 @@ sequenceDiagram
         loop Image transfer by chunk
             IMG-->>NET: Image chunk
             NET-->>MCU: Forward image chunk (ImageStream::read_chunk)
-            MCU->>CRIF: Write chunk
+            MCU->>CRIF: Write chunk to recovery I/F
+            opt FlashWriteBack enabled
+                MCU->>STG: Write chunk to staging
+            end
             MCU-->>NET: Chunk ACK
         end
     end
@@ -103,16 +113,21 @@ This section describes the flow for loading and authenticating SoC images at run
 ```mermaid
 sequenceDiagram
     participant MCURT as MCU RT
+    participant STG as Staging Memory
     participant NET as Network ROM<br>(BootSourceProvider)
     participant IMG as Image Server
 
-    MCURT->>NET: Initiate boot request
+    MCURT->>NET: Initiate boot request (flags: FlashWriteBack, FlashCommitPolicy)
     opt If TOC not already cached
         NET->>IMG: TFTP GET config file (TOC)
         IMG-->>NET: TOC (FW ID mappings)
         NET->>NET: Store FW ID to filename mappings
     end
     NET-->>MCURT: Network boot available
+
+    opt FlashWriteBack enabled AND staging not yet initialized
+        MCURT->>STG: Initialize staging memory
+    end
 ```
 
 - **Remainder firmware images transfer**
@@ -121,6 +136,8 @@ sequenceDiagram
 sequenceDiagram
     participant CORE as Caliptra RT
     participant MCURT as MCU RT
+    participant STG as Staging Memory
+    participant PARTA as Active Flash Partition
     participant NET as Network ROM<br>(BootSourceProvider)
     participant IMG as Image Server
 
@@ -138,6 +155,10 @@ sequenceDiagram
             NET-->>MCURT: Image chunk
 
             MCURT->>MCURT: Write chunk to load_address
+            opt FlashWriteBack enabled
+                MCURT->>STG: Write chunk to staging
+            end
+            MCURT-->>NET: Chunk ACK
         end
 
         MCURT->>CORE: authorize(image_id)
@@ -145,9 +166,46 @@ sequenceDiagram
     end
 
     MCURT->>NET: Finalize network boot
+
+    opt FlashWriteBack enabled (per FlashCommitPolicy)
+        MCURT->>MCURT: Integrity check staging memory
+        MCURT->>PARTA: Commit staging to Active Flash Partition
+    end
 ```
 
+### Flash Write-Back During Network Recovery
 
+Flash write-back is an optional feature for flash-based systems (e.g., BMC) that persists firmware images downloaded during network recovery to the active flash partition. Without this feature, downloaded images exist only in volatile state — loaded into Caliptra/SoC via recovery I/F or load addresses — and a reboot would require another network recovery. When enabled, each image chunk received from the network is dual-written to both the primary destination (recovery I/F or load address) and a staging memory buffer (vendor choice: DRAM or flash). Once all images are authorized, a lightweight integrity check (header checksums and per-image checksum comparison against TOC metadata) is performed on the staging contents to detect write corruption — this is not a full cryptographic re-verification since the images were already verified by Caliptra on the primary path. The staging contents are then committed to the active flash partition using the same `Invalid → copy → Valid` partition status transition as the existing [firmware update](./firmware_update.md) flow. Unlike firmware update (which writes to the inactive partition for safe rollback), network recovery targets the active partition because it has already failed — there is nothing valuable to preserve, and writing directly to it ensures the next boot succeeds immediately without fallback logic or partition pointer swap.
+
+#### Configuration
+
+Flash write-back is controlled by two fields in the Initiate Boot Request `Flags` (offset 8):
+
+| Bits | Field | Description |
+|------|-------|-------------|
+| 0 | FlashWriteBack | 0=Disabled (default), 1=Enabled |
+| 1 | FlashCommitPolicy | When to commit staging memory → active flash partition |
+| 2-31 | Reserved | Must be 0 |
+
+**FlashCommitPolicy values:**
+
+| Value | Name | When Commit Occurs |
+|-------|------|-------------------|
+| 0 | PostAuthorization | After all images are cryptographically authorized (default) |
+| 1 | PostBootSuccess | After platform signals full boot success |
+
+The commit policy is a **vendor policy decision**:
+- **PostAuthorization** (recommended default) — all images have been cryptographically verified by Caliptra. In Stage 1, early firmware (FMC+RT, SoC Manifest, MCU RT) is verified during the Caliptra recovery boot process. In Stage 2, each SoC image is explicitly authorized by Caliptra RT. The commit to flash occurs after the last authorization succeeds, at which point the flash image is complete and fully authenticated. This aligns with the existing firmware update verification and commit flow.
+- **PostBootSuccess** is more conservative — the entire system has successfully booted from the recovered images before the flash is updated. This provides the strongest guarantee that the committed image set is fully functional, but widens the window for power-loss before commit and couples flash commit to runtime behavior beyond image integrity.
+
+Flash write-back can also be controlled as a build-time feature flag (`flash-writeback`) to compile out the staging code path entirely on platforms without writable flash.
+
+#### Error Handling
+
+- If any staging memory write fails during streaming, the flash write-back is abandoned — the primary boot continues normally. The staging data is discarded.
+- If the integrity check fails after streaming, the staging data is not committed. The partition table is unchanged.
+- If commit (staging → active flash copy) fails, the active flash partition is left marked `Invalid`.
+- In all failure cases, the network recovery boot itself is **not aborted** — flash write-back is best-effort and does not gate the primary recovery path.
 
 ## Protocol Support
 
@@ -207,7 +265,8 @@ Initiates the boot source discovery process.
 | 0 | 1 | Message Type | 0x01 - InitiateBoot |
 | 1 | 3 | Reserved | Must be 0 |
 | 4 | 4 | Protocol Version | Version of the messaging protocol |
-| 8 | N | Source Specific | Source-specific initialization parameters |
+| 8 | 4 | Flags | Bit 0: FlashWriteBack (dual-write streamed images to staging memory), Bit 1: FlashCommitPolicy (0=PostAuthorization, 1=PostBootSuccess), Bits 2-31: Reserved |
+| 12 | N | Source Specific | Source-specific initialization parameters |
 
 **Response Packet:**
 
@@ -330,6 +389,10 @@ Error Code  Description
 0x08        Corrupted Data
 0x09        Insufficient Space
 0x0A        Checksum Verification Failed
+0x0B        Flash Write Failed
+0x0C        Flash Staging Not Available
+0x0D        Flash Commit Failed
+0x0E        Flash Verification Failed
 0xFF        Unknown / Unspecified Error
 ```
 
@@ -356,6 +419,25 @@ Boot source providers implement the following core operations:
 ### Boot Source Provider Interface
 
 ```rust
+/// Boot configuration flags passed to initiate_boot
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BootFlags {
+    /// When true, streamed image chunks are also dual-written to staging memory
+    pub flash_writeback: bool,
+    /// Controls when staging memory is committed to active flash partition
+    pub flash_commit_policy: FlashCommitPolicy,
+}
+
+/// Defines when staging memory is committed to the active flash partition (vendor policy)
+#[derive(Debug, Clone, Copy, Default)]
+pub enum FlashCommitPolicy {
+    /// Commit after all images are cryptographically verified/authorized (recommended)
+    #[default]
+    PostAuthorization = 0,
+    /// Commit after the platform signals full boot success
+    PostBootSuccess = 1,
+}
+
 /// Generic boot source provider interface for the MCU ROM
 /// This interface abstracts different boot sources (network, flash, etc.)
 pub trait BootSourceProvider {
@@ -363,7 +445,8 @@ pub trait BootSourceProvider {
 
     /// Initialize the boot source
     /// This performs source-specific initialization (e.g., DHCP for network, etc.)
-    fn initiate_boot(&mut self) -> Result<BootSourceStatus, Self::Error>;
+    /// `flags` controls optional behaviors like flash write-back
+    fn initiate_boot(&mut self, flags: BootFlags) -> Result<BootSourceStatus, Self::Error>;
 
     /// Get information about a firmware image
     fn get_image_metadata(&self, firmware_id: FirmwareId) -> Result<ImageInfo, Self::Error>;
@@ -443,7 +526,7 @@ pub struct NetworkBootSource {
 impl BootSourceProvider for NetworkBootSource {
     type Error = NetworkBootError;
 
-    fn initiate_boot(&mut self) -> Result<BootSourceStatus, Self::Error> {
+    fn initiate_boot(&mut self, _flags: BootFlags) -> Result<BootSourceStatus, Self::Error> {
         // 1. Perform DHCP discovery
         self.dhcp_client.discover()?;
 
@@ -524,6 +607,7 @@ fn recovery_boot(mut boot_source: &mut dyn BootSourceProvider) -> Result<(), Err
 
 fn load_image_stream(mut stream: ImageStream, dest: ImageDestination) -> Result<(), Error> {
     let mut buffer = [0u8; 4096];
+
     while !stream.is_complete() {
         let bytes_read = stream.read_chunk(&mut buffer)?;
         if bytes_read > 0 {
