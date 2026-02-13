@@ -492,7 +492,13 @@ impl BootFlow for ColdBoot {
             mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingComplete.into());
         }
 
-        env.i3c.disable_recovery();
+        if params.recovery_status_open {
+            romtime::println!("[mcu-rom] Leaving recovery interface open");
+            env.i3c.set_recovery_status_open();
+        } else {
+            romtime::println!("[mcu-rom] Disabling recovery interface");
+            env.i3c.disable_recovery();
+        }
 
         // Reset so FirmwareBootReset can jump to firmware
         romtime::println!("[mcu-rom] Resetting to boot firmware");
