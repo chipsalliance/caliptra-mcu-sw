@@ -20,16 +20,130 @@ use crate::{
     verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, BootFlow, DotBlob,
     McuBootMilestones, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
-use caliptra_api::mailbox::{CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader};
-use caliptra_api::CaliptraApiError;
-use caliptra_api::SocManager;
+use caliptra_api::mailbox::{
+    CmImportReq, CmImportResp, CmKeyUsage, CmStableKeyType, Cmk, CommandId, FeProgReq,
+    MailboxReqHeader, MailboxRespHeader, CMK_SIZE_BYTES, MAX_CMB_DATA_SIZE,
+};
+use caliptra_api::{calc_checksum, CaliptraApiError};
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use core::fmt::Write;
 use core::ops::Deref;
 use mcu_error::McuError;
 use romtime::{CaliptraSoC, HexWord};
 use tock_registers::interfaces::Readable;
-use zerocopy::{transmute, IntoBytes};
+use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
+
+// TODO: Remove these local CM_AES_GCM_DECRYPT_DMA definitions once caliptra-sw
+// includes the DMA decrypt command and the caliptra-sw git pointer is updated.
+
+/// Command ID for CM_AES_GCM_DECRYPT_DMA ("CMDD").
+const CMD_CM_AES_GCM_DECRYPT_DMA: u32 = 0x434D_4444;
+
+/// Maximum AAD size for CM_AES_GCM_DECRYPT_DMA command.
+const CM_AES_GCM_DECRYPT_DMA_MAX_AAD_SIZE: usize = MAX_CMB_DATA_SIZE;
+
+/// Request struct for the CM_AES_GCM_DECRYPT_DMA mailbox command.
+///
+/// This command performs in-place AES-GCM decryption of data at an AXI address
+/// using DMA. It first verifies the SHA-384 of the encrypted data, then
+/// performs decryption.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+struct CmAesGcmDecryptDmaReq {
+    pub hdr: MailboxReqHeader,
+    /// CMK (Cryptographic Mailbox Key) - 128 bytes
+    pub cmk: Cmk,
+    /// AES-GCM IV (12 bytes, as 3 x u32)
+    pub iv: [u32; 3],
+    /// AES-GCM tag (16 bytes, as 4 x u32)
+    pub tag: [u32; 4],
+    /// SHA-384 hash of the encrypted data (48 bytes)
+    pub encrypted_data_sha384: [u8; 48],
+    /// AXI address low 32 bits
+    pub axi_addr_lo: u32,
+    /// AXI address high 32 bits
+    pub axi_addr_hi: u32,
+    /// Length of data to decrypt in bytes
+    pub length: u32,
+    /// Length of AAD in bytes
+    pub aad_length: u32,
+    /// AAD data (0..=4095 bytes)
+    pub aad: [u8; CM_AES_GCM_DECRYPT_DMA_MAX_AAD_SIZE],
+}
+
+impl Default for CmAesGcmDecryptDmaReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            cmk: Cmk::default(),
+            iv: [0u32; 3],
+            tag: [0u32; 4],
+            encrypted_data_sha384: [0u8; 48],
+            axi_addr_lo: 0,
+            axi_addr_hi: 0,
+            length: 0,
+            aad_length: 0,
+            aad: [0u8; CM_AES_GCM_DECRYPT_DMA_MAX_AAD_SIZE],
+        }
+    }
+}
+
+/// Response struct for the CM_AES_GCM_DECRYPT_DMA mailbox command.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+struct CmAesGcmDecryptDmaResp {
+    pub hdr: MailboxRespHeader,
+    /// Indicates whether the GCM tag was verified (1 = success, 0 = failure)
+    pub tag_verified: u32,
+}
+
+/// Command ID for GET_MCU_FW_SIZE ("GMFS").
+///
+/// MCU ROM issues this command after Caliptra RT is ready for runtime mailbox
+/// commands. Caliptra RT responds with the size of the MCU firmware image
+/// (ciphertext + GCM tag) that was downloaded during the recovery flow.
+// TODO: Remove once the caliptra-sw git pointer includes GET_MCU_FW_SIZE.
+const CMD_GET_MCU_FW_SIZE: u32 = 0x474D_4653;
+
+/// Response struct for GET_MCU_FW_SIZE mailbox command.
+// TODO: Remove once the caliptra-sw git pointer includes GetMcuFwSizeResp.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+struct GetMcuFwSizeResp {
+    pub hdr: MailboxRespHeader,
+    /// Ciphertext size in bytes (GCM tag excluded).
+    pub size: u32,
+    /// SHA-384 digest of the ciphertext (computed by Caliptra RT).
+    pub sha384: [u8; 48],
+}
+
+impl Default for GetMcuFwSizeResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            size: 0,
+            sha384: [0u8; 48],
+        }
+    }
+}
+
+/// Bit in `mci_reg_generic_input_wires[1]` that signals encrypted firmware boot.
+/// When set, MCU ROM sends `RI_DOWNLOAD_ENCRYPTED_FIRMWARE` instead of `RI_DOWNLOAD_FIRMWARE`,
+/// then decrypts the firmware in MCU SRAM after Caliptra RT finishes loading.
+const ENCRYPTED_BOOT_WIRE_BIT: u32 = 1 << 28;
+
+/// Test AES-256 key used for encrypted MCU firmware in sw-emulated models.
+/// Must match `MCU_TEST_AES_KEY` in caliptra-sw hw-model.
+const MCU_TEST_AES_KEY: [u8; 32] = [0xaa; 32];
+
+/// Test AES-GCM IV used for encrypted MCU firmware in sw-emulated models.
+/// Must match `MCU_TEST_IV` in caliptra-sw hw-model.
+const MCU_TEST_IV: [u8; 12] = [
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
+];
+
+/// GCM authentication tag size in bytes.
+const GCM_TAG_SIZE: usize = 16;
 
 pub struct ColdBoot {}
 
@@ -49,23 +163,18 @@ impl ColdBoot {
                 partition
             );
 
-            let req = FeProgReq {
+            let mut req = FeProgReq {
                 partition: partition as u32,
                 ..Default::default()
             };
-            let req = req.as_bytes();
-            let chksum = caliptra_api::calc_checksum(CommandId::FE_PROG.into(), req);
-            // set the checksum
-            let req = FeProgReq {
-                hdr: MailboxReqHeader { chksum },
-                partition: partition as u32,
-            };
-            let req: [u32; 2] = transmute!(req);
-            if let Err(err) = soc_manager.start_mailbox_req(
+            let chksum = caliptra_api::calc_checksum(
                 CommandId::FE_PROG.into(),
-                req.len() * 4,
-                req.iter().copied(),
-            ) {
+                &req.as_bytes()[core::mem::size_of::<MailboxReqHeader>()..],
+            );
+            req.hdr.chksum = chksum;
+            if let Err(err) =
+                soc_manager.start_mailbox_req_bytes(CommandId::FE_PROG.into(), req.as_bytes())
+            {
                 match err {
                     CaliptraApiError::MailboxCmdFailed(code) => {
                         romtime::println!(
@@ -79,20 +188,23 @@ impl ColdBoot {
                 }
                 fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_START);
             }
-            if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
-                match err {
-                    CaliptraApiError::MailboxCmdFailed(code) => {
-                        romtime::println!(
-                            "[mcu-rom] Error finishing mailbox command: {}",
-                            HexWord(code)
-                        );
+            {
+                let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
+                if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+                    match err {
+                        CaliptraApiError::MailboxCmdFailed(code) => {
+                            romtime::println!(
+                                "[mcu-rom] Error finishing mailbox command: {}",
+                                HexWord(code)
+                            );
+                        }
+                        _ => {
+                            romtime::println!("[mcu-rom] Error finishing mailbox command");
+                        }
                     }
-                    _ => {
-                        romtime::println!("[mcu-rom] Error finishing mailbox command");
-                    }
+                    fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
                 }
-                fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
-            };
+            }
 
             // Set status for each partition completion
             let partition_status = match partition {
@@ -103,6 +215,215 @@ impl ColdBoot {
                 _ => mci.flow_checkpoint(),
             };
             mci.set_flow_checkpoint(partition_status);
+        }
+    }
+
+    /// Decrypt the encrypted MCU firmware in SRAM using DMA-based decryption:
+    ///   1. Import the AES key via CM_IMPORT
+    ///   2. Issue CM_AES_GCM_DECRYPT_DMA to decrypt in-place via DMA
+    ///
+    /// The firmware image in SRAM is formatted as `ciphertext || 16-byte GCM tag`.
+    /// `ciphertext_size` is the ciphertext length only (GCM tag excluded), as
+    /// returned by GET_MCU_FW_SIZE. Caliptra RT already strips the tag from the
+    /// size in recovery_flow.rs.
+    /// `sha384` is the SHA-384 digest of the ciphertext, obtained from the
+    /// GET_MCU_FW_SIZE response (computed by Caliptra RT during the recovery flow).
+    /// After decryption the plaintext replaces the ciphertext in SRAM.
+    fn decrypt_firmware(soc_manager: &mut CaliptraSoC, ciphertext_size: u32, sha384: &[u8; 48]) {
+        if ciphertext_size == 0 {
+            romtime::println!("[mcu-rom] Encrypted firmware ciphertext size is zero");
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+        let sram_base = unsafe { MCU_MEMORY_MAP.sram_offset } as usize;
+
+        // Use the MCU SRAM address for in-place DMA decryption.
+        // Caliptra RT downloaded the ciphertext here via the recovery interface,
+        // so the DMA decrypt must target the same AXI address.
+        // On both emulator and FPGA, sram_offset is the AXI bus address
+        // (FPGA: mci_base + 0xc0_0000; emulator: identity-mapped).
+        let sram_axi_addr = sram_base as u64;
+
+        // Extract GCM tag (16 bytes immediately after ciphertext in SRAM)
+        let tag: [u8; GCM_TAG_SIZE] = unsafe {
+            let tag_ptr = (sram_base + ciphertext_size as usize) as *const [u8; GCM_TAG_SIZE];
+            core::ptr::read_volatile(tag_ptr)
+        };
+
+        // Step 1: Import the test AES key
+        let cmk = Self::cm_import_aes_key(soc_manager);
+
+        // Step 2: Issue CM_AES_GCM_DECRYPT_DMA to decrypt in-place in MCU SRAM
+        // The length must match what Caliptra RT used for sha384_mcu_sram(),
+        // which is the ciphertext size (excluding the 16-byte GCM tag).
+        Self::cm_aes_gcm_decrypt_dma(
+            soc_manager,
+            &cmk,
+            &tag,
+            sha384,
+            sram_axi_addr,
+            ciphertext_size,
+        );
+    }
+
+    /// Import the test AES key via CM_IMPORT and return the CMK handle.
+    fn cm_import_aes_key(soc_manager: &mut CaliptraSoC) -> Cmk {
+        let mut input = [0u8; 64]; // MAX_KEY_SIZE = 64
+        match input.get_mut(..32) {
+            Some(dst) => dst.copy_from_slice(&MCU_TEST_AES_KEY),
+            None => fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR),
+        }
+
+        let mut req = CmImportReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            key_usage: CmKeyUsage::Aes.into(),
+            input_size: 32,
+            input,
+        };
+        let cmd: u32 = CommandId::CM_IMPORT.into();
+        let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
+        req.hdr.chksum = chksum;
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] CM_IMPORT start error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+
+        let mut resp_buf = [0u8; core::mem::size_of::<CmImportResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+            romtime::println!(
+                "[mcu-rom] CM_IMPORT finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+
+        // Extract CMK from response: hdr(8) + cmk(128)
+        let mut cmk_bytes = [0u8; CMK_SIZE_BYTES];
+        match resp_buf.get(8..8 + CMK_SIZE_BYTES) {
+            Some(src) => cmk_bytes.copy_from_slice(src),
+            None => fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR),
+        }
+        Cmk(cmk_bytes)
+    }
+
+    /// Issue CM_AES_GCM_DECRYPT_DMA to decrypt firmware in-place via DMA.
+    fn cm_aes_gcm_decrypt_dma(
+        soc_manager: &mut CaliptraSoC,
+        cmk: &Cmk,
+        tag: &[u8; GCM_TAG_SIZE],
+        encrypted_data_sha384: &[u8; 48],
+        axi_addr: u64,
+        ciphertext_len: u32,
+    ) {
+        let tag_u32: [u32; 4] = transmute!(*tag);
+        let iv_u32: [u32; 3] = transmute!(MCU_TEST_IV);
+
+        let mut req = CmAesGcmDecryptDmaReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            cmk: cmk.clone(),
+            iv: iv_u32,
+            tag: tag_u32,
+            encrypted_data_sha384: *encrypted_data_sha384,
+            axi_addr_lo: axi_addr as u32,
+            axi_addr_hi: (axi_addr >> 32) as u32,
+            length: ciphertext_len,
+            aad_length: 0,
+            aad: [0u8; CM_AES_GCM_DECRYPT_DMA_MAX_AAD_SIZE],
+        };
+        let cmd: u32 = CMD_CM_AES_GCM_DECRYPT_DMA;
+        let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
+        req.hdr.chksum = chksum;
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] CM_AES_GCM_DECRYPT_DMA start error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+
+        let mut resp_buf = [0u8; core::mem::size_of::<CmAesGcmDecryptDmaResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+            romtime::println!(
+                "[mcu-rom] CM_AES_GCM_DECRYPT_DMA finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_FINISH_ERROR);
+        }
+
+        // CmAesGcmDecryptDmaResp: hdr(8) + tag_verified(4)
+        let tag_verified = match resp_buf.get(8..12) {
+            Some(b) => u32::from_le_bytes([b[0], b[1], b[2], b[3]]),
+            None => {
+                romtime::println!("[mcu-rom] CM_AES_GCM_DECRYPT_DMA response too short");
+                fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_FINISH_ERROR);
+            }
+        };
+        if tag_verified != 1 {
+            romtime::println!(
+                "[mcu-rom] GCM tag verification failed: tag_verified={}",
+                tag_verified
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_TAG_MISMATCH);
+        }
+    }
+
+    /// Query the MCU firmware ciphertext size and SHA-384 digest from Caliptra RT
+    /// via the GET_MCU_FW_SIZE mailbox command.
+    ///
+    /// Returns `(ciphertext_size, sha384)` where `ciphertext_size` is the
+    /// ciphertext length in bytes (GCM tag excluded — Caliptra RT strips it)
+    /// and `sha384` is the SHA-384 digest of the ciphertext only, computed
+    /// by Caliptra RT during the recovery flow.
+    fn get_mcu_fw_size(soc_manager: &mut CaliptraSoC) -> (u32, [u8; 48]) {
+        let mut req = MailboxReqHeader { chksum: 0 };
+        let chksum = calc_checksum(CMD_GET_MCU_FW_SIZE, &[]);
+        req.chksum = chksum;
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(CMD_GET_MCU_FW_SIZE, req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] GET_MCU_FW_SIZE start error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_START_ERROR);
+        }
+
+        let mut resp_buf = [0u8; core::mem::size_of::<GetMcuFwSizeResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+            romtime::println!(
+                "[mcu-rom] GET_MCU_FW_SIZE finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR);
+        }
+
+        // GetMcuFwSizeResp: hdr(8) + size(4) + sha384(48)
+        let size = match resp_buf.get(8..12) {
+            Some(b) => u32::from_le_bytes([b[0], b[1], b[2], b[3]]),
+            None => {
+                romtime::println!("[mcu-rom] GET_MCU_FW_SIZE response too short");
+                fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR);
+            }
+        };
+        let mut sha384 = [0u8; 48];
+        match resp_buf.get(12..60) {
+            Some(src) => sha384.copy_from_slice(src),
+            None => {
+                romtime::println!("[mcu-rom] GET_MCU_FW_SIZE response missing sha384");
+                fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR);
+            }
+        }
+        (size, sha384)
+    }
+
+    /// Extract a u32 error code from a CaliptraApiError for logging.
+    fn err_code(err: &CaliptraApiError) -> u32 {
+        match err {
+            CaliptraApiError::MailboxCmdFailed(c) => *c,
+            _ => 0xdead_ffff,
         }
     }
 }
@@ -386,11 +707,24 @@ impl BootFlow for ColdBoot {
         let soc = &env.soc;
         let soc_manager = &mut env.soc_manager;
 
-        // tell Caliptra to download firmware from the recovery interface
-        romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command",);
-        if let Err(err) =
-            soc_manager.start_mailbox_req(CommandId::RI_DOWNLOAD_FIRMWARE.into(), 0, [].into_iter())
-        {
+        // Check GPIO wire for encrypted firmware boot mode (core_test only).
+        // When the encrypted boot wire is set, MCU ROM sends RI_DOWNLOAD_ENCRYPTED_FIRMWARE
+        // which tells Caliptra RT to load firmware without activating MCU.
+        let encrypted_boot = cfg!(feature = "core_test")
+            && mci.registers.mci_reg_generic_input_wires[1].get() & ENCRYPTED_BOOT_WIRE_BIT != 0;
+
+        // Tell Caliptra to download firmware from the recovery interface.
+        // Use RI_DOWNLOAD_ENCRYPTED_FIRMWARE when encrypted boot is requested.
+        romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command");
+        let ri_cmd = if encrypted_boot {
+            //romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_ENCRYPTED_FIRMWARE command");
+            CommandId::RI_DOWNLOAD_ENCRYPTED_FIRMWARE.into()
+        } else {
+            //romtime::println!("[mcu-rom] Sending RI_DOWNLOAD_FIRMWARE command");
+            CommandId::RI_DOWNLOAD_FIRMWARE.into()
+        };
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(ri_cmd, &[]) {
             match err {
                 CaliptraApiError::MailboxCmdFailed(code) => {
                     romtime::println!("[mcu-rom] Error sending mailbox command: {}", HexWord(code));
@@ -403,26 +737,23 @@ impl BootFlow for ColdBoot {
         }
         mci.set_flow_checkpoint(McuRomBootStatus::RiDownloadFirmwareCommandSent.into());
 
-        romtime::println!(
-            "[mcu-rom] Done sending RI_DOWNLOAD_FIRMWARE command: status {}",
-            HexWord(u32::from(
-                soc_manager.soc_mbox().status().read().mbox_fsm_ps()
-            ))
-        );
-        if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
-            match err {
-                CaliptraApiError::MailboxCmdFailed(code) => {
-                    romtime::println!(
-                        "[mcu-rom] Error finishing mailbox command: {}",
-                        HexWord(code)
-                    );
+        {
+            let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
+            if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+                match err {
+                    CaliptraApiError::MailboxCmdFailed(code) => {
+                        romtime::println!(
+                            "[mcu-rom] Error finishing mailbox command: {}",
+                            HexWord(code)
+                        );
+                    }
+                    _ => {
+                        romtime::println!("[mcu-rom] Error finishing mailbox command");
+                    }
                 }
-                _ => {
-                    romtime::println!("[mcu-rom] Error finishing mailbox command");
-                }
+                fatal_error(McuError::ROM_COLD_BOOT_FINISH_RI_DOWNLOAD_ERROR);
             }
-            fatal_error(McuError::ROM_COLD_BOOT_FINISH_RI_DOWNLOAD_ERROR);
-        };
+        }
         mci.set_flow_checkpoint(McuRomBootStatus::RiDownloadFirmwareComplete.into());
         mci.set_flow_milestone(McuBootMilestones::RI_DOWNLOAD_COMPLETED.into());
 
@@ -442,47 +773,72 @@ impl BootFlow for ColdBoot {
             }
         }
 
-        romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
-        soc.wait_for_firmware_ready(mci);
-        romtime::println!("[mcu-rom] Firmware is ready");
-        mci.set_flow_checkpoint(McuRomBootStatus::FirmwareReadyDetected.into());
+        if encrypted_boot {
+            // --- Encrypted firmware boot flow ---
+            // In encrypted mode, Caliptra RT loads firmware to MCU SRAM but does NOT
+            // set FW_EXEC_CTRL[2] and does NOT reset MCU. We skip wait_for_firmware_ready()
+            // and instead wait for Caliptra RT to be ready for runtime commands, then
+            // decrypt the firmware ourselves.
+            romtime::println!("[mcu-rom] Encrypted boot: waiting for Caliptra RT to be ready");
+            while !soc.ready_for_runtime() {}
+            mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
 
-        if let Some(image_verifier) = params.mcu_image_verifier {
-            let header = unsafe {
-                core::slice::from_raw_parts(
-                    MCU_MEMORY_MAP.sram_offset as *const u8,
-                    params.mcu_image_header_size,
-                )
-            };
+            // Query ciphertext size and SHA-384 digest via GET_MCU_FW_SIZE.
+            // Caliptra RT strips the 16-byte GCM tag from the size and
+            // computes SHA-384 over the ciphertext only during the recovery
+            // flow, so MCU ROM can forward both directly to CM_AES_GCM_DECRYPT_DMA.
+            let (ciphertext_size, sha384) = Self::get_mcu_fw_size(soc_manager);
+            romtime::println!(
+                "[mcu-rom] Encrypted boot: ciphertext size = {} bytes",
+                ciphertext_size
+            );
 
-            romtime::println!("[mcu-rom] Verifying firmware header");
-            if !image_verifier.verify_header(header, &env.otp) {
-                romtime::println!("Firmware header verification failed; halting");
-                fatal_error(McuError::ROM_COLD_BOOT_HEADER_VERIFY_ERROR);
+            // Decrypt firmware in MCU SRAM via CM_IMPORT + CM_AES_GCM_DECRYPT_DMA
+            Self::decrypt_firmware(soc_manager, ciphertext_size, &sha384);
+        } else {
+            // --- Normal (unencrypted) firmware boot flow ---
+            romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
+            soc.wait_for_firmware_ready(mci);
+            romtime::println!("[mcu-rom] Firmware is ready");
+            mci.set_flow_checkpoint(McuRomBootStatus::FirmwareReadyDetected.into());
+
+            if let Some(image_verifier) = params.mcu_image_verifier {
+                let header = unsafe {
+                    core::slice::from_raw_parts(
+                        MCU_MEMORY_MAP.sram_offset as *const u8,
+                        params.mcu_image_header_size,
+                    )
+                };
+
+                romtime::println!("[mcu-rom] Verifying firmware header");
+                if !image_verifier.verify_header(header, &env.otp) {
+                    romtime::println!("Firmware header verification failed; halting");
+                    fatal_error(McuError::ROM_COLD_BOOT_HEADER_VERIFY_ERROR);
+                }
             }
+
+            // Check that the firmware was actually loaded before jumping to it
+            let firmware_ptr = unsafe {
+                (MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32) as *const u32
+            };
+            // Safety: this address is valid
+            if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
+                romtime::println!("Invalid firmware detected; halting");
+                fatal_error(McuError::ROM_COLD_BOOT_INVALID_FIRMWARE);
+            }
+            romtime::println!("[mcu-rom] Firmware load detected");
+            mci.set_flow_checkpoint(McuRomBootStatus::FirmwareValidationComplete.into());
+
+            // wait for the Caliptra RT to be ready
+            romtime::println!(
+                "[mcu-rom] Waiting for Caliptra RT to be ready for runtime mailbox commands"
+            );
+            while !soc.ready_for_runtime() {}
+            mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
         }
 
-        // Check that the firmware was actually loaded before jumping to it
-        let firmware_ptr = unsafe {
-            (MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32) as *const u32
-        };
-        // Safety: this address is valid
-        if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
-            romtime::println!("Invalid firmware detected; halting");
-            fatal_error(McuError::ROM_COLD_BOOT_INVALID_FIRMWARE);
-        }
-        romtime::println!("[mcu-rom] Firmware load detected");
-        mci.set_flow_checkpoint(McuRomBootStatus::FirmwareValidationComplete.into());
-
-        // wait for the Caliptra RT to be ready
-        // this is a busy loop, but it should be very short
-        romtime::println!(
-            "[mcu-rom] Waiting for Caliptra RT to be ready for runtime mailbox commands"
-        );
-        while !soc.ready_for_runtime() {}
-        mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
-
-        romtime::println!("[mcu-rom] Finished common initialization");
+        // --- Common tail: field entropy, disable recovery, reset ---
+        romtime::println!("[mcu-rom] Finished boot-mode-specific initialization");
 
         // program field entropy if requested
         if params.program_field_entropy.iter().any(|x| *x) {
