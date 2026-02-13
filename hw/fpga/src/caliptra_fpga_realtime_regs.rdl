@@ -244,8 +244,20 @@ regfile interface_regs {
     } spare_i3c_control_sts;
 
     reg {
-        field { sw=rw; hw=na; } key[32] = 32'h0;
+        field { sw=rw; hw=na; desc = "OCP LOCK Media Encryption Key (MEK)"; } key[32] = 32'h0;
     } ocp_lock_key_release_reg[16] @ 0x200;
+
+    reg {
+        field { sw=rw; hw=na; desc = "OCP LOCK Metadata (METD)"; } metadata[32] = 32'h0;
+    } ocp_lock_metadata_reg[5] @ 0x240;
+
+    reg {
+        field { sw=rw; hw=na; desc = "OCP LOCK Auxiliary Data (AUX)"; } data[32] = 32'h0;
+    } ocp_lock_auxiliary_data_reg[8] @ 0x260;
+
+    reg {
+        field { sw=rw; hw=na; desc = "OCP LOCK Control"; } ctrl[32] = 32'h0;
+    } ocp_lock_control_reg @ 0x280;
 };
 
 regfile flash_ctrl_regs {

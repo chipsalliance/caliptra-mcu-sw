@@ -23,7 +23,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 
 - Absolute Address: 0xA4010000
 - Base Offset: 0xA4010000
-- Size: 0x240
+- Size: 0x284
 
 |Offset|                  Identifier                  |Name|
 |------|----------------------------------------------|----|
@@ -126,6 +126,20 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 | 0x234|         ocp_lock_key_release_reg[13]         |  — |
 | 0x238|         ocp_lock_key_release_reg[14]         |  — |
 | 0x23C|         ocp_lock_key_release_reg[15]         |  — |
+| 0x240|           ocp_lock_metadata_reg[0]           |  — |
+| 0x244|           ocp_lock_metadata_reg[1]           |  — |
+| 0x248|           ocp_lock_metadata_reg[2]           |  — |
+| 0x24C|           ocp_lock_metadata_reg[3]           |  — |
+| 0x250|           ocp_lock_metadata_reg[4]           |  — |
+| 0x260|        ocp_lock_auxiliary_data_reg[0]        |  — |
+| 0x264|        ocp_lock_auxiliary_data_reg[1]        |  — |
+| 0x268|        ocp_lock_auxiliary_data_reg[2]        |  — |
+| 0x26C|        ocp_lock_auxiliary_data_reg[3]        |  — |
+| 0x270|        ocp_lock_auxiliary_data_reg[4]        |  — |
+| 0x274|        ocp_lock_auxiliary_data_reg[5]        |  — |
+| 0x278|        ocp_lock_auxiliary_data_reg[6]        |  — |
+| 0x27C|        ocp_lock_auxiliary_data_reg[7]        |  — |
+| 0x280|             ocp_lock_control_reg             |  — |
 
 ### fpga_magic register
 
@@ -1326,6 +1340,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
 
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
+
 ### ocp_lock_key_release_reg register
 
 - Absolute Address: 0xA4010204
@@ -1338,6 +1356,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
+
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
 
 ### ocp_lock_key_release_reg register
 
@@ -1352,6 +1374,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
 
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
+
 ### ocp_lock_key_release_reg register
 
 - Absolute Address: 0xA401020C
@@ -1364,6 +1390,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
+
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
 
 ### ocp_lock_key_release_reg register
 
@@ -1378,6 +1408,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
 
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
+
 ### ocp_lock_key_release_reg register
 
 - Absolute Address: 0xA4010214
@@ -1390,6 +1424,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
+
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
 
 ### ocp_lock_key_release_reg register
 
@@ -1404,6 +1442,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
 
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
+
 ### ocp_lock_key_release_reg register
 
 - Absolute Address: 0xA401021C
@@ -1416,6 +1458,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
+
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
 
 ### ocp_lock_key_release_reg register
 
@@ -1430,6 +1476,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
 
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
+
 ### ocp_lock_key_release_reg register
 
 - Absolute Address: 0xA4010224
@@ -1442,6 +1492,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
+
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
 
 ### ocp_lock_key_release_reg register
 
@@ -1456,6 +1510,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
 
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
+
 ### ocp_lock_key_release_reg register
 
 - Absolute Address: 0xA401022C
@@ -1468,6 +1526,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
+
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
 
 ### ocp_lock_key_release_reg register
 
@@ -1482,6 +1544,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
 
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
+
 ### ocp_lock_key_release_reg register
 
 - Absolute Address: 0xA4010234
@@ -1494,6 +1560,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
+
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
 
 ### ocp_lock_key_release_reg register
 
@@ -1508,6 +1578,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
 
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
+
 ### ocp_lock_key_release_reg register
 
 - Absolute Address: 0xA401023C
@@ -1520,6 +1594,245 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |Bits|Identifier|Access|Reset|Name|
 |----|----------|------|-----|----|
 |31:0|    key   |  rw  | 0x0 |  — |
+
+#### key field
+
+<p>OCP LOCK Media Encryption Key (MEK)</p>
+
+### ocp_lock_metadata_reg register
+
+- Absolute Address: 0xA4010240
+- Base Offset: 0x240
+- Size: 0x4
+- Array Dimensions: [5]
+- Array Stride: 0x4
+- Total Size: 0x14
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0| metadata |  rw  | 0x0 |  — |
+
+#### metadata field
+
+<p>OCP LOCK Metadata (METD)</p>
+
+### ocp_lock_metadata_reg register
+
+- Absolute Address: 0xA4010244
+- Base Offset: 0x240
+- Size: 0x4
+- Array Dimensions: [5]
+- Array Stride: 0x4
+- Total Size: 0x14
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0| metadata |  rw  | 0x0 |  — |
+
+#### metadata field
+
+<p>OCP LOCK Metadata (METD)</p>
+
+### ocp_lock_metadata_reg register
+
+- Absolute Address: 0xA4010248
+- Base Offset: 0x240
+- Size: 0x4
+- Array Dimensions: [5]
+- Array Stride: 0x4
+- Total Size: 0x14
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0| metadata |  rw  | 0x0 |  — |
+
+#### metadata field
+
+<p>OCP LOCK Metadata (METD)</p>
+
+### ocp_lock_metadata_reg register
+
+- Absolute Address: 0xA401024C
+- Base Offset: 0x240
+- Size: 0x4
+- Array Dimensions: [5]
+- Array Stride: 0x4
+- Total Size: 0x14
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0| metadata |  rw  | 0x0 |  — |
+
+#### metadata field
+
+<p>OCP LOCK Metadata (METD)</p>
+
+### ocp_lock_metadata_reg register
+
+- Absolute Address: 0xA4010250
+- Base Offset: 0x240
+- Size: 0x4
+- Array Dimensions: [5]
+- Array Stride: 0x4
+- Total Size: 0x14
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0| metadata |  rw  | 0x0 |  — |
+
+#### metadata field
+
+<p>OCP LOCK Metadata (METD)</p>
+
+### ocp_lock_auxiliary_data_reg register
+
+- Absolute Address: 0xA4010260
+- Base Offset: 0x260
+- Size: 0x4
+- Array Dimensions: [8]
+- Array Stride: 0x4
+- Total Size: 0x20
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   data   |  rw  | 0x0 |  — |
+
+#### data field
+
+<p>OCP LOCK Auxiliary Data (AUX)</p>
+
+### ocp_lock_auxiliary_data_reg register
+
+- Absolute Address: 0xA4010264
+- Base Offset: 0x260
+- Size: 0x4
+- Array Dimensions: [8]
+- Array Stride: 0x4
+- Total Size: 0x20
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   data   |  rw  | 0x0 |  — |
+
+#### data field
+
+<p>OCP LOCK Auxiliary Data (AUX)</p>
+
+### ocp_lock_auxiliary_data_reg register
+
+- Absolute Address: 0xA4010268
+- Base Offset: 0x260
+- Size: 0x4
+- Array Dimensions: [8]
+- Array Stride: 0x4
+- Total Size: 0x20
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   data   |  rw  | 0x0 |  — |
+
+#### data field
+
+<p>OCP LOCK Auxiliary Data (AUX)</p>
+
+### ocp_lock_auxiliary_data_reg register
+
+- Absolute Address: 0xA401026C
+- Base Offset: 0x260
+- Size: 0x4
+- Array Dimensions: [8]
+- Array Stride: 0x4
+- Total Size: 0x20
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   data   |  rw  | 0x0 |  — |
+
+#### data field
+
+<p>OCP LOCK Auxiliary Data (AUX)</p>
+
+### ocp_lock_auxiliary_data_reg register
+
+- Absolute Address: 0xA4010270
+- Base Offset: 0x260
+- Size: 0x4
+- Array Dimensions: [8]
+- Array Stride: 0x4
+- Total Size: 0x20
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   data   |  rw  | 0x0 |  — |
+
+#### data field
+
+<p>OCP LOCK Auxiliary Data (AUX)</p>
+
+### ocp_lock_auxiliary_data_reg register
+
+- Absolute Address: 0xA4010274
+- Base Offset: 0x260
+- Size: 0x4
+- Array Dimensions: [8]
+- Array Stride: 0x4
+- Total Size: 0x20
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   data   |  rw  | 0x0 |  — |
+
+#### data field
+
+<p>OCP LOCK Auxiliary Data (AUX)</p>
+
+### ocp_lock_auxiliary_data_reg register
+
+- Absolute Address: 0xA4010278
+- Base Offset: 0x260
+- Size: 0x4
+- Array Dimensions: [8]
+- Array Stride: 0x4
+- Total Size: 0x20
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   data   |  rw  | 0x0 |  — |
+
+#### data field
+
+<p>OCP LOCK Auxiliary Data (AUX)</p>
+
+### ocp_lock_auxiliary_data_reg register
+
+- Absolute Address: 0xA401027C
+- Base Offset: 0x260
+- Size: 0x4
+- Array Dimensions: [8]
+- Array Stride: 0x4
+- Total Size: 0x20
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   data   |  rw  | 0x0 |  — |
+
+#### data field
+
+<p>OCP LOCK Auxiliary Data (AUX)</p>
+
+### ocp_lock_control_reg register
+
+- Absolute Address: 0xA4010280
+- Base Offset: 0x280
+- Size: 0x4
+
+|Bits|Identifier|Access|Reset|Name|
+|----|----------|------|-----|----|
+|31:0|   ctrl   |  rw  | 0x0 |  — |
+
+#### ctrl field
+
+<p>OCP LOCK Control</p>
 
 ## fifo_regs register file
 
