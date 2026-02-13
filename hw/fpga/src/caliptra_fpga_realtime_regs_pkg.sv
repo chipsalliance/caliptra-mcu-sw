@@ -802,7 +802,40 @@ package caliptra_fpga_realtime_regs_pkg;
     } fifo_regs__out_t;
 
     typedef struct {
+        logic value;
+    } flash_ctrl_regs__FL_INTERRUPT_STATE__ERROR__out_t;
+
+    typedef struct {
+        logic value;
+    } flash_ctrl_regs__FL_INTERRUPT_STATE__EVENT__out_t;
+
+    typedef struct {
+        flash_ctrl_regs__FL_INTERRUPT_STATE__ERROR__out_t ERROR;
+        flash_ctrl_regs__FL_INTERRUPT_STATE__EVENT__out_t EVENT;
+    } flash_ctrl_regs__FL_INTERRUPT_STATE__out_t;
+
+    typedef struct {
+        logic value;
+    } flash_ctrl_regs__FL_INTERRUPT_ENABLE__ERROR__out_t;
+
+    typedef struct {
+        logic value;
+    } flash_ctrl_regs__FL_INTERRUPT_ENABLE__EVENT__out_t;
+
+    typedef struct {
+        flash_ctrl_regs__FL_INTERRUPT_ENABLE__ERROR__out_t ERROR;
+        flash_ctrl_regs__FL_INTERRUPT_ENABLE__EVENT__out_t EVENT;
+    } flash_ctrl_regs__FL_INTERRUPT_ENABLE__out_t;
+
+    typedef struct {
+        flash_ctrl_regs__FL_INTERRUPT_STATE__out_t FL_INTERRUPT_STATE;
+        flash_ctrl_regs__FL_INTERRUPT_ENABLE__out_t FL_INTERRUPT_ENABLE;
+    } flash_ctrl_regs__out_t;
+
+    typedef struct {
         interface_regs__out_t interface_regs;
         fifo_regs__out_t fifo_regs;
+        flash_ctrl_regs__out_t primary_flash_ctrl_regs;
+        flash_ctrl_regs__out_t secondary_flash_ctrl_regs;
     } caliptra_fpga_realtime_regs__out_t;
 endpackage
