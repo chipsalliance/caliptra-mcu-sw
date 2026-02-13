@@ -70,6 +70,10 @@ pub extern "C" fn rom_entry() -> ! {
     let dot_flash: &dyn FlashStorage = &SimpleFlash::new(raw_dot_flash);
     let dot_flash = Some(dot_flash);
 
+    let axi_user0 = 0xcccc_ccccu32;
+    let axi_user1 = 0xdddd_ddddu32;
+    let mbox_axi_users = [axi_user0, axi_user1, 0, 0, 0];
+
     if cfg!(feature = "test-flash-based-boot") {
         // Initialize the flash controller for testing purposes
 
@@ -136,6 +140,12 @@ pub extern "C" fn rom_entry() -> ! {
             flash_partition_driver: Some(&mut flash_image_partition_driver),
             dot_flash,
             request_flash_boot: true,
+            cptra_mbox_axi_users: mbox_axi_users,
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            cptra_dma_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         });
     } else if cfg!(feature = "hw-2-1") {
@@ -163,6 +173,12 @@ pub extern "C" fn rom_entry() -> ! {
             dot_flash,
             // Let the generic wire (bit 29 of mci_reg_generic_input_wires[1]) control flash boot
             // request_flash_boot defaults to false - emulator sets the wire when flash boot is requested
+            cptra_mbox_axi_users: mbox_axi_users,
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            cptra_dma_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         });
     } else if cfg!(any(
@@ -177,12 +193,24 @@ pub extern "C" fn rom_entry() -> ! {
             dot_flash,
             otp_enable_integrity_check: true,
             otp_enable_consistency_check: true,
+            cptra_mbox_axi_users: mbox_axi_users,
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            cptra_dma_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         };
         mcu_rom_common::rom_start(rom_parameters);
     } else {
         mcu_rom_common::rom_start(RomParameters {
             dot_flash,
+            cptra_mbox_axi_users: [axi_user0, axi_user1, 0, 0, 0],
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            cptra_dma_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         });
     }

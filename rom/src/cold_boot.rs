@@ -17,7 +17,7 @@ Abstract:
 use crate::boot_status::McuRomBootStatus;
 use crate::{
     configure_mcu_mbox_axi_users, device_ownership_transfer, fatal_error,
-    verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, BootFlow, DotBlob,
+    verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, AxiUsers, BootFlow, DotBlob,
     McuBootMilestones, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api::mailbox::{CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader};
@@ -250,7 +250,14 @@ impl BootFlow for ColdBoot {
 
         romtime::println!("[mcu-rom] Writing fuses to Caliptra");
 
-        soc.set_axi_users(straps.into());
+        soc.set_axi_users(AxiUsers {
+            mbox_users: params
+                .cptra_mbox_axi_users
+                .map(|u| if u != 0 { Some(u) } else { None }),
+            fuse_user: params.cptra_fuse_axi_user,
+            trng_user: params.cptra_trng_axi_user,
+            dma_user: params.cptra_dma_axi_user,
+        });
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         romtime::println!("[mcu-rom] Populating fuses");
@@ -259,7 +266,11 @@ impl BootFlow for ColdBoot {
 
         // Configure MCU mailbox AXI users before locking
         romtime::println!("[mcu-rom] Configuring MCU mailbox AXI users");
-        let mcu_mbox_config = configure_mcu_mbox_axi_users(mci, straps);
+        let mcu_mbox_config = configure_mcu_mbox_axi_users(
+            mci,
+            &params.mci_mbox0_axi_users,
+            &params.mci_mbox1_axi_users,
+        );
         mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersConfigured.into());
 
         // Set SS_CONFIG_DONE_STICKY to lock MCI configuration registers

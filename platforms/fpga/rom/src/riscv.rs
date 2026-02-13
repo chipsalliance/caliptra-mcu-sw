@@ -121,6 +121,10 @@ pub extern "C" fn rom_entry() -> ! {
         None
     };
 
+    let axi_user0 = 1;
+    let axi_user1 = 2;
+    let mbox_axi_users = [axi_user0, axi_user1, 0, 0, 0];
+
     mcu_rom_common::rom_start(RomParameters {
         lifecycle_transition,
         burn_lifecycle_tokens,
@@ -128,6 +132,12 @@ pub extern "C" fn rom_entry() -> ! {
         otp_enable_integrity_check: true,
         otp_enable_consistency_check: true,
         flash_partition_driver: Some(&mut flash_partition),
+        cptra_mbox_axi_users: mbox_axi_users,
+        cptra_fuse_axi_user: axi_user0,
+        cptra_trng_axi_user: axi_user0,
+        cptra_dma_axi_user: axi_user0,
+        mci_mbox0_axi_users: mbox_axi_users,
+        mci_mbox1_axi_users: mbox_axi_users,
         ..Default::default()
     });
 

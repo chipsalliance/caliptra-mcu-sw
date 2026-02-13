@@ -36,7 +36,6 @@ use crate::RomEnv;
 use crate::WarmBoot;
 use caliptra_api::mailbox::CmStableKeyType;
 use core::fmt::Write;
-use mcu_config::McuStraps;
 use mcu_error::McuError;
 use registers_generated::mci;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
@@ -350,16 +349,22 @@ impl Soc {
             }
         }
 
-        romtime::println!("[mcu-rom] Setting fuse user");
-        self.set_cptra_fuse_valid_axi_user(fuse_user);
-        romtime::println!("[mcu-rom] Locking fuse user");
-        self.set_cptra_fuse_axi_user_lock(1);
-        romtime::println!("[mcu-rom] Setting TRNG user");
-        self.set_cptra_trng_valid_axi_user(trng_user);
-        romtime::println!("[mcu-rom] Locking TRNG user");
-        self.set_cptra_trng_axi_user_lock(1);
-        romtime::println!("[mcu-rom] Setting DMA user");
-        self.set_ss_caliptra_dma_axi_user(dma_user);
+        if fuse_user != 0 {
+            romtime::println!("[mcu-rom] Setting fuse user");
+            self.set_cptra_fuse_valid_axi_user(fuse_user);
+            romtime::println!("[mcu-rom] Locking fuse user");
+            self.set_cptra_fuse_axi_user_lock(1);
+        }
+        if trng_user != 0 {
+            romtime::println!("[mcu-rom] Setting TRNG user");
+            self.set_cptra_trng_valid_axi_user(trng_user);
+            romtime::println!("[mcu-rom] Locking TRNG user");
+            self.set_cptra_trng_axi_user_lock(1);
+        }
+        if dma_user != 0 {
+            romtime::println!("[mcu-rom] Setting DMA user");
+            self.set_ss_caliptra_dma_axi_user(dma_user);
+        }
     }
 
     /// Sets the owner public key hash in Caliptra's SoC interface registers.
@@ -426,38 +431,39 @@ pub struct McuMboxAxiUserConfig {
 /// Configures MCU mailbox AXI users in MCI and returns the configuration for later verification.
 pub fn configure_mcu_mbox_axi_users(
     mci: &romtime::Mci,
-    straps: &McuStraps,
+    mbox0_axi_users: &[u32; 5],
+    mbox1_axi_users: &[u32; 5],
 ) -> McuMboxAxiUserConfig {
     let mut config = McuMboxAxiUserConfig::default();
 
-    // Configure MBOX0 AXI users based on straps
-    for (i, user) in straps.mcu_mbox0_axi_users.into_iter().enumerate() {
+    // Configure MBOX0 AXI users
+    for (i, user) in mbox0_axi_users.iter().enumerate() {
         // skip unconfigured users and avoid impossible panics
-        if user != 0 && i < config.mbox0_users.len() && i < config.mbox0_locks.len() {
+        if *user != 0 && i < config.mbox0_users.len() && i < config.mbox0_locks.len() {
             romtime::println!(
                 "[mcu-rom] Setting MCI mailbox 0 user {} to {}",
                 i,
-                HexWord(user)
+                HexWord(*user)
             );
-            config.mbox0_users[i] = Some(user);
+            config.mbox0_users[i] = Some(*user);
             config.mbox0_locks[i] = true;
-            mci.write_mbox0_valid_axi_user(i, user);
+            mci.write_mbox0_valid_axi_user(i, *user);
             mci.lock_mbox0_axi_user(i);
         }
     }
 
-    // Configure MBOX1 AXI users based on straps
-    for (i, user) in straps.mcu_mbox1_axi_users.into_iter().enumerate() {
+    // Configure MBOX1 AXI users
+    for (i, user) in mbox1_axi_users.iter().enumerate() {
         // skip unconfigured users and avoid impossible panics
-        if user != 0 && i < config.mbox1_users.len() && i < config.mbox1_locks.len() {
+        if *user != 0 && i < config.mbox1_users.len() && i < config.mbox1_locks.len() {
             romtime::println!(
                 "[mcu-rom] Setting MCI mailbox 1 user {} to {}",
                 i,
-                HexWord(user)
+                HexWord(*user)
             );
-            config.mbox1_users[i] = Some(user);
+            config.mbox1_users[i] = Some(*user);
             config.mbox1_locks[i] = true;
-            mci.write_mbox1_valid_axi_user(i, user);
+            mci.write_mbox1_valid_axi_user(i, *user);
             mci.lock_mbox1_axi_user(i);
         }
     }
@@ -606,6 +612,18 @@ pub struct RomParameters<'a> {
     /// Note that in 2.0, Caliptra already sets recovery status as successful so there may be a race
     /// condition depending on when a BMC reads the recovery status.
     pub recovery_status_open: bool,
+    /// Valid AXI users for Caliptra mailbox. 0 values are ignored.
+    pub cptra_mbox_axi_users: [u32; 5],
+    /// Valid AXI user for Caliptra fuse registers. 0 = don't configure.
+    pub cptra_fuse_axi_user: u32,
+    /// Valid AXI user for Caliptra TRNG. 0 = don't configure.
+    pub cptra_trng_axi_user: u32,
+    /// Valid AXI user for Caliptra DMA. 0 = don't configure.
+    pub cptra_dma_axi_user: u32,
+    /// Valid AXI users for MCI mailbox 0. 0 values are ignored.
+    pub mci_mbox0_axi_users: [u32; 5],
+    /// Valid AXI users for MCI mailbox 1. 0 values are ignored.
+    pub mci_mbox1_axi_users: [u32; 5],
 }
 
 #[inline(always)]
@@ -675,19 +693,15 @@ pub struct AxiUsers {
     pub dma_user: u32,
 }
 
-impl From<&McuStraps> for AxiUsers {
-    fn from(straps: &McuStraps) -> Self {
+impl From<&RomParameters<'_>> for AxiUsers {
+    fn from(params: &RomParameters) -> Self {
         AxiUsers {
-            mbox_users: [
-                Some(straps.axi_user0),
-                Some(straps.axi_user1),
-                None,
-                None,
-                None,
-            ],
-            fuse_user: straps.axi_user0,
-            trng_user: straps.axi_user0,
-            dma_user: straps.axi_user0,
+            mbox_users: params
+                .cptra_mbox_axi_users
+                .map(|u| if u != 0 { Some(u) } else { None }),
+            fuse_user: params.cptra_fuse_axi_user,
+            trng_user: params.cptra_trng_axi_user,
+            dma_user: params.cptra_dma_axi_user,
         }
     }
 }

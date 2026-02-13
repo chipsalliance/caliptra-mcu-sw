@@ -15,7 +15,7 @@ Abstract:
 #![allow(clippy::empty_loop)]
 
 use crate::{
-    fatal_error, BootFlow, McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters,
+    fatal_error, AxiUsers, BootFlow, McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters,
     MCU_MEMORY_MAP,
 };
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
@@ -74,7 +74,14 @@ impl BootFlow for WarmBoot {
             mci.set_flow_checkpoint(McuRomBootStatus::WatchdogConfigured.into());
         }
 
-        soc.set_axi_users(straps.into());
+        soc.set_axi_users(AxiUsers {
+            mbox_users: params
+                .cptra_mbox_axi_users
+                .map(|u| if u != 0 { Some(u) } else { None }),
+            fuse_user: params.cptra_fuse_axi_user,
+            trng_user: params.cptra_trng_axi_user,
+            dma_user: params.cptra_dma_axi_user,
+        });
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         // Set SS_CONFIG_DONE to lock MCI configuration registers until warm reset

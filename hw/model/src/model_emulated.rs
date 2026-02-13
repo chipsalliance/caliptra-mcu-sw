@@ -40,7 +40,6 @@ use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
-use mcu_config::McuStraps;
 use mcu_rom_common::LifecycleControllerState;
 use mcu_rom_common::McuBootMilestones;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
@@ -272,11 +271,7 @@ impl McuHwModel for ModelEmulated {
                 device_lifecycle,
                 req_idevid_csr,
                 use_mcu_recovery_interface,
-                extra_soc_bus: Some(
-                    params
-                        .caliptra_soc_axi_user
-                        .unwrap_or(McuStraps::default().axi_user1),
-                ),
+                extra_soc_bus: Some(params.caliptra_soc_axi_user.unwrap_or(0xdddd_dddd)),
             })
             .expect("Failed to start Caliptra CPU");
         let soc_to_caliptra_bus = soc_to_caliptra_bus.unwrap();
