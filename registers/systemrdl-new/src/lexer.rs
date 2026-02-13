@@ -57,7 +57,7 @@ impl<'a> Iterator for Lexer<'a> {
                                 None => break None,
                             }
                         },
-                        _ => Some(TokenKind::Error),
+                        _ => Some(TokenKind::Slash),
                     }
                 }
                 Some('"') => loop {
@@ -156,9 +156,12 @@ impl<'a> Iterator for Lexer<'a> {
                         }
                     }
                 }
-                Some('!') => match iter.next() {
-                    Some('=') => Some(TokenKind::NotEquals),
-                    _ => Some(TokenKind::Error),
+                Some('!') => match iter.peek() {
+                    Some('=') => {
+                        iter.next();
+                        Some(TokenKind::NotEquals)
+                    }
+                    _ => Some(TokenKind::Not),
                 },
                 Some('&') => match iter.peek() {
                     Some('&') => {
@@ -173,6 +176,35 @@ impl<'a> Iterator for Lexer<'a> {
                         Some(TokenKind::OrOr)
                     }
                     _ => Some(TokenKind::Or),
+                },
+                Some('^') => match iter.peek() {
+                    Some('~') => {
+                        iter.next();
+                        Some(TokenKind::XorTilde)
+                    }
+                    _ => Some(TokenKind::Xor),
+                },
+                Some('~') => match iter.peek() {
+                    Some('&') => {
+                        iter.next();
+                        Some(TokenKind::TildeAnd)
+                    }
+                    Some('|') => {
+                        iter.next();
+                        Some(TokenKind::TildeOr)
+                    }
+                    Some('^') => {
+                        iter.next();
+                        Some(TokenKind::TildeXor)
+                    }
+                    _ => Some(TokenKind::Tilde),
+                },
+                Some('*') => match iter.peek() {
+                    Some('*') => {
+                        iter.next();
+                        Some(TokenKind::Power)
+                    }
+                    _ => Some(TokenKind::Star),
                 },
                 Some('{') => Some(TokenKind::BraceOpen),
                 Some('}') => Some(TokenKind::BraceClose),
@@ -206,17 +238,48 @@ impl<'a> Iterator for Lexer<'a> {
                         _ => Some(TokenKind::Error),
                     }
                 }
-                Some('+') => match iter.next() {
-                    Some('=') => Some(TokenKind::PlusEqual),
-                    _ => return Some(TokenKind::Error),
+                Some('+') => match iter.peek() {
+                    Some('=') => {
+                        iter.next();
+                        Some(TokenKind::PlusEqual)
+                    }
+                    _ => Some(TokenKind::Plus),
                 },
-                Some('%') => match iter.next() {
-                    Some('=') => Some(TokenKind::PercentEqual),
-                    _ => Some(TokenKind::Error),
+                Some('%') => match iter.peek() {
+                    Some('=') => {
+                        iter.next();
+                        Some(TokenKind::PercentEqual)
+                    }
+                    _ => Some(TokenKind::Percent),
                 },
-                Some('-') => match iter.next() {
-                    Some('>') => Some(TokenKind::Pointer),
-                    _ => Some(TokenKind::Error),
+                Some('-') => match iter.peek() {
+                    Some('>') => {
+                        iter.next();
+                        Some(TokenKind::Pointer)
+                    }
+                    _ => Some(TokenKind::Minus),
+                },
+                Some('<') => match iter.peek() {
+                    Some('<') => {
+                        iter.next();
+                        Some(TokenKind::LeftShift)
+                    }
+                    Some('=') => {
+                        iter.next();
+                        Some(TokenKind::LessThanOrEqual)
+                    }
+                    _ => Some(TokenKind::LessThan),
+                },
+                Some('>') => match iter.peek() {
+                    Some('>') => {
+                        iter.next();
+                        Some(TokenKind::RightShift)
+                    }
+                    Some('=') => {
+                        iter.next();
+                        Some(TokenKind::GreaterThanOrEqual)
+                    }
+                    _ => Some(TokenKind::GreaterThan),
                 },
                 None => None,
                 _ => Some(TokenKind::Error),
