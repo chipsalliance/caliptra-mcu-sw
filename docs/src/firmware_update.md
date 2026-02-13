@@ -6,19 +6,19 @@ The MCU SDK offers a comprehensive API designed to facilitate firmware updates f
 
 ## Architecture
 
-The MCU PLDM stack handles PLDM firmware messages from an external Firmware Update Agent. The stack generates upstream notifications to the Firmware Update API to handle application-specific actions such as writing firmware chunks to a staging or SPI Flash storage location, verifying components, etc through the Image Loading API. The API notifies the application of the start and completion of the firmware update process.
+The MCU PLDM stack handles PLDM firmware messages from an external Firmware Update Agent. The stack generates upstream notifications to the Firmware Update API to handle application-specific actions such as writing firmware chunks to a staging or SPI Flash storage location, verifying components, etc. 
 
 ```mermaid
 graph TD;
     A[Application / Initiator] <--> B[API];
     subgraph B[API]
         direction LR
-        B1[Firmware Update] <--> B2[Image Loading];
-        B2 <--> B3[DMA]
-        B2 <--> B4[Flash]
-        B2 <--> B5[Mailbox]
+        B1[Firmware Update API];
+        B1 <--> B3[DMA]
+        B1 <--> B4[Flash]
+        B1 <--> B5[Mailbox]
+        B1 <--> B6[PLDM]
     end
-    B <--> C[PLDM];
 ```
 
 ## PLDM Firmware Download Sequence
@@ -75,9 +75,8 @@ sequenceDiagram
     participant PLDM as Update Agent
 
     PLDM->>Firmware: RequestUpdate
-    Firmware->>API: Update Available Notification
-    API->>App: Update Available Notification
-    API-->>Firmware: Ok
+    Firmware->>API: Get Transfer Size
+    API-->>Firmware: Transfer Size
     Firmware-->>PLDM: RequestUpdate Response
 
     loop until all component info passed
@@ -99,15 +98,8 @@ sequenceDiagram
 
     loop for every component
         PLDM->>Firmware: UpdateComponent(component)
-        Firmware->>API: UpdateComponent Notification
-
-        alt Caliptra FMC+RT or SoC Manifest
-            API->>API: Acquire mailbox lock
-        else MCU RT or SoC Image
-            API->>API: GET_STAGING_ADDRESS
-        end
-
-        API-->>Firmware: Ok
+        Firmware->>API: Handle Component callback
+        API->>Firmware: CompCanBeUpdated
         Firmware-->>PLDM: UpdateComponent Response
     end
 ```
@@ -127,18 +119,9 @@ sequenceDiagram
         Firmware->>PLDM: RequestFirmwareData
         PLDM-->>Firmware: FirmwareData
         Firmware->>API: FirmwareData Notification
-
-        alt SoC Manifest
-            API->>API: Stream as SoC_MANIFEST<br/>Mailbox command
-        else Caliptra FMC+RT
-            API->>API: Stream as CALIPTRA_FW_LOAD<br/>Mailbox Command
-        else MCU RT or SoC Image
-            API->>API: Write to Staging Area
-        end
+        API->>API: Write to Staging Area
         API-->>Firmware: Ok
     end
-
-    API-->>API: Release Mailbox Lock (if acquired)
 
     Firmware-->>PLDM: Transfer Complete
 ```
@@ -156,10 +139,11 @@ sequenceDiagram
 
     Firmware->>API: Verify Component Notification
 
-    alt SoC Manifest
-        API->>API: Process SET_AUTH_MANIFEST<br/> Mailbox Command Response
-    else MCU RT or SoC image
-        API->>API: Verify through AUTHORIZE_AND_STASH<br/>Mailbox Command
+    API->>API: Verify Caliptra FW using FIRMWARE_VERIFY mbox command
+    API->>API: Verify SOC Manifest using VERIFY_MANIFEST mbox command
+    API->>API: Hash MCU Image and verify with SOC Manifest Digest
+    loop for all SOC Images
+        API->>API: Hash SOC Image and verify with SOC Manifest Digest
     end
 
     API-->>Firmware: Ok
@@ -178,13 +162,7 @@ sequenceDiagram
     participant PLDM as Update Agent
 
     Firmware->>API: Apply component Notification
-    alt Firmware Update for devices with Flash
-        alt SoC Manifest
-            API->>API: Write SoC Manifest to Flash Storage
-        else MCU RT or SoC Image
-            API->>API: Copy image from Staging to Flash Storage
-        end
-    end
+    API->>API: Set flash staging partition table status to `VALID`
 
     API->>Firmware: Ok
     Firmware->>PLDM: ApplyComplete
@@ -204,21 +182,56 @@ sequenceDiagram
 
     PLDM->>Firmware: ActivateFirmware
     Firmware->>API: Activate Notification
-    alt MCU RT or SoC Image
-        API->>API: Send Activate Image Mailbox Command
-    end
+    Firmware-->>PLDM: Activate Response (Self Activation)
+    API->>API: Send Caliptra FW_LOAD command
     API-->>Firmware: Ok
-    API->>App: UpdateComplete
-    Firmware-->>PLDM: Activate Response
+
+    API->>API: Set the new Auth Manifest to Caliptra  (SET_AUTH_MANIFEST)  
+    API->>API: Copy MCU image to MCU staging address
+    API->>API: Send Activate Image Mailbox Command
+    API->>API: MCU Hitless Update Reset Flow
+    API->>API: Use Image loader to load updated SOC images to SOCs
+    API->>API: Mark partition as 'ACTIVE'
 ```
+
+#### MCU Hitless Update Reset Flow
+
+```mermaid
+sequenceDiagram
+    title MCU Hitless Update Reset Flow
+    participant Caliptra as Caliptra FW
+    participant MCU as MCU FW
+    participant MCI as MCI Reset Ctrl
+
+    MCU->>Caliptra: ActivateFirmware(2)
+    Caliptra->>Caliptra: Clear FW_EXEC_CTRL[2] 
+    MCI-->>MCU: Interrupt (MCU image ready)
+    MCU-->>MCU: handle notif_cptra_mcu_reset_req_sts interrupt
+    MCU->>MCI: Clear interrupt status
+    MCU->>MCI: Set RESET_REQUEST.mcu_req
+
+    MCI->>MCU: Assert MCU reset
+    loop until RESET_STATUS.MCU_RESET_STS = 0
+    Caliptra-->>MCI: Read RESET_STATUS.MCU_RESET_STS
+    MCI-->>Caliptra: RESET_STATUS.MCU_RESET_STS
+    end
+    Caliptra->>Caliptra: Update MCU SRAM updatable region
+    Caliptra->>MCI: Set RESET_REASON.FW_HITLESS_UPD_RESET
+    Caliptra->>Caliptra: Set FW_EXEC_CTRL[2]
+    MCI-->>MCU: Release reset
+    MCU->>MCI: Read RESET_REASON
+    MCI->>MCU: RESET_REASON=HitlessUpdate
+    MCU->>MCU: Jump to MCU SRAM
+```
+ 
 
 ## Firmware Update Flow
 
 ### Full Image Update for Flash Boot System
 
-**Option 1: Updating the full flash image as a single PLDM firmware component**
+**Updating the full flash image as a single PLDM firmware component**
 
-PLDM update packages natively support selecting applicable components using the `ApplicableComponents` bitfield in the package header. For the case of `Component N + 1`, it is treated as a single component by the PLDM Update Agent. This component can encapsulate multiple embedded images each with its corresponding image information entry, checksum and flash header. The structure and layout of `Component N + 1` align with the flash layout definition in [flash_layout.md](https://github.com/chipsalliance/caliptra-mcu-sw/blob/main/docs/src/flash_layout.md).
+The PLDM package only contains a single component which contains a full flash image as defined in [flash_layout.md](https://github.com/chipsalliance/caliptra-mcu-sw/blob/main/docs/src/flash_layout.md).
 
 
 | PLDM FW Update Package                                |
@@ -229,20 +242,13 @@ PLDM update packages natively support selecting applicable components using the 
 | Component Image Information                           |
 | Package Header Checksum                               |
 | Package Payload Checksum                              |
-| Component 1 (Caliptra FMC + RT)                       |
-| Component 2 (SoC Manifest)                            |
-| Component 3 (MCU RT)                                  |
-| Component 4 (SoC Image 1)                             |
-| ...                                                   |
-| Component N (SoC Image N-3)                           |
-| **Component N + 1 (Full image for flash-boot system)**|
+| **Component (Full image for flash-boot system)**      |
 
 
 
-| Component N + 1 structure      |
+| Component                      |
 | ------------------------------ |
-| Flash header
-| Checksum
+| Flash header                   |
 | Image Info (Caliptra FMC + RT) |
 | Image Info (SoC Manifest)      |
 | Image Info (MCU RT)            |
@@ -257,58 +263,28 @@ PLDM update packages natively support selecting applicable components using the 
 | SoC Image N - 3                |
 
 
-To support full image updates, a SoC-defined staging memory must be provided to store the incoming payload. The designated staging area for Component 1 must be accessible by the Caliptra ROM to fetch and authorize the image. This staging area could be located in MCU SRAM or MCI mailbox SRAM, as defined in Caliptra 2.1. If the SoC-defined staging memory does not meet this requirement, the image must be copied to the compliant region, which may slightly impact performance. For other components, if the staging memory (e.g., a staging partition on flash) is not directly accessible by the Caliptra core's DMA engine for reading and hashing the image, the MCU must perform the cryptographic operations to compute the hash. The computed hash is then sent via a mailbox command for authorization.
+To support full image updates, a SoC-defined staging memory must be provided to store the incoming payload. The designated staging area for the Component must be accessible by the Caliptra ROM to fetch and authorize the image. This staging area could be located in MCU SRAM or MCI mailbox SRAM, as defined in Caliptra 2.1. If the SoC-defined staging memory does not meet this requirement, the image must be copied to the compliant region, which may slightly impact performance. For other components, if the staging memory (e.g., a staging partition on flash) is not directly accessible by the Caliptra core's DMA engine for reading and hashing the image, the MCU must perform the cryptographic operations to compute the hash. The computed hash is then sent via a mailbox command for authorization.
 
 **Detailed steps**:
 *Note: Actions below are performed by MCU RT Firmware*
 
-1. An initiator, such as a custom user application, starts the firmware update service through the Firmware Update API. This action initializes the responder loop in the PLDM stack, enabling it to listen for incoming PLDM messages from the PLDM agent. The API queries firmware component metadata from the Caliptra core (e.g., component version numbers, classifications, etc.) using a mailbox command. This metadata is used to construct the Device Identifiers and Firmware Parameters, as specified in the DMTF DSP0267 1.3.0 standard. *(**TBD**: Confirm if the mailbox command can provide metadata for the full image.)*
+1. An initiator, such as a custom user application, starts the firmware update service through the Firmware Update API. This action initializes the responder loop in the PLDM stack, enabling it to listen for incoming PLDM messages from the PLDM agent. The API queries firmware component metadata from the Caliptra core (e.g., component version numbers, classifications, etc.) using a mailbox command. This metadata is used to construct the Device Identifiers and Firmware Parameters, as specified in the DMTF DSP0267 1.3.0 standard. 
 2. The PLDM stack notifies the API when a firmware image becomes available for update.
 3. The PLDM stack notifies the API which component is being downloaded using the UpdateComponent notification.
-4. The PLDM stack sends a FirmwareData notification to the API for each received firmware chunk, including the data, size, and chunk offset. The API's download handler writes the received firmware data to the staging memory.
+4. The PLDM stack sends a FirmwareData notification to the API for each received firmware chunk, including the data, size, and chunk offset. The API's download handler writes the received firmware data to the staging memory. If the staging memory to be used is in flash, MCU will write the chunks in the staging partition.
 5. Once all firmware chunks are downloaded, the PLDM stack notifies the API to verify the component. The API processes the component to extract and identify individual embedded images, referred to as subcomponents. The verification process is performed sequentially for each subcomponent:
-    a. For the Caliptra FMC + RT subcomponent, the MCU sends it to the Caliptra core using the `CALIPTRA_FW_UPLOAD` mailbox command. When this command is executed, Caliptra core firmware is authorized and activated in one shot. The new core image is taken into effect after core reset.
-    b. For the SoC Manifest subcomponent, the MCU sends it to the Caliptra core using the `SET_AUTH_MANIFEST` mailbox command. The mailbox response confirms the authenticity and correctness of the manifest.
-    c. For MCU RT or SoC Image subcomponents, the MCU sends the `AUTHORIZE_AND_STASH` mailbox command, indicating that the image to be verified resides in the staging area.
-6. After verification, the PLDM stack notifies the API to apply the image. The MCU writes the images from the temporary staging area to the inactive flash partition. Refer to [A/B Partition Mechanism](#a-b-partition-mechanism) for more details.
-7. When the Update Agent issues the `ActivateFirmware` command, the API updates the partition table to mark the inactive partition as active. The API may provide a handler to initiate a warm reset, enabling the new image to execute from flash.
+    a. For the Caliptra FW Bundle, the MCU verifies the bundle thorugh the `FIRMWARE_VERIFY` mailbox command.
+    b. For the SoC Manifest subcomponent, the MCU sends it to the Caliptra core using the `VERIFY_MANIFEST` mailbox command. The mailbox response confirms the authenticity and correctness of the manifest.
+    d. For MCU RT or SoC Image subcomponents, the MCU computes the hash of the MCU RT image and verifies it against the the digest in the verified SoC Manifest. The same is done with the SoC Image subcomponents
+6. After verification, the PLDM stack notifies the API to apply the image. If the staging area is not flash, the MCU writes the images from the temporary staging area to the inactive flash partition. Refer to [A/B Partition Mechanism](#a-b-partition-mechanism) for more details.
+7. When the Update Agent issues the `ActivateFirmware` command:
+    a. The MCU activates the Caliptra core FW using the `FIRMWARE_LOAD ` mailbox command. This will also reset Caliptra core and boot up with the updated image.
+    b. MCU sets new Auth Manifest to Caliptra using `SET_AUTH_MANIFEST` mailbox command
+    c. MCU will perform a Hitless Update Reset to reset the MCU. MCU copies the MCU RT image from the staging memory to the DMA staging address allocated to it in the SoC Manifest. MCU then sends `ACTIVATE_FIRMWARE` mailbox command to Caliptra. Caliptra will then initiate the reset of the MCU and set The `RESET_REASON` to `FW_HITLESS_UPD_RESET`. Refer to the [MCU Hitless Update](https://github.com/chipsalliance/caliptra-ss/blob/main/docs/CaliptraSSIntegrationSpecification.md#mcu-hitless-fw-update) section of the Caliptra subsystem integration specification for the details of the MCU Hitless Update Reset flow.
+    d. MCU boots up with the updated MCU image. 
+    e. During Image loading since `RESET_REASON` is `FW_HITLESS_UPD_RESET`, MCU will check for non-active `VALID` partitions and load the downloaded SoC images. The integrator will need to implement platform specific logic to update the SoC component. This may need clearing the corresponding `FW_EXEC_CTRL` bit of the SoC before loading the new image and setting it back after to indicate to the SoC component the new firmware is ready. 
+    d. If all images have been loaded correctly, then the partition is marked as `ACTIVE`.
 
-**Option 2: Updating the full flash image as multiple PLDM firmware components**
-
-In this approach, the full flash image is divided into 1 to N distinct firmware components. The `ApplicableComponents` bitfield in the PLDM package header identifies the selected components, while the component image information provides metadata for each component, including the total number of components. The PLDM Update Agent requests update on each component sequentially, adhering to the order specified in the component image information. Each component is verified and applied by the device. PLDM Update Agent issues `ActivateFirmware` command to inform the device to prepare all successfully applied components to become active at the next activation.
-
-| PLDM FW Update Package                                |
-| ----------------------------------------------------- |
-| Package Header Information                            |
-| Firmware Dev ID Descriptors                           |
-| Downstream Dev ID Descriptors                         |
-| Component Image Information                           |
-| Package Header Checksum                               |
-| Package Payload Checksum                              |
-| **Component 1 (Caliptra FMC + RT)**                   |
-| **Component 2 (SoC Manifest)**                        |
-| **Component 3 (MCU RT)**                              |
-| **Component 4 (SoC Image 1)**                         |
-| ...                                                   |
-| **Component N (SoC Image N-3)**                       |
-| Component N + 1 (Full image for flash-boot system)    |
-
-**Detailed steps:**
-
-*Note: Actions below are performed by MCU RT Firmware*
-
-1. An initiator, such as a custom user application, starts the firmware update service through the Firmware Update API. This action initializes the responder loop in the PLDM stack, enabling it to listen for incoming PLDM messages from the PLDM agent. The API queries firmware component metadata from the Caliptra core (e.g., component version numbers, classifications, etc.) using a mailbox command. This metadata is used to construct the Device Identifiers and Firmware Parameters, as specified in the DMTF DSP0267 1.3.0 standard. (**TBD**: Confirm if the mailbox command can provide metadata for the full image.)
-2. The PLDM stack notifies the API when a firmware image becomes available for update.
-3. The PLDM stack notifies the API which component is being downloaded using the UpdateComponent notification.
-    The 1st firmware component received to update should be Caliptra FMC + RT.
-4. The PLDM stack sends a FirmwareData notification to the API for each received firmware chunk, including the data, size, and chunk offset. The API's download handler writes the received firmware data to the staging memory.
-5. Once all firmware chunks are downloaded, the PLDM stack notifies the API to verify the component.
-    a. If the component is Caliptra FMC+RT, MCU sends it to Caliptra core using the `CALIPTRA_FW_UPLOAD` mailbox command.
-    b. If the component is a SoC Manifest,  the mailbox via the `SET_AUTH_MANIFEST` mailbox command.
-    c. If the component is an MCU RT or SoC Image, it is written to a staging area defined in SoC manifest.
-6. After verification, the PLDM stack notifies the API to apply the image. The MCU writes the images from the temporary staging area to the inactive flash partition. Refer to [A/B Partition Mechanism](#a-b-partition-mechanism) for more details.
-7. Repeat steps [3](#partial-firmware-update) through [6](#partial-firmware-update) for Component 2, 3, 4 ... N.
-8. After all firmware components have been transferred and applied, Update Agent issues `ActivateFirmware` command to inform the device to prepare all successfully applied components to become active at the next activation. The API updates the partition table to mark the inactive partition as active. The API may provide a handler to initiate a warm reset, enabling the new image to execute from flash.
 
 ### A/B Partition Mechanism
 
@@ -328,13 +304,13 @@ The location of A/B partitions can either reside on a single flash device or be 
 | Image Info (MCU RT)            | Image Info (MCU RT)            |
 | Image Info (SoC Image 1)       | Image Info (SoC Image 1)       |
 | ...                            | ...                            |
-| Image Info (SoC Image N - 3)   | Image Info (SoC Image N - 3)   |
+| Image Info (SoC Image N)       | Image Info (SoC Image N)       |
 | Caliptra FMC + RT              | Caliptra FMC + RT              |
 | SoC Manifest                   | SoC Manifest                   |
 | MCU RT                         | MCU RT                         |
 | SoC Image 1                    | SoC Image 1                    |
 | ...                            | ...                            |
-| SoC Image N - 3                | SoC Image N - 3                |
+| SoC Image N                    | SoC Image N                    |
 
 #### Partition Selection
 
@@ -368,94 +344,48 @@ Bits 3:0:
         - The  MCU ROM reads the partition table to determine:
             - The active partition to boot from.
             - Whether the active partition is valid and bootable.
-        - If the active partition is valid, the bootloader loads the firmware image from it and boots the system.
-        - If the firmware in the active partition fails to boot (e.g., due to corruption or verification failure), the bootloader:
+        - If the `RESET_REASON` is `FW_HITLESS_UPD_RESET`:
+            - MCU RT will attempt to load images from the partition containing downloaded update images
+        - If the `RESET_REASON` is not `FW_HITLESS_UPD_RESET`:
+            - If the active partition is valid, the bootloader loads the firmware image from it and boots the system.
+        - If the firmware fails to boot (e.g., due to corruption or verification failure), the bootloader:
             - Checks the Rollback Flag.
             - Switches to the other partition if rollback is required.
     - During Firmware Update
-        - In the `ActivateFirmware` phase, the partition table or status flags are updated to mark the inactive partition as the new active partition.
+        - In the `ActivateFirmware` phase, the partition status flags are updated to mark as `VALID`. The active partition will not be changed.
         - Steps to Update:
-            1. Set the `Active Partition` field to the inactive partition (A or B).
-            2. Optionally mark the previously active partition as inactive or valid for rollback.
-            3. Write the updated partition table or status flags back to the reserved area in non-volatile memory.
+            1. Download the update images to the non-active partition.
+            2. Mark this partition as `VALID`.
+            3. Do a Hitless Update Reset
+            4. Load images from the non-active partition with the `VALID` status.
+            5. If all images load properly, mark the partition as `ACTIVE`.
 
-### Partial firmware update
 
-Below are the supported scenarios:
-1. **Caliptra Core Firmware Update**
-    - Updates the Caliptra FMC + Caliptra RT component. (Component 1 in PLDM package)
-
-2. **MCU Runtime Firmware Update**
-    - Updates the SoC Manifest and MCU RT firmware together.(Component 2 and Component 3 in PLDM package)
-    - The updated SoC Manifest includes the hash entry for the new MCU RT firmware.
-
-3. **SoC Firmware Update**
-    - Updates the SoC Manifest along with associated SoC images. (Component 2, Component 4.. N in PLDM package)
-    - The updated SoC Manifest contains hash entries for the new SoC firmware components.
-
-These scenarios are designed to maintain system integrity and ensure seamless updates for both streaming boot system and flash boot system.
-
-**Detailed steps:**
-
-**Note:** Actions below are performed by MCU RT Firmware.
-
-1. An initiator (such as a custom user application) starts the firmware service through the Firmware Update API. This will start the responder loop in the PLDM stack that will listen for PLDM messages coming from the PLDM agent. The API queries firmware component metadata from the Caliptra core (e.g., component version numbers, classification, etc.) using a mailbox command to construct the Device Identifiers and Firmware Parameters, as defined by the DMTF DSP0267 1.3.0 specification, needed by the PLDM stack.
-2. The PLDM stack notifies the API if a firmware image is available for update.
-3. The PLDM stack notifies the API which component is being downloaded using the UpdateComponent notification. If the image is an MCU RT or SoC Image, the staging address is retrieved from the SoC Manifest stored in the Caliptra Core using a mailbox command.
-    For Caliptra FMC+RT and the SoC Manifest, if it is flash boot system, staging address should be provided. Otherwise,the mailbox lock is acquired since these images are streamed directly through the mailbox interface. The lock is released after all chunks of the image have been transferred.
-4. The PLDM stack sends a FirmwareData notification to the API for each received firmware chunk, including the data, size, and chunk offset.
-   1. If the component is a SoC Manifest, it is streamed to the mailbox via the SET_AUTH_MANIFEST mailbox command. If it is flash boot system, it is also written to staging area.
-   2. If the component is Caliptra FMC+RT,it is streamed to the Caliptra core using the CALIPTRA_FW_UPLOAD mailbox command. If it is flash boot system, it is also written to staging area.
-   3. If the component is an MCU RT or SoC Image, it is written to a staging area determined in step 3.
-5. Once all firmware chunks are downloaded, the PLDM stack notifies the API to verify the component.
-   1. If the component is a SoC Manifest, the MCU waits for the SET_AUTH_MANIFEST mailbox command response, which indicates the authenticity and correctness of the manifest.
-   2. If the component is an MCU RT or SoC Image, the MCU sends the AUTHORIZE_AND_STASH command, indicating that the image to be verified is in the staging area.
-   **Note:** The AUTHORIZE_AND_STASH command computes the SHA of the image via the SHA-Acc by streaming the image from the staging area to the SHA-Acc through DMA. The computed SHA is compared against the SHA in the SoC Manifest for the specific image.
-6. After verification, the PLDM stack notifies the API to apply the image. The MCU writes the images to SPI Flash storage from the temporary staging area (if flash is available on the device).
-7. When the Update Agent sends the `ActivateFirmware` command, the API sends an `ActivateImage` mailbox command to the Caliptra core. The Caliptra core processes the activation according to the [Caliptra specification](https://github.com/chipsalliance/Caliptra/blob/main/doc/Caliptra.md#subsystem-support-for-hitless-updates).
 
 ## Interfaces
 
 ```rust
-pub trait FirmwareUpdateApi {
+pub struct FirmwareUpdater<'a, D: DMAMapping> {
 
-    /// Start the firmware update service.
-    ///
-    /// # Returns
-    /// Returns a future that will remain unset until the service is stopped.
-    /// Ok(()) - The service has been terminated successfully.
-    /// Err(FirmwareUpdateError) - The service has been terminated with an error.
-    async fn start_service(&self) -> Result<(), FirmwareUpdateError>;
 
-    /// Stop the firmware update service.
-    ///
-    /// # Returns
-    /// Ok() - The service has been terminated successfully.
-    /// Err(ErrorCode) - The service can not be stopped.
-    fn stop_service(&self) -> Result<(), ErrorCode>;
-
-    /// Register a callback to be called when a firmware update event occurs.
+    /// Creates a new FirmwareUpdater instance.
     ///
     /// # Arguments
-    /// callback - The callback to be called when a firmware update event occurs.
-    fn register_callback(&self, callback: FirmwareUpdateCallback);
+    /// staging_memory: An abstraction of the staging memory. The `StagingMemory` trait contains read and write
+    /// operations to read from or write to the firmware update staging area.
+    /// dma_mapping: This contains the DMA mapping information for the firmware update process. This includes
+    /// converting virtual addresses to physical addresses for DMA transfers.
+    /// spawner: The async task spawner used to spawn tasks.
+    pub fn new(
+        staging_memory: &'static dyn StagingMemory,
+        params: &'a PldmFirmwareDeviceParams,
+        dma_mapping: &'a D,
+        spawner: Spawner,
+    ) -> Self;
 
-
-}
-
-/// Define the callback function signature for firmware update events.
-/// Returns Ok(()) if the notification is handled successfully, otherwise an error code.
-pub type FirmwareUpdateCallback = fn(FirmwareUpdateNotification) -> Result<(),ErrorCode>;
-
-pub enum FirmwareUpdateNotification<'a>{
-    // Firmware Update is available and ready for download.
-    UpdateAvailable,
-
-    // Firmware Update is complete.
-    UpdateComplete,
-
-    // Firmware Update is canceled.
-    UpdateCanceled,
+    /// Starts the firmware update process. This call will block until update has been completed or encountered an error.
+    /// Returns `Ok(())` on success or an `ErrorCode` on failure.
+    fn start(&self) -> Result<(), ErrorCode>;
 
 }
 ```
