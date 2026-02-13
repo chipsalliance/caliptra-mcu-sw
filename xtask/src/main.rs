@@ -23,6 +23,7 @@ mod precheckin;
 mod registers;
 mod rom;
 mod runtime;
+mod size_history;
 mod test;
 
 #[cfg(feature = "fpga_realtime")]
@@ -289,6 +290,15 @@ enum Commands {
         #[command(subcommand)]
         cmd: BundleCommands,
     },
+    /// Analyze firmware binary sizes across git history and generate a report
+    SizeHistory {
+        /// Output file for the report (defaults to stdout/GITHUB_STEP_SUMMARY)
+        #[arg(long)]
+        output: Option<String>,
+        /// Maximum number of commits to analyze
+        #[arg(long, default_value = "50")]
+        max_commits: Option<usize>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -498,6 +508,10 @@ fn main() {
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
         Commands::Experimental { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
+        Commands::SizeHistory {
+            output,
+            max_commits,
+        } => size_history::run_size_history(output.clone(), *max_commits),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);
