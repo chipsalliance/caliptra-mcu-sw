@@ -18,6 +18,7 @@ mod format;
 mod fpga;
 mod fuses;
 mod header;
+mod network;
 mod pldm_fw_pkg;
 mod precheckin;
 mod registers;
@@ -121,8 +122,6 @@ enum Commands {
         #[arg(long)]
         features: Option<String>,
     },
-    /// Build Network Coprocessor ROM
-    NetworkRomBuild,
     /// Build and Run ROM image
     Rom {
         /// Run with tracing options
@@ -289,6 +288,11 @@ enum Commands {
         #[command(subcommand)]
         cmd: BundleCommands,
     },
+    /// Network stack development tools (TAP, DHCP/TFTP server, lwip-rs)
+    Network {
+        #[command(subcommand)]
+        cmd: network::NetworkCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -428,7 +432,6 @@ fn main() {
         Commands::RomBuild { platform, features } => {
             mcu_builder::rom_build(platform.clone(), features.clone()).map(|_| ())
         }
-        Commands::NetworkRomBuild => mcu_builder::network_rom_build().map(|_| ()),
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
                 caliptra_fw,
@@ -498,6 +501,7 @@ fn main() {
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
         Commands::Experimental { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
+        Commands::Network { cmd } => network::run(cmd.clone()),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);

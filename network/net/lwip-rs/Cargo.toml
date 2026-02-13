@@ -1,0 +1,28 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "lwip-rs"
+version.workspace = true
+edition.workspace = true
+description = "Rust bindings for lwIP (Lightweight IP stack)"
+
+[lib]
+name = "lwip_rs"
+path = "src/lib.rs"
+
+[dependencies]
+bitflags.workspace = true
+spin.workspace = true
+
+[build-dependencies]
+bindgen.workspace = true
+cc.workspace = true
+
+[features]
+default = ["alloc", "ipv4", "ipv6", "dhcp", "tftp"]
+alloc = []
+ipv4 = []
+ipv6 = []
+dhcp = ["ipv4"]
+dhcp6 = ["ipv6"]
+tftp = ["alloc"]  # TFTP requires alloc for String/CString

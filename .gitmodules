@@ -2,3 +2,6 @@
 	path = hw/caliptra-ss
 	url = https://github.com/chipsalliance/caliptra-ss
 	branch = main
+[submodule "network/net/lwip"]
+	path = network/net/lwip
+	url = https://github.com/lwip-tcpip/lwip.git

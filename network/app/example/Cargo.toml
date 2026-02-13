@@ -1,0 +1,14 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "lwip-rs-example"
+version.workspace = true
+edition.workspace = true
+description = "DHCP + TFTP boot example application using lwip-rs"
+
+[[bin]]
+name = "lwip-rs-example"
+path = "src/main.rs"
+
+[dependencies]
+lwip-rs.workspace = true

@@ -230,7 +230,7 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl git && \
+          sudo apt-get install -qy build-essential curl git libclang-dev && \
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
       - name: Install cargo-nextest (prebuilt binary)
@@ -311,12 +311,16 @@ jobs:
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl git && \
+          sudo apt-get install -qy build-essential curl git libclang-dev dnsmasq && \
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
       - name: Install cargo-nextest (prebuilt binary)
         run: |
           curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
+
+      - name: Setup TAP interface for network tests
+        run: |
+          cargo xtask network tap setup
 
       - name: Download firmware bundle
         uses: actions/download-artifact@v4

@@ -52,6 +52,7 @@ mcu-rom-common.workspace = true
 mcu-testing-common.workspace = true
 network-config.workspace = true
 openssl.workspace = true
+xtask.workspace = true
 p384 = { workspace = true, features = ["ecdsa"] }
 pldm-common.workspace = true
 pldm-fw-pkg.workspace = true
