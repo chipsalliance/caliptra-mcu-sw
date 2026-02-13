@@ -21,8 +21,9 @@ use crate::{
     McuBootMilestones, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api::mailbox::{
-    CmImportReq, CmImportResp, CmKeyUsage, CmStableKeyType, Cmk, CommandId, FeProgReq,
-    MailboxReqHeader, MailboxRespHeader, CMK_SIZE_BYTES, MAX_CMB_DATA_SIZE,
+    CmImportReq, CmImportResp, CmKeyUsage, CmShaFinalReq, CmShaFinalResp, CmShaInitReq,
+    CmShaInitResp, CmShaUpdateReq, CmStableKeyType, Cmk, CommandId, FeProgReq, MailboxReqHeader,
+    MailboxRespHeader, CMB_SHA_CONTEXT_SIZE, CMK_SIZE_BYTES, MAX_CMB_DATA_SIZE,
 };
 use caliptra_api::{calc_checksum, CaliptraApiError};
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
@@ -145,6 +146,9 @@ const MCU_TEST_IV: [u8; 12] = [
 /// GCM authentication tag size in bytes.
 const GCM_TAG_SIZE: usize = 16;
 
+/// CmHashAlgorithm::Sha384 value (matches caliptra-api enum).
+const CM_HASH_ALGORITHM_SHA384: u32 = 1;
+
 pub struct ColdBoot {}
 
 impl ColdBoot {
@@ -263,6 +267,180 @@ impl ColdBoot {
             sram_axi_addr,
             ciphertext_size,
         );
+    }
+
+    /// Compute SHA-384 of ciphertext in SRAM using CM_SHA_INIT / UPDATE / FINAL
+    /// streaming commands. Returns the 48-byte digest.
+    ///
+    /// Each phase (INIT, UPDATE, FINAL) is in a separate function so its large
+    /// request struct (~4 KiB each) lives in its own stack frame and is freed
+    /// before the next phase begins.  Without this split the MCU ROM stack
+    /// (≤ 12 KiB) can overflow when all three structs coexist on one frame.
+    fn cm_sha384_ciphertext(
+        soc_manager: &mut CaliptraSoC,
+        sram_base: usize,
+        ciphertext_len: usize,
+    ) -> [u8; 48] {
+        // We need to stream the ciphertext in MAX_CMB_DATA_SIZE (4096) chunks.
+        // First chunk → CM_SHA_INIT, middle chunks → CM_SHA_UPDATE, last → CM_SHA_FINAL.
+        // If the data fits in one chunk, INIT carries it all and FINAL has input_size=0.
+
+        let mut offset = 0usize;
+        let first_chunk = ciphertext_len.min(MAX_CMB_DATA_SIZE);
+
+        // ---- CM_SHA_INIT ----
+        let mut sha_context = Self::cm_sha_init(soc_manager, sram_base, first_chunk);
+        offset += first_chunk;
+
+        // ---- CM_SHA_UPDATE (middle chunks) ----
+        while ciphertext_len - offset > MAX_CMB_DATA_SIZE {
+            let chunk = MAX_CMB_DATA_SIZE;
+            Self::cm_sha_update(soc_manager, sram_base + offset, chunk, &mut sha_context);
+            offset += chunk;
+        }
+
+        // ---- CM_SHA_FINAL ----
+        let remaining = ciphertext_len - offset;
+        Self::cm_sha_final(soc_manager, sram_base + offset, remaining, sha_context)
+    }
+
+    /// Send CM_SHA_INIT with the first chunk and return the SHA context.
+    #[inline(never)]
+    fn cm_sha_init(
+        soc_manager: &mut CaliptraSoC,
+        sram_addr: usize,
+        chunk_len: usize,
+    ) -> [u8; CMB_SHA_CONTEXT_SIZE] {
+        let mut sha_req = CmShaInitReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            hash_algorithm: CM_HASH_ALGORITHM_SHA384,
+            input_size: chunk_len as u32,
+            input: [0u8; MAX_CMB_DATA_SIZE],
+        };
+        // Copy first chunk from SRAM
+        unsafe {
+            let src = sram_addr as *const u8;
+            core::ptr::copy_nonoverlapping(src, sha_req.input.as_mut_ptr(), chunk_len);
+        }
+        let cmd: u32 = CommandId::CM_SHA_INIT.into();
+        let chksum = calc_checksum(cmd, &sha_req.as_bytes()[4..]);
+        sha_req.hdr.chksum = chksum;
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, sha_req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] CM_SHA_INIT start error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+        let mut resp_buf = [0u8; core::mem::size_of::<CmShaInitResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+            romtime::println!(
+                "[mcu-rom] CM_SHA_INIT finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+        // Extract SHA context from response: hdr(8) + context(CMB_SHA_CONTEXT_SIZE)
+        let mut sha_context = [0u8; CMB_SHA_CONTEXT_SIZE];
+        match resp_buf.get(8..8 + CMB_SHA_CONTEXT_SIZE) {
+            Some(src) => sha_context.copy_from_slice(src),
+            None => fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR),
+        }
+        sha_context
+    }
+
+    /// Send CM_SHA_UPDATE for one middle chunk and update the SHA context.
+    #[inline(never)]
+    fn cm_sha_update(
+        soc_manager: &mut CaliptraSoC,
+        sram_addr: usize,
+        chunk_len: usize,
+        sha_context: &mut [u8; CMB_SHA_CONTEXT_SIZE],
+    ) {
+        let mut update_req = CmShaUpdateReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            context: *sha_context,
+            input_size: chunk_len as u32,
+            input: [0u8; MAX_CMB_DATA_SIZE],
+        };
+        unsafe {
+            let src = sram_addr as *const u8;
+            core::ptr::copy_nonoverlapping(src, update_req.input.as_mut_ptr(), chunk_len);
+        }
+        let cmd: u32 = CommandId::CM_SHA_UPDATE.into();
+        let chksum = calc_checksum(cmd, &update_req.as_bytes()[4..]);
+        update_req.hdr.chksum = chksum;
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, update_req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] CM_SHA_UPDATE start error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+        // Response is same layout as CmShaInitResp
+        let mut resp_buf = [0u8; core::mem::size_of::<CmShaInitResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+            romtime::println!(
+                "[mcu-rom] CM_SHA_UPDATE finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+        match resp_buf.get(8..8 + CMB_SHA_CONTEXT_SIZE) {
+            Some(src) => sha_context.copy_from_slice(src),
+            None => fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR),
+        }
+    }
+
+    /// Send CM_SHA_FINAL with any remaining data and return the 48-byte digest.
+    #[inline(never)]
+    fn cm_sha_final(
+        soc_manager: &mut CaliptraSoC,
+        sram_addr: usize,
+        remaining: usize,
+        sha_context: [u8; CMB_SHA_CONTEXT_SIZE],
+    ) -> [u8; 48] {
+        let mut final_req = CmShaFinalReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            context: sha_context,
+            input_size: remaining as u32,
+            input: [0u8; MAX_CMB_DATA_SIZE],
+        };
+        if remaining > 0 {
+            unsafe {
+                let src = sram_addr as *const u8;
+                core::ptr::copy_nonoverlapping(src, final_req.input.as_mut_ptr(), remaining);
+            }
+        }
+        let cmd: u32 = CommandId::CM_SHA_FINAL.into();
+        let chksum = calc_checksum(cmd, &final_req.as_bytes()[4..]);
+        final_req.hdr.chksum = chksum;
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, final_req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] CM_SHA_FINAL start error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+        let mut final_resp_buf = [0u8; core::mem::size_of::<CmShaFinalResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut final_resp_buf) {
+            romtime::println!(
+                "[mcu-rom] CM_SHA_FINAL finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR);
+        }
+        // CmShaFinalResp: hdr(8) + data_len(4) + hash(64)
+        // For SHA-384, only the first 48 bytes of hash are valid.
+        let mut digest = [0u8; 48];
+        match final_resp_buf.get(12..12 + 48) {
+            Some(src) => digest.copy_from_slice(src),
+            None => fatal_error(McuError::ROM_COLD_BOOT_ENCRYPTED_FW_DECRYPT_START_ERROR),
+        }
+        digest
     }
 
     /// Import the test AES key via CM_IMPORT and return the CMK handle.

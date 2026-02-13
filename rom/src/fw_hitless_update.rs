@@ -33,10 +33,8 @@ impl BootFlow for FwHitlessUpdate {
         let soc = &env.soc;
 
         // Release mailbox from activate command before device reboot
-        if let Err(err) = soc_manager.finish_mailbox_resp(
-            core::mem::size_of::<MailboxRespHeader>(),
-            core::mem::size_of::<MailboxRespHeader>(),
-        ) {
+        let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
             match err {
                 CaliptraApiError::MailboxCmdFailed(code) => {
                     romtime::println!(
