@@ -25,12 +25,41 @@ pub struct FusePartitionInfo {
     pub dot: Option<bool>,
 }
 
+/// Describes the layout policy for interpreting raw fuse bits.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type")]
+pub enum FuseLayoutPolicy {
+    /// Values stored literally
+    Single,
+    /// Value is the count of bits set (one-hot encoding)
+    OneHot,
+    /// Each bit duplicated with majority vote
+    LinearMajorityVote { duplication: u32 },
+    /// One-hot with linear majority vote
+    OneHotLinearMajorityVote { duplication: u32 },
+    /// Words duplicated with per-bit majority vote
+    WordMajorityVote { duplication: u32 },
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FieldDefinition {
     /// Globally unique field name
     pub name: String,
     /// Size of the field in bits
     pub bits: u32,
+    /// Optional description
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Layout policy for interpreting the raw fuse bits
+    #[serde(default)]
+    pub layout: Option<FuseLayoutPolicy>,
+    /// Name of the partition this field belongs to
+    #[serde(default)]
+    pub partition: Option<String>,
+    /// Name of the OTP mmap item this field maps to (for byte offset resolution).
+    /// Required when the field name doesn't match an OTP mmap item name exactly.
+    #[serde(default)]
+    pub otp_item: Option<String>,
 }
 
 pub fn parse_fuse_hjson(fname: &str) -> Result<FuseConfig> {

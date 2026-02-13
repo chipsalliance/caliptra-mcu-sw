@@ -3,6 +3,8 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![allow(static_mut_refs)]
 
+mod fuse_layout;
+pub use fuse_layout::*;
 mod lifecycle;
 pub use lifecycle::*;
 mod mci;

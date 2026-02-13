@@ -16,7 +16,6 @@ mod test {
             CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacReq, CmHmacResp,
             CmStableKeyType, CommandId,
         },
-        SocManager,
     };
     use caliptra_auth_man_types::{AuthManifestPrivKeysConfig, AuthManifestPubKeysConfig};
     use caliptra_image_gen::ImageGeneratorOwnerConfig;
@@ -838,20 +837,16 @@ mod test {
         println!("[TEST] Reset completed successfully - runtime booted after DOT fuse burn");
 
         // Verify that the DOT lock fuse was actually burned
-        // The DOT fuse array is at VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET
-        // Layout: dot_initialized (1 byte) + dot_fuse_array (32 bytes)
-        // The lock fuse is bit 0 of dot_fuse_array[0], which is at byte offset 1
-        use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
+        use registers_generated::fuses;
 
         let otp_memory = hw.read_otp_memory();
 
-        // Check dot_initialized is still set
-        let dot_initialized = otp_memory[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET];
-        assert_eq!(dot_initialized, 1, "DOT should still be initialized");
+        // Check dot_initialized is still set (LinearMajorityVote encoding)
+        let dot_initialized = otp_memory[fuses::DOT_INITIALIZED.byte_offset];
+        assert_ne!(dot_initialized, 0, "DOT should still be initialized");
 
-        // Check the DOT fuse array - the lock fuse (bit 0 of first byte of array) should be burned
-        // The fuse array starts at offset 1 within the partition
-        let fuse_array_offset = VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 1;
+        // Check the DOT fuse array - the lock fuse (bit 0) should be burned
+        let fuse_array_offset = fuses::DOT_FUSE_ARRAY.byte_offset;
         let lock_fuse_byte = otp_memory[fuse_array_offset];
 
         // Verify bit 0 of the fuse array is set (lock fuse burned)
@@ -877,16 +872,15 @@ mod test {
     }
 
     /// Creates OTP memory with DOT in locked state (ODD, 1 fuse bit burned).
-    /// Layout at VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET:
-    ///   dot_initialized (1 byte) + dot_fuse_array (32 bytes) + recovery_pk_hash (48 bytes)
+    /// Uses the generated fuse entry offsets for correct placement.
     fn create_locked_otp_memory() -> Vec<u8> {
-        use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
-        let mut otp = vec![0u8; VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 256];
-        // Set dot_initialized = 1
-        otp[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET] = 1;
-        // Set bit 0 of dot_fuse_array[0] to 1 (burned=1, ODD/locked state)
-        // dot_fuse_array starts at offset 1 within the partition
-        otp[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 1] = 0x01;
+        use registers_generated::fuses;
+        let mut otp =
+            vec![0u8; fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        // Set dot_initialized = 1 via LinearMajorityVote(1 bit, 3x) encoding: 0b111
+        otp[fuses::DOT_INITIALIZED.byte_offset] = 0x07;
+        // Set bit 0 of dot_fuse_array to 1 (burned=1, ODD/locked state)
+        otp[fuses::DOT_FUSE_ARRAY.byte_offset] = 0x01;
         otp
     }
 
