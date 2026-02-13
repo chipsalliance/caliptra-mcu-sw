@@ -507,7 +507,7 @@ mod test {
                 // (test-flash-based-boot feature). Other tests like test-firmware-update-flash
                 // provide a flash image for firmware updates but still use BMC streaming boot.
                 if feature.contains("test-flash-based-boot") {
-                    emulator_args.push("--flash-based-boot");
+                    emulator_args.push("--flash-based-boot".to_string());
                 }
             }
 
