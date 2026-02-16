@@ -8,20 +8,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  build_and_test:
-    runs-on: [e2-standard-8, big-disk]
+  precheckin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     env:
       CARGO_INCREMENTAL: 0
-      SCCACHE_VERSION: 0.8.2
-      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
-      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
-      # CPTRA_COVERAGE_PATH: /tmp
-
-      # Change this to a new random value if you suspect the cache is corrupted
-      SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b63a6e70ec4
-
-      # Compiler warnings should fail to compile
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
     steps:
@@ -32,12 +24,40 @@ jobs:
 
       - name: Test commit name
         run: |
-          echo "Build-Test: release_ref=$(git rev-parse HEAD)"
+          echo "Lint: release_ref=$(git rev-parse HEAD)"
 
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git &&
+          sudo apt-get install -qy build-essential curl git && \
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Run precheckin
+        run: cargo xtask precheckin
+
+  build-firmware:
+    runs-on: e2-standard-8
+    timeout-minutes: 60
+
+    env:
+      CARGO_INCREMENTAL: 0
+      SCCACHE_VERSION: 0.8.2
+      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
+      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
+      # Change this to a new random value if you suspect the cache is corrupted
+      SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b63a6e70ec4
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git && \
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
       - name: Restore sccache binary
@@ -52,8 +72,6 @@ jobs:
         run: |
           cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
 
-      # Save the sccache binary immediately so we can reuse it in future runs
-      # even if the rest of the current run fails.
       - name: Save sccache binary
         uses: actions/cache/save@v3
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
@@ -69,39 +87,228 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name:
-          Check that Cargo.lock doesn't need to be updated
-          # Note: this isn't the same as checking that Cargo.lock is up to date
-          # (cargo update --locked), which makes sure that every package is the
-          # latest published version. This is just ensuring that every
-          # dependency has an entry in Cargo.lock that is compatible with the
-          # version requirements in all Cargo.toml files.
+      - name: Build ROM and runtime binaries
         run: |
-          # This works because cargo tree requires a Cargo.lock with no required updates
-          cargo tree --locked > /dev/null || (
-            echo "Please include required changes to Cargo.lock in your pull request"
-            # Without the --locked flag, cargo will do the minimal possible update to Cargo.lock
-            cargo tree > /dev/null 2> /dev/null
-            # Print out the differences to ease debugging
-            git diff Cargo.lock
-            exit 1
-          )
-
-      - name: Run precheckin
-        run: |
-          cargo --config "$EXTRA_CARGO_CONFIG" xtask precheckin
-          sccache --show-stats
-
-      - name: Run all tests
-        run: |
-          cargo clean
-          # Build ROM and runtime binaries
+          # Build all test runtime features used by integration tests
+          # Note: nightly tests (test-*-spdm-*, test-caliptra-util-host-validator) are excluded
           cargo xtask all-build --platform emulator \
             --rom-features hw-2-1 \
-            --runtime-features "test-i3c-simple,test-i3c-constant-writes,test-mctp-capsule-loopback,test-firmware-update-streaming,test-pldm-fw-update-e2e,test-do-nothing,test-exit-immediately" \
+            --runtime-features "test-i3c-simple,test-i3c-constant-writes,test-mctp-capsule-loopback,test-firmware-update-streaming,test-firmware-update-flash,test-flash-based-boot,test-pldm-streaming-boot,test-pldm-fw-update-e2e,test-do-nothing,test-caliptra-certs,test-caliptra-crypto,test-caliptra-mailbox,test-dma,test-doe-transport-loopback,test-doe-user-loopback,test-doe-discovery,test-get-device-state,test-flash-ctrl-init,test-flash-ctrl-read-write-page,test-flash-ctrl-erase-page,test-flash-storage-read-write,test-flash-storage-erase,test-flash-usermode,test-log-flash-linear,test-log-flash-circular,test-log-flash-usermode,test-mctp-ctrl-cmds,test-pldm-discovery,test-pldm-fw-update,test-mci,test-mcu-mbox-driver,test-mcu-mbox-soc-requester-loopback,test-mbox-sram,test-warm-reset,test-exit-immediately,test-mcu-rom-flash-access,test-mcu-svn-gt-fuse,test-mcu-svn-lt-fuse" \
             --separate-runtimes
-
-          export CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip"
-          # TODO: remove this if we get larger GitHub runners
-          cargo --config "$EXTRA_CARGO_CONFIG" xtask test
           sccache --show-stats
+
+      - name: Upload firmware bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-bundle
+          path: target/all-fw.zip
+          retention-days: 1
+
+  build-emulators:
+    runs-on: e2-standard-8
+    timeout-minutes: 60
+
+    env:
+      CARGO_INCREMENTAL: 0
+      SCCACHE_VERSION: 0.8.2
+      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
+      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
+      # Change this to a new random value if you suspect the cache is corrupted
+      SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b63a6e70ec4
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git && \
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Restore sccache binary
+        uses: actions/cache/restore@v3
+        id: sccache_bin_restore
+        with:
+          path: ~/.cargo/bin/sccache
+          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
+
+      - name: Install sccache
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        run: |
+          cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
+
+      - name: Save sccache binary
+        uses: actions/cache/save@v3
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        with:
+          path: ~/.cargo/bin/sccache
+          key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
+
+      - name: Configure sccache
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Build emulator binaries
+        run: |
+          # Build emulators for all features that the emulator supports
+          # Features not supported by emulator (e.g., test-i3c-simple) are automatically skipped
+          cargo xtask emulator-build \
+            --features "test-caliptra-certs,test-caliptra-crypto,test-caliptra-mailbox,test-dma,test-doe-transport-loopback,test-doe-user-loopback,test-doe-discovery,test-get-device-state,test-flash-based-boot,test-flash-ctrl-init,test-flash-ctrl-read-write-page,test-flash-ctrl-erase-page,test-flash-storage-read-write,test-flash-storage-erase,test-flash-usermode,test-firmware-update-flash,test-firmware-update-streaming,test-log-flash-linear,test-log-flash-circular,test-log-flash-usermode,test-mbox-sram,test-mci,test-mctp-ctrl-cmds,test-mcu-mbox-driver,test-mcu-mbox-soc-requester-loopback,test-mcu-rom-flash-access,test-mcu-svn-gt-fuse,test-mcu-svn-lt-fuse,test-exit-immediately,test-pldm-discovery,test-pldm-fw-update,test-pldm-fw-update-e2e,test-pldm-streaming-boot,test-warm-reset"
+          sccache --show-stats
+
+      - name: Upload emulator bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulator-bundle
+          path: target/emulators.zip
+          retention-days: 1
+
+  build-tests:
+    runs-on: e2-standard-8
+    timeout-minutes: 60
+
+    env:
+      CARGO_INCREMENTAL: 0
+      SCCACHE_VERSION: 0.8.2
+      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
+      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
+      # Change this to a new random value if you suspect the cache is corrupted
+      SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b63a6e70ec4
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Test commit name
+        run: |
+          echo "Build tests: release_ref=$(git rev-parse HEAD)"
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git && \
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Install cargo-nextest (prebuilt binary)
+        run: |
+          curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
+
+      - name: Restore sccache binary
+        uses: actions/cache/restore@v3
+        id: sccache_bin_restore
+        with:
+          path: ~/.cargo/bin/sccache
+          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
+
+      - name: Install sccache
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        run: |
+          cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
+
+      - name: Save sccache binary
+        uses: actions/cache/save@v3
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        with:
+          path: ~/.cargo/bin/sccache
+          key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
+
+      - name: Configure sccache
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Build test archive
+        run: |
+          cargo --config "$EXTRA_CARGO_CONFIG" nextest archive \
+            --workspace \
+            --exclude mcu-rom-emulator \
+            --exclude mcu-rom-fpga \
+            --exclude mcu-runtime-emulator \
+            --exclude mcu-runtime-fpga \
+            --exclude emulator \
+            --exclude test-hello \
+            --exclude user-app \
+            --exclude example-app \
+            --exclude libtock_unittest \
+            --exclude syscalls_tests \
+            --archive-file /tmp/nextest-archive.tar.zst
+          sccache --show-stats
+
+      - name: Upload test archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextest-archive
+          path: /tmp/nextest-archive.tar.zst
+          retention-days: 1
+
+  test_emulator:
+    runs-on: e2-standard-2
+    needs: [precheckin, build-firmware, build-emulators, build-tests]
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    env:
+      CARGO_INCREMENTAL: 0
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git && \
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Install cargo-nextest (prebuilt binary)
+        run: |
+          curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
+
+      - name: Download firmware bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-bundle
+          path: target/
+
+      - name: Download emulator bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: emulator-bundle
+          path: target/
+
+      - name: Download test archive
+        uses: actions/download-artifact@v4
+        with:
+          name: nextest-archive
+          path: /tmp/
+
+      - name: Run tests (shard ${{ matrix.shard }}/4)
+        run: |
+          export CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip"
+          export CPTRA_EMULATOR_BUNDLE="${PWD}/target/emulators.zip"
+          cargo --config "$EXTRA_CARGO_CONFIG" nextest run \
+            --archive-file /tmp/nextest-archive.tar.zst \
+            --workspace-remap . \
+            --test-threads=1 \
+            --profile=nightly-emulator \
+            --partition hash:${{ matrix.shard }}/4

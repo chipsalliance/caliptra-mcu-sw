@@ -21,6 +21,8 @@
     - [Unified External Command Handling](./unified_external_command_handling.md)
     - [Logging](./logging.md)
     - [In-Field Fuse Programming](./fuses.md)
+- [Out of Tree Build](./firmware_bundler.md)
 - [Reference Provisioning Guide](./provisioning.md)
 - [Running with an FPGA](./fpga.md)
 - [Caliptra Utility Host Library](./caliptra_util_host_library.md)
+- [Network Boot Recovery](./network_boot.md)

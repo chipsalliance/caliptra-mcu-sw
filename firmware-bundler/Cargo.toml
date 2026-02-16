@@ -7,8 +7,10 @@ edition = "2021"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+elf.workspace = true
 serde.workspace = true
 subst.workspace = true
+tbf-header.workspace = true
 toml.workspace = true
 uuid.workspace = true
 walkdir.workspace = true

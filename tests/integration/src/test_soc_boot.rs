@@ -2,9 +2,13 @@
 
 #[cfg(test)]
 mod test {
-    use crate::test::{compile_runtime, get_rom_with_feature, run_runtime, TEST_LOCK};
+    use crate::test::{
+        compile_runtime, get_rom_with_feature, has_prebuilt_binaries, run_runtime, TEST_LOCK,
+    };
+    use caliptra_image_types::ImageManifest;
     use chrono::{TimeZone, Utc};
-    use mcu_builder::{CaliptraBuilder, ImageCfg};
+    use hex::ToHex;
+    use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
     use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
@@ -18,6 +22,7 @@ mod test {
     use random_port::PortPicker;
     use std::env;
     use std::path::PathBuf;
+    use zerocopy::transmute;
 
     // Set an arbitrary MCI base address
     const MCI_BASE_AXI_ADDRESS: u64 = 0xA800_0000;
@@ -41,13 +46,6 @@ mod test {
         fuse_soc_manifest_svn: Option<u8>,
         fuse_soc_manifest_max_svn: Option<u8>,
         device_security_state: Option<DeviceLifecycle>,
-    }
-
-    macro_rules! run_test {
-        ($func:ident, $($args:expr),*) => {{
-            println!("Running {}...", stringify!($func));
-            $func($($args),*);
-        }};
     }
 
     fn create_soc_images(soc_images: Vec<Vec<u8>>) -> Vec<PathBuf> {
@@ -621,9 +619,8 @@ mod test {
         assert_ne!(0, test);
     }
 
-    // Common test function for both flash-based and streaming boot
-    fn test_soc_boot(is_flash_based_boot: bool) {
-        let lock = TEST_LOCK.lock().unwrap();
+    // Helper to create test options for soc boot tests
+    fn create_soc_boot_options(is_flash_based_boot: bool) -> TestOptions {
         env::set_var(
             "CPTRA_EMULATOR_SS_MCI_OFFSET",
             format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
@@ -634,7 +631,183 @@ mod test {
         } else {
             "test-pldm-streaming-boot"
         };
-        let i3c_port = PortPicker::new().pick().unwrap();
+        let i3c_port = PortPicker::new().pick().unwrap().into();
+
+        // Check if we have prebuilt binaries for this feature
+        if has_prebuilt_binaries(feature) {
+            println!("Using prebuilt binaries for feature: {}", feature);
+            create_soc_boot_test_options_prebuilt(feature, is_flash_based_boot, i3c_port)
+        } else {
+            println!("Building binaries for feature: {}", feature);
+            create_soc_boot_test_options_build(feature, is_flash_based_boot, i3c_port)
+        }
+    }
+
+    // Creates test options using prebuilt binaries from CPTRA_FIRMWARE_BUNDLE
+    fn create_soc_boot_test_options_prebuilt(
+        feature: &'static str,
+        is_flash_based_boot: bool,
+        i3c_port: u32,
+    ) -> TestOptions {
+        let binaries = FirmwareBinaries::from_env().expect("CPTRA_FIRMWARE_BUNDLE not set");
+
+        // Get prebuilt runtime
+        let runtime_data = binaries
+            .test_runtime(feature)
+            .expect("Prebuilt runtime not found");
+        let test_runtime = std::env::temp_dir().join(format!("soc-boot-runtime-{}.bin", feature));
+        std::fs::write(&test_runtime, runtime_data).expect("Failed to write runtime");
+
+        // Get prebuilt flash image
+        let flash_image_data = binaries
+            .test_flash_image(feature)
+            .expect("Prebuilt flash image not found");
+        let flash_image_path =
+            std::env::temp_dir().join(format!("soc-boot-flash-image-{}.bin", feature));
+        std::fs::write(&flash_image_path, &flash_image_data).expect("Failed to write flash image");
+
+        // Get prebuilt PLDM package (only for streaming boot)
+        let pldm_fw_pkg_path = if is_flash_based_boot {
+            None
+        } else {
+            let pldm_data = binaries
+                .test_pldm_fw_pkg(feature)
+                .expect("Prebuilt PLDM package not found");
+            let path = std::env::temp_dir().join(format!("soc-boot-pldm-fw-pkg-{}.bin", feature));
+            std::fs::write(&path, pldm_data).expect("Failed to write PLDM package");
+            Some(path)
+        };
+
+        // Get prebuilt feature-specific MCU ROM from the bundle
+        let mcu_rom_path = std::env::temp_dir().join(format!("soc-boot-mcu-rom-{}.bin", feature));
+        std::fs::write(&mcu_rom_path, binaries.test_feature_rom(feature))
+            .expect("Failed to write MCU ROM");
+        let mcu_rom = mcu_rom_path;
+
+        // Get prebuilt Caliptra ROM (needed for CaliptraBuilder)
+        let caliptra_rom_path =
+            std::env::temp_dir().join(format!("soc-boot-caliptra-rom-{}.bin", feature));
+        std::fs::write(&caliptra_rom_path, &binaries.caliptra_rom)
+            .expect("Failed to write Caliptra ROM");
+
+        // Get prebuilt Caliptra firmware (needed for CaliptraBuilder)
+        let caliptra_fw_path =
+            std::env::temp_dir().join(format!("soc-boot-caliptra-fw-{}.bin", feature));
+        std::fs::write(&caliptra_fw_path, &binaries.caliptra_fw)
+            .expect("Failed to write Caliptra firmware");
+
+        // Get prebuilt feature-specific SoC manifest (needed for CaliptraBuilder)
+        let soc_manifest_data = binaries
+            .test_soc_manifest(feature)
+            .expect("Prebuilt SoC manifest not found");
+        let soc_manifest_path =
+            std::env::temp_dir().join(format!("soc-boot-soc-manifest-{}.bin", feature));
+        std::fs::write(&soc_manifest_path, &soc_manifest_data)
+            .expect("Failed to write SoC manifest");
+
+        // Create SoC images (same as build path, needed for tests that modify manifest)
+        let soc_image_fw_1 = [0x55u8; 512];
+        let soc_image_fw_2 = [0xAAu8; 256];
+        let soc_images_paths = create_soc_images(vec![
+            soc_image_fw_1.clone().to_vec(),
+            soc_image_fw_2.clone().to_vec(),
+        ]);
+
+        // Create SOC image metadata that will be written to the SoC manifest
+        let soc_images = vec![
+            ImageCfg {
+                path: soc_images_paths[0].clone(),
+                load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
+                image_id: 4096,
+                exec_bit: 5,
+                ..Default::default()
+            },
+            ImageCfg {
+                path: soc_images_paths[1].clone(),
+                load_addr: MCI_BASE_AXI_ADDRESS
+                    + MCU_MBOX_SRAM1_OFFSET
+                    + soc_image_fw_1.len() as u64,
+                image_id: 4097,
+                exec_bit: 6,
+                ..Default::default()
+            },
+        ];
+
+        // Compute vendor_pk_hash from the prebuilt caliptra firmware
+        let manifest: ImageManifest = {
+            let bundle: [u8; core::mem::size_of::<ImageManifest>()] = binaries.caliptra_fw
+                [..core::mem::size_of::<ImageManifest>()]
+                .try_into()
+                .expect("Caliptra FW too small");
+            transmute!(bundle)
+        };
+        let vendor_pk_hash: String = CaliptraBuilder::vendor_pk_hash(&manifest)
+            .expect("Failed to compute vendor_pk_hash")
+            .encode_hex();
+
+        // Build the Caliptra builder with prebuilt paths (needed for tests that modify manifest)
+        let builder = CaliptraBuilder::new(
+            false,
+            Some(caliptra_rom_path),
+            Some(caliptra_fw_path.clone()),
+            Some(soc_manifest_path.clone()),
+            Some(vendor_pk_hash),
+            Some(test_runtime.clone()),
+            Some(soc_images.clone()),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        // Create partition table matching what's used in the build path
+        // This is needed for tests that modify flash images
+        let mut partition_table = PartitionTable {
+            active_partition: PartitionId::A as u32,
+            partition_a_status: PartitionStatus::Valid as u16,
+            partition_b_status: PartitionStatus::Invalid as u16,
+            rollback_enable: RollbackEnable::Enabled as u32,
+            ..Default::default()
+        };
+        let checksum_calculator = StandAloneChecksumCalculator::new();
+        partition_table.populate_checksum(&checksum_calculator);
+
+        let flash_offset = partition_table
+            .get_active_partition()
+            .1
+            .map_or(0, |p| p.offset);
+
+        let primary_flash_image_path = if is_flash_based_boot {
+            Some(flash_image_path.clone())
+        } else {
+            None
+        };
+
+        TestOptions {
+            feature,
+            rom: mcu_rom,
+            runtime: test_runtime,
+            i3c_port,
+            soc_images,
+            soc_images_paths,
+            primary_flash_image_path: primary_flash_image_path.clone(),
+            secondary_flash_image_path: primary_flash_image_path,
+            pldm_fw_pkg_path,
+            partition_table: Some(partition_table),
+            builder: Some(builder),
+            flash_offset,
+            fuse_soc_manifest_svn: None,
+            fuse_soc_manifest_max_svn: None,
+            device_security_state: None,
+        }
+    }
+
+    // Creates test options by building everything from scratch
+    fn create_soc_boot_test_options_build(
+        feature: &'static str,
+        is_flash_based_boot: bool,
+        i3c_port: u32,
+    ) -> TestOptions {
         let soc_image_fw_1 = [0x55u8; 512]; // Example firmware data for SOC image 1
         let soc_image_fw_2 = [0xAAu8; 256]; // Example firmware data for SOC image 2
 
@@ -727,7 +900,7 @@ mod test {
             Some(create_pldm_fw_package(&pldm_manifest))
         };
 
-        // For non flash-based boot, the flash image path is not needeed to be passed to the emulator
+        // For non flash-based boot, the flash image path is not needed to be passed to the emulator
         // as the firmware will be streamed from the PLDM package
         let flash_image_path = if is_flash_based_boot {
             Some(flash_image_path)
@@ -737,9 +910,7 @@ mod test {
 
         let mcu_rom = get_rom_with_feature(feature);
 
-        // These are the options for a successful boot
-        // Each test case will override the options to simulate different scenarios
-        let pass_options = TestOptions {
+        TestOptions {
             feature,
             rom: mcu_rom,
             runtime: test_runtime.clone(),
@@ -755,45 +926,147 @@ mod test {
             fuse_soc_manifest_svn: None,
             fuse_soc_manifest_max_svn: None,
             device_security_state: None,
-        };
-
-        if !is_flash_based_boot {
-            // Streaming boot-only tests
-            run_test!(test_successful_boot, &pass_options.clone());
-            run_test!(test_boot_invalid_image_id, &pass_options.clone());
-            run_test!(test_boot_unathorized_image, &pass_options.clone());
-            run_test!(test_invalid_load_address, &pass_options.clone());
-            run_test!(test_incorrect_pldm_descriptor, &pass_options.clone());
-            run_test!(test_incorrect_pldm_component_id, &pass_options.clone());
-            run_test!(test_corrupted_pldm_fw_package, &pass_options.clone());
-            run_test!(test_lower_version_pldm_fw_package, &pass_options.clone());
-            run_test!(test_soc_manifest_svn_lt_fuse, &pass_options.clone());
-            run_test!(test_soc_manifest_svn_gt_max_svn, &pass_options.clone());
-            run_test!(test_soc_manifest_good_svn, &pass_options.clone());
-        } else {
-            // Flash-based boot-only tests
-            run_test!(test_successful_boot, &pass_options.clone());
-            run_test!(test_boot_secondary_flash, pass_options.clone());
-            run_test!(test_boot_invalid_image_id, &pass_options.clone());
-            run_test!(test_boot_unathorized_image, &pass_options.clone());
-            run_test!(test_invalid_load_address, &pass_options.clone());
-            run_test!(
-                test_boot_partition_table_invalid_checksum,
-                &pass_options.clone()
-            );
         }
+    }
 
+    // ==================== Flash-based boot tests ====================
+
+    #[test]
+    fn test_flash_soc_boot_successful() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        test_successful_boot(&opts);
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     #[test]
-    fn test_flash_soc_boot() {
-        test_soc_boot(true);
+    fn test_flash_soc_boot_secondary_flash() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        test_boot_secondary_flash(opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     #[test]
-    fn test_streaming_soc_boot() {
-        test_soc_boot(false);
+    fn test_flash_soc_boot_invalid_image_id() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        test_boot_invalid_image_id(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_flash_soc_boot_unauthorized_image() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        test_boot_unathorized_image(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_flash_soc_boot_invalid_load_address() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        test_invalid_load_address(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_flash_soc_boot_partition_table_invalid_checksum() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        test_boot_partition_table_invalid_checksum(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    // ==================== Streaming boot tests ====================
+
+    #[test]
+    fn test_streaming_soc_boot_successful() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(false);
+        test_successful_boot(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_streaming_soc_boot_invalid_image_id() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(false);
+        test_boot_invalid_image_id(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_streaming_soc_boot_unauthorized_image() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(false);
+        test_boot_unathorized_image(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_streaming_soc_boot_invalid_load_address() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(false);
+        test_invalid_load_address(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_streaming_soc_boot_incorrect_pldm_descriptor() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(false);
+        test_incorrect_pldm_descriptor(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_streaming_soc_boot_incorrect_pldm_component_id() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(false);
+        test_incorrect_pldm_component_id(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_streaming_soc_boot_corrupted_pldm_fw_package() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(false);
+        test_corrupted_pldm_fw_package(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_streaming_soc_boot_lower_version_pldm_fw_package() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(false);
+        test_lower_version_pldm_fw_package(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_streaming_soc_boot_manifest_svn_lt_fuse() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(false);
+        test_soc_manifest_svn_lt_fuse(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_streaming_soc_boot_manifest_svn_gt_max_svn() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(false);
+        test_soc_manifest_svn_gt_max_svn(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_streaming_soc_boot_manifest_good_svn() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(false);
+        test_soc_manifest_good_svn(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Test case: simple successful boot using McuHwModel trait

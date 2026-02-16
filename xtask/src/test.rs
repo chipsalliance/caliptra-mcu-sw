@@ -7,8 +7,6 @@ use std::process::Command;
 use crate::emulator_cbinding;
 
 pub(crate) fn test() -> Result<()> {
-    test_panic_missing()?;
-    e2e_tests()?;
     cargo_test()
 }
 
@@ -53,11 +51,10 @@ fn cargo_test() -> Result<()> {
     Ok(())
 }
 
-fn e2e_tests() -> Result<()> {
+pub(crate) fn e2e_tests() -> Result<()> {
     println!("Running: e2e tests");
 
-    test_hello()?;
-    test_hello_c_emulator()
+    test_hello()
 }
 
 fn build_hello_binary() -> Result<()> {
@@ -121,7 +118,7 @@ fn test_hello() -> Result<()> {
     Ok(())
 }
 
-fn test_hello_c_emulator() -> Result<()> {
+pub(crate) fn test_hello_c_emulator() -> Result<()> {
     // First build the hello test binary (same as test_hello)
     build_hello_binary()?;
 

@@ -39,15 +39,18 @@ The ARM CPU takes the place of an SOC manager and can drive stimulus to Caliptra
 
 ### Versal ###
 #### Processing system one time setup: ####
-1. Download Ubuntu VCK190 SD card image and install to a microSD card. The Versal is packaged with a blank microSD card in the box that can be used for the OS.
-   - Insert the OS SD card into the slot on top of the board.
-     - The slot below the board is for the System Controller and the card there should be left inserted.
-   - https://ubuntu.com/download/amd-xilinx
+1. Download VCK-190 image
+   - **Recommended**: A development image is built each week and uploaded by [this](https://github.com/chipsalliance/caliptra-sw/actions/workflows/fpga-image.yml) GitHub Action Job. You will want the image with the `-dev` postfix. This image is an almost exact replica of the image used for the Caliptra CI.
+     - This is a debian based image and should make a similar user experience to the AMD image.
+   - Ubuntu VCK190 SD card image and install to a microSD card. The Versal is packaged with a blank microSD card in the box that can be used for the OS.
+1. Insert the OS SD card into the slot on top of the board.
+  - The slot below the board is for the System Controller and the card there should be left inserted.
+  - https://ubuntu.com/download/amd-xilinx
 1. Configure SW1 to boot from SD1: [Image](./images/versal_boot_switch.jpg)
    - Mode SW1[4:1]: OFF, OFF, OFF, ON
 1. Boot from the SD card.
    - Initial boot requires connecting over serial. The first serial port is for the PS. See below for settings.
-   - Initial credentials
+   - Initial credentials (when using Ubuntu image)
      - User: ubuntu Pass: ubuntu
    - Update the date to avoid apt/git failures
      ```
@@ -94,6 +97,11 @@ This script provides a number of configuration options for features that can be 
 | GUI=TRUE    | Open the Vivado GUI.
 
 ### Build boot.bin: ###
+
+Note: If using the Calptra CI Image (or PetaLinux image), you can skip this step. Instead use a segmented bitstream and load the PDI file directly.
+
+Here is a link with more information about segmented bitstreams: https://github.com/Xilinx/Vivado-Design-Tutorials/tree/2024.2/Versal/Boot_and_Config/Segmented_Configuration
+
  - Source PetaLinux tools from the PetaLinux installation directory. *PetaLinux Tools must match Vivado version*
    - `source settings.sh`
  - Execute [create_boot_bin.sh](create_boot_bin.sh) to create a BOOT.BIN
@@ -118,32 +126,9 @@ This script provides a number of configuration options for features that can be 
    - fpga_magic (0xA4010000) contains 0x52545043.
    - fpga_version (0xA4010004) contains the hash of the git HEAD commit.
 
-### Cross compiling tests for FPGA: ###
-```shell
-# TODO: Fix these flows: https://github.com/chipsalliance/caliptra-mcu-sw/issues/367
-# From an X86 build machine create run collateral
-cargo xtask-fpga all-build --platform fpga
+### Compiling and running Caliptra tests for the FPGA: ###
 
-
-# Compile and install the kernel module
-cargo xtask fpga-install-kernel-modules
-```
-
-### Compiling and running Caliptra tests from the FPGA: ###
-```shell
-# Install dependencies
-sudo apt update
-sudo apt install make gcc
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-# Clone this repo
-git clone https://github.com/chipsalliance/caliptra-mcu-sw.git
-git submodule init
-git submodule update
-
-
-# Compile and install the kernel module
-cargo xtask fpga-install-kernel-modules
-```
+Please checkout the FPGA section of the MCU [spec](https://chipsalliance.github.io/caliptra-mcu-sw/fpga.html).
 
 ### Adding registers to the FPGA wrapper. ###
 The FPGA wrapper module contains several registers that interface with the
@@ -202,7 +187,7 @@ Requirements:
 #### Debugger launch procedure ####
 JTAG connectivity is provided using EMIO GPIO pins bridging the PS and PL. OpenOCD is run on the ARM core and uses SysFs to interface with the GPIO pins. The Caliptra, MCU, and LCC JTAGs are each connected to their own set of EMIO pins and can be used independently.
 1. Invoke OpenOCD server
-    - `./caliptra-sw/hw/fpga/launch_openocd.sh [core/mcu/lcc]`
+    - `./caliptra-mcu-sw/hw/fpga/launch_openocd.sh [core/mcu/lcc]`
 1. Connect client(s) for debug
     - GDB: `gdb-multiarch [bin] -ex 'target remote localhost:3333'`
     - Telnet: `telnet localhost 4444`

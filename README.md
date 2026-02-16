@@ -189,8 +189,4 @@ When implementing a new emulator peripheral and firmware driver, the workflow wi
 
 ## FPGA
 
-To build install the `uio` device and the ROM backdoors for FPGA development, run
-
-```shell
-cargo xtask-fpga fpga-install-kernel-modules
-```
+See [specification](https://chipsalliance.github.io/caliptra-mcu-sw/) for FPGA instructions.

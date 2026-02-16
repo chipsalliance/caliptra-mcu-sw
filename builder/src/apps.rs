@@ -1,11 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use crate::runtime::bit_flags;
-use crate::tbf::TbfHeader;
 use crate::{objcopy, target_binary, OBJCOPY_FLAGS};
 use crate::{PROJECT_ROOT, TARGET};
 use anyhow::{bail, Result};
 use std::process::Command;
+
+use tbf_header::TbfHeader;
 
 pub const EMULATOR_APPS: &[App] = &[
     App {

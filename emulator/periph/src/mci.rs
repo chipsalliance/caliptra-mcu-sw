@@ -16,7 +16,6 @@ use std::{cell::RefCell, rc::Rc};
 use tock_registers::interfaces::{ReadWriteable, Readable};
 
 const RESET_STATUS_MCU_RESET_MASK: u32 = 0x2;
-const RESET_REQUEST_MCU_REQ_MASK: u32 = 0x1; // McuReq bit (bit 0)
 
 /// Clamp a timer period to i64::MAX to avoid overflow in the timer scheduler.
 /// This can happen when software writes timer registers in two halves,
@@ -33,9 +32,6 @@ pub struct Mci {
     timer: Timer,
     op_wdt_timer1_expired_action: Option<ActionHandle>,
     op_wdt_timer2_expired_action: Option<ActionHandle>,
-    op_mcu_reset_request_action: Option<ActionHandle>,
-    op_mcu_assert_mcu_reset_status_action: Option<ActionHandle>,
-    op_mcu_deassert_mcu_reset_status_action: Option<ActionHandle>,
 
     // emulates the RESET_REASON register
     reset_reason: ResetReasonEmulator,
@@ -48,6 +44,7 @@ pub struct Mci {
     mcu_mailbox1: Option<McuMailbox0Internal>,
     soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
     generic_input_wires: [u32; 2],
+    reset_requested: bool,
 }
 
 impl Mci {
@@ -79,12 +76,10 @@ impl Mci {
             timer: Timer::new(clock),
             op_wdt_timer1_expired_action: None,
             op_wdt_timer2_expired_action: None,
-            op_mcu_reset_request_action: None,
-            op_mcu_assert_mcu_reset_status_action: None,
-            op_mcu_deassert_mcu_reset_status_action: None,
             reset_reason,
             irq,
             mcu_mailbox0,
+            reset_requested: false,
 
             // --- init mtimecmp ---
             mtimecmp: default_mtimecmp,
@@ -405,7 +400,8 @@ impl MciPeripheral for Mci {
             }
 
             // Schedule the reset status assertion
-            self.op_mcu_reset_request_action = Some(self.timer.schedule_poll_in(100));
+            println!("MCI: MCU reset requested");
+            self.reset_requested = true;
         }
     }
 
@@ -1052,7 +1048,7 @@ impl MciPeripheral for Mci {
             );
         }
 
-        if self.timer.fired(&mut self.op_mcu_reset_request_action) {
+        if self.reset_requested {
             // Handle MCU reset request
             let reset_reason = self.reset_reason.get();
             let mcu_fw_exec_ctrl = self
@@ -1062,45 +1058,42 @@ impl MciPeripheral for Mci {
             // Only check MCU go bit for hitless updates (reset_reason bit 0 = hitless update)
             // For other resets, proceed without waiting for Caliptra
             let is_hitless_update = reset_reason & 0x1 != 0;
+            let mut proceed_with_reboot = true;
             if let Some(val) = mcu_fw_exec_ctrl {
-                // If bit 2 (MCU go bit) of SS_GENERIC_FW_EXEC_CTRL is 0
-                // and this is a hitless update, hold the MCU in reset
-                // by scheduling CPU halt action.
-                if is_hitless_update && (val & (1 << 2) == 0) {
-                    self.timer.schedule_action_in(1, TimerAction::Halt);
-                    self.op_mcu_reset_request_action = Some(self.timer.schedule_poll_in(1000));
-                    self.ext_mci_regs.regs.borrow_mut().reset_status |= RESET_STATUS_MCU_RESET_MASK;
-                    return;
+                // For hitless updates: MCU halts when FW_EXEC_CTRL[2] is cleared,
+                // sets reset_status, and waits for FW_EXEC_CTRL[2] to be set again
+                if is_hitless_update {
+                    if (val & (1 << 2)) == 0 {
+                        // FW_EXEC_CTRL bit is cleared
+                        if self.ext_mci_regs.regs.borrow().reset_status
+                            & RESET_STATUS_MCU_RESET_MASK
+                            == 0
+                        {
+                            println!("MCI: Halting MCU");
+                            // Not yet in reset - schedule halt and assert reset status
+                            self.timer.schedule_action_in(0, TimerAction::Halt);
+                            // Assert reset status to indicate MCU is in reset
+                            self.ext_mci_regs.regs.borrow_mut().reset_status |=
+                                RESET_STATUS_MCU_RESET_MASK;
+                        }
+                        proceed_with_reboot = false;
+                    } else {
+                        println!("MCI: Resuming MCU");
+                        // FW_EXEC_CTRL bit is now set - MCU can proceed with reboot
+                        // Deassert reset status as MCU is coming out of reset
+                        self.ext_mci_regs.regs.borrow_mut().reset_status &=
+                            !RESET_STATUS_MCU_RESET_MASK;
+                        self.irq.borrow_mut().set_level(false);
+                        proceed_with_reboot = true;
+                    }
                 }
             }
-
-            self.timer.schedule_action_in(100, TimerAction::UpdateReset);
-            self.op_wdt_timer2_expired_action = None;
-            // Allow enough time for MCU to reset before asserting RESET_STATUS_MCU_RESET
-            self.op_mcu_assert_mcu_reset_status_action = Some(self.timer.schedule_poll_in(100));
-        }
-        if self
-            .timer
-            .fired(&mut self.op_mcu_assert_mcu_reset_status_action)
-        {
-            // MCU is now in reset, assert the reset status
-            self.ext_mci_regs.regs.borrow_mut().reset_status |= RESET_STATUS_MCU_RESET_MASK;
-
-            // At this point MCU is already reset, clear reset request
-            self.ext_mci_regs.regs.borrow_mut().reset_request &= !RESET_REQUEST_MCU_REQ_MASK;
-
-            self.op_mcu_assert_mcu_reset_status_action = None;
-            // Allow enough time for Caliptra to process the reset status before deasserting it
-            self.op_mcu_deassert_mcu_reset_status_action = Some(self.timer.schedule_poll_in(1000));
-        }
-        if self
-            .timer
-            .fired(&mut self.op_mcu_deassert_mcu_reset_status_action)
-        {
-            // MCU is now out of reset, deassert the reset status and interrupt
-            self.ext_mci_regs.regs.borrow_mut().reset_status &= !RESET_STATUS_MCU_RESET_MASK;
-            self.op_mcu_deassert_mcu_reset_status_action = None;
-            self.irq.borrow_mut().set_level(false);
+            if proceed_with_reboot {
+                println!("MCI: MCU proceeding with reboot");
+                self.reset_requested = false;
+                self.timer.schedule_action_in(0, TimerAction::UpdateReset);
+                self.op_wdt_timer2_expired_action = None;
+            }
         }
 
         // Check if there are any mcu_mbox0 IRQ events to process.

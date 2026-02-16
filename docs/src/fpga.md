@@ -1,4 +1,6 @@
-# Testing with an FPGA
+# Working with an FPGA
+
+This section covers how to perform common MCU flows on an FPGA. You can always fallback to working on the FPGA directly, as it is an ARM Linux host, albeit low powered.
 
 ## Pre Requisites
 
@@ -8,7 +10,7 @@ The machine that is used for development and cross compilation should have:
 
 - Rust
 - Docker
-  - Pull the FPGA build image: `$ docker pull ghcr.io/chipsalliance/caliptra-build-image:latest` 
+  - Make sure you pull the FPGA build image: `$ docker pull ghcr.io/chipsalliance/caliptra-build-image:latest` 
 - rsync
 - git
 
@@ -16,7 +18,7 @@ The machine that is used for development and cross compilation should have:
 
 ### FPGA System 
 
-The FPGA should have the following installed:
+The FPGA should have the following installed (If you are not using a Caliptra image):
 
 - rsync
 - git
@@ -44,6 +46,58 @@ Host <FPGA-NAME> # Update me!
 
 ```
 
+## Developing over SSH
+
+Most `xtask-fpga fpga` commands support running over SSH. This is the preferred and tested path. The SSH target is passed with the `--target-host` flag.
+
+The xtask tool will cross-compile and then copy binaries to the FPGA over the SSH connection.
+
+## Bitstream
+
+### Caliptra Images
+
+The Caliptra images use a segmented bitstream. The bitstream is automatically loaded by the `bootstrap` command, based on the FPGA configuration type.
+
+NOTE: The core & subsystem base images are incompatible, and you must be sure to use the correct base image for the configuration you are using.
+
+For example:
+
+- core-on-subsystem => Subsystem base image
+- subsystem => Subsystem base image
+- core => Core base image
+
+#### Bitstream source
+
+The subsystem bitstream is pulled from the [subsystem.toml](../../hw/fpga/bitstream_manifests/subsystem.toml). The core bitstream is pulled from "core.toml" from the active `caliptra-sw` folder.
+
+### Ubuntu Image
+
+Follow the instructions in `hw/fpga/README.md` on building and loading a bitstream.
+
+## FPGA bootstrap
+
+The FPGA needs to be bootstrapped each time it is booted. This ensures that the kernel modules we use in this repo are present.
+
+Run `cargo xtask-fpga fpga bootstrap --target-host $SSH-FPGA-NAME` to bootstrap the FPGA.
+
+### Configurations
+
+The xtask flows supports three different configurations:
+
+* "Subsystem": This mode configures the FPGA to run Caliptra MCU flows.
+* "Core-on-Subsystem": This mode configures the FPGA to run Caliptra-SW flows for a subsystem Caliptra.
+* "Core": This mode allows running Caliptra in Core mode on the FPGA.
+  * Note: You will need to override caliptra-sw to point to a local directory in the workspace [Cargo.toml](../../Cargo.toml).
+
+For example:
+
+```sh
+$ cargo xtask-fpga fpga bootstrap # The default configration is subsystem
+$ cargo xtask-fpga fpga bootstrap --configuration subsystem
+$ cargo xtask-fpga fpga bootstrap --configuration core-on-subsystem
+$ cargo xtask-fpga fpga bootstrap --configuration core
+```
+
 ## Cross compiling
 
 ### Firmware
@@ -52,17 +106,31 @@ Run `cargo xtask-fpga fpga build --target-host $SSH-FPGA-NAME` to create a firmw
 
 This command should be re-run after making any firmware changes.
 
+#### Filter Caliptra Core firmeware
+
+To improve build time when using the `core-on-subsystem` FPGA configuration, you can use the `fw-id` parameter to filter out firmware that you are uninterested in.
+
+For example, the following only builds the Caliptra Core ROM
+
+```sh
+$ cargo xtask-fpga build --fw-id caliptra-rom
+```
+
+#### Only build MCU firmware
+
+For configurations that additionally build Caliptra Core firmware, you can disable this with the `--mcu` flag.
+
+For example:
+
+```sh
+$ cargo xtask-fpga build --mcu
+```
+
 ### Test Binaries
 
 Run `cargo xtask-fpga fpga build-test --target-host $SSH-FPGA-NAME` to create a test archive. Using the `--target-host` flag will automatically copy the test binaries to the FPGA host.
 
 This command should be re-run after making any test changes.
-
-## FPGA bootstrap
-
-The FPGA needs to be bootstrapped each time it is booted. This ensures that the kernel modules we use in this repo are present.
-
-Run `cargo xtask-fpga fpga bootstrap --target-host $SSH-FPGA-NAME` to bootstrap the FPGA.
 
 # Test Workflow
 
@@ -97,6 +165,8 @@ $ cargo xtask-fpga fpga test --target-host $SSH-FPGA-NAME \
     --test-filter="package(mcu-hw-model) and test(test_hash_token)"
 ```
 
+The test filter flag is a wrapper for a Cargo Nextest [filter set](https://nexte.st/docs/filtersets/).
+
 # Test Caliptra Core on FPGA
 
 The xtask workflow also supports running caliptra-sw tests on a subsystem FPGA.
@@ -110,6 +180,8 @@ $ cargo xtask-fpga fpga build-test --target-host $SSH-FPGA-NAME # Build test bin
 ```
 
 # Running on FPGA
+
+NOTE: The `run` command does not yet support running over ssh.
 
 ### Firmware files
 

@@ -42,7 +42,7 @@ mcu-mbox-common.workspace = true
 mcu-rom-common.workspace = true
 mcu-testing-common.workspace = true
 openssl.workspace = true
-p384.workspace = true
+p384 = { workspace = true, features = ["ecdsa"] }
 pldm-common.workspace = true
 pldm-fw-pkg.workspace = true
 pldm-ua.workspace = true

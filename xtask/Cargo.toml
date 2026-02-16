@@ -23,7 +23,6 @@ caliptra-image-types.workspace = true
 caliptra-hw-model = { workspace = true, optional = true }
 clap.workspace = true
 clap-num.workspace = true
-crc32fast.workspace = true
 elf.workspace = true
 mcu-builder.workspace = true
 mcu-config-emulator.workspace = true
@@ -45,7 +44,6 @@ sudo.workspace = true
 tempfile.workspace = true
 toml.workspace = true
 walkdir.workspace = true
-zerocopy.workspace = true
 caliptra-bitstream-downloader.workspace = true
 
 [build-dependencies]

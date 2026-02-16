@@ -62,14 +62,17 @@ These commands support a wide range of functionalities, including querying devic
 | MC_AES_GCM_DECRYPT_FINAL          | 0x4D43_4446 ("MCDF") | Finalizes the AES-GCM decryption operation and verifies the tag.                                   |
 | MC_ECDH_GENERATE                  | 0x4D43_4547 ("MCEG") | Computes the first half of an Elliptic Curve Diffie-Hellman exchange.                              |
 | MC_ECDH_FINISH                    | 0x4D43_4546 ("MCEF") | Computes the second half of an Elliptic Curve Diffie-Hellman exchange.                             |
+| MC_ECDSA_CMK_PUBLIC_KEY           | 0x4D43_4550 ("MCEP") | Generates an ECDSA public key from a CMK.                                                          |
+| MC_ECDSA_CMK_SIGN                 | 0x4D43_4553 ("MCES") | Creates an ECDSA signature using a CMK.                                                            |
+| MC_ECDSA_CMK_VERIFY               | 0x4D43_4556 ("MCEV") | Validates an ECDSA signature using a CMK.                                                          |
 | MC_RANDOM_STIR                    | 0x4D43_5253 ("MCRS") | Adds additional entropy to the internal deterministic random bit generator.                        |
 | MC_RANDOM_GENERATE                | 0x4D43_5247 ("MCRG") | Generates random bytes from the internal RNG.                                                      |
 | MC_IMPORT                         | 0x4D43_494D ("MCIM") | Imports a specified key and returns a CMK for it.                                                  |
 | MC_DELETE                         | 0x4D43_444C ("MCDL") | Deletes the object stored with the given mailbox ID.                                               |
 | MC_ECDSA384_SIG_VERIFY            | 0x4D45_4356 ("MECV") | Verifies an ECDSA P-384 signature.                                                                 |
 | MC_LMS_SIG_VERIFY                 | 0x4D4C_4D56 ("MLMV") | Verifies an LMS signature.                                                                         |
-| MC_ECDSA_SIGN                     | 0x4D45_4353 ("MECS") | Requests to sign a SHA-384 digest with the DPE leaf certificate.                                   |
-| MC_MLDSA_SIGN                     | 0x4D4C_4D53 ("MMLS") | Requests to sign a SHA-384 digest with the DPE leaf certificate using MLDSA.                       |
+| MC_ECDSA384_SIGN                  | 0x4D45_4353 ("MECS") | Requests to sign a SHA-384 digest with the DPE leaf certificate.                                   |
+| MC_MLDSA_SIGN                     | 0x4D4C_4D53 ("MLMS") | Requests to sign a SHA-384 digest with the DPE leaf certificate using MLDSA.                       |
 | MC_PRODUCTION_DEBUG_UNLOCK_REQ    | 0x4D44_5552 ("MDUR") | Requests debug unlock in a production environment.                                                 |
 | MC_PRODUCTION_DEBUG_UNLOCK_TOKEN  | 0x4D44_5554 ("MDUT") | Sends the debug unlock token.                                                                      |
 | MC_FUSE_READ                      | 0x4946_5052 ("IFPR") | See [fuses spec](fuses.md) for details |
@@ -311,7 +314,7 @@ Command Code: `0x4D4C_4D56` ("MLMV")
 | chksum      | u32      | Checksum over other output arguments, computed by MCU. Little endian.
 | fips_status | u32      | Indicates if the command is FIPS approved or an error.
 
-### MC_ECDSA_SIGN
+### MC_ECDSA384_SIGN
 Requests to sign SHA-384 digest with DPE leaf cert.
 
 Command Code: `0x4D45_4353` ("MECS")
@@ -437,6 +440,9 @@ The MCI mailbox cryptographic commands are mapped to their corresponding Caliptr
 | `MC_AES_GCM_DECRYPT_FINAL`    | `CM_AES_GCM_DECRYPT_FINAL`                  |
 | `MC_ECDH_GENERATE`            | `CM_ECDH_GENERATE`                          |
 | `MC_ECDH_FINISH`              | `CM_ECDH_FINISH`                            |
+| `MC_ECDSA_CMK_PUBLIC_KEY`     | `CM_ECDSA_PUBLIC_KEY`                       |
+| `MC_ECDSA_CMK_SIGN`           | `CM_ECDSA_SIGN`                             |
+| `MC_ECDSA_CMK_VERIFY`         | `CM_ECDSA_VERIFY`                           |
 | `MC_RANDOM_STIR`              | `CM_RANDOM_STIR`                            |
 | `MC_RANDOM_GENERATE`          | `CM_RANDOM_GENERATE`                        |
 | `MC_IMPORT`                   | `CM_IMPORT`                                 |

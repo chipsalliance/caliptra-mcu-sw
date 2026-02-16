@@ -471,10 +471,9 @@ mod tests {
 
     #[test]
     fn test_flash_image_verify_happy_path() {
-        let image_path = PROJECT_ROOT
-            .join("target")
-            .join("tmp")
-            .join("flash_image_happy_path.bin");
+        let tmp_dir = PROJECT_ROOT.join("target").join("tmp");
+        fs::create_dir_all(&tmp_dir).expect("Failed to create tmp directory");
+        let image_path = tmp_dir.join("flash_image_happy_path.bin");
         let image_path = image_path.to_str().unwrap();
 
         // Create a valid firmware image
@@ -520,10 +519,9 @@ mod tests {
 
     #[test]
     fn test_flash_image_verify_corrupted_case() {
-        let image_path = PROJECT_ROOT
-            .join("target")
-            .join("tmp")
-            .join("flash_image_corrupted.bin");
+        let tmp_dir = PROJECT_ROOT.join("target").join("tmp");
+        fs::create_dir_all(&tmp_dir).expect("Failed to create tmp directory");
+        let image_path = tmp_dir.join("flash_image_corrupted.bin");
         let image_path = image_path.to_str().unwrap();
 
         // Create a corrupted firmware image (tamper with the header or data)

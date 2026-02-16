@@ -16,7 +16,6 @@ itrng = []
 
 [dependencies]
 anyhow.workspace = true
-bit-vec.workspace = true
 bitfield.workspace = true
 caliptra-api-types.workspace = true
 caliptra-api.workspace = true
@@ -42,7 +41,6 @@ mcu-config-fpga = { workspace = true, optional = true }
 mcu-config.workspace = true
 mcu-rom-common.workspace = true
 mcu-testing-common.workspace = true
-nix.workspace = true
 p384.workspace = true
 poll-common.workspace = true
 rand.workspace = true
@@ -51,7 +49,6 @@ romtime.workspace = true
 semver.workspace = true
 sha2.workspace = true
 sha3.workspace = true
-tempfile.workspace = true
 thiserror.workspace = true
 tock-registers.workspace = true
 uio = { workspace = true, optional = true }

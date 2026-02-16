@@ -62,6 +62,7 @@ members = [
     "runtime/userspace/libtock/apis/kernel/low_level_debug",
     "runtime/userspace/libtock/apis/peripherals/alarm",
     "runtime/userspace/libtock/apis/peripherals/rng",
+    "runtime/userspace/libtock/tbf-header",
     "runtime/userspace/libtock/panic_handlers/debug_panic",
     "runtime/userspace/libtock/panic_handlers/small_panic",
     "runtime/userspace/libtock/platform",
@@ -239,6 +240,7 @@ libtock_rng = { path = "runtime/userspace/libtock/apis/peripherals/rng" }
 libtock_runtime = { path = "runtime/userspace/libtock/runtime" }
 libtock_small_panic = { path = "runtime/userspace/libtock/panic_handlers/small_panic" }
 libtock_unittest = { path = "runtime/userspace/libtock/unittest" }
+tbf-header = { path = "runtime/userspace/libtock/tbf-header" }
 
 # caliptra-sw dependencies; keep git revs in sync
 caliptra-api = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "dde1255d634389a05872db1b6edd7ee88020da3b" }

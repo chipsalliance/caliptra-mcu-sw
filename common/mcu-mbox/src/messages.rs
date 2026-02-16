@@ -9,9 +9,10 @@ pub use caliptra_api::mailbox::{
     CmAesGcmEncryptFinalRespHeader, CmAesGcmEncryptInitReq, CmAesGcmEncryptInitResp,
     CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateResp, CmAesGcmEncryptUpdateRespHeader,
     CmAesMode, CmAesResp, CmAesRespHeader, CmDeleteReq, CmEcdhFinishReq, CmEcdhFinishResp,
-    CmEcdhGenerateReq, CmEcdhGenerateResp, CmHkdfExpandReq, CmHkdfExpandResp, CmHkdfExtractReq,
-    CmHkdfExtractResp, CmHmacKdfCounterReq, CmHmacKdfCounterResp, CmHmacReq, CmHmacResp,
-    CmImportReq, CmImportResp, CmKeyUsage, CmRandomGenerateReq, CmRandomGenerateResp,
+    CmEcdhGenerateReq, CmEcdhGenerateResp, CmEcdsaPublicKeyReq, CmEcdsaPublicKeyResp,
+    CmEcdsaSignReq, CmEcdsaSignResp, CmEcdsaVerifyReq, CmHkdfExpandReq, CmHkdfExpandResp,
+    CmHkdfExtractReq, CmHkdfExtractResp, CmHmacKdfCounterReq, CmHmacKdfCounterResp, CmHmacReq,
+    CmHmacResp, CmImportReq, CmImportResp, CmKeyUsage, CmRandomGenerateReq, CmRandomGenerateResp,
     CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq,
     CmStatusResp, Cmk, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
     ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
@@ -97,6 +98,9 @@ impl CommandId {
     pub const MC_CM_STATUS: Self = Self(0x4D43_5354); // "MCST"
     pub const MC_ECDH_GENERATE: Self = Self(0x4D43_4547); // "MCEG"
     pub const MC_ECDH_FINISH: Self = Self(0x4D43_4546); // "MCEF"
+    pub const MC_ECDSA_CMK_PUBLIC_KEY: Self = Self(0x4D43_4550); // "MCEP"
+    pub const MC_ECDSA_CMK_SIGN: Self = Self(0x4D43_4553); // "MCES"
+    pub const MC_ECDSA_CMK_VERIFY: Self = Self(0x4D43_4556); // "MCEV"
 
     // In-Field Fuse Programming commands
     pub const MC_FUSE_READ: Self = Self(0x4946_5052); // "IFPR"
@@ -149,6 +153,9 @@ pub enum McuMailboxReq {
     RandomGenerate(McuRandomGenerateReq),
     EcdhGenerate(McuEcdhGenerateReq),
     EcdhFinish(McuEcdhFinishReq),
+    EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq),
+    EcdsaCmkSign(McuEcdsaCmkSignReq),
+    EcdsaCmkVerify(McuEcdsaCmkVerifyReq),
     // In-Field Fuse Programming
     FuseRead(FuseReadReq),
     FuseWrite(FuseWriteReq),
@@ -188,6 +195,9 @@ impl McuMailboxReq {
             McuMailboxReq::RandomGenerate(req) => Ok(req.as_bytes()),
             McuMailboxReq::EcdhGenerate(req) => Ok(req.as_bytes()),
             McuMailboxReq::EcdhFinish(req) => Ok(req.as_bytes()),
+            McuMailboxReq::EcdsaCmkPublicKey(req) => Ok(req.as_bytes()),
+            McuMailboxReq::EcdsaCmkSign(req) => req.as_bytes_partial(),
+            McuMailboxReq::EcdsaCmkVerify(req) => req.as_bytes_partial(),
             McuMailboxReq::FuseRead(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
@@ -226,6 +236,9 @@ impl McuMailboxReq {
             McuMailboxReq::RandomGenerate(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::EcdhGenerate(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::EcdhFinish(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::EcdsaCmkPublicKey(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::EcdsaCmkSign(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::EcdsaCmkVerify(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::FuseRead(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
@@ -264,6 +277,9 @@ impl McuMailboxReq {
             McuMailboxReq::RandomGenerate(_) => CommandId::MC_RANDOM_GENERATE,
             McuMailboxReq::EcdhGenerate(_) => CommandId::MC_ECDH_GENERATE,
             McuMailboxReq::EcdhFinish(_) => CommandId::MC_ECDH_FINISH,
+            McuMailboxReq::EcdsaCmkPublicKey(_) => CommandId::MC_ECDSA_CMK_PUBLIC_KEY,
+            McuMailboxReq::EcdsaCmkSign(_) => CommandId::MC_ECDSA_CMK_SIGN,
+            McuMailboxReq::EcdsaCmkVerify(_) => CommandId::MC_ECDSA_CMK_VERIFY,
             McuMailboxReq::FuseRead(_) => CommandId::MC_FUSE_READ,
             McuMailboxReq::FuseWrite(_) => CommandId::MC_FUSE_WRITE,
             McuMailboxReq::FuseLockPartition(_) => CommandId::MC_FUSE_LOCK_PARTITION,
@@ -325,6 +341,9 @@ pub enum McuMailboxResp {
     RandomGenerate(McuRandomGenerateResp),
     EcdhGenerate(McuEcdhGenerateResp),
     EcdhFinish(McuEcdhFinishResp),
+    EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyResp),
+    EcdsaCmkSign(McuEcdsaCmkSignResp),
+    EcdsaCmkVerify(McuEcdsaCmkVerifyResp),
     // In-Field Fuse Programming
     FuseRead(FuseReadResp),
     FuseWrite(FuseWriteResp),
@@ -425,6 +444,9 @@ impl McuMailboxResp {
             McuMailboxResp::RandomGenerate(resp) => resp.as_bytes_partial(),
             McuMailboxResp::EcdhGenerate(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::EcdhFinish(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::EcdsaCmkPublicKey(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::EcdsaCmkSign(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::EcdsaCmkVerify(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
@@ -464,6 +486,9 @@ impl McuMailboxResp {
             McuMailboxResp::RandomGenerate(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::EcdhGenerate(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::EcdhFinish(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::EcdsaCmkPublicKey(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::EcdsaCmkSign(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::EcdsaCmkVerify(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
@@ -989,6 +1014,48 @@ impl Request for McuEcdhFinishReq {
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct McuEcdhFinishResp(pub CmEcdhFinishResp);
 impl Response for McuEcdhFinishResp {}
+
+// ---- ECDSA CMK wrappers ----
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdsaCmkPublicKeyReq(pub CmEcdsaPublicKeyReq);
+impl Request for McuEcdsaCmkPublicKeyReq {
+    const ID: CommandId = CommandId::MC_ECDSA_CMK_PUBLIC_KEY;
+    type Resp = McuEcdsaCmkPublicKeyResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdsaCmkPublicKeyResp(pub CmEcdsaPublicKeyResp);
+impl Response for McuEcdsaCmkPublicKeyResp {}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdsaCmkSignReq(pub CmEcdsaSignReq);
+impl Request for McuEcdsaCmkSignReq {
+    const ID: CommandId = CommandId::MC_ECDSA_CMK_SIGN;
+    type Resp = McuEcdsaCmkSignResp;
+}
+impl_mcu_request_varsize!(McuEcdsaCmkSignReq, CmEcdsaSignReq);
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdsaCmkSignResp(pub CmEcdsaSignResp);
+impl Response for McuEcdsaCmkSignResp {}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdsaCmkVerifyReq(pub CmEcdsaVerifyReq);
+impl Request for McuEcdsaCmkVerifyReq {
+    const ID: CommandId = CommandId::MC_ECDSA_CMK_VERIFY;
+    type Resp = McuEcdsaCmkVerifyResp;
+}
+impl_mcu_request_varsize!(McuEcdsaCmkVerifyReq, CmEcdsaVerifyReq);
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdsaCmkVerifyResp(pub MailboxRespHeader);
+impl Response for McuEcdsaCmkVerifyResp {}
 
 // ---- In-Field Fuse Programming (IFP) ----
 

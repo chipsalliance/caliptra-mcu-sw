@@ -174,8 +174,14 @@ impl CaliptraBuilder {
         let cfg = if self.mcu_image_cfg.is_some() {
             self.mcu_image_cfg.clone().unwrap()
         } else {
+            // Default MCU image configuration with valid addresses and exec_bit
+            // Uses FPGA memory map for DMA-accessible staging area
+            // exec_bit must be >= 2 (bits 0 and 1 are reserved by Caliptra)
             ImageCfg {
                 image_id: MCU_RT_IDENTIFIER,
+                exec_bit: 2,
+                // MCU staging address in SRAM region (FPGA memory map)
+                staging_addr: mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset as u64,
                 ..Default::default()
             }
         };
@@ -523,7 +529,8 @@ impl Default for ImageCfg {
             load_addr: 0,
             staging_addr: 0,
             image_id: 0,
-            exec_bit: 0,
+            // exec_bit must be >= 2 (bits 0 and 1 are reserved by Caliptra)
+            exec_bit: 2,
             feature: String::new(),
         }
     }

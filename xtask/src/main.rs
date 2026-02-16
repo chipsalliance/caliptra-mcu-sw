@@ -140,6 +140,15 @@ enum Commands {
         #[arg(short, long, default_value_t = false)]
         trace: bool,
     },
+    /// Build emulator binaries for test features and package them in emulators.zip
+    EmulatorBuild {
+        #[arg(long)]
+        output: Option<String>,
+
+        /// Comma-separated list of features to build emulators for
+        #[arg(long)]
+        features: Option<String>,
+    },
     /// Build Caliptra ROM, firmware bundle, MCU ROM, runtime, and SoC manifest and package them together
     AllBuild {
         #[arg(long)]
@@ -419,6 +428,12 @@ fn main() {
             mcu_cfgs: mcu_cfgs.clone(),
             pldm_manifest: pldm_manifest.as_deref(),
         }),
+        Commands::EmulatorBuild { output, features } => {
+            mcu_builder::emulator_build(mcu_builder::EmulatorBuildArgs {
+                output: output.as_deref(),
+                features: features.as_deref(),
+            })
+        }
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),
         Commands::RuntimeBuild {
             features,

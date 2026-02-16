@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 /// `PldmDaemon` represents a process that provides PLDM Discovery and Firmware Update Agent services.
 /// It manages the event loop and the reception loop for processing PLDM events and packets.
@@ -154,6 +155,13 @@ impl<
                 debug!("Event Loop processing event: {:?}", ev);
                 match ev {
                     PldmEvents::Start => {
+                        // Wait for device-side PLDM service to initialize
+                        // This avoids a race condition where discovery requests arrive
+                        // before the device is ready to process them.
+                        // The delay needs to be long enough for the MCU to boot,
+                        // start the runtime, and initialize the PLDM service.
+                        std::thread::sleep(Duration::from_secs(2));
+
                         // Start Discovery
                         let discovery_sm = &mut *discovery_sm.lock().unwrap();
                         discovery_sm
