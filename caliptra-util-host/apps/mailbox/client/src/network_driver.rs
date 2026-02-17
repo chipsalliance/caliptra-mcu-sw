@@ -66,9 +66,9 @@ impl MailboxDriver for UdpTransportDriver {
     fn connect(&mut self) -> Result<(), MailboxError> {
         let socket = UdpSocket::bind("0.0.0.0:0").map_err(|_| MailboxError::CommunicationError)?;
 
-        // Set a timeout for receive operations (5 seconds)
+        // Set a timeout for receive operations (30 seconds)
         socket
-            .set_read_timeout(Some(Duration::from_secs(5)))
+            .set_read_timeout(Some(Duration::from_secs(30)))
             .map_err(|_| MailboxError::CommunicationError)?;
 
         self.socket = Some(socket);
