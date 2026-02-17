@@ -32,8 +32,8 @@ The Payload contains the following fields:
 | ...                            |
 | SoC Image N                    |
 
-* Caliptra FMC and RT (refer to the [Caliptra Firmware Image Bundle Format](https://github.com/chipsalliance/caliptra-sw/blob/main-2.x/rom/dev/README.md#firmware-image-bundle))
-* SoC Manifest (refer to the description of the [SoC Manifest](https://github.com/chipsalliance/caliptra-sw/blob/main-2.x/auth-manifest/README.md))
+* Caliptra FMC and RT (refer to the [Caliptra Firmware Image Bundle Format](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#firmware-image-bundle))
+* SoC Manifest (refer to the description of the [SoC Manifest](https://github.com/chipsalliance/caliptra-sw/blob/main/auth-manifest/README.md))
 * MCU RT: This is the image binary of the MCU Runtime firmware
 * Other SoC images (if any)
 

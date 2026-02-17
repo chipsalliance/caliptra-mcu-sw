@@ -458,7 +458,7 @@ Command Code: `0x4D44_5554` ("MDUT")
 
 ### Cryptographic Command Format
 
-The MCI mailbox cryptographic commands are mapped to their corresponding Caliptra Mailbox Cryptographic commands. The mapping is detailed in the table below. For the specific format of each command, refer to the [Mailbox Commands: Cryptographic Mailbox (2.0)](https://github.com/chipsalliance/caliptra-sw/blob/main-2.x/runtime/README.md#mailbox-commands-cryptographic-mailbox-20).
+The MCI mailbox cryptographic commands are mapped to their corresponding Caliptra Mailbox Cryptographic commands. The mapping is detailed in the table below. For the specific format of each command, refer to the [Mailbox Commands: Cryptographic Mailbox (2.0)](https://github.com/chipsalliance/caliptra-sw/blob/main/runtime/README.md#mailbox-commands-cryptographic-mailbox-20).
 
 *Table: mapping MCI Mailbox Crypto Commands to Caliptra Crypto Mailbox Commands*
 | **MCI Mailbox Crypto Commands** | **Caliptra Mailbox Crypto Commands**         |
