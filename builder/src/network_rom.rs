@@ -6,10 +6,18 @@ use anyhow::{bail, Result};
 use std::process::Command;
 
 /// Build the Network Coprocessor ROM.
+///
+/// # Arguments
+/// * `feature` - Optional feature flag to pass to cargo build. If provided, the binary
+///               will be named `network-rom-feature-<feature_name>.bin`.
+///
 /// Returns the path to the built binary.
-pub fn network_rom_build() -> Result<String> {
+pub fn network_rom_build(feature: Option<&str>) -> Result<String> {
     let pkg_name = "network-rom";
-    let bin_name = "network-rom.bin";
+    let bin_name = match feature {
+        Some(f) => format!("network-rom-feature-{}.bin", f),
+        None => "network-rom.bin".to_string(),
+    };
 
     let mut cmd = Command::new("cargo");
     cmd.current_dir(&*PROJECT_ROOT).args([
@@ -20,6 +28,11 @@ pub fn network_rom_build() -> Result<String> {
         "--target",
         TARGET,
     ]);
+
+    // Add feature flag if provided
+    if let Some(f) = feature {
+        cmd.args(["--features", f]);
+    }
 
     let status = cmd.status()?;
     if !status.success() {

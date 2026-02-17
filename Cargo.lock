@@ -1809,6 +1809,7 @@ dependencies = [
  "emulator-consts",
  "emulator-registers-generated",
  "lazy_static",
+ "libc",
  "mcu-testing-common",
  "network-config",
  "num_enum",
@@ -3425,7 +3426,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "network-app-rom-test"
+version = "0.1.0"
+dependencies = [
+ "network-drivers",
+ "network-hil",
+]
+
+[[package]]
 name = "network-config"
+version = "0.1.0"
+
+[[package]]
+name = "network-drivers"
+version = "0.1.0"
+dependencies = [
+ "network-config",
+ "network-hil",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
+name = "network-hil"
 version = "0.1.0"
 
 [[package]]
@@ -3444,7 +3468,9 @@ dependencies = [
 name = "network-rom"
 version = "0.1.0"
 dependencies = [
+ "network-app-rom-test",
  "network-config",
+ "network-drivers",
 ]
 
 [[package]]
@@ -4819,6 +4845,7 @@ dependencies = [
  "hkdf",
  "hmac",
  "lazy_static",
+ "libc",
  "log",
  "mctp-vdm-common",
  "mcu-builder",

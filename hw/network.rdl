@@ -1,0 +1,5 @@
+`include "ethernet.rdl"
+
+addrmap network {
+    ethernet ethernet @ 0x1000_3000;
+};

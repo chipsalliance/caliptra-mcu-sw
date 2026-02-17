@@ -896,6 +896,7 @@ impl Emulator {
                 uart_rx: None,
                 pic: network_pic.clone(),
                 clock: clock.clone(),
+                tap_device: None,
             };
             let network_root_bus = NetworkRootBus::new(network_bus_args).unwrap();
 

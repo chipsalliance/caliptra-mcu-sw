@@ -283,7 +283,7 @@ pub fn run(cmd: NetworkCommands) -> Result<()> {
         }
 
         NetworkCommands::RomBuild => {
-            mcu_builder::network_rom_build()?;
+            mcu_builder::network_rom_build(None)?;
         }
     }
 

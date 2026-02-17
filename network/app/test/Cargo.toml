@@ -1,0 +1,11 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "network-app-rom-test"
+version.workspace = true
+edition.workspace = true
+description = "Test applications for Network Coprocessor ROM"
+
+[dependencies]
+network-drivers.workspace = true
+network-hil.workspace = true

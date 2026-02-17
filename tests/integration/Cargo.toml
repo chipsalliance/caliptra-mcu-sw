@@ -67,3 +67,6 @@ tempfile.workspace = true
 uio = { workspace = true, optional = true }
 uuid.workspace = true
 zerocopy.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc.workspace = true
