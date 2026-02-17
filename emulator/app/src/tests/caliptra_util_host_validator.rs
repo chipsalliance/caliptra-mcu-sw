@@ -18,6 +18,9 @@ use tempfile::NamedTempFile;
 const TEST_DEVICE_ID: u16 = 0x0010;
 const TEST_VENDOR_ID: u16 = 0x1414;
 
+// Timeout for mailbox response polling, matching integration tests pattern
+const MAILBOX_RESPONSE_TIMEOUT_SECS: u64 = 20;
+
 pub fn run_caliptra_util_host_validator() {
     thread::spawn(|| {
         wait_for_runtime_start();
@@ -154,7 +157,7 @@ pub fn run_mbox_responder(mbox: McuMailboxTransport) {
                     .expect("Failed to execute mailbox command ");
                 
                 let start = Instant::now();
-                let timeout = std::time::Duration::from_secs(20); // Match integration tests timeout
+                let timeout = std::time::Duration::from_secs(MAILBOX_RESPONSE_TIMEOUT_SECS);
                 
                 loop {
                     let response_int = mbox.get_execute_response();
