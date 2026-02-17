@@ -155,10 +155,8 @@ pub fn run_mbox_responder(mbox: McuMailboxTransport) {
                 mbox.execute(cmd_type, &raw_bytes[4..])
                     .map_err(|_| ())
                     .expect("Failed to execute mailbox command ");
-                
                 let start = Instant::now();
                 let timeout = std::time::Duration::from_secs(MAILBOX_RESPONSE_TIMEOUT_SECS);
-                
                 loop {
                     let response_int = mbox.get_execute_response();
                     match response_int {
