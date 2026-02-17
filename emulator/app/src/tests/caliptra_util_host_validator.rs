@@ -131,6 +131,10 @@ pub fn run_mbox_responder(mbox: McuMailboxTransport) {
             exit(-1);
         }
 
+        // Wait additional time for MCU mailbox daemon to initialize
+        // The runtime has started, but the mailbox daemon needs time to spawn and be ready
+        sleep(std::time::Duration::from_secs(2));
+
         let server_config = ServerConfig::default();
         println!("Starting mailbox server on {}", server_config.bind_addr);
 
