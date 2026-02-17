@@ -127,11 +127,11 @@ There are no Downstream Device ID records for this package
 
 ## Component 1 - Caliptra FMC + RT
 
-This is the package bundle for the Caliptra FMC + RT defined in [Caliptra Firmware Image Bundle Format](https://github.com/chipsalliance/caliptra-sw/blob/main-2.x/rom/dev/README.md#firmware-image-bundle).
+This is the package bundle for the Caliptra FMC + RT defined in [Caliptra Firmware Image Bundle Format](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#firmware-image-bundle).
 
 ## Component 2 - SOC Manifest
 
-This is the SoC Manifest defined in [SoC Manifest](https://github.com/chipsalliance/caliptra-sw/blob/main-2.x/auth-manifest/README.md).
+This is the SoC Manifest defined in [SoC Manifest](https://github.com/chipsalliance/caliptra-sw/blob/main/auth-manifest/README.md).
 
 It provides the signature verification and specific data needed to decode the image.
 
