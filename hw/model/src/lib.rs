@@ -27,6 +27,9 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+
+use emulator_periph::TapDevice;
 use ureg::MmioMut;
 pub use vmem::read_otp_vmem_data;
 
@@ -125,6 +128,9 @@ pub struct InitParams<'a> {
 
     /// The contents of the Network Coprocessor ROM
     pub network_rom: &'a [u8],
+
+    /// TAP device for the Network Coprocessor Ethernet peripheral
+    pub network_tap_device: Option<Arc<Mutex<Box<dyn TapDevice>>>>,
 
     /// The initial contents of the DCCM SRAM
     pub caliptra_dccm: &'a [u8],
@@ -259,6 +265,7 @@ impl Default for InitParams<'_> {
             mcu_rom: Default::default(),
             mcu_firmware: Default::default(),
             network_rom: Default::default(),
+            network_tap_device: None,
             caliptra_dccm: Default::default(),
             caliptra_iccm: Default::default(),
             otp_memory: None,

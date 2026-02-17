@@ -8,6 +8,7 @@ pub mod axicdma;
 pub mod defines;
 pub mod doe_mbox;
 pub mod el2_pic_ctrl;
+pub mod ethernet;
 pub mod fuses;
 pub mod i3c;
 pub mod lc_ctrl;

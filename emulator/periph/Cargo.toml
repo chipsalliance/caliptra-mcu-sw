@@ -29,6 +29,9 @@ serde.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+libc.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
 

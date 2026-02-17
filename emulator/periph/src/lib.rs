@@ -16,6 +16,7 @@ mod axicdma;
 mod caliptra_to_ext_bus;
 mod doe_mbox;
 mod emu_ctrl;
+mod ethernet;
 mod flash_ctrl;
 mod i3c;
 pub(crate) mod i3c_protocol;
@@ -33,6 +34,10 @@ pub use axicdma::AxiCDMA;
 pub use caliptra_to_ext_bus::CaliptraToExtBus;
 pub use doe_mbox::{DoeMboxPeriph, DummyDoeMbox};
 pub use emu_ctrl::EmuCtrl;
+pub use emulator_registers_generated::ethernet::EthernetBus;
+#[cfg(target_os = "linux")]
+pub use ethernet::LinuxTapDevice;
+pub use ethernet::{DummyTapDevice, Ethernet, TapDevice};
 pub use flash_ctrl::DummyFlashCtrl;
 pub use i3c::I3c;
 pub use i3c_protocol::*;
