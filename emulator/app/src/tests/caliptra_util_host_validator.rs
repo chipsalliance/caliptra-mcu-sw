@@ -21,6 +21,9 @@ const TEST_VENDOR_ID: u16 = 0x1414;
 // Timeout for mailbox response polling, matching integration tests pattern
 const MAILBOX_RESPONSE_TIMEOUT_SECS: u64 = 20;
 
+// Delay to allow MCU mailbox daemon to initialize after runtime starts
+const MAILBOX_DAEMON_INIT_DELAY_SECS: u64 = 2;
+
 pub fn run_caliptra_util_host_validator() {
     thread::spawn(|| {
         wait_for_runtime_start();
@@ -133,7 +136,7 @@ pub fn run_mbox_responder(mbox: McuMailboxTransport) {
 
         // Wait additional time for MCU mailbox daemon to initialize
         // The runtime has started, but the mailbox daemon needs time to spawn and be ready
-        sleep(std::time::Duration::from_secs(2));
+        sleep(std::time::Duration::from_secs(MAILBOX_DAEMON_INIT_DELAY_SECS));
 
         let server_config = ServerConfig::default();
         println!("Starting mailbox server on {}", server_config.bind_addr);
