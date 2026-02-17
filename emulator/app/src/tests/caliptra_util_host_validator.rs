@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use std::process::{exit, Command};
 use std::sync::atomic::Ordering;
 use std::thread::{self, sleep};
+use std::time::Instant;
 
 use caliptra_mailbox_server::ServerConfig;
 use caliptra_util_host_mailbox_test_config::{
@@ -151,6 +152,10 @@ pub fn run_mbox_responder(mbox: McuMailboxTransport) {
                 mbox.execute(cmd_type, &raw_bytes[4..])
                     .map_err(|_| ())
                     .expect("Failed to execute mailbox command ");
+                
+                let start = Instant::now();
+                let timeout = std::time::Duration::from_secs(20); // Match integration tests timeout
+                
                 loop {
                     let response_int = mbox.get_execute_response();
                     match response_int {
@@ -159,6 +164,10 @@ pub fn run_mbox_responder(mbox: McuMailboxTransport) {
                         }
                         Err(e) => match e {
                             McuMailboxError::Busy => {
+                                if start.elapsed() > timeout {
+                                    println!("Timeout waiting for mailbox response after {} seconds", timeout.as_secs());
+                                    exit(-1);
+                                }
                                 sleep(std::time::Duration::from_millis(100));
                             }
                             _ => {
