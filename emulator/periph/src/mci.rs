@@ -1065,6 +1065,8 @@ impl MciPeripheral for Mci {
                         {
                             println!("MCI: Halting MCU");
                             // Not yet in reset - schedule halt and assert reset status
+                            self.timer
+                                .schedule_action_in(0, TimerAction::SetGlobalIntEn { en: false });
                             self.timer.schedule_action_in(0, TimerAction::Halt);
                             // Assert reset status to indicate MCU is in reset
                             self.ext_mci_regs.regs.borrow_mut().reset_status |=

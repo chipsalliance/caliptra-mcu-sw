@@ -861,8 +861,6 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    // TODO (https://github.com/chipsalliance/caliptra-mcu-sw/issues/873): re-enable
-    #[ignore]
     #[test]
     fn test_firmware_update_flash_successful_fast() {
         let lock = TEST_LOCK.lock().unwrap();
