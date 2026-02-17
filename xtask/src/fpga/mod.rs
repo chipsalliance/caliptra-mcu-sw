@@ -341,6 +341,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
             soc_manifest: blank.to_vec(),
             network_rom: vec![],
             test_roms: vec![],
+            test_network_roms: vec![],
             caliptra_test_roms: vec![],
             test_runtimes: vec![],
             test_soc_manifests: vec![],
