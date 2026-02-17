@@ -22,8 +22,8 @@ const TEST_VENDOR_ID: u16 = 0x1414;
 const MAILBOX_RESPONSE_TIMEOUT_SECS: u64 = 20;
 
 // Delay to allow MCU mailbox daemon to initialize after runtime starts
-// Increased to 5 seconds to ensure async task scheduling completes
-const MAILBOX_DAEMON_INIT_DELAY_SECS: u64 = 5;
+// Increased to 10 seconds to ensure complete driver and daemon initialization
+const MAILBOX_DAEMON_INIT_DELAY_SECS: u64 = 10;
 
 pub fn run_caliptra_util_host_validator() {
     thread::spawn(|| {
