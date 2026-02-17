@@ -82,6 +82,13 @@ pub async fn mcu_mbox_responder(
     cmd_interface: &'static mut CmdInterface<'static>,
     running: &'static AtomicBool,
 ) {
+    // Log when responder enters its receive loop
+    writeln!(
+        Console::<DefaultSyscalls>::writer(),
+        "mcu_mbox_responder: Ready to receive commands"
+    )
+    .unwrap();
+    
     let mut msg_buffer = [0; MAX_MCU_MBOX_MSG_SIZE];
     while running.load(Ordering::SeqCst) {
         if let Err(e) = cmd_interface.handle_responder_msg(&mut msg_buffer).await {
