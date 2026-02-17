@@ -169,10 +169,10 @@ mod test {
     /// Computes an HMAC of the blob using the Caliptra DOT stable key. Used to make HMACs of DOT blobs.
     /// The key is derived with the EVEN state derivation value (n+1 where n=0, so value=1),
     /// matching the ROM's key derivation for initial blob sealing.
+    ///
+    /// Caller MUST hold `TEST_LOCK` before calling this function, since it builds and runs
+    /// firmware internally via `start_runtime_hw_model`.
     fn compute_hmac(blob: &[u8]) -> Vec<u8> {
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some("test-do-nothing"),
             ..Default::default()
@@ -219,18 +219,21 @@ mod test {
             .unwrap();
         let resp = CmHmacResp::read_from_bytes(&resp).unwrap();
 
-        // force the compiler to keep the lock
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         resp.mac.to_vec()
     }
 
     #[test]
     fn test_dot_blob_valid() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let blob = [0u8; 32]; // TODO: make a valid DOT blob
         let hmac = compute_hmac_cached(&blob);
         // Verify HMAC is 64 bytes (SHA-512) and non-zero
         assert_eq!(hmac.len(), 64);
         assert!(hmac.iter().any(|&b| b != 0), "HMAC should not be all zeros");
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     #[test]
@@ -261,6 +264,9 @@ mod test {
     /// The ROM verifies the blob and burns fuses, but does not set the owner from the blob.
     #[test]
     fn test_dot_unlocked_state_valid_blob() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         // Create a valid DOT blob with the actual owner PK hash from the FW bundle as CAK
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -271,9 +277,6 @@ mod test {
             "[TEST] DOT flash contents (first 32 bytes): {:02x?}",
             &flash_contents[..32]
         );
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         println!("[TEST] Starting hardware model with DOT flash contents");
         let mut hw = start_runtime_hw_model(TestParams {
@@ -331,6 +334,9 @@ mod test {
     /// DOT flow works with the resulting owner PK hash.
     #[test]
     fn test_dot_unlocked_state_custom_owner_keys() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         use caliptra_image_fake_keys::{
             VENDOR_ECC_KEY_1_PRIVATE, VENDOR_ECC_KEY_1_PUBLIC, VENDOR_LMS_KEY_1_PRIVATE,
             VENDOR_LMS_KEY_1_PUBLIC, VENDOR_MLDSA_KEY_0_PRIVATE, VENDOR_MLDSA_KEY_0_PUBLIC,
@@ -455,9 +461,6 @@ mod test {
             &flash_contents[..32]
         );
 
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
         println!("[TEST] Starting hardware model with custom owner keys DOT flash");
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(flash_contents.clone()),
@@ -520,14 +523,14 @@ mod test {
     /// Test that a valid DOT blob with only CAK (no LAK) passes validation but doesn't trigger lock transition.
     #[test]
     fn test_dot_unlocked_state_cak_only() {
-        // Create a DOT blob with CAK but no LAK (all zeros) BEFORE acquiring lock
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        // Create a DOT blob with CAK but no LAK (all zeros)
         // Use actual owner PK hash for consistency with firmware
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
         let flash_contents = blob.to_flash_contents();
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(flash_contents),
@@ -566,12 +569,12 @@ mod test {
     /// This represents a device with DOT disabled or no owner set.
     #[test]
     fn test_dot_empty_blob() {
-        // Create a DOT blob with no CAK and no LAK (all zeros except HMAC) BEFORE acquiring lock
-        let blob = create_valid_dot_blob([0u32; 12], [0u32; 12]);
-        let flash_contents = blob.to_flash_contents();
-
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        // Create a DOT blob with no CAK and no LAK (all zeros except HMAC)
+        let blob = create_valid_dot_blob([0u32; 12], [0u32; 12]);
+        let flash_contents = blob.to_flash_contents();
 
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(flash_contents),
@@ -602,15 +605,15 @@ mod test {
     /// This verifies that the u32-based fuse array counting works properly.
     #[test]
     fn test_dot_fuse_array_counting() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         // This test verifies the DOT fuse structure parsing by checking
         // that a valid blob passes verification (which requires correct parsing).
-        // Create blob BEFORE acquiring lock using actual owner PK hash for consistency
+        // Use actual owner PK hash for consistency
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
         let flash_contents = blob.to_flash_contents();
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(flash_contents),
@@ -730,6 +733,9 @@ mod test {
     fn test_dot_fuse_burn_and_warm_reset() {
         use mcu_rom_common::McuBootMilestones;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         // Create a valid DOT blob with CAK and LAK set - this triggers lock transition
         // which causes the ROM to burn the DOT lock fuse (bit 0 of dot_fuse_array)
         let owner_pk_hash = get_owner_pk_hash();
@@ -741,9 +747,6 @@ mod test {
             "[TEST] DOT flash contents (first 32 bytes): {:02x?}",
             &flash_contents[..32]
         );
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // Start the hardware model with DOT enabled and runtime included (not rom_only)
         println!("[TEST] Starting hardware model with DOT flash and runtime");
@@ -896,6 +899,9 @@ mod test {
     fn test_dot_locked_state_boots_with_owner_cak() {
         use mcu_rom_common::McuBootMilestones;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         // Create a valid DOT blob with the actual owner PK hash as CAK
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -906,9 +912,6 @@ mod test {
             "[TEST] DOT flash contents (first 32 bytes): {:02x?}",
             &flash_contents[..32]
         );
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // Boot with DOT in locked state (ODD, 1 fuse burned) and runtime included.
         // The ROM should:
@@ -974,15 +977,15 @@ mod test {
     /// because the firmware signature won't match.
     #[test]
     fn test_dot_locked_state_wrong_cak_fails() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         // Create a DOT blob with an incorrect CAK (not matching the FW bundle's owner keys)
         let wrong_cak = [0x12345678u32; 12];
         let blob = create_valid_dot_blob(wrong_cak, test_lak());
         let flash_contents = blob.to_flash_contents();
 
         println!("[TEST] Created DOT blob with wrong CAK for locked state failure test");
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // Boot with DOT in locked state (ODD) but with wrong CAK
         // The ROM should set the wrong owner PK hash, causing RI_DOWNLOAD_FIRMWARE to fail
