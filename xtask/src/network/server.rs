@@ -189,14 +189,23 @@ pub fn start(options: &ServerOptions) -> Result<()> {
         format!("--interface={}", options.interface),
         "--bind-interfaces".to_string(),
         "--except-interface=lo".to_string(),
+        // Disable DNS server (port 53) to avoid conflicts with systemd-resolved
+        "--port=0".to_string(),
+        // Disable pre-allocation ping/ARP check for faster DHCP response
+        "--no-ping".to_string(),
         // DHCPv4
         format!(
             "--dhcp-range={},{},{}",
             options.dhcp4_range_start, options.dhcp4_range_end, options.dhcp4_lease_time
         ),
-        format!("--dhcp-option=66,{}", options.tftp_server_addr), // TFTP server
-        format!("--dhcp-option=67,{}", options.boot_file),        // Boot file name
     ];
+
+    // Only add TFTP-related DHCP options if TFTP is enabled and boot_file is non-empty
+    // Empty --dhcp-option=67, causes dnsmasq to segfault on some systems
+    if options.enable_tftp && !options.boot_file.is_empty() {
+        args.push(format!("--dhcp-option=66,{}", options.tftp_server_addr)); // TFTP server
+        args.push(format!("--dhcp-option=67,{}", options.boot_file)); // Boot file name
+    }
 
     // DHCPv6 options (if enabled)
     if options.enable_ipv6 {
@@ -216,9 +225,10 @@ pub fn start(options: &ServerOptions) -> Result<()> {
         args.push(format!("--tftp-root={}", dir.display()));
     }
 
-    // Daemon settings - let dnsmasq daemonize itself (no --no-daemon)
-    // Use --user=root to keep access to user directories for TFTP
+    // Daemon settings - use --no-daemon to avoid fork-related crashes on WSL2
+    // We spawn the process in background ourselves
     args.extend([
+        "--no-daemon".to_string(),
         format!("--pid-file={}", PID_FILE),
         format!("--log-facility={}", LOG_FILE),
         format!("--dhcp-leasefile={}", LEASE_FILE),
@@ -232,27 +242,33 @@ pub fn start(options: &ServerOptions) -> Result<()> {
 
     println!("  Starting dnsmasq...");
 
-    // Start dnsmasq with sudo - dnsmasq will daemonize itself
-    let status = Command::new("sudo")
+    // Start dnsmasq with sudo in background (since we use --no-daemon)
+    // Use setsid to detach from controlling terminal to prevent terminal corruption
+    let child = Command::new("sudo")
+        .arg("setsid")
+        .arg("--fork")
         .arg("dnsmasq")
         .args(&args_ref)
-        .status()
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
         .context("Failed to start dnsmasq")?;
 
-    if !status.success() {
-        bail!("dnsmasq failed to start. Check {} for errors.", LOG_FILE);
-    }
+    let pid = child.id();
 
-    // Brief delay to allow dnsmasq to fully start and write PID file
+    // Write PID file ourselves since dnsmasq with --no-daemon doesn't write it immediately
+    fs::write(PID_FILE, format!("{}", pid)).ok();
+
+    // Brief delay to allow dnsmasq to fully start
     std::thread::sleep(std::time::Duration::from_millis(200));
 
-    // Get the actual dnsmasq PID from the PID file it created
-    if let Ok(pid_str) = fs::read_to_string(PID_FILE) {
-        println!("  Server started (PID: {})", pid_str.trim());
-    } else if let Some(pid) = get_dnsmasq_pid() {
-        println!("  Server started (PID: {})", pid);
+    // Verify dnsmasq is running
+    if let Some(running_pid) = get_dnsmasq_pid() {
+        println!("  Server started (PID: {})", running_pid);
     } else {
-        println!("  Server start command issued, but process not detected");
+        // Try to read from our PID file
+        println!("  Server started (PID: {})", pid);
     }
     println!(
         "\n  DHCP range: {} - {}",

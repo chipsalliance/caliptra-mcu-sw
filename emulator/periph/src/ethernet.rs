@@ -250,16 +250,7 @@ impl Ethernet {
         if let Some(tap) = &self.tap {
             if let Ok(mut tap) = tap.lock() {
                 match tap.send(&self.tx_buffer[..frame_len]) {
-                    Ok(sent) => {
-                        eprintln!("[ETH TX] Sent {} bytes via TAP", sent);
-                        // Print first 64 bytes in hex for debugging
-                        let debug_len = frame_len.min(64);
-                        let hex: Vec<String> = self.tx_buffer[..debug_len]
-                            .iter()
-                            .map(|b| format!("{:02x}", b))
-                            .collect();
-                        eprintln!("[ETH TX] First {} bytes: {}", debug_len, hex.join(" "));
-                    }
+                    Ok(_) => {}
                     Err(e) => {
                         eprintln!("[ETH TX] Failed to send via TAP: {}", e);
                     }
@@ -289,22 +280,6 @@ impl Ethernet {
                 let mut buffer = vec![0u8; ETH_MAX_FRAME_SIZE];
                 match tap.recv(&mut buffer) {
                     Ok(len) if len > 0 => {
-                        // Print destination MAC and EtherType
-                        if len >= 14 {
-                            let ethertype = ((buffer[12] as u16) << 8) | buffer[13] as u16;
-                            eprintln!("[ETH RX] Received {} bytes, Dst MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}, EtherType: {:04x}",
-                                len,
-                                buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5],
-                                ethertype);
-                            // Extra debug for IPv4 packets (potential DHCP)
-                            if ethertype == 0x0800 && len > 42 {
-                                eprintln!("[ETH RX] *** IPv4 packet! Protocol: {}, Src Port: {}, Dst Port: {}",
-                                    buffer[23], // IP protocol
-                                    ((buffer[34] as u16) << 8) | buffer[35] as u16, // UDP src port
-                                    ((buffer[36] as u16) << 8) | buffer[37] as u16);
-                                // UDP dst port
-                            }
-                        }
                         buffer.truncate(len);
                         self.rx_queue.push_back(buffer);
                         // Trigger interrupt
@@ -329,20 +304,7 @@ impl Ethernet {
     }
 
     fn pop_rx_frame(&mut self) {
-        if let Some(frame) = self.rx_queue.front() {
-            if frame.len() >= 14 {
-                let ethertype = ((frame[12] as u16) << 8) | frame[13] as u16;
-                println!(
-                    "[ETH POP] Popping frame, len={}, EtherType: {:04x}, queue_len_after={}",
-                    frame.len(),
-                    ethertype,
-                    self.rx_queue.len().saturating_sub(1)
-                );
-                // dump the whole packet
-                let hex: Vec<String> = frame.iter().map(|b| format!("{:02x}", b)).collect();
-                println!("[ETH POP] Frame data: {}", hex.join(" "));
-            }
-        }
+        self.rx_queue.front();
         self.rx_queue.pop_front();
         self.write_eth_rx_ptr(ReadWriteRegister::new(0));
 
@@ -400,7 +362,6 @@ impl EthernetPeripheral for Ethernet {
         // RX_AVAIL: At least one frame in RX queue
         if !self.rx_queue.is_empty() {
             status.reg.modify(EthStatus::RxAvail::SET);
-            println!("[ETH STATUS] RxAvail=1, queue len={}", self.rx_queue.len());
         }
 
         // TX_BUSY

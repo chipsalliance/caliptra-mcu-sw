@@ -25,6 +25,8 @@ members = [
     "hw/model/test-fw",
     "network/app/example",
     "network/config",
+    "network/drivers",
+    "network/hil",
     "network/net/lwip-rs",
     "network/rom",
     "platforms/common",
@@ -216,7 +218,10 @@ mcu-platforms-common = { path = "platforms/common" }
 mcu-rom-common = { path = "rom" }
 mcu-test-harness = {path = "platforms/test_harness"}
 lwip-rs = { path = "network/net/lwip-rs" }
+network-app-rom-test = { path = "network/app/test" }
 network-config = { path = "network/config" }
+network-drivers = { path = "network/drivers" }
+network-hil = { path = "network/hil" }
 network-rom = { path = "network/rom" }
 mcu-testing-common = { path = "common/testing" }
 mcu-tock-veer = { path = "runtime/kernel/veer" }
