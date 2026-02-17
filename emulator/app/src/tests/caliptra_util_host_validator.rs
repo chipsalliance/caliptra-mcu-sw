@@ -166,7 +166,7 @@ pub fn run_mbox_responder(mbox: McuMailboxTransport) {
                         Err(e) => match e {
                             McuMailboxError::Busy => {
                                 if start.elapsed() > timeout {
-                                    println!("Timeout waiting for mailbox response after {} seconds", timeout.as_secs());
+                                    println!("Timeout waiting for mailbox response for command 0x{:08X} after {} seconds", cmd_type, timeout.as_secs());
                                     exit(-1);
                                 }
                                 sleep(std::time::Duration::from_millis(100));
