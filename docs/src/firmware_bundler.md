@@ -122,7 +122,7 @@ exec_mem = {
 }
 
 # The data memory required for this binary.
-ram = {
+data_mem = {
   "size" = 0x4000
 }
 
@@ -142,7 +142,7 @@ name = "kernel"
 exec_mem = {
   "size" = 0x2_0000
 }
-ram = {
+data_mem = {
   "size" = 0x1_0000
 }
 stack = 0xa000
@@ -154,7 +154,7 @@ name = "user-app-1"
 exec_mem = {
   "size" = 0x2_0000
 }
-ram = {
+data_mem = {
   "size" = 0x1_0000
 }
 stack = 0xa000
@@ -164,7 +164,7 @@ name = "user-app-2"
 exec_mem = {
   "size" = 0x1_0000
 }
-ram = {
+data_mem = {
   "size" = 0x3_0000
 }
 stack = 0x2_0000
@@ -173,20 +173,21 @@ stack = 0x2_0000
 A dynamic sizing manifest would resemble the following:
 
 ```toml
-# The platform retains the same configuration as above with the additional specification of dynamic
-# sizing.
+# The platform retains the same configuration as above with the additional
+# specification of dynamic sizing.
 [platform]
 name = "dynamic-sizing-example"
 tuple = "riscv32imc-unknown-none-elf"
 
-# This turns on dynamic sizing.  If this is specified the sizes of the instruction and data memory
-# for runtime applications will be calculated by the bundler.
+# This turns on dynamic sizing.  If this is specified the sizes of the
+# instruction and data memory for runtime applications will be calculated by
+# the bundler.
 dynamic_sizing = true
 
 # .... rest of platform configuration as described above ....
 
-# The application specifications, with the exec memory and data memory sections removed.  The stack
-# must be defined in this case.
+# The application specifications, with the exec memory and data memory sections
+# removed.  The stack must be defined in this case.
 [rom]
 name = "rom"
 stack = 0x2800
@@ -196,11 +197,17 @@ exception_stack = 0x800
 name = "kernel"
 stack = 0xa000
 
-# After the kernel, an unlimited number of user applications can be specified.  They will allocate
-# in the order they are specified.
+# After the kernel, an unlimited number of user applications can be specified.
+# They will allocate in the order they are specified.
 [[app]]
 name = "user-app-1"
 stack = 0xa000
+
+# The amount of space to reserve in the data allocation in a user space
+# application for TockOS grants.  This setting is only applied during dynamic
+# sizing, otherwise the `data_mem` budget should account for it.  If not set
+# this will default to 4Kb.
+grant_space = 0x4000
 
 [[app]]
 name = "user-app-2"
