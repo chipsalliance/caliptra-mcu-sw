@@ -298,39 +298,34 @@ connect_bd_intf_net [get_bd_intf_pins caliptra_package_top_0/mcu_rom_backdoor] [
 connect_bd_intf_net [get_bd_intf_pins caliptra_package_top_0/otp_mem_backdoor] [get_bd_intf_pins otp_ram_bram_ctrl_0/BRAM_PORTA]
 
 #### I3C Connections ####
-if {FALSE} {
-  # Connections to I3C driver board
-  create_bd_port -dir O -type data SDA_UP
-  create_bd_port -dir O -type data SDA_PUSH
-  create_bd_port -dir O -type data SDA_PULL
-  create_bd_port -dir I -type data SDA
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/SDA_UP]   [get_bd_ports SDA_UP]
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/SDA_PUSH] [get_bd_ports SDA_PUSH]
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/SDA_PULL] [get_bd_ports SDA_PULL]
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/SDA]      [get_bd_ports SDA]
+# Connections to I3C driver board
+create_bd_port -dir O -type data EXT_SDA_UP
+create_bd_port -dir O -type data EXT_SDA_IN
+create_bd_port -dir O -type data EXT_SDA_EN
+create_bd_port -dir I -type data EXT_SDA
+connect_bd_net [get_bd_pins /caliptra_package_top_0/EXT_SDA_UP] [get_bd_ports EXT_SDA_UP]
+connect_bd_net [get_bd_pins /caliptra_package_top_0/EXT_SDA_IN] [get_bd_ports EXT_SDA_IN]
+connect_bd_net [get_bd_pins /caliptra_package_top_0/EXT_SDA_EN] [get_bd_ports EXT_SDA_EN]
+connect_bd_net [get_bd_pins /caliptra_package_top_0/EXT_SDA]    [get_bd_ports EXT_SDA]
 
-  create_bd_port -dir O -type data SCL_UP
-  create_bd_port -dir O -type data SCL_PUSH
-  create_bd_port -dir O -type data SCL_PULL
-  create_bd_port -dir I -type data SCL
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/SCL_UP]   [get_bd_ports SCL_UP]
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/SCL_PUSH] [get_bd_ports SCL_PUSH]
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/SCL_PULL] [get_bd_ports SCL_PULL]
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/SCL]      [get_bd_ports SCL]
-} else {
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/SDA]                   [get_bd_pins xilinx_i3c_0/sda_i]
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/axi_i3c_sda_o]         [get_bd_pins xilinx_i3c_0/sda_o]
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/axi_i3c_sda_t]         [get_bd_pins xilinx_i3c_0/sda_t]
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/axi_i3c_sda_pullup_en] [get_bd_pins xilinx_i3c_0/sda_pullup_en]
+create_bd_port -dir I -type data EXT_SCL
+connect_bd_net [get_bd_pins /caliptra_package_top_0/EXT_SCL]    [get_bd_ports EXT_SCL]
 
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/SCL]                   [get_bd_pins xilinx_i3c_0/scl_i]
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/axi_i3c_scl_o]         [get_bd_pins xilinx_i3c_0/scl_o]
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/axi_i3c_scl_t]         [get_bd_pins xilinx_i3c_0/scl_t]
-  connect_bd_net [get_bd_pins /caliptra_package_top_0/axi_i3c_scl_pullup_en] [get_bd_pins xilinx_i3c_0/scl_pullup_en]
+# Connections to Xilinx I3C host
+connect_bd_net [get_bd_pins /caliptra_package_top_0/xilinx_sda]           [get_bd_pins xilinx_i3c_0/sda_i]
+connect_bd_net [get_bd_pins /caliptra_package_top_0/xilinx_sda_o]         [get_bd_pins xilinx_i3c_0/sda_o]
+connect_bd_net [get_bd_pins /caliptra_package_top_0/xilinx_sda_t]         [get_bd_pins xilinx_i3c_0/sda_t]
+connect_bd_net [get_bd_pins /caliptra_package_top_0/xilinx_sda_pullup_en] [get_bd_pins xilinx_i3c_0/sda_pullup_en]
 
-  connect_bd_net [get_bd_pins xilinx_i3c_0/s_axi_aresetn] [get_bd_pins xpm_cdc_gen_0/dest_rst_out]
-  connect_bd_net [get_bd_pins xpm_cdc_gen_0/src_rst] [get_bd_pins caliptra_package_top_0/xilinx_i3c_aresetn]
-}
+connect_bd_net [get_bd_pins /caliptra_package_top_0/xilinx_scl]           [get_bd_pins xilinx_i3c_0/scl_i]
+connect_bd_net [get_bd_pins /caliptra_package_top_0/xilinx_scl_o]         [get_bd_pins xilinx_i3c_0/scl_o]
+connect_bd_net [get_bd_pins /caliptra_package_top_0/xilinx_scl_t]         [get_bd_pins xilinx_i3c_0/scl_t]
+connect_bd_net [get_bd_pins /caliptra_package_top_0/xilinx_scl_pullup_en] [get_bd_pins xilinx_i3c_0/scl_pullup_en]
+
+connect_bd_net [get_bd_pins xilinx_i3c_0/s_axi_aresetn] [get_bd_pins xpm_cdc_gen_0/dest_rst_out]
+connect_bd_net [get_bd_pins xpm_cdc_gen_0/src_rst] [get_bd_pins caliptra_package_top_0/xilinx_i3c_aresetn]
+# End internal I3C
+
 
 #### ARM Core USER value ####
 connect_bd_net [get_bd_pins caliptra_package_top_0/ARM_USER] [get_bd_pins axi_interconnect_0/S00_AXI_awuser]
@@ -373,6 +368,9 @@ set_property STEPS.SYNTH_DESIGN.ARGS.GATED_CLOCK_CONVERSION $GATED_CLOCK_CONVERS
 # Add DDR pin placement constraints
 file copy $fpgaDir/src/ddr4_constraints.xdc $outputDir/ddr4_constraints.xdc
 add_files -fileset constrs_1 $outputDir/ddr4_constraints.xdc
+
+# Add External I3C pin placement constraints
+add_files -fileset constrs_1 $fpgaDir/src/versal_i3c_constraints.xdc
 
 # Xilinx I3C requires that the AXI clock be > 14 * SCL_CLK_FREQ. This needs to be set late in the script so that Vivado recognizes the higher AXI clock.
 set_property CONFIG.SCL_CLK_FREQ "$I3C_SCL_RATE_KHZ" [get_bd_cells xilinx_i3c_0]

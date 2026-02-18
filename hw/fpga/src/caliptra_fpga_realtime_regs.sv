@@ -708,6 +708,10 @@ module caliptra_fpga_realtime_regs (
                     logic next;
                     logic load_next;
                 } recovery_image_activated_o;
+                struct {
+                    logic next;
+                    logic load_next;
+                } use_ext_i3c_host;
             } spare_i3c_control_sts;
             struct {
                 struct {
@@ -1222,6 +1226,9 @@ module caliptra_fpga_realtime_regs (
                 struct {
                     logic value;
                 } recovery_image_activated_o;
+                struct {
+                    logic value;
+                } use_ext_i3c_host;
             } spare_i3c_control_sts;
             struct {
                 struct {
@@ -2847,6 +2854,29 @@ module caliptra_fpga_realtime_regs (
         end
     end
     assign hwif_out.interface_regs.spare_i3c_control_sts.recovery_image_activated_o.value = field_storage.interface_regs.spare_i3c_control_sts.recovery_image_activated_o.value;
+    // Field: caliptra_fpga_realtime_regs.interface_regs.spare_i3c_control_sts.use_ext_i3c_host
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.interface_regs.spare_i3c_control_sts && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.value & ~decoded_wr_biten[31:31]) | (decoded_wr_data[31:31] & decoded_wr_biten[31:31]);
+            load_next_c = '1;
+        end
+        field_combo.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.next = next_c;
+        field_combo.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.value <= 1'h0;
+        end else begin
+            if(field_combo.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.load_next) begin
+                field_storage.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.value <= field_combo.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.next;
+            end
+        end
+    end
+    assign hwif_out.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.value = field_storage.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.value;
     for(genvar i0=0; i0<16; i0++) begin
         // Field: caliptra_fpga_realtime_regs.interface_regs.ocp_lock_key_release_reg[].key
         always_comb begin
@@ -4047,7 +4077,8 @@ module caliptra_fpga_realtime_regs (
     assign readback_array[82][1:1] = (decoded_reg_strb.interface_regs.spare_i3c_control_sts && !decoded_req_is_wr) ? field_storage.interface_regs.spare_i3c_control_sts.irq_o.value : '0;
     assign readback_array[82][2:2] = (decoded_reg_strb.interface_regs.spare_i3c_control_sts && !decoded_req_is_wr) ? field_storage.interface_regs.spare_i3c_control_sts.recovery_payload_available_o.value : '0;
     assign readback_array[82][3:3] = (decoded_reg_strb.interface_regs.spare_i3c_control_sts && !decoded_req_is_wr) ? field_storage.interface_regs.spare_i3c_control_sts.recovery_image_activated_o.value : '0;
-    assign readback_array[82][31:4] = '0;
+    assign readback_array[82][30:4] = '0;
+    assign readback_array[82][31:31] = (decoded_reg_strb.interface_regs.spare_i3c_control_sts && !decoded_req_is_wr) ? field_storage.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.value : '0;
     for(genvar i0=0; i0<16; i0++) begin
         assign readback_array[i0 * 1 + 83][31:0] = (decoded_reg_strb.interface_regs.ocp_lock_key_release_reg[i0] && !decoded_req_is_wr) ? field_storage.interface_regs.ocp_lock_key_release_reg[i0].key.value : '0;
     end
