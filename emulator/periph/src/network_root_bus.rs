@@ -14,11 +14,12 @@ Abstract:
 
 --*/
 
-use crate::{EmuCtrl, Uart};
+use crate::{EmuCtrl, Ethernet, TapDevice, Uart};
 use caliptra_emu_bus::Event;
 use caliptra_emu_bus::{Bus, BusError, Clock, Ram, Rom};
 use caliptra_emu_cpu::{Pic, PicMmioRegisters};
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
+use emulator_registers_generated::ethernet::EthernetBus;
 use network_config::DEFAULT_NETWORK_MEMORY_MAP;
 use std::{
     cell::RefCell,
@@ -42,6 +43,8 @@ pub struct NetworkRootBusOffsets {
     pub dccm_size: u32,
     pub pic_offset: u32,
     pub pic_size: u32,
+    pub eth_offset: u32,
+    pub eth_size: u32,
 }
 
 impl Default for NetworkRootBusOffsets {
@@ -59,6 +62,8 @@ impl Default for NetworkRootBusOffsets {
             dccm_size: DEFAULT_NETWORK_MEMORY_MAP.dccm_size,
             pic_offset: DEFAULT_NETWORK_MEMORY_MAP.pic_offset,
             pic_size: DEFAULT_NETWORK_MEMORY_MAP.pic_size,
+            eth_offset: DEFAULT_NETWORK_MEMORY_MAP.eth_offset,
+            eth_size: DEFAULT_NETWORK_MEMORY_MAP.eth_size,
         }
     }
 }
@@ -72,6 +77,7 @@ pub struct NetworkRootBusArgs {
     pub log_dir: PathBuf,
     pub uart_output: Option<Rc<RefCell<Vec<u8>>>>,
     pub uart_rx: Option<Arc<Mutex<Option<u8>>>>,
+    pub tap_device: Option<Arc<Mutex<Box<dyn TapDevice>>>>,
     pub offsets: NetworkRootBusOffsets,
 }
 
@@ -84,6 +90,7 @@ pub struct NetworkRootBusArgs {
 /// - DCCM: Data Closely Coupled Memory for stack/heap
 /// - UART: Debug output
 /// - PIC: Interrupt controller
+/// - Ethernet: TAP-based network interface
 pub struct NetworkRootBus {
     pub rom: Rom,
     pub uart: Uart,
@@ -91,22 +98,32 @@ pub struct NetworkRootBus {
     pub iccm: Rc<RefCell<Ram>>,
     pub dccm: Rc<RefCell<Ram>>,
     pub pic_regs: PicMmioRegisters,
+    pub eth: EthernetBus,
     event_sender: Option<mpsc::Sender<Event>>,
     offsets: NetworkRootBusOffsets,
 }
 
 impl NetworkRootBus {
     pub const UART_NOTIF_IRQ: u8 = 16;
+    pub const ETH_NOTIF_IRQ: u8 = 17;
 
     pub fn new(mut args: NetworkRootBusArgs) -> Result<Self, std::io::Error> {
         let clock = args.clock;
         let pic = args.pic;
         let rom = Rom::new(std::mem::take(&mut args.rom));
         let uart_irq = pic.register_irq(Self::UART_NOTIF_IRQ);
+        let eth_irq = pic.register_irq(Self::ETH_NOTIF_IRQ);
         let iccm = Ram::new(vec![0; args.offsets.iccm_size as usize]);
         let dccm = Ram::new(vec![0; args.offsets.dccm_size as usize]);
 
         let ctrl = EmuCtrl::new();
+        let mut eth = Ethernet::new(args.tap_device, eth_irq, &clock);
+        // Set a default MAC address for the Network Coprocessor
+        // Using a locally administered address (bit 1 of first byte set)
+        eth.set_mac_addr([0x02, 0x00, 0x00, 0x00, 0x00, 0x01]);
+        let eth_bus = EthernetBus {
+            periph: Box::new(eth),
+        };
 
         Ok(Self {
             rom,
@@ -115,6 +132,7 @@ impl NetworkRootBus {
             uart: Uart::new(args.uart_output, args.uart_rx, uart_irq, &clock.clone()),
             ctrl,
             pic_regs: pic.mmio_regs(clock.clone()),
+            eth: eth_bus,
             event_sender: None,
             offsets: args.offsets,
         })
@@ -172,6 +190,11 @@ impl Bus for NetworkRootBus {
         {
             return self.pic_regs.read(size, addr - self.offsets.pic_offset);
         }
+        // Ethernet access
+        if addr >= self.offsets.eth_offset && addr < self.offsets.eth_offset + self.offsets.eth_size
+        {
+            return self.eth.read(size, addr - self.offsets.eth_offset);
+        }
         Err(BusError::LoadAccessFault)
     }
 
@@ -219,6 +242,11 @@ impl Bus for NetworkRootBus {
                 .pic_regs
                 .write(size, addr - self.offsets.pic_offset, val);
         }
+        // Ethernet access
+        if addr >= self.offsets.eth_offset && addr < self.offsets.eth_offset + self.offsets.eth_size
+        {
+            return self.eth.write(size, addr - self.offsets.eth_offset, val);
+        }
         Err(BusError::StoreAccessFault)
     }
 
@@ -229,6 +257,7 @@ impl Bus for NetworkRootBus {
         self.iccm.borrow_mut().poll();
         self.dccm.borrow_mut().poll();
         self.pic_regs.poll();
+        self.eth.poll();
     }
 
     fn warm_reset(&mut self) {
@@ -238,6 +267,7 @@ impl Bus for NetworkRootBus {
         self.iccm.borrow_mut().warm_reset();
         self.dccm.borrow_mut().warm_reset();
         self.pic_regs.warm_reset();
+        self.eth.warm_reset();
     }
 
     fn update_reset(&mut self) {
@@ -247,6 +277,7 @@ impl Bus for NetworkRootBus {
         self.iccm.borrow_mut().update_reset();
         self.dccm.borrow_mut().update_reset();
         self.pic_regs.update_reset();
+        self.eth.update_reset();
     }
 
     fn register_outgoing_events(&mut self, sender: mpsc::Sender<Event>) {

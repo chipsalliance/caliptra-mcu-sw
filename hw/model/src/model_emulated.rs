@@ -390,6 +390,7 @@ impl McuHwModel for ModelEmulated {
                 pic: network_pic.clone(),
                 clock: network_clock.clone(),
                 uart_output: Some(network_uart_output.clone()),
+                tap_device: params.network_tap_device.clone(),
                 ..Default::default()
             };
 
@@ -707,7 +708,7 @@ mod test {
             None,
             None,
             None,
-            Some(mcu_rom.clone().into()),
+            Some(mcu_rom.clone()),
             None,
             None,
             None,
