@@ -18,6 +18,8 @@ pub mod boot_status;
 pub use boot_status::*;
 mod device_ownership_transfer;
 pub use device_ownership_transfer::*;
+mod dot_recovery;
+pub use dot_recovery::*;
 pub mod flash;
 pub use flash::*;
 mod fuse_layout;

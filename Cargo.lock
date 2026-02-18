@@ -4863,6 +4863,7 @@ dependencies = [
  "caliptra-image-types",
  "chrono",
  "crc",
+ "ecdsa",
  "emulator-consts",
  "emulator-periph",
  "fips204",

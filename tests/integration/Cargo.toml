@@ -29,6 +29,7 @@ caliptra-image-types.workspace = true
 caliptra-image-fake-keys.workspace = true
 chrono.workspace = true
 crc.workspace = true
+ecdsa.workspace = true
 emulator-consts.workspace = true
 emulator-periph.workspace = true
 fips204.workspace = true

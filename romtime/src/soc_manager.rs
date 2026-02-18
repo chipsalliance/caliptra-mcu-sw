@@ -233,6 +233,84 @@ impl CaliptraSoC {
         }))
     }
 
+    /// Executes a mailbox request assembled from a header part and additional
+    /// `&[u32]` payload parts.  The first element of `parts` must begin with a
+    /// [`MailboxReqHeader`] (its checksum is computed automatically).  The
+    /// remaining parts are concatenated after it in order.
+    ///
+    /// This avoids copying large buffers (e.g. MLDSA keys/signatures) onto the
+    /// stack — the caller can pass references to wherever the data already
+    /// lives (SRAM, flash, etc.).  All slices are `&[u32]` because the MCI
+    /// mailbox SRAM may not be byte-addressable.
+    pub fn exec_mailbox_req_u32_parts(
+        &mut self,
+        cmd: u32,
+        parts: &mut [&mut [u32]],
+        resp: &mut [u32],
+    ) -> core::result::Result<(), CaliptraApiError> {
+        if parts.is_empty() || parts[0].is_empty() {
+            return Err(CaliptraApiError::MailboxReqTypeTooSmall);
+        }
+
+        // Compute total length in bytes.
+        let mut total_words: usize = 0;
+        let mut pi = 0;
+        while pi < parts.len() {
+            total_words += parts[pi].len();
+            pi += 1;
+        }
+        let total_bytes = total_words * 4;
+
+        // Compute checksum: sum every byte of cmd and all payload bytes
+        // (everything after the 4-byte MailboxReqHeader checksum field).
+        // We sum by decomposing u32 words into their LE bytes.
+        fn sum_word_bytes(word: u32) -> u32 {
+            let b = word.to_le_bytes();
+            (b[0] as u32)
+                .wrapping_add(b[1] as u32)
+                .wrapping_add(b[2] as u32)
+                .wrapping_add(b[3] as u32)
+        }
+        let mut chksum = sum_word_bytes(cmd);
+        // First part: skip word 0 (the header checksum slot)
+        let mut wi = 1;
+        while wi < parts[0].len() {
+            chksum = chksum.wrapping_add(sum_word_bytes(parts[0][wi]));
+            wi += 1;
+        }
+        // Remaining parts: sum all words
+        pi = 1;
+        while pi < parts.len() {
+            wi = 0;
+            while wi < parts[pi].len() {
+                chksum = chksum.wrapping_add(sum_word_bytes(parts[pi][wi]));
+                wi += 1;
+            }
+            pi += 1;
+        }
+        let chksum = 0u32.wrapping_sub(chksum);
+
+        // Write checksum into the header (first u32 of first part).
+        parts[0][0] = chksum;
+
+        // Stream all parts to the mailbox.
+        let iter = parts.iter().flat_map(|p| p.iter().copied());
+        self.start_mailbox_req(cmd, total_bytes, iter)?;
+        let resp_len_bytes = resp.len() * 4;
+        match self.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
+            Ok(Some(resp_iter)) => {
+                for (i, r) in resp_iter.enumerate() {
+                    if i < resp.len() {
+                        resp[i] = r;
+                    }
+                }
+                Ok(())
+            }
+            Err(err) => Err(err),
+            _ => Err(CaliptraApiError::MailboxNoResponseData),
+        }
+    }
+
     /// Executes a mailbox request that is represented as a u32 slice and
     /// writing the response to a u32 slice.
     /// This is useful for code size to avoid unaligned and byte-level access,

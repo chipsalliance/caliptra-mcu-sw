@@ -47,8 +47,18 @@ impl FlashStorage for SimpleFlash {
     fn write(&self, buffer: &[u8], address: usize) -> Result<(), FlashDrvError> {
         let mem = self.memory.take();
         let result = match mem.get_mut(address..address + buffer.len()) {
-            Some(slice) => {
-                slice.copy_from_slice(buffer);
+            Some(slice) if slice.len() == buffer.len() => {
+                // SAFETY: This is the same as copy_from_slice, but for some reason
+                // the Rust compiler is not optimizing out the panic if the lengths
+                // match, even though the lengths always match.
+                // Possibly a compiler bug?
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        buffer.as_ptr(),
+                        slice.as_mut_ptr(),
+                        buffer.len(),
+                    );
+                }
                 Ok(())
             }
             _ => Err(FlashDrvError::INVAL),

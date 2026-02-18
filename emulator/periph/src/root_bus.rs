@@ -271,6 +271,15 @@ impl Bus for McuRootBus {
                 val,
             );
         }
+        if addr >= self.offsets.dot_flash_offset
+            && addr < self.offsets.dot_flash_offset + self.offsets.dot_flash_size
+        {
+            return self.dot_flash.borrow_mut().write(
+                size,
+                addr - self.offsets.dot_flash_offset,
+                val,
+            );
+        }
         Err(BusError::StoreAccessFault)
     }
 

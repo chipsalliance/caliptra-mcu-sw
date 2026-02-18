@@ -614,6 +614,10 @@ pub struct RomParameters<'a> {
     pub dot_stable_key_type: Option<CmStableKeyType>,
     /// Flash storage interface for DOT blob.
     pub dot_flash: Option<&'a dyn FlashStorage>,
+    /// Recovery handler for recovering from corrupted DOT blob in ODD state (backup blob flow).
+    pub dot_recovery_handler: Option<&'a dyn crate::DotRecoveryHandler>,
+    /// Recovery transport for full challenge/response DOT recovery protocol.
+    pub dot_recovery_transport: Option<&'a dyn crate::RecoveryTransport>,
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,
