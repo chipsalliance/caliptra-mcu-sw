@@ -537,12 +537,16 @@ pub unsafe extern "C" fn emulator_send_uart_char(
     };
 
     if let Some(ref stdin_uart_arc) = stdin_uart {
-        let mut uart_rx = stdin_uart_arc.lock().unwrap();
-        if uart_rx.is_none() {
-            *uart_rx = Some(character as u8);
-            1
-        } else {
-            0 // Buffer full
+        match stdin_uart_arc.lock() {
+            Ok(mut uart_rx) => {
+                if uart_rx.is_none() {
+                    *uart_rx = Some(character as u8);
+                    1
+                } else {
+                    0 // Buffer full
+                }
+            }
+            Err(_) => -1, // Mutex poisoned
         }
     } else {
         -1 // UART RX not enabled
@@ -574,11 +578,15 @@ pub unsafe extern "C" fn emulator_uart_rx_ready(emulator_memory: *mut CEmulator)
     };
 
     if let Some(ref stdin_uart_arc) = stdin_uart {
-        let uart_rx = stdin_uart_arc.lock().unwrap();
-        if uart_rx.is_none() {
-            1
-        } else {
-            0
+        match stdin_uart_arc.lock() {
+            Ok(uart_rx) => {
+                if uart_rx.is_none() {
+                    1
+                } else {
+                    0
+                }
+            }
+            Err(_) => -1, // Mutex poisoned
         }
     } else {
         -1 // UART RX not enabled
