@@ -208,7 +208,9 @@ impl NextestArchiveCommand {
     }
 
     pub fn build(self) -> String {
-        let mut cmd = format!("cd {} && ", self.work_dir);
+        let mut cmd =
+            String::from("apt-get update -qq && apt-get install -y -qq clang >/dev/null 2>&1 && ");
+        cmd.push_str(&format!("cd {} && ", self.work_dir));
         cmd.push_str("CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc ");
         cmd.push_str("cargo nextest archive ");
 
