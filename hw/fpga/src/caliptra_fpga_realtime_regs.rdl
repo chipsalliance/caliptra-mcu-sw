@@ -241,6 +241,8 @@ regfile interface_regs {
         field { sw=r;  hw=rw; desc = "RSVD in core"; } irq_o[1:1] = 1'b0;
         field { sw=r;  hw=rw; desc = "RSVD in core"; } recovery_payload_available_o[2:2] = 1'b0;
         field { sw=r;  hw=rw; desc = "RSVD in core"; } recovery_image_activated_o[3:3] = 1'b0;
+
+        field { sw=rw; hw=r; desc = "RSVD in core"; } use_ext_i3c_host[31:31] = 1'b0;
     } spare_i3c_control_sts;
 
     reg {

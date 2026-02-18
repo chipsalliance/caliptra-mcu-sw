@@ -17,6 +17,9 @@
 import axi_struct_pkg::*;
 import caliptra_fpga_realtime_regs_pkg::*;
 
+`include "config_defines.svh"
+`include "caliptra_macros.svh"
+
 module caliptra_wrapper_top (
     input bit core_clk,
     input bit i3c_clk,
@@ -25,16 +28,23 @@ module caliptra_wrapper_top (
     output wire xilinx_i3c_aresetn,
     (* syn_keep = "true", mark_debug = "true" *) output reg axi_reset,
 
-    // I3C signals from AXI I3C
-    (* syn_keep = "true", mark_debug = "true" *) input wire axi_i3c_scl_t,
-    (* syn_keep = "true", mark_debug = "true" *) input wire axi_i3c_scl_o,
-    (* syn_keep = "true", mark_debug = "true" *) input wire axi_i3c_scl_pullup_en,
-    (* syn_keep = "true", mark_debug = "true" *) input wire axi_i3c_sda_t,
-    (* syn_keep = "true", mark_debug = "true" *) input wire axi_i3c_sda_o,
-    (* syn_keep = "true", mark_debug = "true" *) input wire axi_i3c_sda_pullup_en,
+    // I3C signals to driver board
+    (* syn_keep = "true", mark_debug = "true" *)output logic EXT_SDA_UP,
+    (* syn_keep = "true", mark_debug = "true" *)output logic EXT_SDA_IN,
+    (* syn_keep = "true", mark_debug = "true" *)output logic EXT_SDA_EN,
+    (* syn_keep = "true", mark_debug = "true" *)input  logic EXT_SDA,
+    (* syn_keep = "true", mark_debug = "true" *)input  logic EXT_SCL,
+
+    // I3C signals from Xilinx I3C
+    (* syn_keep = "true", mark_debug = "true" *) input wire xilinx_scl_t,
+    (* syn_keep = "true", mark_debug = "true" *) input wire xilinx_scl_o,
+    (* syn_keep = "true", mark_debug = "true" *) input wire xilinx_scl_pullup_en,
+    (* syn_keep = "true", mark_debug = "true" *) input wire xilinx_sda_t,
+    (* syn_keep = "true", mark_debug = "true" *) input wire xilinx_sda_o,
+    (* syn_keep = "true", mark_debug = "true" *) input wire xilinx_sda_pullup_en,
     // I3C signals back to AXI I3C
-    (* syn_keep = "true", mark_debug = "true" *) output reg SCL,
-    (* syn_keep = "true", mark_debug = "true" *) output reg SDA,
+    (* syn_keep = "true", mark_debug = "true" *) output reg xilinx_scl,
+    (* syn_keep = "true", mark_debug = "true" *) output reg xilinx_sda,
 
     // Caliptra S_AXI Interface
     input  wire [31:0] S_AXI_CALIPTRA_AWADDR,
@@ -1338,7 +1348,7 @@ mcu_rom (
     )
     cptra_ss_mci_mcu_sram_req_if (
         .clk(core_clk),
-        .rst_b(rst_l)
+        .rst_b(axi_reset)
     );
 
     xpm_memory_spram #(
@@ -1879,13 +1889,20 @@ mcu_rom (
 
     // TODO: Cleanup I3C connection code https://github.com/chipsalliance/caliptra-mcu-sw/issues/369
     /*
-    Line Driver logic
+    Line Driver logic - Board built for line driver
     sel_od_pp == 1 indicates push-pull
     | sel_od_pp | phy2io | phy_data_io |    |   IN |   EN | UP |    |      wire      |
     |         0 |      0 |           z | -> |    x |    1 |  1 | -> | z              | // TODO: Use z or pull up 2k?
     |         0 |      1 |           0 | -> |    1 |    0 |  0 | -> | open drain low | // What? These look backwards
     |         1 |      0 |           0 | -> |    1 |    0 |  1 | -> | push pull low  |
     |         1 |      1 |           1 | -> |    0 |    0 |  1 | -> | push pull high |
+    Line Driver Logic - Table from schematic
+    | IN | EN | UP  | DOWN | OUTPUT
+    | X  | H  | H   | L    | Z
+    | X  | H  | L   | L    | PULL-UP 2K
+    | H  | L  | L   | L    | OPEN-DRAIN LOW
+    | H  | L  | H   | L    | PUSH-PULL LOW
+    | L  | L  | H   | L    | PUSH-PULL HIGH
 
     Discrete logic
     sel_od_pp == 1 indicates push-pull
@@ -1895,83 +1912,138 @@ mcu_rom (
     |         1 |      0 |           0 | -> |    1 |    1 |  1 | -> | push pull low  |
     |         1 |      1 |           1 | -> |    0 |    0 |  1 | -> | push pull high |
     */
+    
+
     // I3C Core within Subsystem
     (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_sel_od_pp_o;
+    (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_sda_oe;
     (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_sda_o;
+    (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_sda;
     (* syn_keep = "true", mark_debug = "true" *) logic i3c_core_scl;
     // Spare I3C Core in Wrapper
     (* syn_keep = "true", mark_debug = "true" *) logic spare_i3c_core_sel_od_pp_o;
+    (* syn_keep = "true", mark_debug = "true" *) logic spare_i3c_core_sda_oe;
     (* syn_keep = "true", mark_debug = "true" *) logic spare_i3c_core_sda_o;
+    (* syn_keep = "true", mark_debug = "true" *) logic spare_i3c_core_sda;
     (* syn_keep = "true", mark_debug = "true" *) logic spare_i3c_core_scl;
+
+    // External I3C host
+    logic EXT_SCL_synchronized;
+    logic EXT_SDA_synchronized;
+
     // For signals from the i3c-core to the SDA logic switch based on use_spare_i3c_core
     (* syn_keep = "true", mark_debug = "true" *) logic selected_i3c_core_sel_od_pp_o;
+    (* syn_keep = "true", mark_debug = "true" *) logic selected_i3c_core_sda_oe;
     (* syn_keep = "true", mark_debug = "true" *) logic selected_i3c_core_sda_o;
 
+    // Connect appropriate I3C device and host
     always_comb begin
         selected_i3c_core_sel_od_pp_o = (hwif_out.interface_regs.spare_i3c_control_sts.use_spare_i3c_core.value) ? spare_i3c_core_sel_od_pp_o : i3c_core_sel_od_pp_o;
+        selected_i3c_core_sda_oe =      (hwif_out.interface_regs.spare_i3c_control_sts.use_spare_i3c_core.value) ? spare_i3c_core_sda_oe      : i3c_core_sda_oe;
         selected_i3c_core_sda_o =       (hwif_out.interface_regs.spare_i3c_control_sts.use_spare_i3c_core.value) ? spare_i3c_core_sda_o       : i3c_core_sda_o;
 
-        i3c_core_scl       = ~(hwif_out.interface_regs.spare_i3c_control_sts.use_spare_i3c_core.value) & SCL;
-        spare_i3c_core_scl =  (hwif_out.interface_regs.spare_i3c_control_sts.use_spare_i3c_core.value) & SCL;
+        i3c_core_scl       = ~(hwif_out.interface_regs.spare_i3c_control_sts.use_spare_i3c_core.value) & ((hwif_out.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.value) ? EXT_SCL_synchronized : xilinx_scl);
+        spare_i3c_core_scl =  (hwif_out.interface_regs.spare_i3c_control_sts.use_spare_i3c_core.value) & ((hwif_out.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.value) ? EXT_SCL_synchronized : xilinx_scl);
+        
+        i3c_core_sda       = ~(hwif_out.interface_regs.spare_i3c_control_sts.use_spare_i3c_core.value) & ((hwif_out.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.value) ? EXT_SDA_synchronized : xilinx_sda);
+        spare_i3c_core_sda =  (hwif_out.interface_regs.spare_i3c_control_sts.use_spare_i3c_core.value) & ((hwif_out.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.value) ? EXT_SDA_synchronized : xilinx_sda);
     end
 
+    // External I3C connections
+
+    // TODO: Change these signals to SDA_IN and SDA_EN to reflect that we are using the line driver
+    always_comb begin
+        case ({ hwif_out.interface_regs.spare_i3c_control_sts.use_ext_i3c_host.value, selected_i3c_core_sda_oe, selected_i3c_core_sel_od_pp_o, selected_i3c_core_sda_o })
+        4'b1100: {EXT_SDA_IN, EXT_SDA_EN, EXT_SDA_UP} = 3'b100; // OD low
+        4'b1101: {EXT_SDA_IN, EXT_SDA_EN, EXT_SDA_UP} = 3'b010; // Pull-up 2K
+        4'b1110: {EXT_SDA_IN, EXT_SDA_EN, EXT_SDA_UP} = 3'b101; // Push-pull low
+        4'b1111: {EXT_SDA_IN, EXT_SDA_EN, EXT_SDA_UP} = 3'b001; // Push-pull high
+        default: {EXT_SDA_IN, EXT_SDA_EN, EXT_SDA_UP} = 3'b011; // No output enable. Z: x11
+        endcase
+    end
+
+    // Synchronize SCL
+    xpm_cdc_single #(
+        .DEST_SYNC_FF(4),   // DECIMAL; range: 2-10
+        .INIT_SYNC_FF(0),   // DECIMAL; 0=disable simulation init values, 1=enable simulation init values
+        .SIM_ASSERT_CHK(0), // DECIMAL; 0=disable simulation messages, 1=enable simulation messages
+        .SRC_INPUT_REG(0)   // DECIMAL; 0=do not register input, 1=register input
+    )
+    xpm_cdc_single_scl (
+    .dest_out(EXT_SCL_synchronized),
+    .dest_clk(i3c_clk),
+    .src_in(EXT_SCL)
+    );
+    
+    // Synchronize SDA
+    xpm_cdc_single #(
+        .DEST_SYNC_FF(4),   // DECIMAL; range: 2-10
+        .INIT_SYNC_FF(0),   // DECIMAL; 0=disable simulation init values, 1=enable simulation init values
+        .SIM_ASSERT_CHK(0), // DECIMAL; 0=disable simulation messages, 1=enable simulation messages
+        .SRC_INPUT_REG(0)   // DECIMAL; 0=do not register input, 1=register input
+    )
+    xpm_cdc_single_sda (
+    .dest_out(EXT_SDA_synchronized),
+    .dest_clk(i3c_clk),
+    .src_in(EXT_SDA)
+    );
+
+    // Xilinx I3C connections
     always_comb begin
         // Depends on Xilinx I3C only
-        case ({~axi_i3c_scl_t, axi_i3c_scl_o})
-        2'b00:   SCL = 1'b1; //  AXI_I3C | output disable, data 0
-        2'b01:   SCL = 1'b1; //  AXI_I3C | output disable, data 1
-        2'b10:   SCL = 1'b0; //  AXI_I3C | output enable,  data 0
-        2'b11:   SCL = 1'b1; //  AXI_I3C | output enable,  data 1
-
-        default: SCL = 1'b1;
+        case ({~xilinx_scl_t, xilinx_scl_o})
+        2'b00:   xilinx_scl = 1'b1; // Xilinx I3C | output disable, data 0
+        2'b01:   xilinx_scl = 1'b1; // Xilinx I3C | output disable, data 1
+        2'b10:   xilinx_scl = 1'b0; // Xilinx I3C | output enable,  data 0
+        2'b11:   xilinx_scl = 1'b1; // Xilinx I3C | output enable,  data 1
+        default: xilinx_scl = 1'b1;
         endcase
     end
 
     always_comb begin
-        //     i3c-core                                              | AXI I3C
-        case ({selected_i3c_core_sel_od_pp_o, selected_i3c_core_sda_o, axi_i3c_sda_pullup_en, ~axi_i3c_sda_t, axi_i3c_sda_o
-        })
+        //     i3c-core                                              | XILINX I3C
+        case ({selected_i3c_core_sel_od_pp_o, selected_i3c_core_sda_o, xilinx_sda_pullup_en, ~xilinx_sda_t, xilinx_sda_o})
         // Open drain, i3c_core pulls data low.
-        5'b00000:   SDA = 1'b0; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 0, output disable, data 0 // Conflict between OD status
-        5'b00001:   SDA = 1'b0; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 0, output disable, data 1 // Conflict between OD status
-        5'b00010:   SDA = 1'b0; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 0, output enable,  data 0 // Conflict between OD status
-        5'b00011:   SDA = 1'b1; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 0, output enable,  data 1 // Conflict between OD status
-        5'b00100:   SDA = 1'b0; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 1, output disable, data 0
-        5'b00101:   SDA = 1'b0; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 1, output disable, data 1
-        5'b00110:   SDA = 1'b0; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 1, output enable,  data 0
-        5'b00111:   SDA = 1'b1; // I3C core Open Drain - data 0, pull low | AXI_I3C | pullup 1, output enable,  data 1
+        5'b00000:   xilinx_sda = 1'b0; // I3C core Open Drain - data 0, pull low | XILINX I3C | pullup 0, output disable, data 0 // Conflict between OD status
+        5'b00001:   xilinx_sda = 1'b0; // I3C core Open Drain - data 0, pull low | XILINX I3C | pullup 0, output disable, data 1 // Conflict between OD status
+        5'b00010:   xilinx_sda = 1'b0; // I3C core Open Drain - data 0, pull low | XILINX I3C | pullup 0, output enable,  data 0 // Conflict between OD status
+        5'b00011:   xilinx_sda = 1'b1; // I3C core Open Drain - data 0, pull low | XILINX I3C | pullup 0, output enable,  data 1 // Conflict between OD status
+        5'b00100:   xilinx_sda = 1'b0; // I3C core Open Drain - data 0, pull low | XILINX I3C | pullup 1, output disable, data 0
+        5'b00101:   xilinx_sda = 1'b0; // I3C core Open Drain - data 0, pull low | XILINX I3C | pullup 1, output disable, data 1
+        5'b00110:   xilinx_sda = 1'b0; // I3C core Open Drain - data 0, pull low | XILINX I3C | pullup 1, output enable,  data 0
+        5'b00111:   xilinx_sda = 1'b1; // I3C core Open Drain - data 0, pull low | XILINX I3C | pullup 1, output enable,  data 1
 
         // Open drain, i3c_core leaves data high. High unless AXI I3C pulls low
-        5'b01000:   SDA = 1'b1; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 0, output disable, data 0
-        5'b01001:   SDA = 1'b1; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 0, output disable, data 1
-        5'b01010:   SDA = 1'b0; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 0, output enable,  data 0 // Conflict between OD status. AXI I3C trying to drive PP
-        5'b01011:   SDA = 1'b1; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 0, output enable,  data 1 // Conflict between OD status. AXI I3C trying to drive PP
-        5'b01100:   SDA = 1'b1; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 1, output disable, data 0 // AXI I3C not driving
-        5'b01101:   SDA = 1'b1; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 1, output disable, data 1 // AXI I3C not driving
-        5'b01110:   SDA = 1'b0; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 1, output enable,  data 0 // AXI I3C pulling low
-        5'b01111:   SDA = 1'b1; // I3C core Open Drain - data 1, pull up | AXI_I3C | pullup 1, output enable,  data 1 // Both pushing the same high value
+        5'b01000:   xilinx_sda = 1'b1; // I3C core Open Drain - data 1, pull up  | XILINX I3C | pullup 0, output disable, data 0
+        5'b01001:   xilinx_sda = 1'b1; // I3C core Open Drain - data 1, pull up  | XILINX I3C | pullup 0, output disable, data 1
+        5'b01010:   xilinx_sda = 1'b0; // I3C core Open Drain - data 1, pull up  | XILINX I3C | pullup 0, output enable,  data 0 // Conflict between OD status. AXI I3C trying to drive PP
+        5'b01011:   xilinx_sda = 1'b1; // I3C core Open Drain - data 1, pull up  | XILINX I3C | pullup 0, output enable,  data 1 // Conflict between OD status. AXI I3C trying to drive PP
+        5'b01100:   xilinx_sda = 1'b1; // I3C core Open Drain - data 1, pull up  | XILINX I3C | pullup 1, output disable, data 0 // AXI I3C not driving
+        5'b01101:   xilinx_sda = 1'b1; // I3C core Open Drain - data 1, pull up  | XILINX I3C | pullup 1, output disable, data 1 // AXI I3C not driving
+        5'b01110:   xilinx_sda = 1'b0; // I3C core Open Drain - data 1, pull up  | XILINX I3C | pullup 1, output enable,  data 0 // AXI I3C pulling low
+        5'b01111:   xilinx_sda = 1'b1; // I3C core Open Drain - data 1, pull up  | XILINX I3C | pullup 1, output enable,  data 1 // Both pushing the same high value
 
         // I3C core Push Pull - output low
-        5'b10000:   SDA = 1'b0; // I3C core Push Pull - data 0 | AXI_I3C | pullup 0, output disable, data 0 // AXI I3C not driving
-        5'b10001:   SDA = 1'b0; // I3C core Push Pull - data 0 | AXI_I3C | pullup 0, output disable, data 1 // AXI I3C not driving
-        5'b10010:   SDA = 1'b0; // I3C core Push Pull - data 0 | AXI_I3C | pullup 0, output enable,  data 0 // Both driving the same
-        5'b10011:   SDA = 1'b1; // I3C core Push Pull - data 0 | AXI_I3C | pullup 0, output enable,  data 1 // Conflict! Driving different values!!! This should never happen according to I3C spec
-        5'b10100:   SDA = 1'b0; // I3C core Push Pull - data 0 | AXI_I3C | pullup 1, output disable, data 0 // Conflict between OD status.
-        5'b10101:   SDA = 1'b0; // I3C core Push Pull - data 0 | AXI_I3C | pullup 1, output disable, data 1 // Conflict between OD status.
-        5'b10110:   SDA = 1'b0; // I3C core Push Pull - data 0 | AXI_I3C | pullup 1, output enable,  data 0 // Conflict between OD status.
-        5'b10111:   SDA = 1'b1; // I3C core Push Pull - data 0 | AXI_I3C | pullup 1, output enable,  data 1 // Conflict between OD status.
-
+        5'b10000:   xilinx_sda = 1'b0; // I3C core Push Pull - data 0            | XILINX I3C | pullup 0, output disable, data 0 // AXI I3C not driving
+        5'b10001:   xilinx_sda = 1'b0; // I3C core Push Pull - data 0            | XILINX I3C | pullup 0, output disable, data 1 // AXI I3C not driving
+        5'b10010:   xilinx_sda = 1'b0; // I3C core Push Pull - data 0            | XILINX I3C | pullup 0, output enable,  data 0 // Both driving the same
+        5'b10011:   xilinx_sda = 1'b1; // I3C core Push Pull - data 0            | XILINX I3C | pullup 0, output enable,  data 1 // Conflict! Driving different values!!! This should never happen according to I3C spec
+        5'b10100:   xilinx_sda = 1'b0; // I3C core Push Pull - data 0            | XILINX I3C | pullup 1, output disable, data 0 // Conflict between OD status.
+        5'b10101:   xilinx_sda = 1'b0; // I3C core Push Pull - data 0            | XILINX I3C | pullup 1, output disable, data 1 // Conflict between OD status.
+        5'b10110:   xilinx_sda = 1'b0; // I3C core Push Pull - data 0            | XILINX I3C | pullup 1, output enable,  data 0 // Conflict between OD status.
+        5'b10111:   xilinx_sda = 1'b1; // I3C core Push Pull - data 0            | XILINX I3C | pullup 1, output enable,  data 1 // Conflict between OD status.
 
         // I3C core Push Pull - output high
-        5'b11000:   SDA = 1'b1; // I3C core Push Pull - data 1 | AXI_I3C | pullup 0, output disable, data 0 // AXI I3C not driving
-        5'b11001:   SDA = 1'b1; // I3C core Push Pull - data 1 | AXI_I3C | pullup 0, output disable, data 1 // AXI I3C not driving
-        5'b11010:   SDA = 1'b0; // I3C core Push Pull - data 1 | AXI_I3C | pullup 0, output enable,  data 0 // Conflict! Driving different values!!! This should never happen according to I3C spec
-        5'b11011:   SDA = 1'b1; // I3C core Push Pull - data 1 | AXI_I3C | pullup 0, output enable,  data 1 // Both driving the same
-        5'b11100:   SDA = 1'b1; // I3C core Push Pull - data 1 | AXI_I3C | pullup 1, output disable, data 0 // Conflict between OD status.
-        5'b11101:   SDA = 1'b1; // I3C core Push Pull - data 1 | AXI_I3C | pullup 1, output disable, data 1 // Conflict between OD status.
-        5'b11110:   SDA = 1'b0; // I3C core Push Pull - data 1 | AXI_I3C | pullup 1, output enable,  data 0 // Conflict between OD status.
-        5'b11111:   SDA = 1'b1; // I3C core Push Pull - data 1 | AXI_I3C | pullup 1, output enable,  data 1 // Conflict between OD status.
-        default: SDA = 1'b1;
+        5'b11000:   xilinx_sda = 1'b1; // I3C core Push Pull - data 1            | XILINX I3C | pullup 0, output disable, data 0 // AXI I3C not driving
+        5'b11001:   xilinx_sda = 1'b1; // I3C core Push Pull - data 1            | XILINX I3C | pullup 0, output disable, data 1 // AXI I3C not driving
+        5'b11010:   xilinx_sda = 1'b0; // I3C core Push Pull - data 1            | XILINX I3C | pullup 0, output enable,  data 0 // Conflict! Driving different values!!! This should never happen according to I3C spec
+        5'b11011:   xilinx_sda = 1'b1; // I3C core Push Pull - data 1            | XILINX I3C | pullup 0, output enable,  data 1 // Both driving the same
+        5'b11100:   xilinx_sda = 1'b1; // I3C core Push Pull - data 1            | XILINX I3C | pullup 1, output disable, data 0 // Conflict between OD status.
+        5'b11101:   xilinx_sda = 1'b1; // I3C core Push Pull - data 1            | XILINX I3C | pullup 1, output disable, data 1 // Conflict between OD status.
+        5'b11110:   xilinx_sda = 1'b0; // I3C core Push Pull - data 1            | XILINX I3C | pullup 1, output enable,  data 0 // Conflict between OD status.
+        5'b11111:   xilinx_sda = 1'b1; // I3C core Push Pull - data 1            | XILINX I3C | pullup 1, output enable,  data 1 // Conflict between OD status.
+
+        default:    xilinx_sda = 1'b1;
         endcase
     end
 
@@ -2057,11 +2129,11 @@ mcu_rom (
     
         // I3C Signals
         .scl_i                          (spare_i3c_core_scl),
-        .sda_i                          (SDA),
+        .sda_i                          (spare_i3c_core_sda),
         .scl_o                          (),
         .sda_o                          (spare_i3c_core_sda_o),
         .scl_oe                         (),
-        .sda_oe                         (),
+        .sda_oe                         (spare_i3c_core_sda_oe),
     
         // Additional signals
         .sel_od_pp_o                    (spare_i3c_core_sel_od_pp_o),
@@ -2092,6 +2164,7 @@ logic cptra_ss_mcu_halt_ack;
 logic i3c_recovery_payload_available;
 logic i3c_recovery_image_activated;
 
+/*
 // TODO: Unconnected signals issue: https://github.com/chipsalliance/caliptra-mcu-sw/issues/370
 caliptra_ss_top #(
     .MCU_MBOX0_SIZE_KB(16),
@@ -2295,8 +2368,8 @@ caliptra_ss_top #(
     .cptra_ss_strap_ocp_lock_en_i(hwif_out.interface_regs.control.ocp_lock_en.value),
 
     // TODO: Connect
-    /*output logic        */ .cptra_ss_dbg_manuf_enable_o(),
-    /*output logic [63:0] */ .cptra_ss_cptra_core_soc_prod_dbg_unlock_level_o(),
+    .cptra_ss_dbg_manuf_enable_o(), // output logic
+    .cptra_ss_cptra_core_soc_prod_dbg_unlock_level_o(), // output logic [63:0]
 
     // LC Clock bypass not interesting for FPGA. Tie to Off so that LC transitions work.
     .cptra_ss_lc_clk_byp_ack_i(lc_ctrl_pkg::Off),
@@ -2308,8 +2381,8 @@ caliptra_ss_top #(
     .cptra_ss_lc_esclate_scrap_state1_i(hwif_out.interface_regs.mcu_config.cptra_ss_lc_esclate_scrap_state1_i.value),   // If you assert them, Caliptr-SS will enter SCRAP mode
 
     // TODO: Connect?
-    /*output wire*/ .cptra_ss_soc_dft_en_o(),
-    /*output wire*/ .cptra_ss_soc_hw_debug_en_o(),
+    .cptra_ss_soc_dft_en_o(),
+    .cptra_ss_soc_hw_debug_en_o(),
 
     // Caliptra SS Fuse Controller Interface (Fuse Macros)
     .cptra_ss_fuse_macro_outputs_i (cptra_ss_fuse_macro_outputs_tb),
@@ -2317,11 +2390,11 @@ caliptra_ss_top #(
 
     // Caliptra SS I3C GPIO Interface
     .cptra_ss_i3c_scl_i(i3c_core_scl),
-    .cptra_ss_i3c_sda_i(SDA),
+    .cptra_ss_i3c_sda_i(i3c_core_sda),
     .cptra_ss_i3c_scl_o(),
     .cptra_ss_i3c_sda_o(i3c_core_sda_o),
-    .cptra_ss_i3c_scl_oe(), // TODO: Connect
-    .cptra_ss_i3c_sda_oe(), // TODO: Connect
+    .cptra_ss_i3c_scl_oe(), // Always zero
+    .cptra_ss_i3c_sda_oe(i3c_core_sda_oe),
     .cptra_ss_sel_od_pp_o(i3c_core_sel_od_pp_o),
 
     .cptra_ss_i3c_recovery_payload_available_o(i3c_recovery_payload_available),
@@ -2350,5 +2423,5 @@ caliptra_ss_top #(
     assign mci_boot_fsm       = caliptra_ss_top_0.mci_top_i.i_boot_seqr.boot_fsm;
     assign caliptra_log       = fifo_char;
     assign dbg_log            = hwif_out.fifo_regs.dbg_fifo_push.in_data.value[7:0];
-
+*/
 endmodule

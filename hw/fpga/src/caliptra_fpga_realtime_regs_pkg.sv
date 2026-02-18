@@ -631,10 +631,15 @@ package caliptra_fpga_realtime_regs_pkg;
     } interface_regs__spare_i3c_control_sts__recovery_image_activated_o__out_t;
 
     typedef struct {
+        logic value;
+    } interface_regs__spare_i3c_control_sts__use_ext_i3c_host__out_t;
+
+    typedef struct {
         interface_regs__spare_i3c_control_sts__use_spare_i3c_core__out_t use_spare_i3c_core;
         interface_regs__spare_i3c_control_sts__irq_o__out_t irq_o;
         interface_regs__spare_i3c_control_sts__recovery_payload_available_o__out_t recovery_payload_available_o;
         interface_regs__spare_i3c_control_sts__recovery_image_activated_o__out_t recovery_image_activated_o;
+        interface_regs__spare_i3c_control_sts__use_ext_i3c_host__out_t use_ext_i3c_host;
     } interface_regs__spare_i3c_control_sts__out_t;
 
     typedef struct {
