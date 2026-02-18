@@ -292,7 +292,7 @@ pub mod test {
         let feature = feature.replace("_", "-");
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some(&feature),
-            i3c_port: Some(PortPicker::new().pick().unwrap()),
+            i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
             ..Default::default()
         });
 

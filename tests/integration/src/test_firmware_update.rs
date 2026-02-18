@@ -510,7 +510,7 @@ mod test {
             format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
         );
 
-        let i3c_port = PortPicker::new().pick().unwrap().into();
+        let i3c_port = PortPicker::new().random(true).pick().unwrap().into();
 
         // Check if we have prebuilt binaries for this feature
         if has_prebuilt_binaries(feature) {
