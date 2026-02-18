@@ -156,7 +156,10 @@ pub struct RegisterType {
 }
 
 impl RegisterType {
-    /// Returns true if the types are equal except comments.
+    /// Returns true if the types are equal except comments and default values.
+    /// Default values (reset values) are instance-level properties in SystemRDL,
+    /// so two registers with the same structure but different reset values
+    /// should be considered the same type.
     fn equals_except_comment(&self, other: &RegisterType) -> bool {
         if self.name != other.name || self.width != other.width {
             return false;
@@ -171,6 +174,8 @@ impl RegisterType {
             let mut b = other.fields[i].clone();
             a.comment = "".to_string();
             b.comment = "".to_string();
+            a.default_val = 0;
+            b.default_val = 0;
             if a != b {
                 return false;
             }
