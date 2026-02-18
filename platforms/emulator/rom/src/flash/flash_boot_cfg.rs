@@ -19,7 +19,7 @@ impl<'a> FlashBootCfg<'a> {
             [0; core::mem::size_of::<PartitionTable>()];
         self.flash_driver
             .read(0, &mut partition_table_data)
-            .expect("Failed to read partition table data");
+            .map_err(|_| ())?;
 
         let (partition_table, _) =
             PartitionTable::read_from_prefix(&partition_table_data).map_err(|_| ())?;

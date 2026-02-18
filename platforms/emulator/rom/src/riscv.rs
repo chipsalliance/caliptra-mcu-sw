@@ -86,20 +86,12 @@ pub extern "C" fn rom_entry() -> ! {
             PARTITION_TABLE.offset,
             PARTITION_TABLE.size,
         )
-        .map_err(|_| {
-            fatal_error(EmulatorError::InitFlashPartitionDriver.into());
-        })
-        .ok()
-        .unwrap();
+        .unwrap_or_else(|_| fatal_error(EmulatorError::InitFlashPartitionDriver.into()));
 
         let boot_cfg = FlashBootCfg::new(&mut partition_table_driver);
         let active_partition = boot_cfg
             .get_active_partition()
-            .map_err(|_| {
-                fatal_error(EmulatorError::InitBootCfg.into());
-            })
-            .ok()
-            .unwrap();
+            .unwrap_or_else(|_| fatal_error(EmulatorError::InitBootCfg.into()));
 
         let partition_a = FlashPartition::new(
             &primary_flash_ctrl,
@@ -107,22 +99,14 @@ pub extern "C" fn rom_entry() -> ! {
             IMAGE_A_PARTITION.offset,
             IMAGE_A_PARTITION.size,
         )
-        .map_err(|_| {
-            fatal_error(EmulatorError::InitFlashPartitionA.into());
-        })
-        .ok()
-        .unwrap();
+        .unwrap_or_else(|_| fatal_error(EmulatorError::InitFlashPartitionA.into()));
         let partition_b = FlashPartition::new(
             &secondary_flash_ctrl,
             "Image B",
             IMAGE_B_PARTITION.offset,
             IMAGE_B_PARTITION.size,
         )
-        .map_err(|_| {
-            fatal_error(EmulatorError::InitFlashPartitionB.into());
-        })
-        .ok()
-        .unwrap();
+        .unwrap_or_else(|_| fatal_error(EmulatorError::InitFlashPartitionB.into()));
 
         let mut flash_image_partition_driver = match active_partition {
             PartitionId::A => {
@@ -160,11 +144,7 @@ pub extern "C" fn rom_entry() -> ! {
             0, // Start at offset 0
             primary_flash_ctrl.capacity(),
         )
-        .map_err(|_| {
-            fatal_error(EmulatorError::InitFlashPartitionDriver.into());
-        })
-        .ok()
-        .unwrap();
+        .unwrap_or_else(|_| fatal_error(EmulatorError::InitFlashPartitionDriver.into()));
 
         romtime::println!("[mcu-rom] Booting from flash");
 

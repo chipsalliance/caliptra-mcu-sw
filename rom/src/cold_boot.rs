@@ -444,8 +444,7 @@ impl BootFlow for ColdBoot {
                 mci.set_flow_checkpoint(McuRomBootStatus::FlashRecoveryFlowStarted.into());
 
                 crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
-                    .map_err(|_| fatal_error(McuError::ROM_COLD_BOOT_LOAD_IMAGE_ERROR))
-                    .unwrap();
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_COLD_BOOT_LOAD_IMAGE_ERROR));
 
                 romtime::println!("[mcu-rom] Flash Recovery flow complete");
                 mci.set_flow_checkpoint(McuRomBootStatus::FlashRecoveryFlowComplete.into());

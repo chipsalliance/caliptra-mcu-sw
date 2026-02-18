@@ -35,12 +35,16 @@ SECTIONS
         PROVIDE(ESTACK_START = . );
     } > RAM
 
+    /DISCARD/ :
+    {
+        *(.eh_frame*)
+    }
+
     .data : AT(ROM_DATA)
     {
         . = ALIGN(4);
         *(.data*);
         *(.sdata*);
-        KEEP(*(.eh_frame))
         . = ALIGN(4);
         PROVIDE( GLOBAL_POINTER = . + 0x800 );
         . = ALIGN(4);
@@ -66,4 +70,3 @@ ROM_DATA_START = LOADADDR(.data);
 STACK_TOP = ORIGIN(RAM) + SIZEOF(.stack);
 STACK_ORIGIN = ORIGIN(RAM);
 MRAC_VALUE = 0xaaa9a5aa;
-

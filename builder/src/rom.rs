@@ -135,12 +135,16 @@ SECTIONS
 
     ROM_DATA = .;
 
+    /DISCARD/ :
+    {
+        *(.eh_frame*)
+    }
+
     .data : AT(ROM_DATA)
     {
         . = ALIGN(4);
         *(.data*);
         *(.sdata*);
-        KEEP(*(.eh_frame))
         . = ALIGN(4);
         PROVIDE( GLOBAL_POINTER = . + 0x800 );
         . = ALIGN(4);
