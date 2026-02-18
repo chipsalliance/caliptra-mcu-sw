@@ -29,7 +29,6 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
 1. Assert Caliptra boot go signal to bring Caliptra out of reset.
 1. Read Caliptra SoC `FLOW_STATUS` register to wait for Caliptra Ready for Fuses state.
 1. Anything SoC-specific can happen here
-   1. Stash to Caliptra if required (i.e., if any security-sensitive code is loaded, such as PLL programming or configuration loading). Note: Caliptra must be up and ready for fuses before stashing can occur.
 1. Read non-secret fuses from the OTP controller. The authoritative fuse map is contained in [the main Caliptra specification](https://github.com/chipsalliance/Caliptra/blob/main/doc/Caliptra.md#fuse-map).
 1. Write fuse data to Caliptra SoC interface fuse registers. The following fuses are written to the corresponding Caliptra registers:
     * [`FUSE_PQC_KEY_TYPE`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_pqc_key_type): Vendor PQC key type (2 bits)
@@ -57,7 +56,6 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
 1. Verify PK hashes and MCU mailbox AXI users after locking (see [Security Configuration](#security-configuration) below).
 1. Poll on Caliptra `FLOW_STATUS` registers for Caliptra to deassert the Ready for Fuses state.
 1. Handle [device ownership transfer](./dot.md), if applicable.
-1. Stash the MCU ROM and other measurements to Caliptra.
 1. Send the `RI_DOWNLOAD_FIRMWARE` command to Caliptra to start the firmware loading process. Caliptra will:
    1. Follow all of the [steps](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#firmware-processor-stage) in the Caliptra ROM documentation for firmware loading in the ROM cold reset.
    1. Transition to Caliptra runtime firmware.
@@ -68,11 +66,11 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
       1. Caliptra runtime returns to mailbox processing mode.
       1. MCU derives or imports the decryption key to the Caliptra cryptographic mailbox.
       1. MCU issues a CM_AES_GCM_DECRYPT_DMA command to decrypt the firmware in MCU SRAM.
-      1. MCU issues the ACTIVATE_FIRMARE command to Caliptra activate the MCU firmware.
+      1. MCU issues the ACTIVATE_FIRMWARE command to Caliptra to activate the MCU firmware.
    1. Caliptra sets the MCI [`FW_EXEC_CTRL[2]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_GENERIC_FW_EXEC_CTRL%5B0%5D) bit to indicate that MCU firmware is ready
 1. Wait for Caliptra to indicate MCU firmware is ready by polling the firmware ready status.
+1. Stash the MCU ROM and other security-sensitive measurements to Caliptra. (In 2.1 subsystem mode, this should happen after Caliptra runtime is available using CM_SHA_{INIT,UPDATE,FINAL}. In 2.0 or 2.1 core mode, this could potentially happen earlier using the CM_SHA ROM command.)
 1. MCU ROM triggers a reset by writing `0x1` to the MCI `RESET_REQUEST` register. This generates a hardware reset of the MCU core while maintaining power. The MCI hardware automatically sets `RESET_REASON` to `FirmwareBootReset`, causing the MCU to restart and enter the Firmware Boot Reset flow, which will jump to the loaded firmware.
-1. Clear the watchdog timer.
 
 ```mermaid
 sequenceDiagram
@@ -83,9 +81,6 @@ sequenceDiagram
     mcu->>caliptra: read flow status
     end
     note right of mcu: SoC-specific init
-    opt if required
-        mcu->>caliptra: stash
-    end
     mcu->>otp: read non-secret fuses
     otp->>mcu: non-secret fuses
     mcu->>caliptra: set non-secret fuses
