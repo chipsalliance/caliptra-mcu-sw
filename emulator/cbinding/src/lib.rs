@@ -199,7 +199,11 @@ pub struct CEmulatorConfig {
     pub fuse_vendor_test_partition: *const c_char,        // Optional, can be null
 
     // External device callbacks (can be null)
+    /// Function pointer for external read callback, or null for none.
+    /// Must match the CExternalReadCallback signature when non-null.
     pub external_read_callback: *const std::ffi::c_void,
+    /// Function pointer for external write callback, or null for none.
+    /// Must match the CExternalWriteCallback signature when non-null.
     pub external_write_callback: *const std::ffi::c_void,
     pub callback_context: *const std::ffi::c_void, // Context pointer for callbacks
 }
@@ -355,19 +359,22 @@ pub unsafe extern "C" fn emulator_init(
     let read_callback = if config.external_read_callback.is_null() {
         None
     } else {
+        // Safety: caller guarantees non-null callback matches CExternalReadCallback signature
         let c_callback: CExternalReadCallback =
             unsafe { std::mem::transmute(config.external_read_callback) };
-        let context = config.callback_context;
-        Some(convert_c_read_callback(c_callback, context))
+        Some(convert_c_read_callback(c_callback, config.callback_context))
     };
 
     let write_callback = if config.external_write_callback.is_null() {
         None
     } else {
+        // Safety: caller guarantees non-null callback matches CExternalWriteCallback signature
         let c_callback: CExternalWriteCallback =
             unsafe { std::mem::transmute(config.external_write_callback) };
-        let context = config.callback_context;
-        Some(convert_c_write_callback(c_callback, context))
+        Some(convert_c_write_callback(
+            c_callback,
+            config.callback_context,
+        ))
     };
 
     // Create the emulator with callbacks
