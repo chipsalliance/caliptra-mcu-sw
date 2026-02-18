@@ -201,7 +201,19 @@ pub struct CEmulatorConfig {
     // External device callbacks (can be null)
     pub external_read_callback: *const std::ffi::c_void,
     pub external_write_callback: *const std::ffi::c_void,
-    pub callback_context: *const std::ffi::c_void, // Context pointer for callbacks
+    /// Context pointer passed to external read/write callbacks.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the object pointed to by this pointer
+    /// remains valid for the entire lifetime of the emulator instance
+    /// (i.e., until emulator_destroy is called). The emulator stores
+    /// this pointer internally and will pass it to the registered
+    /// callbacks on every bus transaction that hits the external
+    /// address range. Freeing or invalidating the context object
+    /// while the emulator is still alive will result in undefined
+    /// behavior.
+    pub callback_context: *const std::ffi::c_void,
 }
 
 /// Get the size required to allocate memory for the emulator
@@ -232,6 +244,7 @@ pub extern "C" fn emulator_get_alignment() -> usize {
 /// * `emulator_memory` must be properly aligned (use `emulator_get_alignment()`)
 /// * `config` must be a valid pointer to a CEmulatorConfig structure
 /// * All string pointers in `config` must be valid null-terminated C strings
+/// * `config.callback_context` must remain valid until `emulator_destroy` is called
 #[no_mangle]
 pub unsafe extern "C" fn emulator_init(
     emulator_memory: *mut CEmulator,
