@@ -12,5 +12,9 @@ network-config.workspace = true
 [dependencies]
 network-config.workspace = true
 
+[[bin]]
+name = "network-rom"
+test = false
+
 [features]
 default = []
