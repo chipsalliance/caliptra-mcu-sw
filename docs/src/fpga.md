@@ -11,7 +11,6 @@ The machine that is used for development and cross compilation should have:
 - Rust
 - Podman
   - Alternatively you can use docker, but it will need to support rootless commands. Here are the steps [here](https://docs.docker.com/engine/security/rootless/).
-  - Make sure you pull the FPGA build image: `$ podman pull ghcr.io/chipsalliance/caliptra-build-image:latest` or `$ docker pull ghcr.io/chipsalliance/caliptra-build-image:latest`
 - rsync
 - git
 - Cargo-nextest

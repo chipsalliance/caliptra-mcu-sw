@@ -12,6 +12,8 @@ use std::{
 
 use mcu_builder::PROJECT_ROOT;
 
+const BUILDER_IMAGE: &str = "ghcr.io/chipsalliance/caliptra-builder:latest";
+
 /// Check that host system has all the tools that the xtask FPGA flows depends on.
 pub fn check_host_dependencies() -> Result<()> {
     if Container::try_new().is_err() {
@@ -254,6 +256,13 @@ impl Container {
             bail!("Host needs either podman or Docker installed!");
         };
 
+        println!("Checking for build image updates");
+        Command::new(program)
+            .arg("pull")
+            .arg(BUILDER_IMAGE)
+            .output()
+            .context("Failed to pull new builder image")?;
+
         Ok(Self {
             cmd: Command::new(program),
         })
@@ -307,9 +316,7 @@ impl Container {
         let basename = caliptra_sw.file_name().unwrap().to_str().unwrap();
         let display = caliptra_path.display();
         self.volume(&display.to_string(), &format!("/{basename}"));
-        self.arg("ghcr.io/chipsalliance/caliptra-build-image:latest")
-            .arg("/bin/bash")
-            .arg("-c");
+        self.arg(BUILDER_IMAGE).arg("/bin/bash").arg("-c");
         Ok(self)
     }
 
