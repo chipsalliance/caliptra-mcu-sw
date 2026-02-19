@@ -270,6 +270,10 @@ pub struct EmulatorArgs {
     pub fuse_vendor_hashes_prod_partition: Option<String>,
     #[arg(long)]
     pub fuse_vendor_test_partition: Option<String>,
+
+    /// Enable warning prints when auto-generated register stubs handle a read/write.
+    #[arg(long, default_value_t = false)]
+    pub stub_warnings: bool,
 }
 
 pub struct Emulator {
@@ -315,6 +319,9 @@ impl Emulator {
 
         #[cfg(not(feature = "test-flash-based-boot"))]
         let is_flash_based_boot = cli.flash_based_boot;
+
+        // Configure stub warnings based on CLI flag
+        emulator_registers_generated::stub_warnings::set_stub_warnings(cli.stub_warnings);
 
         let args_rom = &cli.rom;
         let args_log_dir = &cli.log_dir.unwrap_or_else(|| PathBuf::from("/tmp"));

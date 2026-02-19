@@ -198,6 +198,9 @@ pub struct CEmulatorConfig {
     pub fuse_vendor_hashes_prod_partition: *const c_char, // Optional, can be null
     pub fuse_vendor_test_partition: *const c_char,        // Optional, can be null
 
+    // Enable stub warning prints for unoverridden register stubs
+    pub stub_warnings: c_uchar, // 0 = false, 1 = true
+
     // External device callbacks (can be null)
     /// Function pointer for external read callback, or null for none.
     /// Must match the CExternalReadCallback signature when non-null.
@@ -366,6 +369,7 @@ pub unsafe extern "C" fn emulator_init(
         ),
         fuse_vendor_test_partition: convert_optional_c_string(config.fuse_vendor_test_partition),
         network_rom: None,
+        stub_warnings: config.stub_warnings != 0,
     };
 
     // Convert C callbacks to Rust callbacks if provided

@@ -418,6 +418,7 @@ void print_usage(const char* program_name) {
     printf("      --lc-size <LC_SIZE>              Override LC size\n");
     printf("      --mbox-offset <MBOX_OFFSET>      Override Caliptra mailbox offset\n");
     printf("      --mbox-size <MBOX_SIZE>          Override Caliptra mailbox size\n");
+    printf("      --stub-warnings                  Enable warning prints for unoverridden register stubs\n");
 }
 
 // Free run function similar to main.rs
@@ -576,6 +577,7 @@ int main(int argc, char *argv[]) {
         .external_read_callback = NULL,
         .external_write_callback = NULL,
         .callback_context = NULL,
+        .stub_warnings = 0,
     };
 
     // Define long options
@@ -623,6 +625,7 @@ int main(int argc, char *argv[]) {
         {"lc-size", required_argument, 0, 162},
         {"mbox-offset", required_argument, 0, 163},
         {"mbox-size", required_argument, 0, 164},
+        {"stub-warnings", no_argument, 0, 172},
         {"help", no_argument, 0, 'h'},
         {"version", no_argument, 0, 'V'},
         {0, 0, 0, 0}
@@ -766,6 +769,9 @@ int main(int argc, char *argv[]) {
                 break;
             case 164: // --mbox-size
                 config.mbox_size = parse_hex_or_decimal(optarg);
+                break;
+            case 172: // --stub-warnings
+                config.stub_warnings = 1;
                 break;
             case 'h':
                 print_usage(argv[0]);
