@@ -7,7 +7,7 @@ use crate::mailbox_api::{
 };
 use caliptra_api::mailbox::{
     CommandId, GetFmcAliasEcc384CertReq, GetIdevCsrReq, GetIdevCsrResp, GetLdevEcc384CertReq,
-    GetRtAliasEcc384CertReq, InvokeDpeReq, MailboxReqHeader, MailboxRespHeader,
+    GetRtAliasEcc384CertReq, InvokeDpeReq, MailboxRespHeader,
     PopulateIdevEcc384CertReq, Request, MAX_RESP_DATA_SIZE,
 };
 use dpe::commands::{
@@ -281,23 +281,17 @@ impl CertContext {
         &mut self,
         dpe_cmd: &mut Command<'_>,
     ) -> CaliptraApiResult<DpeResponse> {
-        let mut cmd_data: [u8; InvokeDpeReq::DATA_MAX_SIZE] = [0; InvokeDpeReq::DATA_MAX_SIZE];
+        let mut mbox_req = InvokeDpeReq::new_zeroed();
 
         let cmd_hdr = CommandHdr::new(DpeProfile::P384Sha384, dpe_cmd.id());
 
         let cmd_hdr_bytes = cmd_hdr.as_bytes();
-        cmd_data[..cmd_hdr_bytes.len()].copy_from_slice(cmd_hdr_bytes);
+        mbox_req.data[..cmd_hdr_bytes.len()].copy_from_slice(cmd_hdr_bytes);
 
         let dpe_cmd_bytes = dpe_cmd.as_bytes();
-        cmd_data[cmd_hdr_bytes.len()..cmd_hdr_bytes.len() + dpe_cmd_bytes.len()]
+        mbox_req.data[cmd_hdr_bytes.len()..cmd_hdr_bytes.len() + dpe_cmd_bytes.len()]
             .copy_from_slice(dpe_cmd_bytes);
-        let cmd_data_len = cmd_hdr_bytes.len() + dpe_cmd_bytes.len();
-
-        let mut mbox_req = InvokeDpeReq {
-            hdr: MailboxReqHeader { chksum: 0 },
-            data_size: cmd_data_len as u32,
-            data: cmd_data,
-        };
+        mbox_req.data_size = (cmd_hdr_bytes.len() + dpe_cmd_bytes.len()) as u32;
 
         let mut mbox_resp = DpeEcResp::default();
 
@@ -309,10 +303,7 @@ impl CertContext {
         )
         .await?;
 
-        let mut resp = DpeEcResp::new_zeroed();
-        let resp_size = size_of::<DpeEcResp>();
-        resp.as_mut_bytes()[..].copy_from_slice(&mbox_resp.as_mut_bytes()[..resp_size]);
-        self.parse_dpe_response(dpe_cmd, &resp)
+        self.parse_dpe_response(dpe_cmd, &mbox_resp)
     }
 
     fn parse_dpe_response(
