@@ -6,7 +6,7 @@ mod test {
     use std::thread;
     use std::time::Duration;
 
-    use crate::jtag::test::{debug_is_unlocked, ss_setup};
+    use crate::jtag::test::{debug_is_unlocked, ss_setup, verify_execute_from_sram};
 
     use caliptra_hw_model::jtag::CaliptraCoreReg;
     use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
@@ -188,5 +188,7 @@ mod test {
             .expect("Failed to set sysbus access.");
         let is_unlocked = debug_is_unlocked(&mut *core_tap, &mut *mcu_tap).unwrap_or(false);
         assert_eq!(is_unlocked, true);
+
+        verify_execute_from_sram(&mut mcu_tap).expect("Failed to execute program from SRAM");
     }
 }
