@@ -775,7 +775,7 @@ mod test {
 
         let feature = feature.replace("_", "-");
         let test_runtime = get_or_compile_runtime(&feature, example_app);
-        let i3c_port = PortPicker::new().pick().unwrap().to_string();
+        let i3c_port = PortPicker::new().random(true).pick().unwrap().to_string();
 
         // Try to create CaliptraBuilder with prebuilt binaries
         let caliptra_builder =
@@ -884,7 +884,7 @@ mod test {
 
         let feature = "test-exit-immediately".to_string();
         let test_runtime = get_or_compile_runtime(&feature, false);
-        let i3c_port = PortPicker::new().pick().unwrap().to_string();
+        let i3c_port = PortPicker::new().random(true).pick().unwrap().to_string();
         let caliptra_builder =
             create_caliptra_builder_with_prebuilt(test_runtime.clone(), &feature);
         let test = run_runtime(
@@ -917,7 +917,7 @@ mod test {
 
         let feature = "test-mcu-rom-flash-access".to_string();
         let test_runtime = get_or_compile_runtime(&feature, false);
-        let i3c_port = PortPicker::new().pick().unwrap().to_string();
+        let i3c_port = PortPicker::new().random(true).pick().unwrap().to_string();
         let caliptra_builder =
             create_caliptra_builder_with_prebuilt(test_runtime.clone(), &feature);
         let test = run_runtime(
@@ -970,7 +970,7 @@ mod test {
             val.to_le_bytes()
         };
 
-        let i3c_port = PortPicker::new().pick().unwrap().to_string();
+        let i3c_port = PortPicker::new().random(true).pick().unwrap().to_string();
         Some(run_runtime(
             feature,
             get_rom_with_feature(feature),
