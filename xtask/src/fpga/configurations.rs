@@ -317,7 +317,7 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
 
         let mut container = build_base_container_command()?;
         let cmd = NextestArchiveCommand::new(&format!("/{base_name}"))
-            .features(&["fpga_subsystem", "itrng", "ocp-lock"])
+            .features(&["fpga_subsystem", "itrng"])
             .package_filter(args.package_filter.as_deref())
             .build();
 
