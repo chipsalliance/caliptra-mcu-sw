@@ -20,6 +20,21 @@ SECTIONS
 
     ROM_DATA = .;
 
+    .stack (NOLOAD):
+    {
+        . = ALIGN(4);
+        . = . + STACK_SIZE;
+        . = ALIGN(4);
+    } > RAM
+
+    .estack (NOLOAD):
+    {
+        . = ALIGN(4);
+        . = . + ESTACK_SIZE;
+        . = ALIGN(4);
+        PROVIDE(ESTACK_START = . );
+    } > RAM
+
     .data : AT(ROM_DATA)
     {
         . = ALIGN(4);
@@ -40,22 +55,6 @@ SECTIONS
         . = ALIGN(4);
     } > RAM
 
-    .stack (NOLOAD):
-    {
-        . = ALIGN(4);
-        . = . + STACK_SIZE;
-        . = ALIGN(4);
-        PROVIDE(STACK_START = . );
-    } > RAM
-
-    .estack (NOLOAD):
-    {
-        . = ALIGN(4);
-        . = . + ESTACK_SIZE;
-        . = ALIGN(4);
-        PROVIDE(ESTACK_START = . );
-    }
-
     _end = . ;
 }
 
@@ -64,7 +63,7 @@ BSS_END = BSS_START + SIZEOF(.bss);
 DATA_START = ADDR(.data);
 DATA_END = DATA_START + SIZEOF(.data);
 ROM_DATA_START = LOADADDR(.data);
-STACK_TOP = ORIGIN(RAM) + LENGTH(RAM);
-STACK_ORIGIN = STACK_TOP - STACK_SIZE;
+STACK_TOP = ORIGIN(RAM) + SIZEOF(.stack);
+STACK_ORIGIN = ORIGIN(RAM);
 MRAC_VALUE = 0xaaa9a5aa;
 
