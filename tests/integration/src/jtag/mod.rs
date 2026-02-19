@@ -8,9 +8,6 @@ mod test_uds;
 
 #[cfg(test)]
 mod test {
-
-    use std::time::Duration;
-
     use caliptra_hw_model::jtag::{CsrReg, DmReg};
     use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
     use caliptra_hw_model::Fuses;
@@ -19,9 +16,12 @@ mod test {
     use mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel};
     use romtime::LifecycleControllerState;
 
-    use anyhow::{anyhow, Result};
+    use anyhow::{bail, Result};
+
+    use std::time::Duration;
 
     pub const ALLHALTED_MASK: u32 = 1 << 9;
+    const DCSR_SET_EBREAKM: u32 = 0x8003; // to enable debug mode on an ebreak
 
     pub fn ss_setup(
         initial_lc_state: Option<LifecycleControllerState>,
@@ -70,40 +70,6 @@ mod test {
         Ok(true)
     }
 
-    /// Poll until a given mask is set in the dmstatus register
-    pub fn wait_status(tap: &mut OpenOcdJtagTap, mask: u32, timeout: Duration) -> Result<()> {
-        for _ in 0..100 {
-            let status = tap.read_reg(&DmReg::DmStatus)?;
-            if status & mask > 0 {
-                return Ok(());
-            }
-            std::thread::sleep(timeout / 100);
-        }
-
-        Err(anyhow!("Timed out waiting for status register"))
-    }
-
-    /// Send a halt request to the dmcontrol register
-    pub fn halt(tap: &mut OpenOcdJtagTap) -> Result<()> {
-        const HALT_REQ: u32 = 1 << 31 | 1;
-        tap.write_reg(&DmReg::DmControl, HALT_REQ)
-    }
-
-    /// Send a resume request to the dmcontrol register
-    pub fn resume(tap: &mut OpenOcdJtagTap) -> Result<()> {
-        const RESUME_REQ: u32 = 1 << 30 | 1;
-        tap.write_reg(&DmReg::DmControl, RESUME_REQ)
-    }
-
-    /// Write a value to a CSR using the abstract command register
-    pub fn write_csr_reg(tap: &mut OpenOcdJtagTap, reg: CsrReg, value: u32) -> Result<()> {
-        tap.write_reg(&DmReg::DmAbstractData0, value)?;
-
-        // From https://chipsalliance.github.io/Cores-VeeR-EL2/html/main/docs_rendered/html/debugging.html#abstract-command-register-command
-        let abstract_cmd = 0x00230000 | (reg as u32 & 0xFFF);
-        tap.write_reg(&DmReg::DmAbstractCommand, abstract_cmd)
-    }
-
     /// Check if a debug module is active.
     fn check_debug_module_active(tap: &mut OpenOcdJtagTap) -> Result<bool> {
         // Check dmstatus.allrunning and dmstatus.anyrunning bits to see if
@@ -134,5 +100,45 @@ mod test {
         }
 
         Ok(true)
+    }
+
+    /// Write to and execute from SRAM a tiny assembly program that performs a sum
+    /// and writes it memory, then verify it executed properly
+    pub fn verify_execute_from_sram(tap: &mut OpenOcdJtagTap) -> Result<()> {
+        const SW_OFFSET: u32 = 0x100;
+        const SW_ADDRESS: u32 = FPGA_MEMORY_MAP.sram_offset | SW_OFFSET;
+        const RV32_INSTS: &[u32] = &[
+            0x00100513,                                                           // addi x10, x0, 1
+            0x00200593,                                                           // addi x11, x0, 2
+            0x00b50533,                                              // add x10, x10, x11
+            0x00000637 | (FPGA_MEMORY_MAP.sram_offset & 0xFFFFF000), // lui x12 0xa8c00 (sram base addr)
+            0x00a62023 | (SW_OFFSET & 0x1F) << 7 | (SW_OFFSET >> 5 & 0x7F) << 25, // sw x10, 0x100(x12)
+            0x00100073,                                                           // ebreak
+        ];
+
+        tap.halt()?;
+
+        // Write program to SRAM
+        if !sysbus_write_read(&mut *tap, FPGA_MEMORY_MAP.sram_offset, RV32_INSTS)? {
+            bail!("Readback incorrect on writing program to SRAM")
+        }
+
+        // set PC to start of SRAM
+        tap.write_csr_reg(CsrReg::Dpc, FPGA_MEMORY_MAP.sram_offset)?;
+
+        // Write DCSR to enable ebreakm (bit 15) so ebreak enters debug mode
+        tap.write_csr_reg(CsrReg::Dcsr, DCSR_SET_EBREAKM)?;
+
+        tap.resume()?;
+        tap.wait_status(ALLHALTED_MASK, Duration::from_secs(3))?;
+
+        let readback = tap.read_memory_32(SW_ADDRESS)?;
+        if readback != 3 {
+            bail!(
+                "Readback from MCU SRAM incorrect; got 0x{:x}, wanted 0x3",
+                readback
+            )
+        }
+        Ok(())
     }
 }
