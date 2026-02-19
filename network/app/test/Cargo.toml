@@ -9,3 +9,4 @@ description = "Test applications for Network Coprocessor ROM"
 [dependencies]
 network-drivers.workspace = true
 network-hil.workspace = true
+zerocopy.workspace = true

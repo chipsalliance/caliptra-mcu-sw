@@ -18,6 +18,8 @@ Abstract:
 use network_drivers::EthernetDriver;
 use network_drivers::{exit_emulator, println, IpAddr, MacAddr};
 use network_hil::ethernet::{Ethernet, MacAddress, BROADCAST_MAC, ETH_MAX_FRAME_SIZE};
+use zerocopy::byteorder::big_endian::{U16, U32};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Ref};
 
 // Run the complete DHCP discovery test.
 //
@@ -88,7 +90,7 @@ mod dhcp_type {
 }
 
 // Ethernet type for IPv4
-const ETHERTYPE_IPV4: [u8; 2] = [0x08, 0x00];
+const ETHERTYPE_IPV4: u16 = 0x0800;
 
 // IP protocol number for UDP
 const IP_PROTO_UDP: u8 = 17;
@@ -113,6 +115,76 @@ mod dhcp_option {
     pub const SERVER_ID: u8 = 54;
     pub const PARAMETER_LIST: u8 = 55;
     pub const END: u8 = 255;
+}
+
+// Minimum DHCP payload size (from DHCP start to end, before options padding)
+const DHCP_MIN_PAYLOAD: usize = 300;
+
+/// Ethernet frame header (14 bytes)
+#[repr(C, packed)]
+#[derive(FromBytes, IntoBytes, Immutable, KnownLayout, Clone, Copy)]
+struct EthHeader {
+    dst_mac: [u8; 6],
+    src_mac: [u8; 6],
+    ether_type: U16,
+}
+
+/// IPv4 header (20 bytes, no options)
+#[repr(C, packed)]
+#[derive(FromBytes, IntoBytes, Immutable, KnownLayout, Clone, Copy)]
+struct Ipv4Header {
+    version_ihl: u8,
+    dscp_ecn: u8,
+    total_length: U16,
+    identification: U16,
+    flags_fragment: U16,
+    ttl: u8,
+    protocol: u8,
+    checksum: U16,
+    src_ip: [u8; 4],
+    dst_ip: [u8; 4],
+}
+
+/// UDP header (8 bytes)
+#[repr(C, packed)]
+#[derive(FromBytes, IntoBytes, Immutable, KnownLayout, Clone, Copy)]
+struct UdpHeader {
+    src_port: U16,
+    dst_port: U16,
+    length: U16,
+    checksum: U16,
+}
+
+/// Fixed portion of a DHCP message (236 bytes, before magic cookie)
+#[repr(C, packed)]
+#[derive(FromBytes, IntoBytes, Immutable, KnownLayout, Clone, Copy)]
+struct DhcpFixedFields {
+    op: u8,
+    htype: u8,
+    hlen: u8,
+    hops: u8,
+    xid: U32,
+    secs: U16,
+    flags: U16,
+    ciaddr: [u8; 4],
+    yiaddr: [u8; 4],
+    siaddr: [u8; 4],
+    giaddr: [u8; 4],
+    chaddr: [u8; 16],
+    sname: [u8; 64],
+    file: [u8; 128],
+}
+
+/// Combined header for a DHCP-over-UDP-over-IPv4-over-Ethernet frame.
+/// This covers everything up to (but not including) DHCP options.
+#[repr(C, packed)]
+#[derive(FromBytes, IntoBytes, Immutable, KnownLayout, Clone, Copy)]
+struct DhcpFrame {
+    eth: EthHeader,
+    ip: Ipv4Header,
+    udp: UdpHeader,
+    dhcp: DhcpFixedFields,
+    magic_cookie: [u8; 4],
 }
 
 // Result of DHCP discovery
@@ -183,174 +255,93 @@ impl DhcpDiscovery {
 
     // Build a DHCP DISCOVER packet
     fn build_dhcp_discover(&self, frame: &mut [u8], mac: MacAddress) -> usize {
-        let mut offset = 0;
+        // Zero-initialize the fixed header portion via zerocopy
+        let header_size = core::mem::size_of::<DhcpFrame>();
+        let (hdr_bytes, options_buf) = frame.split_at_mut(header_size);
+        let mut hdr = DhcpFrame::read_from_bytes(hdr_bytes).unwrap();
 
-        // === Ethernet Header (14 bytes) ===
-        // Destination MAC: broadcast
-        frame[offset..offset + 6].copy_from_slice(&BROADCAST_MAC);
-        offset += 6;
-        // Source MAC
-        frame[offset..offset + 6].copy_from_slice(&mac);
-        offset += 6;
-        // EtherType: IPv4
-        frame[offset..offset + 2].copy_from_slice(&ETHERTYPE_IPV4);
-        offset += 2;
+        // Ethernet header
+        hdr.eth.dst_mac = BROADCAST_MAC;
+        hdr.eth.src_mac = mac;
+        hdr.eth.ether_type = U16::new(ETHERTYPE_IPV4);
 
-        // === IP Header (20 bytes) ===
-        let ip_header_start = offset;
-        frame[offset] = 0x45; // Version (4) + IHL (5)
-        offset += 1;
-        frame[offset] = 0x00; // DSCP + ECN
-        offset += 1;
-        // Total length (will be filled later)
-        let ip_len_offset = offset;
-        offset += 2;
-        frame[offset..offset + 2].copy_from_slice(&[0x00, 0x01]); // Identification
-        offset += 2;
-        frame[offset..offset + 2].copy_from_slice(&[0x00, 0x00]); // Flags + Fragment
-        offset += 2;
-        frame[offset] = 64; // TTL
-        offset += 1;
-        frame[offset] = IP_PROTO_UDP; // Protocol
-        offset += 1;
-        // Header checksum (will be filled later)
-        let ip_checksum_offset = offset;
-        offset += 2;
-        // Source IP: 0.0.0.0
-        frame[offset..offset + 4].copy_from_slice(&[0, 0, 0, 0]);
-        offset += 4;
-        // Destination IP: 255.255.255.255
-        frame[offset..offset + 4].copy_from_slice(&[255, 255, 255, 255]);
-        offset += 4;
+        // IPv4 header (lengths and checksum filled in below)
+        hdr.ip.version_ihl = 0x45; // IPv4, IHL=5
+        hdr.ip.identification = U16::new(1);
+        hdr.ip.ttl = 64;
+        hdr.ip.protocol = IP_PROTO_UDP;
+        hdr.ip.src_ip = [0, 0, 0, 0];
+        hdr.ip.dst_ip = [255, 255, 255, 255];
 
-        // === UDP Header (8 bytes) ===
-        let udp_header_start = offset;
-        // Source port: 68 (DHCP client)
-        frame[offset..offset + 2].copy_from_slice(&DHCP_CLIENT_PORT.to_be_bytes());
-        offset += 2;
-        // Destination port: 67 (DHCP server)
-        frame[offset..offset + 2].copy_from_slice(&DHCP_SERVER_PORT.to_be_bytes());
-        offset += 2;
-        // UDP length (will be filled later)
-        let udp_len_offset = offset;
-        offset += 2;
-        // UDP checksum (0 = disabled)
-        frame[offset..offset + 2].copy_from_slice(&[0x00, 0x00]);
-        offset += 2;
+        // UDP header (length filled in below)
+        hdr.udp.src_port = U16::new(DHCP_CLIENT_PORT);
+        hdr.udp.dst_port = U16::new(DHCP_SERVER_PORT);
 
-        // === DHCP Message ===
-        let dhcp_start = offset;
+        // DHCP fixed fields
+        hdr.dhcp.op = dhcp_op::BOOTREQUEST;
+        hdr.dhcp.htype = 1; // Ethernet
+        hdr.dhcp.hlen = 6; // MAC length
+        hdr.dhcp.xid = U32::new(self.xid);
+        hdr.dhcp.flags = U16::new(0x8000); // Broadcast flag
 
-        // op: BOOTREQUEST
-        frame[offset] = dhcp_op::BOOTREQUEST;
-        offset += 1;
-        // htype: Ethernet
-        frame[offset] = 1;
-        offset += 1;
-        // hlen: MAC address length
-        frame[offset] = 6;
-        offset += 1;
-        // hops
-        frame[offset] = 0;
-        offset += 1;
-        // xid: Transaction ID
-        frame[offset..offset + 4].copy_from_slice(&self.xid.to_be_bytes());
-        offset += 4;
-        // secs: seconds elapsed
-        frame[offset..offset + 2].copy_from_slice(&[0x00, 0x00]);
-        offset += 2;
-        // flags: broadcast
-        frame[offset..offset + 2].copy_from_slice(&[0x80, 0x00]);
-        offset += 2;
-        // ciaddr: client IP (0.0.0.0)
-        frame[offset..offset + 4].copy_from_slice(&[0, 0, 0, 0]);
-        offset += 4;
-        // yiaddr: your IP (0.0.0.0)
-        frame[offset..offset + 4].copy_from_slice(&[0, 0, 0, 0]);
-        offset += 4;
-        // siaddr: server IP (0.0.0.0)
-        frame[offset..offset + 4].copy_from_slice(&[0, 0, 0, 0]);
-        offset += 4;
-        // giaddr: gateway IP (0.0.0.0)
-        frame[offset..offset + 4].copy_from_slice(&[0, 0, 0, 0]);
-        offset += 4;
-        // chaddr: client hardware address (16 bytes, padded)
-        frame[offset..offset + 6].copy_from_slice(&mac);
-        offset += 16; // chaddr is 16 bytes, rest is zero
-                      // sname: server name (64 bytes, zero)
-        offset += 64;
-        // file: boot file name (128 bytes, zero)
-        offset += 128;
+        // Client hardware address (first 6 bytes of the 16-byte chaddr field)
+        hdr.dhcp.chaddr[..6].copy_from_slice(&mac);
 
         // Magic cookie
-        frame[offset..offset + 4].copy_from_slice(&DHCP_MAGIC_COOKIE);
-        offset += 4;
+        hdr.magic_cookie = DHCP_MAGIC_COOKIE;
 
-        // DHCP Options
+        // Write DHCP options after the fixed header
+        let mut offset = 0;
+
         // Option 53: DHCP Message Type = DISCOVER
-        frame[offset] = dhcp_option::MESSAGE_TYPE;
-        offset += 1;
-        frame[offset] = 1; // length
-        offset += 1;
-        frame[offset] = dhcp_type::DISCOVER;
-        offset += 1;
+        options_buf[offset] = dhcp_option::MESSAGE_TYPE;
+        options_buf[offset + 1] = 1;
+        options_buf[offset + 2] = dhcp_type::DISCOVER;
+        offset += 3;
 
         // Option 55: Parameter Request List
-        frame[offset] = dhcp_option::PARAMETER_LIST;
-        offset += 1;
-        frame[offset] = 4; // length
-        offset += 1;
-        frame[offset] = dhcp_option::SUBNET_MASK;
-        offset += 1;
-        frame[offset] = dhcp_option::ROUTER;
-        offset += 1;
-        frame[offset] = dhcp_option::DNS;
-        offset += 1;
-        frame[offset] = dhcp_option::HOSTNAME;
-        offset += 1;
+        options_buf[offset] = dhcp_option::PARAMETER_LIST;
+        options_buf[offset + 1] = 4;
+        options_buf[offset + 2] = dhcp_option::SUBNET_MASK;
+        options_buf[offset + 3] = dhcp_option::ROUTER;
+        options_buf[offset + 4] = dhcp_option::DNS;
+        options_buf[offset + 5] = dhcp_option::HOSTNAME;
+        offset += 6;
 
         // Option 255: End
-        frame[offset] = dhcp_option::END;
+        options_buf[offset] = dhcp_option::END;
         offset += 1;
 
-        // Pad to minimum DHCP size (300 bytes from DHCP start)
-        let dhcp_len = offset - dhcp_start;
-        if dhcp_len < 300 {
-            offset += 300 - dhcp_len;
-        }
+        // Total frame size: header + options, padded so DHCP payload >= 300 bytes
+        let dhcp_payload_len = core::mem::size_of::<DhcpFixedFields>() + 4 + offset; // fixed + cookie + options
+        let padding = if dhcp_payload_len < DHCP_MIN_PAYLOAD {
+            DHCP_MIN_PAYLOAD - dhcp_payload_len
+        } else {
+            0
+        };
+        let total_frame_len = header_size + offset + padding;
 
-        // Fill in lengths
-        let total_len = offset - ip_header_start;
-        let udp_len = offset - udp_header_start;
+        // Fill in IP and UDP lengths
+        let ip_total_len = (total_frame_len - core::mem::size_of::<EthHeader>()) as u16;
+        let udp_len = (total_frame_len
+            - core::mem::size_of::<EthHeader>()
+            - core::mem::size_of::<Ipv4Header>()) as u16;
 
-        // IP total length
-        frame[ip_len_offset..ip_len_offset + 2].copy_from_slice(&(total_len as u16).to_be_bytes());
-        // UDP length
-        frame[udp_len_offset..udp_len_offset + 2].copy_from_slice(&(udp_len as u16).to_be_bytes());
+        hdr.ip.total_length = U16::new(ip_total_len);
+        hdr.udp.length = U16::new(udp_len);
 
-        // Calculate IP header checksum
-        let checksum = self.ip_checksum(&frame[ip_header_start..ip_header_start + 20]);
-        frame[ip_checksum_offset..ip_checksum_offset + 2].copy_from_slice(&checksum.to_be_bytes());
+        // Compute IP header checksum
+        hdr.ip.checksum = U16::new(0);
+        // Write the header back so we can checksum it
+        hdr_bytes.copy_from_slice(hdr.as_bytes());
+        let ip_start = core::mem::size_of::<EthHeader>();
+        let ip_end = ip_start + core::mem::size_of::<Ipv4Header>();
+        let checksum = ip_checksum(&frame[ip_start..ip_end]);
+        // Patch checksum into the frame
+        let cksum_offset = ip_start + 10; // checksum is at offset 10 in the IP header
+        frame[cksum_offset..cksum_offset + 2].copy_from_slice(&checksum.to_be_bytes());
 
-        offset
-    }
-
-    // Calculate IP header checksum
-    fn ip_checksum(&self, header: &[u8]) -> u16 {
-        let mut sum: u32 = 0;
-        for i in (0..header.len()).step_by(2) {
-            let word = if i + 1 < header.len() {
-                ((header[i] as u32) << 8) | (header[i + 1] as u32)
-            } else {
-                (header[i] as u32) << 8
-            };
-            sum = sum.wrapping_add(word);
-        }
-        // Fold 32-bit sum to 16 bits
-        while sum >> 16 != 0 {
-            sum = (sum & 0xFFFF) + (sum >> 16);
-        }
-        !(sum as u16)
+        total_frame_len
     }
 
     // Check for a DHCP OFFER response
@@ -371,97 +362,68 @@ impl DhcpDiscovery {
 
     // Parse a potential DHCP OFFER packet
     fn parse_dhcp_offer(&self, frame: &[u8]) -> Option<DhcpResult> {
-        // Minimum size check: Eth(14) + IP(20) + UDP(8) + DHCP(240)
-        if frame.len() < 282 {
-            return None;
-        }
+        // Try to interpret the frame as a DhcpFrame (fixed header + remaining options)
+        let (hdr, options) = Ref::<&[u8], DhcpFrame>::from_prefix(frame).ok()?;
 
         // Check EtherType is IPv4
-        if frame[12..14] != ETHERTYPE_IPV4 {
+        if hdr.eth.ether_type.get() != ETHERTYPE_IPV4 {
             return None;
         }
 
         // Check IP protocol is UDP
-        let ip_header_len = ((frame[14] & 0x0F) as usize) * 4;
-        if frame[14 + 9] != IP_PROTO_UDP {
+        if hdr.ip.protocol != IP_PROTO_UDP {
             return None;
         }
 
-        let udp_start = 14 + ip_header_len;
-        // Check source port is 67 (DHCP server)
-        let src_port = u16::from_be_bytes([frame[udp_start], frame[udp_start + 1]]);
-        if src_port != DHCP_SERVER_PORT {
+        // Check UDP ports
+        if hdr.udp.src_port.get() != DHCP_SERVER_PORT {
             return None;
         }
-
-        // Check destination port is 68 (DHCP client)
-        let dst_port = u16::from_be_bytes([frame[udp_start + 2], frame[udp_start + 3]]);
-        if dst_port != DHCP_CLIENT_PORT {
+        if hdr.udp.dst_port.get() != DHCP_CLIENT_PORT {
             return None;
         }
-
-        let dhcp_start = udp_start + 8;
 
         // Check DHCP op is BOOTREPLY
-        if frame[dhcp_start] != dhcp_op::BOOTREPLY {
+        if hdr.dhcp.op != dhcp_op::BOOTREPLY {
             return None;
         }
 
         // Check transaction ID
-        let xid = u32::from_be_bytes([
-            frame[dhcp_start + 4],
-            frame[dhcp_start + 5],
-            frame[dhcp_start + 6],
-            frame[dhcp_start + 7],
-        ]);
-        if xid != self.xid {
+        if hdr.dhcp.xid.get() != self.xid {
             return None;
         }
-
-        // Get offered IP (yiaddr)
-        let offered_ip = [
-            frame[dhcp_start + 16],
-            frame[dhcp_start + 17],
-            frame[dhcp_start + 18],
-            frame[dhcp_start + 19],
-        ];
-
-        // Get server IP (siaddr)
-        let server_ip = [
-            frame[dhcp_start + 20],
-            frame[dhcp_start + 21],
-            frame[dhcp_start + 22],
-            frame[dhcp_start + 23],
-        ];
 
         // Check magic cookie
-        let cookie_offset = dhcp_start + 236;
-        if frame[cookie_offset..cookie_offset + 4] != DHCP_MAGIC_COOKIE {
+        if hdr.magic_cookie != DHCP_MAGIC_COOKIE {
             return None;
         }
 
-        // Parse options to find message type
-        let mut options_offset = cookie_offset + 4;
-        while options_offset < frame.len() {
-            let option = frame[options_offset];
+        // Extract addresses from the struct
+        let offered_ip = hdr.dhcp.yiaddr;
+        let server_ip = hdr.dhcp.siaddr;
+
+        // Parse DHCP options to find message type
+        let mut pos = 0;
+        while pos < options.len() {
+            let option = options[pos];
             if option == dhcp_option::END {
                 break;
             }
             if option == dhcp_option::PAD {
-                options_offset += 1;
+                pos += 1;
                 continue;
             }
 
-            if options_offset + 1 >= frame.len() {
+            if pos + 1 >= options.len() {
                 break;
             }
-            let len = frame[options_offset + 1] as usize;
-            if options_offset + 2 + len > frame.len() {
+            let len = options[pos + 1] as usize;
+            if pos + 2 + len > options.len() {
                 break;
             }
 
             if option == dhcp_option::MESSAGE_TYPE && len >= 1 {
-                let msg_type = frame[options_offset + 2];
+                let msg_type = options[pos + 2];
                 if msg_type == dhcp_type::OFFER {
                     return Some(DhcpResult::OfferReceived {
                         offered_ip,
@@ -470,9 +432,27 @@ impl DhcpDiscovery {
                 }
             }
 
-            options_offset += 2 + len;
+            pos += 2 + len;
         }
 
         None
     }
+}
+
+/// Calculate IP header checksum over a raw byte slice.
+fn ip_checksum(header: &[u8]) -> u16 {
+    let mut sum: u32 = 0;
+    for i in (0..header.len()).step_by(2) {
+        let word = if i + 1 < header.len() {
+            ((header[i] as u32) << 8) | (header[i + 1] as u32)
+        } else {
+            (header[i] as u32) << 8
+        };
+        sum = sum.wrapping_add(word);
+    }
+    // Fold 32-bit sum to 16 bits
+    while sum >> 16 != 0 {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+    !(sum as u16)
 }
