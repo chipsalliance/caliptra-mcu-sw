@@ -15,8 +15,8 @@ Abstract:
 #![allow(clippy::empty_loop)]
 
 use crate::{
-    fatal_error, AxiUsers, BootFlow, McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters,
-    MCU_MEMORY_MAP,
+    configure_mcu_mbox_axi_users, fatal_error, verify_mcu_mbox_axi_users, AxiUsers, BootFlow,
+    McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use core::{fmt::Write, ops::Deref};
@@ -47,32 +47,27 @@ impl BootFlow for WarmBoot {
         while !soc.ready_for_fuses() {}
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraReadyForFuses.into());
 
-        // TODO: Handle flash image loading with the watchdog enabled
-        if params.flash_partition_driver.is_none() {
-            soc.set_cptra_wdt_cfg(0, straps.cptra_wdt_cfg0);
-            soc.set_cptra_wdt_cfg(1, straps.cptra_wdt_cfg1);
+        // Configure watchdog timers
+        soc.set_cptra_wdt_cfg(0, straps.cptra_wdt_cfg0);
+        soc.set_cptra_wdt_cfg(1, straps.cptra_wdt_cfg1);
 
-            mci.set_nmi_vector(unsafe { MCU_MEMORY_MAP.rom_offset });
+        mci.set_nmi_vector(unsafe { MCU_MEMORY_MAP.rom_offset });
 
-            let state = SecurityState::from(mci.security_state());
-            let lifecycle = state.device_lifecycle();
-            match (state.debug_locked(), lifecycle) {
-                (false, _) => {
-                    mci.configure_wdt(straps.mcu_wdt_cfg0_debug, straps.mcu_wdt_cfg1_debug)
-                }
-                (true, DeviceLifecycle::Manufacturing) => {
-                    mci.configure_wdt(
-                        straps.mcu_wdt_cfg0_manufacturing,
-                        straps.mcu_wdt_cfg1_manufacturing,
-                    );
-                }
-                (true, _) => {
-                    mci.configure_wdt(straps.mcu_wdt_cfg0, straps.mcu_wdt_cfg1);
-                }
+        let state = SecurityState::from(mci.security_state());
+        let lifecycle = state.device_lifecycle();
+        match (state.debug_locked(), lifecycle) {
+            (false, _) => mci.configure_wdt(straps.mcu_wdt_cfg0_debug, straps.mcu_wdt_cfg1_debug),
+            (true, DeviceLifecycle::Manufacturing) => {
+                mci.configure_wdt(
+                    straps.mcu_wdt_cfg0_manufacturing,
+                    straps.mcu_wdt_cfg1_manufacturing,
+                );
             }
-
-            mci.set_flow_checkpoint(McuRomBootStatus::WatchdogConfigured.into());
+            (true, _) => {
+                mci.configure_wdt(straps.mcu_wdt_cfg0, straps.mcu_wdt_cfg1);
+            }
         }
+        mci.set_flow_checkpoint(McuRomBootStatus::WatchdogConfigured.into());
 
         soc.set_axi_users(AxiUsers {
             mbox_users: params
@@ -84,16 +79,38 @@ impl BootFlow for WarmBoot {
         });
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
+        // Configure MCU mailbox AXI users before locking
+        romtime::println!("[mcu-rom] Configuring MCU mailbox AXI users");
+        let mcu_mbox_config = configure_mcu_mbox_axi_users(
+            mci,
+            &params.mci_mbox0_axi_users,
+            &params.mci_mbox1_axi_users,
+        );
+        mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersConfigured.into());
+
+        // Set SS_CONFIG_DONE_STICKY to lock MCI configuration registers
+        romtime::println!("[mcu-rom] Setting SS_CONFIG_DONE_STICKY to lock configuration");
+        mci.set_ss_config_done_sticky();
+        mci.set_flow_checkpoint(McuRomBootStatus::SsConfigDoneStickySet.into());
+
         // Set SS_CONFIG_DONE to lock MCI configuration registers until warm reset
         romtime::println!("[mcu-rom] Setting SS_CONFIG_DONE");
         mci.set_ss_config_done();
         mci.set_flow_checkpoint(McuRomBootStatus::SsConfigDoneSet.into());
 
-        // Verify that SS_CONFIG_DONE is actually set
-        if !mci.is_ss_config_done() {
+        // Verify that SS_CONFIG_DONE_STICKY and SS_CONFIG_DONE are actually set
+        if !mci.is_ss_config_done_sticky() || !mci.is_ss_config_done() {
             romtime::println!("[mcu-rom] SS_CONFIG_DONE verification failed");
             fatal_error(McuError::ROM_SOC_SS_CONFIG_DONE_VERIFY_FAILED);
         }
+
+        // Verify MCU mailbox AXI users haven't been tampered with after locking
+        romtime::println!("[mcu-rom] Verifying MCU mailbox AXI users");
+        if let Err(err) = verify_mcu_mbox_axi_users(mci, &mcu_mbox_config) {
+            romtime::println!("[mcu-rom] MCU mailbox AXI user verification failed");
+            fatal_error(err);
+        }
+        mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersVerified.into());
 
         // According to https://github.com/chipsalliance/caliptra-rtl/blob/main/docs/CaliptraIntegrationSpecification.md#fuses
         // we still need to write the fuse write done bit even though fuses can't be changed on a
