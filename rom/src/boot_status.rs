@@ -20,7 +20,8 @@ const OTP_FUSE_OPERATIONS_BASE: u16 = 129;
 const CALIPTRA_SETUP_BASE: u16 = 193;
 const FIRMWARE_LOADING_BASE: u16 = 257;
 const FIELD_ENTROPY_BASE: u16 = 321;
-const BOOT_FLOW_BASE: u16 = 385;
+const DOT_RECOVERY_BASE: u16 = 385;
+const BOOT_FLOW_BASE: u16 = 449;
 
 /// Status codes used by MCU ROM to log boot progress.
 #[repr(u16)]
@@ -82,6 +83,16 @@ pub enum McuRomBootStatus {
     FieldEntropyPartition2Complete = FIELD_ENTROPY_BASE + 3,
     FieldEntropyPartition3Complete = FIELD_ENTROPY_BASE + 4,
     FieldEntropyProgrammingComplete = FIELD_ENTROPY_BASE + 5,
+
+    // DOT Recovery Statuses
+    DotRecoveryStarted = DOT_RECOVERY_BASE,
+    DotRecoveryBlobAuthenticated = DOT_RECOVERY_BASE + 1,
+    DotRecoveryBlobWritten = DOT_RECOVERY_BASE + 2,
+    DotRecoveryComplete = DOT_RECOVERY_BASE + 3,
+    DotRecoveryFailed = DOT_RECOVERY_BASE + 4,
+    DotRecoveryPkHashVerified = DOT_RECOVERY_BASE + 5,
+    DotRecoveryChallengeSent = DOT_RECOVERY_BASE + 6,
+    DotRecoveryChallengeResponseVerified = DOT_RECOVERY_BASE + 7,
 
     // Boot Flow Completion
     ColdBootFlowStarted = BOOT_FLOW_BASE,

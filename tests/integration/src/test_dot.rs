@@ -677,41 +677,233 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// Test that an empty DOT blob with DOT enabled in fuses fails.
-    /// When DOT is initialized in fuses but the blob is empty/corrupt,
-    /// this is a fatal error condition.
+    /// Test that an empty DOT blob in EVEN state (unlocked) with DOT enabled skips DOT flow.
+    /// When DOT is initialized but in EVEN state (burned=0), an empty blob is not an error
+    /// because ownership is volatile in EVEN state.
     #[test]
-    fn test_dot_empty_blob_dot_enabled_fails() {
+    fn test_dot_empty_blob_dot_enabled_even_state_skips() {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        // Empty flash (all zeros) with DOT enabled in fuses
+        // Empty flash (all zeros) with DOT enabled in EVEN state (burned=0)
         let flash_contents = vec![0u8; DOT_BLOB_SIZE];
 
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(flash_contents),
             rom_only: true,
-            dot_enabled: true, // DOT is initialized in fuses
+            dot_enabled: true, // DOT initialized but EVEN state (burned=0)
+            ..Default::default()
+        });
+
+        // Run until DOT flash read checkpoint or error
+        hw.step_until(|m| {
+            let checkpoint = m.mci_boot_checkpoint();
+            checkpoint >= McuRomBootStatus::CaliptraReadyForMailbox.into()
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 50_000_000
+        });
+
+        // In EVEN state, empty blob should NOT be a fatal error
+        // (it just skips DOT flow and uses owner PK from fuses)
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Empty DOT blob in EVEN state should not be a fatal error, got: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test that an empty DOT blob in ODD state (locked) with no recovery handler is a fatal error.
+    /// When DOT is in locked state but the blob is empty/corrupt and no recovery handler is
+    /// available, the ROM should report a fatal error.
+    #[test]
+    fn test_dot_empty_blob_locked_state_no_recovery_fails() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        // Empty flash (all zeros) with DOT in locked state (ODD, 1 fuse burned)
+        let flash_contents = vec![0u8; DOT_BLOB_SIZE];
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(flash_contents),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
             ..Default::default()
         });
 
         // Run until error or timeout
         hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 50_000_000);
 
-        // Should have a fatal error - empty blob with DOT enabled is an error
+        // Should have a fatal error - empty blob in locked state with no recovery
         let fatal_error = hw.mci_fw_fatal_error();
         assert!(
             fatal_error.is_some(),
-            "Empty DOT blob with DOT enabled should cause fatal error"
+            "Empty DOT blob in locked state should cause fatal error"
         );
 
-        // Verify it's the correct error (ROM_COLD_BOOT_DOT_ERROR = 0x4_0005)
+        // Verify it's the correct error
         let error_code = fatal_error.unwrap();
         let expected_error: u32 = McuError::ROM_COLD_BOOT_DOT_ERROR.into();
         assert_eq!(
             error_code, expected_error,
             "Expected ROM_COLD_BOOT_DOT_ERROR (0x{:x}), got 0x{:x}",
             expected_error, error_code
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test that a corrupt DOT blob in ODD state (locked) with no recovery handler fails
+    /// with the BLOB_CORRUPT error.
+    #[test]
+    fn test_dot_corrupt_blob_locked_state_no_recovery_fails() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        // Non-empty but invalid blob (random garbage) with DOT in locked state
+        let flash_contents = vec![0x42u8; 4096];
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(flash_contents),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
+            ..Default::default()
+        });
+
+        // Run until error or timeout
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 50_000_000);
+
+        // Should have a fatal error - corrupt blob in locked state
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_some(),
+            "Corrupt DOT blob in locked state should cause fatal error"
+        );
+
+        // Verify it's the BLOB_CORRUPT error
+        let error_code = fatal_error.unwrap();
+        let expected_error: u32 = McuError::ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR.into();
+        assert_eq!(
+            error_code, expected_error,
+            "Expected ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR (0x{:x}), got 0x{:x}",
+            expected_error, error_code
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test that DOT recovery succeeds when a valid backup blob is available.
+    ///
+    /// This test verifies the DotRecoveryHandler backup blob path:
+    /// 1. DOT is in locked state (ODD, 1 fuse burned) with an empty blob
+    /// 2. The ROM (compiled with test-dot-recovery feature) has a mock recovery handler
+    /// 3. The handler reads a valid backup blob from DOT flash offset 2048
+    /// 4. The ROM authenticates the backup blob via HMAC verification
+    /// 5. The blob is written to DOT flash offset 0
+    /// 6. A warm reset is triggered
+    ///
+    /// We verify recovery by checking that the ROM reaches the recovery complete
+    /// boot status and that the blob is written to flash.
+    #[test]
+    fn test_dot_recovery_backup_blob_success() {
+        // First create a valid DOT blob
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
+
+        // Create DOT flash contents:
+        // - Offset 0: empty (all zeros) to trigger recovery
+        // - Offset 2048: valid backup blob for the mock handler to read
+        let blob_bytes = blob.as_bytes();
+        let mut flash_contents = vec![0u8; 4096];
+        flash_contents[2048..2048 + DOT_BLOB_SIZE].copy_from_slice(blob_bytes);
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(flash_contents),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
+            rom_feature: Some("test-dot-recovery"),
+            ..Default::default()
+        });
+
+        // Run until a fatal error occurs. The recovery flow succeeds, triggers
+        // a warm reset, and the ROM restarts. In a ROM-only test the second boot
+        // will fail (GENERIC_EXCEPTION) because the test environment isn't set up
+        // for a full second boot — that's expected.
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 100_000_000);
+
+        // Verify the recovery blob was written to DOT flash at offset 0
+        let dot_flash = hw.read_dot_flash();
+        let written_blob = &dot_flash[..DOT_BLOB_SIZE];
+        assert_eq!(
+            written_blob,
+            blob.as_bytes(),
+            "Recovery blob should have been written to DOT flash at offset 0"
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test that DOT recovery fails when the backup blob has an invalid HMAC.
+    ///
+    /// This test verifies that the recovery flow properly rejects a backup blob
+    /// whose HMAC doesn't match the DOT_EFFECTIVE_KEY:
+    /// 1. DOT is in locked state with an empty blob
+    /// 2. A backup blob with garbage HMAC is provided
+    /// 3. Recovery should fail with the blob corrupt error
+    #[test]
+    fn test_dot_recovery_backup_blob_invalid_hmac() {
+        // Create a blob with valid structure but invalid HMAC
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = TestDotBlob::default()
+            .with_cak(owner_pk_hash)
+            .with_lak(test_lak());
+        // Set HMAC to garbage — don't call compute_hmac
+        let blob = blob.with_hmac(&[0xAB; 64]);
+
+        let blob_bytes = blob.as_bytes();
+        let mut flash_contents = vec![0u8; 4096];
+        flash_contents[2048..2048 + DOT_BLOB_SIZE].copy_from_slice(blob_bytes);
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(flash_contents),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
+            rom_feature: Some("test-dot-recovery"),
+            ..Default::default()
+        });
+
+        // Run until error or timeout
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 50_000_000);
+
+        // Should have a fatal error - backup blob HMAC doesn't match
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_some(),
+            "Recovery with invalid HMAC should cause fatal error"
+        );
+
+        // The error should be the blob corrupt error (HMAC mismatch)
+        let error_code = fatal_error.unwrap();
+        let expected_error: u32 = McuError::ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR.into();
+        assert_eq!(
+            error_code, expected_error,
+            "Expected ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR (0x{:x}), got 0x{:x}",
+            expected_error, error_code
+        );
+
+        // Verify the blob was NOT written to flash (offset 0 should still be zeros)
+        let dot_flash = hw.read_dot_flash();
+        assert!(
+            dot_flash[..DOT_BLOB_SIZE].iter().all(|&b| b == 0),
+            "Invalid backup blob should not have been written to flash"
         );
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1009,6 +1201,324 @@ mod test {
         println!(
             "[TEST] Locked state with wrong CAK correctly failed with error: 0x{:x}",
             fatal_error.unwrap()
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    // -----------------------------------------------------------------------
+    // Challenge/Response DOT Recovery Tests (ECDSA P-384 + MLDSA-87)
+    // -----------------------------------------------------------------------
+
+    /// MCI mbox0 command IDs matching the ROM's TestRecoveryTransport.
+    const CMD_DOT_RECOVERY_REQUEST: u32 = 0x444F_5451;
+    const CMD_DOT_CHALLENGE_RESPONSE: u32 = 0x444F_5452;
+
+    /// Generates a random ECC P-384 key pair, returning the public key
+    /// coordinates as raw big-endian bytes (SEC1 format) and the raw private
+    /// key bytes for signing.
+    fn generate_random_ecc_keys() -> (
+        [u8; 48], // pub_key_x (big-endian)
+        [u8; 48], // pub_key_y (big-endian)
+        [u8; 48], // private key
+    ) {
+        use p384::elliptic_curve::sec1::ToEncodedPoint;
+        let secret_key = p384::SecretKey::random(&mut rand::thread_rng());
+        let pub_point = secret_key.public_key().to_encoded_point(false);
+
+        let x_bytes: [u8; 48] = pub_point.x().unwrap().as_slice().try_into().unwrap();
+        let y_bytes: [u8; 48] = pub_point.y().unwrap().as_slice().try_into().unwrap();
+        let priv_bytes: [u8; 48] = secret_key.to_bytes().into();
+        (x_bytes, y_bytes, priv_bytes)
+    }
+
+    /// Generates a random MLDSA-87 key pair, returning the public key as raw
+    /// bytes (FIPS 204 format) and the private key for signing.
+    fn generate_random_mldsa_keys() -> (Vec<u8>, fips204::ml_dsa_87::PrivateKey) {
+        use fips204::ml_dsa_87;
+        use fips204::traits::SerDes;
+
+        let (pk, sk) =
+            ml_dsa_87::try_keygen_with_rng(&mut rand::thread_rng()).expect("MLDSA keygen failed");
+        let pk_bytes = pk.into_bytes();
+        (pk_bytes.to_vec(), sk)
+    }
+
+    /// Computes SHA-384 hash of the combined recovery public keys (ECC + MLDSA).
+    fn compute_recovery_pk_hash(
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8],
+    ) -> [u8; 48] {
+        use sha2::{Digest, Sha384};
+
+        let mut hasher = Sha384::new();
+        hasher.update(ecc_pub_x);
+        hasher.update(ecc_pub_y);
+        hasher.update(mldsa_pub);
+        let result = hasher.finalize();
+        let mut hash = [0u8; 48];
+        hash.copy_from_slice(&result);
+        hash
+    }
+
+    /// Creates OTP memory for challenge/response recovery testing.
+    /// Includes locked state fuses AND the recovery PK hash.
+    fn create_challenge_recovery_otp_memory(pk_hash: &[u8; 48]) -> Vec<u8> {
+        use registers_generated::fuses;
+
+        let required_size = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset
+            + fuses::VENDOR_RECOVERY_PK_HASH.byte_size
+            + 16;
+        let otp_size =
+            required_size.max(fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size);
+        let mut otp = vec![0u8; otp_size];
+
+        // Set DOT locked state
+        otp[fuses::DOT_INITIALIZED.byte_offset] = 0x07;
+        otp[fuses::DOT_FUSE_ARRAY.byte_offset] = 0x01;
+
+        // Set recovery PK hash (48 bytes split across 2 OTP slots of 32 bytes)
+        let hash_offset = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset;
+        otp[hash_offset..hash_offset + 32].copy_from_slice(&pk_hash[..32]);
+        let next_offset = hash_offset + fuses::VENDOR_RECOVERY_PK_HASH.byte_size;
+        otp[next_offset..next_offset + 16].copy_from_slice(&pk_hash[32..48]);
+
+        otp
+    }
+
+    /// Build the mbox0 SRAM payload for DOT_RECOVERY_REQUEST.
+    fn build_recovery_request_payload(
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8],
+        cak: &[u8; 48],
+        lak: &[u8; 48],
+    ) -> Vec<u8> {
+        let mut payload = Vec::new();
+        // Reserve space for checksum (filled below)
+        payload.extend_from_slice(&[0u8; 4]);
+        payload.extend_from_slice(ecc_pub_x);
+        payload.extend_from_slice(ecc_pub_y);
+        payload.extend_from_slice(mldsa_pub);
+        let mldsa_expected = 2592;
+        if mldsa_pub.len() < mldsa_expected {
+            payload.resize(payload.len() + mldsa_expected - mldsa_pub.len(), 0);
+        }
+        payload.extend_from_slice(cak);
+        payload.extend_from_slice(lak);
+
+        // Compute and fill checksum
+        let chksum = calc_dot_checksum(CMD_DOT_RECOVERY_REQUEST, &payload[4..]);
+        payload[..4].copy_from_slice(&chksum.to_le_bytes());
+        payload
+    }
+
+    /// Build the mbox0 SRAM payload for DOT_CHALLENGE_RESPONSE.
+    fn build_challenge_response_payload(
+        ecc_sig_r: &[u8; 48],
+        ecc_sig_s: &[u8; 48],
+        mldsa_pub: &[u8],
+        mldsa_sig: &[u8],
+    ) -> Vec<u8> {
+        let mut payload = Vec::new();
+        // Reserve space for checksum (filled below)
+        payload.extend_from_slice(&[0u8; 4]);
+        payload.extend_from_slice(ecc_sig_r);
+        payload.extend_from_slice(ecc_sig_s);
+        let mldsa_pk_expected = 2592;
+        payload.extend_from_slice(mldsa_pub);
+        if mldsa_pub.len() < mldsa_pk_expected {
+            payload.resize(payload.len() + mldsa_pk_expected - mldsa_pub.len(), 0);
+        }
+        let mldsa_sig_expected = 4628;
+        payload.extend_from_slice(mldsa_sig);
+        if mldsa_sig.len() < mldsa_sig_expected {
+            payload.resize(payload.len() + mldsa_sig_expected - mldsa_sig.len(), 0);
+        }
+
+        // Compute and fill checksum
+        let chksum = calc_dot_checksum(CMD_DOT_CHALLENGE_RESPONSE, &payload[4..]);
+        payload[..4].copy_from_slice(&chksum.to_le_bytes());
+        payload
+    }
+
+    /// Compute the Caliptra-standard mailbox checksum.
+    fn calc_dot_checksum(cmd: u32, data: &[u8]) -> u32 {
+        let mut sum = 0u32;
+        for &b in cmd.to_le_bytes().iter() {
+            sum = sum.wrapping_add(b as u32);
+        }
+        for &b in data {
+            sum = sum.wrapping_add(b as u32);
+        }
+        0u32.wrapping_sub(sum)
+    }
+
+    /// Test challenge/response DOT recovery with both ECDSA and MLDSA signatures.
+    ///
+    /// Host sends recovery request via MCI mbox0, ROM generates challenge,
+    /// host signs challenge with ECDSA + MLDSA, ROM verifies and writes new DOT blob.
+    /// Uses randomly generated keys each run.
+    #[test]
+    fn test_dot_challenge_recovery_success() {
+        use ecdsa::signature::hazmat::PrehashSigner;
+        use fips204::traits::Signer;
+        use p384::ecdsa::SigningKey;
+        use sha2::{Digest, Sha384};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let cak: [u8; 48] = transmute!(owner_pk_hash);
+        let lak_u32 = test_lak();
+        let lak: [u8; 48] = transmute!(lak_u32);
+
+        // Generate random key pairs
+        println!("[TEST] Generating random ECC key pair...");
+        let (ecc_pub_x, ecc_pub_y, ecc_priv_bytes) = generate_random_ecc_keys();
+        println!("[TEST] Generating random MLDSA key pair...");
+        let (mldsa_pub, mldsa_priv) = generate_random_mldsa_keys();
+        println!("[TEST] Key generation complete");
+
+        // Compute PK hash for OTP fuses
+        let pk_hash = compute_recovery_pk_hash(&ecc_pub_x, &ecc_pub_y, &mldsa_pub);
+
+        // DOT flash: offset 0 empty (triggers recovery), offset 2048 has valid backup blob
+        let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
+        let blob_bytes = blob.as_bytes();
+        let mut flash_contents = vec![0u8; 4096];
+        flash_contents[2048..2048 + DOT_BLOB_SIZE].copy_from_slice(blob_bytes);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(flash_contents),
+            rom_only: true,
+            otp_memory: Some(create_challenge_recovery_otp_memory(&pk_hash)),
+            rom_feature: Some("test-dot-recovery"),
+            ..Default::default()
+        });
+
+        // Step 1: Send recovery request via mbox0
+        let request_payload =
+            build_recovery_request_payload(&ecc_pub_x, &ecc_pub_y, &mldsa_pub, &cak, &lak);
+        hw.start_mailbox_execute(CMD_DOT_RECOVERY_REQUEST, &request_payload)
+            .expect("Failed to send DOT_RECOVERY_REQUEST");
+
+        // Step 2: Wait for ROM to process and send challenge via DataReady
+        let challenge_data = hw
+            .finish_mailbox_execute()
+            .expect("Failed to get challenge response");
+        let challenge = challenge_data.expect("Expected challenge data from ROM");
+        assert_eq!(challenge.len(), 48, "Challenge should be 48 bytes");
+        println!("[TEST] Received challenge ({} bytes)", challenge.len());
+
+        // Step 3: Sign the challenge
+        // ECDSA: sign SHA-384(challenge) with prehash
+        println!("[TEST] Signing challenge with ECDSA...");
+        let challenge_hash: [u8; 48] = {
+            let mut hasher = Sha384::new();
+            hasher.update(&challenge);
+            hasher.finalize().into()
+        };
+        let ecc_secret_key =
+            p384::SecretKey::from_slice(&ecc_priv_bytes).expect("Invalid ECC private key");
+        let ecc_signing_key = SigningKey::from(&ecc_secret_key);
+        let ecc_sig: p384::ecdsa::Signature = ecc_signing_key
+            .sign_prehash(&challenge_hash)
+            .expect("ECDSA signing failed");
+        let ecc_r_bytes: [u8; 48] = ecc_sig.r().to_bytes().into();
+        let ecc_s_bytes: [u8; 48] = ecc_sig.s().to_bytes().into();
+        println!("[TEST] ECDSA signing complete");
+
+        // MLDSA: sign the raw challenge bytes
+        println!("[TEST] Signing challenge with MLDSA...");
+        let mldsa_sig_bytes = mldsa_priv
+            .try_sign_with_seed(&[0u8; 32], &challenge, &[])
+            .expect("MLDSA signing failed");
+        println!("[TEST] MLDSA signing complete");
+
+        // Step 4: Send signed challenge response via mbox0
+        let response_payload = build_challenge_response_payload(
+            &ecc_r_bytes,
+            &ecc_s_bytes,
+            &mldsa_pub,
+            &mldsa_sig_bytes,
+        );
+        hw.start_mailbox_execute(CMD_DOT_CHALLENGE_RESPONSE, &response_payload)
+            .expect("Failed to send DOT_CHALLENGE_RESPONSE");
+
+        // Step 5: Let the ROM verify signatures, write DOT blob, and complete.
+        // We don't call finish_mailbox_execute() because the ROM transport
+        // intentionally leaves the mbox0 transaction open so the SRAM data
+        // (MLDSA pub key and signature) stays valid during verification.
+        // The ROM will eventually trigger a warm reset or hit a fatal error.
+        let start = hw.cycle_count();
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() - start > 20_000_000);
+
+        // Verify a DOT blob was written to flash at offset 0
+        let dot_flash = hw.read_dot_flash();
+        let written_blob = &dot_flash[..DOT_BLOB_SIZE];
+        assert!(
+            !written_blob.iter().all(|&b| b == 0),
+            "Challenge recovery should have written a DOT blob to flash"
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test that challenge/response recovery fails when the PK hash doesn't match fuses.
+    /// Uses randomly generated keys each run.
+    #[test]
+    fn test_dot_challenge_recovery_wrong_pk_hash() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let cak: [u8; 48] = transmute!(owner_pk_hash);
+        let lak_u32 = test_lak();
+        let lak: [u8; 48] = transmute!(lak_u32);
+
+        // Generate random keys
+        let (ecc_pub_x, ecc_pub_y, _) = generate_random_ecc_keys();
+        let (mldsa_pub, _) = generate_random_mldsa_keys();
+
+        // DOT flash: empty (no backup blob — only challenge recovery available)
+        let flash_contents = vec![0u8; 4096];
+
+        // Burn a WRONG recovery PK hash in fuses — the generated keys won't
+        // match this hash, so the challenge flow should fail with PK_HASH_MISMATCH.
+        let wrong_pk_hash = [0xABu8; 48];
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(flash_contents),
+            rom_only: true,
+            otp_memory: Some(create_challenge_recovery_otp_memory(&wrong_pk_hash)),
+            rom_feature: Some("test-dot-recovery"),
+            ..Default::default()
+        });
+
+        // Send recovery request — the ROM should fail during PK hash verification
+        let request_payload =
+            build_recovery_request_payload(&ecc_pub_x, &ecc_pub_y, &mldsa_pub, &cak, &lak);
+        hw.start_mailbox_execute(CMD_DOT_RECOVERY_REQUEST, &request_payload)
+            .expect("Failed to send DOT_RECOVERY_REQUEST");
+
+        // The ROM should detect PK hash mismatch and set a fatal error.
+        // The mbox0 transaction may complete with CmdFailure or the ROM may
+        // crash before responding. Either way, step until fatal error.
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 100_000_000);
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_some(),
+            "Challenge recovery with wrong PK hash should fail"
+        );
+
+        // Verify flash was not written
+        let dot_flash = hw.read_dot_flash();
+        assert!(
+            dot_flash[..DOT_BLOB_SIZE].iter().all(|&b| b == 0),
+            "Flash should not be written when PK hash doesn't match"
         );
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

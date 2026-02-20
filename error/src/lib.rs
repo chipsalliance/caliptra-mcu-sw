@@ -134,6 +134,41 @@ impl McuError {
             "Flash not configured"
         ),
         (
+            ROM_DOT_RECOVERY_BLOB_AUTH_ERROR,
+            0x1_0011,
+            "DOT recovery blob authentication failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_FLASH_WRITE_ERROR,
+            0x1_0012,
+            "DOT recovery flash write failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_PK_HASH_MISMATCH,
+            0x1_0013,
+            "DOT recovery PK hash mismatch"
+        ),
+        (
+            ROM_DOT_RECOVERY_CHALLENGE_FAILED,
+            0x1_0014,
+            "DOT recovery challenge generation failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_SIG_VERIFY_FAILED,
+            0x1_0015,
+            "DOT recovery signature verification failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_NO_RECOVERY_PK_HASH,
+            0x1_0016,
+            "DOT recovery no recovery PK hash in fuses"
+        ),
+        (
+            ROM_DOT_RECOVERY_TRANSPORT_ERROR,
+            0x1_0017,
+            "DOT recovery transport error"
+        ),
+        (
             ROM_LC_TRANSITION_ERROR,
             0x2_0000,
             "Lifecycle transition error"

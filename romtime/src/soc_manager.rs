@@ -233,6 +233,89 @@ impl CaliptraSoC {
         }))
     }
 
+    /// Executes a mailbox request assembled from a mutable header and
+    /// read-only `&[u32]` payload parts. The header's first word (the
+    /// [`MailboxReqHeader`] checksum) is computed automatically. The payload
+    /// parts are concatenated after the header in order.
+    ///
+    /// This avoids copying large buffers (e.g. MLDSA keys/signatures) onto the
+    /// stack — the caller can pass references to wherever the data already
+    /// lives (SRAM, flash, etc.).  All slices are `&[u32]` because the MCI
+    /// mailbox SRAM may not be byte-addressable.
+    pub fn exec_mailbox_req_u32_parts(
+        &mut self,
+        cmd: u32,
+        hdr: &mut [u32],
+        data_parts: &[&[u32]],
+        resp: &mut [u32],
+    ) -> core::result::Result<(), CaliptraApiError> {
+        if hdr.is_empty() {
+            return Err(CaliptraApiError::MailboxReqTypeTooSmall);
+        }
+
+        // Compute total length in bytes.
+        let mut total_words: usize = hdr.len();
+        let mut pi = 0;
+        while pi < data_parts.len() {
+            total_words += data_parts[pi].len();
+            pi += 1;
+        }
+        let total_bytes = total_words * 4;
+
+        // Compute checksum: sum every byte of cmd and all payload bytes
+        // (everything after the 4-byte MailboxReqHeader checksum field).
+        // We sum by decomposing u32 words into their LE bytes.
+        fn sum_word_bytes(word: u32) -> u32 {
+            let b = word.to_le_bytes();
+            (b[0] as u32)
+                .wrapping_add(b[1] as u32)
+                .wrapping_add(b[2] as u32)
+                .wrapping_add(b[3] as u32)
+        }
+        let mut chksum = sum_word_bytes(cmd);
+        // Header: skip word 0 (the checksum slot)
+        let mut wi = 1;
+        while wi < hdr.len() {
+            chksum = chksum.wrapping_add(sum_word_bytes(hdr[wi]));
+            wi += 1;
+        }
+        // Data parts: sum all words
+        pi = 0;
+        while pi < data_parts.len() {
+            wi = 0;
+            while wi < data_parts[pi].len() {
+                chksum = chksum.wrapping_add(sum_word_bytes(data_parts[pi][wi]));
+                wi += 1;
+            }
+            pi += 1;
+        }
+        let chksum = 0u32.wrapping_sub(chksum);
+
+        // Write checksum into the header (first u32).
+        hdr[0] = chksum;
+
+        // Stream header + all data parts to the mailbox.
+        let iter = hdr
+            .iter()
+            .copied()
+            .chain(data_parts.iter().flat_map(|p| p.iter().copied()));
+        self.start_mailbox_req(cmd, total_bytes, iter)?;
+        let resp_len_bytes = resp.len() * 4;
+        match self.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
+            Ok(Some(mut resp_iter)) => {
+                for (i, r) in resp_iter.by_ref().enumerate() {
+                    if i < resp.len() {
+                        resp[i] = r;
+                    }
+                }
+                resp_iter.verify_checksum()?;
+                Ok(())
+            }
+            Err(err) => Err(err),
+            _ => Err(CaliptraApiError::MailboxNoResponseData),
+        }
+    }
+
     /// Executes a mailbox request that is represented as a u32 slice and
     /// writing the response to a u32 slice.
     /// This is useful for code size to avoid unaligned and byte-level access,
@@ -257,12 +340,13 @@ impl CaliptraSoC {
         self.start_mailbox_req(cmd, req.len() * 4, req.iter().copied())?;
         let resp_len_bytes = resp.len() * 4;
         match self.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
-            Ok(Some(resp_iter)) => {
-                for (i, r) in resp_iter.enumerate() {
+            Ok(Some(mut resp_iter)) => {
+                for (i, r) in resp_iter.by_ref().enumerate() {
                     if i < resp.len() {
                         resp[i] = r;
                     }
                 }
+                resp_iter.verify_checksum()?;
                 Ok(())
             }
             Err(err) => Err(err),

@@ -72,6 +72,8 @@ mod test {
         /// Custom OTP memory contents. If provided, takes precedence over dot_enabled.
         pub otp_memory: Option<Vec<u8>>,
         pub flash_boot: bool,
+        /// ROM feature flag. If set, compiles a ROM with this feature enabled.
+        pub rom_feature: Option<&'a str>,
     }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -226,6 +228,7 @@ mod test {
     fn build_test_binaries(
         feature: Option<&str>,
         network_rom_feature: Option<&str>,
+        rom_feature: Option<&str>,
     ) -> TestBinaries {
         let mcu_runtime = compile_runtime(feature, false);
         let mut builder = CaliptraBuilder::new(
@@ -255,7 +258,12 @@ mod test {
         )
         .unwrap();
 
-        let mcu_rom = std::fs::read(&*ROM).unwrap();
+        let mcu_rom = if let Some(rf) = rom_feature {
+            let rom_path = get_rom_with_feature(rf);
+            std::fs::read(rom_path).unwrap()
+        } else {
+            std::fs::read(&*ROM).unwrap()
+        };
         let soc_manifest = std::fs::read(
             builder
                 .get_soc_manifest(None)
@@ -296,10 +304,16 @@ mod test {
             mcu_runtime,
             network_rom,
         } = match FirmwareBinaries::from_env() {
-            Ok(binaries) => prebuilt_binaries(params.feature, params.network_rom_feature, binaries),
+            Ok(binaries) if params.rom_feature.is_none() => {
+                prebuilt_binaries(params.feature, params.network_rom_feature, binaries)
+            }
             _ => {
                 println!("Could not find prebuilt firmware binaries, building firmware...");
-                build_test_binaries(params.feature, params.network_rom_feature)
+                build_test_binaries(
+                    params.feature,
+                    params.network_rom_feature,
+                    params.rom_feature,
+                )
             }
         };
 
