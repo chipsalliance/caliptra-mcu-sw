@@ -27,6 +27,11 @@ pub trait SecondaryFlashPeripheral {
         u32,
         registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read secondary_flash::fl_interrupt_state"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fl_interrupt_state();
         }
@@ -39,6 +44,9 @@ pub trait SecondaryFlashPeripheral {
             registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write secondary_flash::fl_interrupt_state = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_fl_interrupt_state(val);
         }
@@ -49,6 +57,11 @@ pub trait SecondaryFlashPeripheral {
         u32,
         registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read secondary_flash::fl_interrupt_enable"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fl_interrupt_enable();
         }
@@ -61,39 +74,69 @@ pub trait SecondaryFlashPeripheral {
             registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write secondary_flash::fl_interrupt_enable = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_fl_interrupt_enable(val);
         }
     }
     fn read_page_size(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read secondary_flash::page_size");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_page_size();
         }
         0
     }
     fn write_page_size(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write secondary_flash::page_size = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_page_size(val);
         }
     }
     fn read_page_num(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read secondary_flash::page_num");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_page_num();
         }
         0
     }
     fn write_page_num(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write secondary_flash::page_num = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_page_num(val);
         }
     }
     fn read_page_addr(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read secondary_flash::page_addr");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_page_addr();
         }
         0
     }
     fn write_page_addr(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write secondary_flash::page_addr = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_page_addr(val);
         }
@@ -104,6 +147,9 @@ pub trait SecondaryFlashPeripheral {
         u32,
         registers_generated::primary_flash_ctrl::bits::FlControl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read secondary_flash::fl_control");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fl_control();
         }
@@ -116,6 +162,12 @@ pub trait SecondaryFlashPeripheral {
             registers_generated::primary_flash_ctrl::bits::FlControl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write secondary_flash::fl_control = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_fl_control(val);
         }
@@ -126,6 +178,9 @@ pub trait SecondaryFlashPeripheral {
         u32,
         registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read secondary_flash::op_status");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_op_status();
         }
@@ -138,6 +193,12 @@ pub trait SecondaryFlashPeripheral {
             registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write secondary_flash::op_status = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_op_status(val);
         }
@@ -148,6 +209,9 @@ pub trait SecondaryFlashPeripheral {
         u32,
         registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read secondary_flash::ctrl_regwen");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ctrl_regwen();
         }
@@ -203,6 +267,9 @@ impl SecondaryFlashPeripheral for SecondaryFlashGenerated {
         u32,
         registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read secondary_flash::fl_interrupt_state");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.fl_interrupt_state)
     }
     fn write_fl_interrupt_state(
@@ -212,6 +279,9 @@ impl SecondaryFlashPeripheral for SecondaryFlashGenerated {
             registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write secondary_flash::fl_interrupt_state = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.fl_interrupt_state;
         let mut new_val = current_val;
@@ -227,6 +297,9 @@ impl SecondaryFlashPeripheral for SecondaryFlashGenerated {
         u32,
         registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read secondary_flash::fl_interrupt_enable");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.fl_interrupt_enable)
     }
     fn write_fl_interrupt_enable(
@@ -236,6 +309,9 @@ impl SecondaryFlashPeripheral for SecondaryFlashGenerated {
             registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write secondary_flash::fl_interrupt_enable = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.fl_interrupt_enable;
         let mut new_val = current_val;
@@ -246,9 +322,15 @@ impl SecondaryFlashPeripheral for SecondaryFlashGenerated {
         self.fl_interrupt_enable = new_val;
     }
     fn read_page_size(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read secondary_flash::page_size");
+        }
         self.page_size
     }
     fn write_page_size(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write secondary_flash::page_size = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.page_size;
         let mut new_val = current_val;
@@ -257,9 +339,15 @@ impl SecondaryFlashPeripheral for SecondaryFlashGenerated {
         self.page_size = new_val;
     }
     fn read_page_num(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read secondary_flash::page_num");
+        }
         self.page_num
     }
     fn write_page_num(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write secondary_flash::page_num = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.page_num;
         let mut new_val = current_val;
@@ -268,9 +356,15 @@ impl SecondaryFlashPeripheral for SecondaryFlashGenerated {
         self.page_num = new_val;
     }
     fn read_page_addr(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read secondary_flash::page_addr");
+        }
         self.page_addr
     }
     fn write_page_addr(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write secondary_flash::page_addr = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.page_addr;
         let mut new_val = current_val;
@@ -284,6 +378,9 @@ impl SecondaryFlashPeripheral for SecondaryFlashGenerated {
         u32,
         registers_generated::primary_flash_ctrl::bits::FlControl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read secondary_flash::fl_control");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.fl_control)
     }
     fn write_fl_control(
@@ -293,6 +390,9 @@ impl SecondaryFlashPeripheral for SecondaryFlashGenerated {
             registers_generated::primary_flash_ctrl::bits::FlControl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write secondary_flash::fl_control = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.fl_control;
         let mut new_val = current_val;
@@ -308,6 +408,9 @@ impl SecondaryFlashPeripheral for SecondaryFlashGenerated {
         u32,
         registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read secondary_flash::op_status");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.op_status)
     }
     fn write_op_status(
@@ -317,6 +420,9 @@ impl SecondaryFlashPeripheral for SecondaryFlashGenerated {
             registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write secondary_flash::op_status = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.op_status;
         let mut new_val = current_val;
@@ -332,6 +438,11 @@ impl SecondaryFlashPeripheral for SecondaryFlashGenerated {
         u32,
         registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read secondary_flash::ctrl_regwen"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.ctrl_regwen)
     }
 }

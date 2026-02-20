@@ -27,6 +27,9 @@ pub trait AxicdmaPeripheral {
         u32,
         registers_generated::axicdma::bits::AxicdmaControl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read axicdma::axicdma_control");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_axicdma_control();
         }
@@ -39,6 +42,12 @@ pub trait AxicdmaPeripheral {
             registers_generated::axicdma::bits::AxicdmaControl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write axicdma::axicdma_control = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_axicdma_control(val);
         }
@@ -49,6 +58,9 @@ pub trait AxicdmaPeripheral {
         u32,
         registers_generated::axicdma::bits::AxicdmaStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read axicdma::axicdma_status");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_axicdma_status();
         }
@@ -61,50 +73,86 @@ pub trait AxicdmaPeripheral {
             registers_generated::axicdma::bits::AxicdmaStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write axicdma::axicdma_status = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_axicdma_status(val);
         }
     }
     fn read_axicdma_src_addr(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read axicdma::axicdma_src_addr");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_axicdma_src_addr();
         }
         0
     }
     fn write_axicdma_src_addr(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write axicdma::axicdma_src_addr = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_axicdma_src_addr(val);
         }
     }
     fn read_axicdma_src_addr_msb(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read axicdma::axicdma_src_addr_msb");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_axicdma_src_addr_msb();
         }
         0
     }
     fn write_axicdma_src_addr_msb(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write axicdma::axicdma_src_addr_msb = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_axicdma_src_addr_msb(val);
         }
     }
     fn read_axicdma_dst_addr(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read axicdma::axicdma_dst_addr");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_axicdma_dst_addr();
         }
         0
     }
     fn write_axicdma_dst_addr(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write axicdma::axicdma_dst_addr = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_axicdma_dst_addr(val);
         }
     }
     fn read_axicdma_dst_addr_msb(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read axicdma::axicdma_dst_addr_msb");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_axicdma_dst_addr_msb();
         }
         0
     }
     fn write_axicdma_dst_addr_msb(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write axicdma::axicdma_dst_addr_msb = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_axicdma_dst_addr_msb(val);
         }
@@ -115,6 +163,11 @@ pub trait AxicdmaPeripheral {
         u32,
         registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read axicdma::axicdma_bytes_to_transfer"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_axicdma_bytes_to_transfer();
         }
@@ -127,6 +180,9 @@ pub trait AxicdmaPeripheral {
             registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write axicdma::axicdma_bytes_to_transfer = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_axicdma_bytes_to_transfer(val);
         }
@@ -179,6 +235,9 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
         u32,
         registers_generated::axicdma::bits::AxicdmaControl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read axicdma::axicdma_control");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.axicdma_control)
     }
     fn write_axicdma_control(
@@ -188,6 +247,9 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
             registers_generated::axicdma::bits::AxicdmaControl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write axicdma::axicdma_control = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.axicdma_control;
         let mut new_val = current_val;
@@ -211,6 +273,9 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
         u32,
         registers_generated::axicdma::bits::AxicdmaStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read axicdma::axicdma_status");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.axicdma_status)
     }
     fn write_axicdma_status(
@@ -220,6 +285,9 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
             registers_generated::axicdma::bits::AxicdmaStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write axicdma::axicdma_status = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.axicdma_status;
         let mut new_val = current_val;
@@ -230,9 +298,15 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
         self.axicdma_status = new_val;
     }
     fn read_axicdma_src_addr(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read axicdma::axicdma_src_addr");
+        }
         self.axicdma_src_addr
     }
     fn write_axicdma_src_addr(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write axicdma::axicdma_src_addr = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.axicdma_src_addr;
         let mut new_val = current_val;
@@ -241,9 +315,17 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
         self.axicdma_src_addr = new_val;
     }
     fn read_axicdma_src_addr_msb(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read axicdma::axicdma_src_addr_msb"
+            );
+        }
         self.axicdma_src_addr_msb
     }
     fn write_axicdma_src_addr_msb(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write axicdma::axicdma_src_addr_msb = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.axicdma_src_addr_msb;
         let mut new_val = current_val;
@@ -252,9 +334,15 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
         self.axicdma_src_addr_msb = new_val;
     }
     fn read_axicdma_dst_addr(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read axicdma::axicdma_dst_addr");
+        }
         self.axicdma_dst_addr
     }
     fn write_axicdma_dst_addr(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write axicdma::axicdma_dst_addr = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.axicdma_dst_addr;
         let mut new_val = current_val;
@@ -263,9 +351,17 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
         self.axicdma_dst_addr = new_val;
     }
     fn read_axicdma_dst_addr_msb(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read axicdma::axicdma_dst_addr_msb"
+            );
+        }
         self.axicdma_dst_addr_msb
     }
     fn write_axicdma_dst_addr_msb(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write axicdma::axicdma_dst_addr_msb = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.axicdma_dst_addr_msb;
         let mut new_val = current_val;
@@ -279,6 +375,11 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
         u32,
         registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read axicdma::axicdma_bytes_to_transfer"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.axicdma_bytes_to_transfer)
     }
     fn write_axicdma_bytes_to_transfer(
@@ -288,6 +389,9 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
             registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write axicdma::axicdma_bytes_to_transfer = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.axicdma_bytes_to_transfer;
         let mut new_val = current_val;

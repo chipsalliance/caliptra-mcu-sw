@@ -28,6 +28,12 @@ pub trait LcPeripheral {
             registers_generated::lc_ctrl::bits::AlertTest::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write lc::alert_test = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_alert_test(val);
         }
@@ -38,6 +44,9 @@ pub trait LcPeripheral {
         u32,
         registers_generated::lc_ctrl::bits::Status::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::status");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_status();
         }
@@ -49,6 +58,9 @@ pub trait LcPeripheral {
         u32,
         registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::claim_transition_if_regwen");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_claim_transition_if_regwen();
         }
@@ -61,6 +73,9 @@ pub trait LcPeripheral {
             registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write lc::claim_transition_if_regwen = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_claim_transition_if_regwen(val);
         }
@@ -71,6 +86,9 @@ pub trait LcPeripheral {
         u32,
         registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::claim_transition_if");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_claim_transition_if();
         }
@@ -83,6 +101,12 @@ pub trait LcPeripheral {
             registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write lc::claim_transition_if = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_claim_transition_if(val);
         }
@@ -93,6 +117,9 @@ pub trait LcPeripheral {
         u32,
         registers_generated::lc_ctrl::bits::TransitionRegwen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::transition_regwen");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_transition_regwen();
         }
@@ -104,6 +131,9 @@ pub trait LcPeripheral {
         u32,
         registers_generated::lc_ctrl::bits::TransitionCmd::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::transition_cmd");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_transition_cmd();
         }
@@ -116,6 +146,12 @@ pub trait LcPeripheral {
             registers_generated::lc_ctrl::bits::TransitionCmd::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write lc::transition_cmd = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_transition_cmd(val);
         }
@@ -126,6 +162,9 @@ pub trait LcPeripheral {
         u32,
         registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::transition_ctrl");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_transition_ctrl();
         }
@@ -138,50 +177,92 @@ pub trait LcPeripheral {
             registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write lc::transition_ctrl = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_transition_ctrl(val);
         }
     }
     fn read_transition_token_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::transition_token_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_transition_token_0();
         }
         0
     }
     fn write_transition_token_0(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write lc::transition_token_0 = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_transition_token_0(val);
         }
     }
     fn read_transition_token_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::transition_token_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_transition_token_1();
         }
         0
     }
     fn write_transition_token_1(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write lc::transition_token_1 = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_transition_token_1(val);
         }
     }
     fn read_transition_token_2(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::transition_token_2");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_transition_token_2();
         }
         0
     }
     fn write_transition_token_2(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write lc::transition_token_2 = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_transition_token_2(val);
         }
     }
     fn read_transition_token_3(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::transition_token_3");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_transition_token_3();
         }
         0
     }
     fn write_transition_token_3(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write lc::transition_token_3 = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_transition_token_3(val);
         }
@@ -192,6 +273,9 @@ pub trait LcPeripheral {
         u32,
         registers_generated::lc_ctrl::bits::TransitionTarget::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::transition_target");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_transition_target();
         }
@@ -204,22 +288,40 @@ pub trait LcPeripheral {
             registers_generated::lc_ctrl::bits::TransitionTarget::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write lc::transition_target = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_transition_target(val);
         }
     }
     fn read_otp_vendor_test_ctrl(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::otp_vendor_test_ctrl");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_otp_vendor_test_ctrl();
         }
         0
     }
     fn write_otp_vendor_test_ctrl(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write lc::otp_vendor_test_ctrl = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_otp_vendor_test_ctrl(val);
         }
     }
     fn read_otp_vendor_test_status(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::otp_vendor_test_status");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_otp_vendor_test_status();
         }
@@ -231,6 +333,9 @@ pub trait LcPeripheral {
         u32,
         registers_generated::lc_ctrl::bits::LcState::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::lc_state");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_lc_state();
         }
@@ -242,12 +347,18 @@ pub trait LcPeripheral {
         u32,
         registers_generated::lc_ctrl::bits::LcTransitionCnt::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::lc_transition_cnt");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_lc_transition_cnt();
         }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_lc_id_state(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::lc_id_state");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_lc_id_state();
         }
@@ -259,6 +370,9 @@ pub trait LcPeripheral {
         u32,
         registers_generated::lc_ctrl::bits::HwRevision0::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::hw_revision0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_hw_revision0();
         }
@@ -270,102 +384,153 @@ pub trait LcPeripheral {
         u32,
         registers_generated::lc_ctrl::bits::HwRevision1::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::hw_revision1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_hw_revision1();
         }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_device_id_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::device_id_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_device_id_0();
         }
         0
     }
     fn read_device_id_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::device_id_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_device_id_1();
         }
         0
     }
     fn read_device_id_2(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::device_id_2");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_device_id_2();
         }
         0
     }
     fn read_device_id_3(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::device_id_3");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_device_id_3();
         }
         0
     }
     fn read_device_id_4(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::device_id_4");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_device_id_4();
         }
         0
     }
     fn read_device_id_5(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::device_id_5");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_device_id_5();
         }
         0
     }
     fn read_device_id_6(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::device_id_6");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_device_id_6();
         }
         0
     }
     fn read_device_id_7(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::device_id_7");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_device_id_7();
         }
         0
     }
     fn read_manuf_state_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_manuf_state_0();
         }
         0
     }
     fn read_manuf_state_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_manuf_state_1();
         }
         0
     }
     fn read_manuf_state_2(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_2");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_manuf_state_2();
         }
         0
     }
     fn read_manuf_state_3(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_3");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_manuf_state_3();
         }
         0
     }
     fn read_manuf_state_4(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_4");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_manuf_state_4();
         }
         0
     }
     fn read_manuf_state_5(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_5");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_manuf_state_5();
         }
         0
     }
     fn read_manuf_state_6(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_6");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_manuf_state_6();
         }
         0
     }
     fn read_manuf_state_7(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_7");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_manuf_state_7();
         }
@@ -476,6 +641,12 @@ impl LcPeripheral for LcGenerated {
             registers_generated::lc_ctrl::bits::AlertTest::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write lc::alert_test = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.alert_test;
         let mut new_val = current_val;
@@ -493,6 +664,9 @@ impl LcPeripheral for LcGenerated {
         u32,
         registers_generated::lc_ctrl::bits::Status::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::status");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.status)
     }
     fn read_claim_transition_if_regwen(
@@ -501,6 +675,11 @@ impl LcPeripheral for LcGenerated {
         u32,
         registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read lc::claim_transition_if_regwen"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.claim_transition_if_regwen)
     }
     fn write_claim_transition_if_regwen(
@@ -510,6 +689,9 @@ impl LcPeripheral for LcGenerated {
             registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write lc::claim_transition_if_regwen = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.claim_transition_if_regwen;
         let mut new_val = current_val;
@@ -523,6 +705,9 @@ impl LcPeripheral for LcGenerated {
         u32,
         registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::claim_transition_if");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.claim_transition_if)
     }
     fn write_claim_transition_if(
@@ -532,6 +717,9 @@ impl LcPeripheral for LcGenerated {
             registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write lc::claim_transition_if = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.claim_transition_if;
         let mut new_val = current_val;
@@ -545,6 +733,9 @@ impl LcPeripheral for LcGenerated {
         u32,
         registers_generated::lc_ctrl::bits::TransitionRegwen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::transition_regwen");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.transition_regwen)
     }
     fn read_transition_cmd(
@@ -553,6 +744,9 @@ impl LcPeripheral for LcGenerated {
         u32,
         registers_generated::lc_ctrl::bits::TransitionCmd::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::transition_cmd");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.transition_cmd)
     }
     fn write_transition_cmd(
@@ -562,6 +756,12 @@ impl LcPeripheral for LcGenerated {
             registers_generated::lc_ctrl::bits::TransitionCmd::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write lc::transition_cmd = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.transition_cmd;
         let mut new_val = current_val;
@@ -575,6 +775,9 @@ impl LcPeripheral for LcGenerated {
         u32,
         registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::transition_ctrl");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.transition_ctrl)
     }
     fn write_transition_ctrl(
@@ -584,6 +787,12 @@ impl LcPeripheral for LcGenerated {
             registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write lc::transition_ctrl = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.transition_ctrl;
         let mut new_val = current_val;
@@ -594,9 +803,18 @@ impl LcPeripheral for LcGenerated {
         self.transition_ctrl = new_val;
     }
     fn read_transition_token_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::transition_token_0");
+        }
         self.transition_token_0
     }
     fn write_transition_token_0(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write lc::transition_token_0 = 0x{:08x}",
+                val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.transition_token_0;
         let mut new_val = current_val;
@@ -605,9 +823,18 @@ impl LcPeripheral for LcGenerated {
         self.transition_token_0 = new_val;
     }
     fn read_transition_token_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::transition_token_1");
+        }
         self.transition_token_1
     }
     fn write_transition_token_1(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write lc::transition_token_1 = 0x{:08x}",
+                val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.transition_token_1;
         let mut new_val = current_val;
@@ -616,9 +843,18 @@ impl LcPeripheral for LcGenerated {
         self.transition_token_1 = new_val;
     }
     fn read_transition_token_2(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::transition_token_2");
+        }
         self.transition_token_2
     }
     fn write_transition_token_2(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write lc::transition_token_2 = 0x{:08x}",
+                val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.transition_token_2;
         let mut new_val = current_val;
@@ -627,9 +863,18 @@ impl LcPeripheral for LcGenerated {
         self.transition_token_2 = new_val;
     }
     fn read_transition_token_3(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::transition_token_3");
+        }
         self.transition_token_3
     }
     fn write_transition_token_3(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write lc::transition_token_3 = 0x{:08x}",
+                val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.transition_token_3;
         let mut new_val = current_val;
@@ -643,6 +888,9 @@ impl LcPeripheral for LcGenerated {
         u32,
         registers_generated::lc_ctrl::bits::TransitionTarget::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::transition_target");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.transition_target)
     }
     fn write_transition_target(
@@ -652,6 +900,12 @@ impl LcPeripheral for LcGenerated {
             registers_generated::lc_ctrl::bits::TransitionTarget::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write lc::transition_target = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.transition_target;
         let mut new_val = current_val;
@@ -660,9 +914,15 @@ impl LcPeripheral for LcGenerated {
         self.transition_target = new_val;
     }
     fn read_otp_vendor_test_ctrl(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::otp_vendor_test_ctrl");
+        }
         self.otp_vendor_test_ctrl
     }
     fn write_otp_vendor_test_ctrl(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write lc::otp_vendor_test_ctrl = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.otp_vendor_test_ctrl;
         let mut new_val = current_val;
@@ -671,6 +931,9 @@ impl LcPeripheral for LcGenerated {
         self.otp_vendor_test_ctrl = new_val;
     }
     fn read_otp_vendor_test_status(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::otp_vendor_test_status");
+        }
         self.otp_vendor_test_status
     }
     fn read_lc_state(
@@ -679,6 +942,9 @@ impl LcPeripheral for LcGenerated {
         u32,
         registers_generated::lc_ctrl::bits::LcState::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::lc_state");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.lc_state)
     }
     fn read_lc_transition_cnt(
@@ -687,9 +953,15 @@ impl LcPeripheral for LcGenerated {
         u32,
         registers_generated::lc_ctrl::bits::LcTransitionCnt::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::lc_transition_cnt");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.lc_transition_cnt)
     }
     fn read_lc_id_state(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::lc_id_state");
+        }
         self.lc_id_state
     }
     fn read_hw_revision0(
@@ -698,6 +970,9 @@ impl LcPeripheral for LcGenerated {
         u32,
         registers_generated::lc_ctrl::bits::HwRevision0::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::hw_revision0");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.hw_revision0)
     }
     fn read_hw_revision1(
@@ -706,54 +981,105 @@ impl LcPeripheral for LcGenerated {
         u32,
         registers_generated::lc_ctrl::bits::HwRevision1::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::hw_revision1");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.hw_revision1)
     }
     fn read_device_id_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::device_id_0");
+        }
         self.device_id_0
     }
     fn read_device_id_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::device_id_1");
+        }
         self.device_id_1
     }
     fn read_device_id_2(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::device_id_2");
+        }
         self.device_id_2
     }
     fn read_device_id_3(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::device_id_3");
+        }
         self.device_id_3
     }
     fn read_device_id_4(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::device_id_4");
+        }
         self.device_id_4
     }
     fn read_device_id_5(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::device_id_5");
+        }
         self.device_id_5
     }
     fn read_device_id_6(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::device_id_6");
+        }
         self.device_id_6
     }
     fn read_device_id_7(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::device_id_7");
+        }
         self.device_id_7
     }
     fn read_manuf_state_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::manuf_state_0");
+        }
         self.manuf_state_0
     }
     fn read_manuf_state_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::manuf_state_1");
+        }
         self.manuf_state_1
     }
     fn read_manuf_state_2(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::manuf_state_2");
+        }
         self.manuf_state_2
     }
     fn read_manuf_state_3(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::manuf_state_3");
+        }
         self.manuf_state_3
     }
     fn read_manuf_state_4(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::manuf_state_4");
+        }
         self.manuf_state_4
     }
     fn read_manuf_state_5(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::manuf_state_5");
+        }
         self.manuf_state_5
     }
     fn read_manuf_state_6(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::manuf_state_6");
+        }
         self.manuf_state_6
     }
     fn read_manuf_state_7(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read lc::manuf_state_7");
+        }
         self.manuf_state_7
     }
 }

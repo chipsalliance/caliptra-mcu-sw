@@ -27,6 +27,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraHwErrorFatal::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_hw_error_fatal");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_hw_error_fatal();
         }
@@ -39,6 +42,12 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraHwErrorFatal::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_hw_error_fatal = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_hw_error_fatal(val);
         }
@@ -49,6 +58,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_hw_error_non_fatal");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_hw_error_non_fatal();
         }
@@ -61,55 +73,97 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_hw_error_non_fatal = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_hw_error_non_fatal(val);
         }
     }
     fn read_cptra_fw_error_fatal(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_fw_error_fatal");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_fw_error_fatal();
         }
         0
     }
     fn write_cptra_fw_error_fatal(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_fw_error_fatal = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_fw_error_fatal(val);
         }
     }
     fn read_cptra_fw_error_non_fatal(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_fw_error_non_fatal");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_fw_error_non_fatal();
         }
         0
     }
     fn write_cptra_fw_error_non_fatal(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_fw_error_non_fatal = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_fw_error_non_fatal(val);
         }
     }
     fn read_cptra_hw_error_enc(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_hw_error_enc");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_hw_error_enc();
         }
         0
     }
     fn write_cptra_hw_error_enc(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_hw_error_enc = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_hw_error_enc(val);
         }
     }
     fn read_cptra_fw_error_enc(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_fw_error_enc");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_fw_error_enc();
         }
         0
     }
     fn write_cptra_fw_error_enc(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_fw_error_enc = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_fw_error_enc(val);
         }
     }
     fn read_cptra_fw_extended_error_info(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_fw_extended_error_info[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_fw_extended_error_info(index);
         }
@@ -120,17 +174,29 @@ pub trait SocPeripheral {
         val: caliptra_emu_types::RvData,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_fw_extended_error_info[{}] = 0x{:08x}" , index , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_fw_extended_error_info(val, index);
         }
     }
     fn read_cptra_boot_status(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_boot_status");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_boot_status();
         }
         0
     }
     fn write_cptra_boot_status(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_boot_status = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_boot_status(val);
         }
@@ -141,6 +207,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraFlowStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_flow_status");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_flow_status();
         }
@@ -153,6 +222,12 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraFlowStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_flow_status = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_flow_status(val);
         }
@@ -163,6 +238,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraResetReason::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_reset_reason");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_reset_reason();
         }
@@ -174,18 +252,30 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraSecurityState::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_security_state");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_security_state();
         }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_cptra_mbox_valid_axi_user(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_mbox_valid_axi_user[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_mbox_valid_axi_user(index);
         }
         0
     }
     fn write_cptra_mbox_valid_axi_user(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_mbox_valid_axi_user[{}] = 0x{:08x}" , index , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_mbox_valid_axi_user(val, index);
         }
@@ -197,6 +287,12 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_mbox_axi_user_lock[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_mbox_axi_user_lock(index);
         }
@@ -210,17 +306,26 @@ pub trait SocPeripheral {
         >,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_mbox_axi_user_lock[{}] = 0x{:08x}" , index , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_mbox_axi_user_lock(val, index);
         }
     }
     fn read_cptra_trng_valid_axi_user(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_trng_valid_axi_user");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_trng_valid_axi_user();
         }
         0
     }
     fn write_cptra_trng_valid_axi_user(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_trng_valid_axi_user = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_trng_valid_axi_user(val);
         }
@@ -231,6 +336,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_trng_axi_user_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_trng_axi_user_lock();
         }
@@ -243,17 +351,32 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_trng_axi_user_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_trng_axi_user_lock(val);
         }
     }
     fn read_cptra_trng_data(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_trng_data[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_trng_data(index);
         }
         0
     }
     fn write_cptra_trng_data(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_trng_data[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_trng_data(val, index);
         }
@@ -264,6 +387,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraTrngCtrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_trng_ctrl");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_trng_ctrl();
         }
@@ -276,6 +402,12 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraTrngCtrl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_trng_ctrl = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_trng_ctrl(val);
         }
@@ -286,6 +418,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraTrngStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_trng_status");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_trng_status();
         }
@@ -298,6 +433,12 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraTrngStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_trng_status = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_trng_status(val);
         }
@@ -308,6 +449,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraFuseWrDone::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_fuse_wr_done");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_fuse_wr_done();
         }
@@ -320,17 +464,32 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraFuseWrDone::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_fuse_wr_done = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_fuse_wr_done(val);
         }
     }
     fn read_cptra_timer_config(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_timer_config");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_timer_config();
         }
         0
     }
     fn write_cptra_timer_config(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_timer_config = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_timer_config(val);
         }
@@ -341,6 +500,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraBootfsmGo::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_bootfsm_go");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_bootfsm_go();
         }
@@ -353,17 +515,29 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraBootfsmGo::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_bootfsm_go = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_bootfsm_go(val);
         }
     }
     fn read_cptra_dbg_manuf_service_reg(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_dbg_manuf_service_reg");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_dbg_manuf_service_reg();
         }
         0
     }
     fn write_cptra_dbg_manuf_service_reg(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_dbg_manuf_service_reg = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_dbg_manuf_service_reg(val);
         }
@@ -374,6 +548,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraClkGatingEn::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_clk_gating_en");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_clk_gating_en();
         }
@@ -386,23 +563,44 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraClkGatingEn::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_clk_gating_en = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_clk_gating_en(val);
         }
     }
     fn read_cptra_generic_input_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_generic_input_wires[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_generic_input_wires(index);
         }
         0
     }
     fn read_cptra_generic_output_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_generic_output_wires[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_generic_output_wires(index);
         }
         0
     }
     fn write_cptra_generic_output_wires(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_generic_output_wires[{}] = 0x{:08x}" , index , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_generic_output_wires(val, index);
         }
@@ -413,18 +611,33 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraHwRevId::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_hw_rev_id");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_hw_rev_id();
         }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_cptra_fw_rev_id(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_fw_rev_id[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_fw_rev_id(index);
         }
         0
     }
     fn write_cptra_fw_rev_id(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_fw_rev_id[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_fw_rev_id(val, index);
         }
@@ -435,6 +648,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraHwConfig::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_hw_config");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_hw_config();
         }
@@ -446,6 +662,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraWdtTimer1En::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_wdt_timer1_en");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_wdt_timer1_en();
         }
@@ -458,6 +677,12 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraWdtTimer1En::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_wdt_timer1_en = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_wdt_timer1_en(val);
         }
@@ -468,6 +693,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_wdt_timer1_ctrl");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_wdt_timer1_ctrl();
         }
@@ -480,11 +708,23 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_wdt_timer1_ctrl = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_wdt_timer1_ctrl(val);
         }
     }
     fn read_cptra_wdt_timer1_timeout_period(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_wdt_timer1_timeout_period[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_wdt_timer1_timeout_period(index);
         }
@@ -495,6 +735,9 @@ pub trait SocPeripheral {
         val: caliptra_emu_types::RvData,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_wdt_timer1_timeout_period[{}] = 0x{:08x}" , index , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_wdt_timer1_timeout_period(val, index);
         }
@@ -505,6 +748,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraWdtTimer2En::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_wdt_timer2_en");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_wdt_timer2_en();
         }
@@ -517,6 +763,12 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraWdtTimer2En::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_wdt_timer2_en = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_wdt_timer2_en(val);
         }
@@ -527,6 +779,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_wdt_timer2_ctrl");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_wdt_timer2_ctrl();
         }
@@ -539,11 +794,23 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_wdt_timer2_ctrl = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_wdt_timer2_ctrl(val);
         }
     }
     fn read_cptra_wdt_timer2_timeout_period(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_wdt_timer2_timeout_period[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_wdt_timer2_timeout_period(index);
         }
@@ -554,6 +821,9 @@ pub trait SocPeripheral {
         val: caliptra_emu_types::RvData,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_wdt_timer2_timeout_period[{}] = 0x{:08x}" , index , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_wdt_timer2_timeout_period(val, index);
         }
@@ -564,6 +834,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraWdtStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_wdt_status");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_wdt_status();
         }
@@ -576,17 +849,29 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraWdtStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_wdt_status = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_wdt_status(val);
         }
     }
     fn read_cptra_fuse_valid_axi_user(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_fuse_valid_axi_user");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_fuse_valid_axi_user();
         }
         0
     }
     fn write_cptra_fuse_valid_axi_user(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_fuse_valid_axi_user = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_fuse_valid_axi_user(val);
         }
@@ -597,6 +882,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_fuse_axi_user_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_fuse_axi_user_lock();
         }
@@ -609,17 +897,32 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_fuse_axi_user_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_fuse_axi_user_lock(val);
         }
     }
     fn read_cptra_wdt_cfg(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_wdt_cfg[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_wdt_cfg(index);
         }
         0
     }
     fn write_cptra_wdt_cfg(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_wdt_cfg[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_wdt_cfg(val, index);
         }
@@ -630,6 +933,11 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_i_trng_entropy_config_0"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_i_trng_entropy_config_0();
         }
@@ -642,6 +950,9 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_i_trng_entropy_config_0 = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_i_trng_entropy_config_0(val);
         }
@@ -652,6 +963,11 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_i_trng_entropy_config_1"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_i_trng_entropy_config_1();
         }
@@ -664,39 +980,72 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_i_trng_entropy_config_1 = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_i_trng_entropy_config_1(val);
         }
     }
     fn read_cptra_rsvd_reg(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_rsvd_reg[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_rsvd_reg(index);
         }
         0
     }
     fn write_cptra_rsvd_reg(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_rsvd_reg[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_rsvd_reg(val, index);
         }
     }
     fn read_cptra_hw_capabilities(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_hw_capabilities");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_hw_capabilities();
         }
         0
     }
     fn write_cptra_hw_capabilities(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_hw_capabilities = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_hw_capabilities(val);
         }
     }
     fn read_cptra_fw_capabilities(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_fw_capabilities");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_fw_capabilities();
         }
         0
     }
     fn write_cptra_fw_capabilities(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_fw_capabilities = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_fw_capabilities(val);
         }
@@ -707,6 +1056,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraXxxxxxxk::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_cap_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_cap_lock();
         }
@@ -719,17 +1071,35 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraXxxxxxxk::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_cap_lock = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_cap_lock(val);
         }
     }
     fn read_cptra_owner_pk_hash(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::cptra_owner_pk_hash[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_owner_pk_hash(index);
         }
         0
     }
     fn write_cptra_owner_pk_hash(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::cptra_owner_pk_hash[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_owner_pk_hash(val, index);
         }
@@ -740,6 +1110,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::CptraXxxxxxxk::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::cptra_owner_pk_hash_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_owner_pk_hash_lock();
         }
@@ -752,27 +1125,54 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::CptraXxxxxxxk::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_owner_pk_hash_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_owner_pk_hash_lock(val);
         }
     }
     fn write_fuse_uds_seed(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::fuse_uds_seed[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_uds_seed(val, index);
         }
     }
     fn write_fuse_field_entropy(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::fuse_field_entropy[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_field_entropy(val, index);
         }
     }
     fn read_fuse_vendor_pk_hash(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::fuse_vendor_pk_hash[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_vendor_pk_hash(index);
         }
         0
     }
     fn write_fuse_vendor_pk_hash(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::fuse_vendor_pk_hash[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_vendor_pk_hash(val, index);
         }
@@ -783,6 +1183,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::FuseEccRevocation::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::fuse_ecc_revocation");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_ecc_revocation();
         }
@@ -795,28 +1198,52 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::FuseEccRevocation::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::fuse_ecc_revocation = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_ecc_revocation(val);
         }
     }
     fn read_fuse_fmc_key_manifest_svn(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::fuse_fmc_key_manifest_svn");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_fmc_key_manifest_svn();
         }
         0
     }
     fn write_fuse_fmc_key_manifest_svn(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::fuse_fmc_key_manifest_svn = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_fmc_key_manifest_svn(val);
         }
     }
     fn read_fuse_runtime_svn(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::fuse_runtime_svn[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_runtime_svn(index);
         }
         0
     }
     fn write_fuse_runtime_svn(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::fuse_runtime_svn[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_runtime_svn(val, index);
         }
@@ -827,6 +1254,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::fuse_anti_rollback_disable");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_anti_rollback_disable();
         }
@@ -839,39 +1269,69 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::fuse_anti_rollback_disable = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_anti_rollback_disable(val);
         }
     }
     fn read_fuse_idevid_cert_attr(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::fuse_idevid_cert_attr[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_idevid_cert_attr(index);
         }
         0
     }
     fn write_fuse_idevid_cert_attr(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::fuse_idevid_cert_attr[{}] = 0x{:08x}" , index , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_idevid_cert_attr(val, index);
         }
     }
     fn read_fuse_idevid_manuf_hsm_id(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::fuse_idevid_manuf_hsm_id[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_idevid_manuf_hsm_id(index);
         }
         0
     }
     fn write_fuse_idevid_manuf_hsm_id(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::fuse_idevid_manuf_hsm_id[{}] = 0x{:08x}" , index , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_idevid_manuf_hsm_id(val, index);
         }
     }
     fn read_fuse_lms_revocation(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::fuse_lms_revocation");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_lms_revocation();
         }
         0
     }
     fn write_fuse_lms_revocation(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::fuse_lms_revocation = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_lms_revocation(val);
         }
@@ -882,6 +1342,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::FuseMldsaRevocation::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::fuse_mldsa_revocation");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_mldsa_revocation();
         }
@@ -894,6 +1357,12 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::FuseMldsaRevocation::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::fuse_mldsa_revocation = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_mldsa_revocation(val);
         }
@@ -904,6 +1373,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::FuseSocSteppingId::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::fuse_soc_stepping_id");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_soc_stepping_id();
         }
@@ -916,17 +1388,32 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::FuseSocSteppingId::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::fuse_soc_stepping_id = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_soc_stepping_id(val);
         }
     }
     fn read_fuse_manuf_dbg_unlock_token(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::fuse_manuf_dbg_unlock_token[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_manuf_dbg_unlock_token(index);
         }
         0
     }
     fn write_fuse_manuf_dbg_unlock_token(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::fuse_manuf_dbg_unlock_token[{}] = 0x{:08x}" , index , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_manuf_dbg_unlock_token(val, index);
         }
@@ -937,6 +1424,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::FusePqcKeyType::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::fuse_pqc_key_type");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_pqc_key_type();
         }
@@ -949,17 +1439,32 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::FusePqcKeyType::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::fuse_pqc_key_type = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_pqc_key_type(val);
         }
     }
     fn read_fuse_soc_manifest_svn(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::fuse_soc_manifest_svn[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_soc_manifest_svn(index);
         }
         0
     }
     fn write_fuse_soc_manifest_svn(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::fuse_soc_manifest_svn[{}] = 0x{:08x}" , index , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_soc_manifest_svn(val, index);
         }
@@ -970,6 +1475,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::fuse_soc_manifest_max_svn");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_soc_manifest_max_svn();
         }
@@ -982,127 +1490,226 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::fuse_soc_manifest_max_svn = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_soc_manifest_max_svn(val);
         }
     }
     fn read_fuse_hek_seed(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::fuse_hek_seed[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_fuse_hek_seed(index);
         }
         0
     }
     fn write_fuse_hek_seed(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::fuse_hek_seed[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_fuse_hek_seed(val, index);
         }
     }
     fn read_ss_caliptra_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_caliptra_base_addr_l");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_caliptra_base_addr_l();
         }
         0
     }
     fn write_ss_caliptra_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::ss_caliptra_base_addr_l = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_caliptra_base_addr_l(val);
         }
     }
     fn read_ss_caliptra_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_caliptra_base_addr_h");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_caliptra_base_addr_h();
         }
         0
     }
     fn write_ss_caliptra_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::ss_caliptra_base_addr_h = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_caliptra_base_addr_h(val);
         }
     }
     fn read_ss_mci_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_mci_base_addr_l");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_mci_base_addr_l();
         }
         0
     }
     fn write_ss_mci_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::ss_mci_base_addr_l = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_mci_base_addr_l(val);
         }
     }
     fn read_ss_mci_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_mci_base_addr_h");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_mci_base_addr_h();
         }
         0
     }
     fn write_ss_mci_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::ss_mci_base_addr_h = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_mci_base_addr_h(val);
         }
     }
     fn read_ss_recovery_ifc_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_recovery_ifc_base_addr_l");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_recovery_ifc_base_addr_l();
         }
         0
     }
     fn write_ss_recovery_ifc_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::ss_recovery_ifc_base_addr_l = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_recovery_ifc_base_addr_l(val);
         }
     }
     fn read_ss_recovery_ifc_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_recovery_ifc_base_addr_h");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_recovery_ifc_base_addr_h();
         }
         0
     }
     fn write_ss_recovery_ifc_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::ss_recovery_ifc_base_addr_h = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_recovery_ifc_base_addr_h(val);
         }
     }
     fn read_ss_otp_fc_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_otp_fc_base_addr_l");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_otp_fc_base_addr_l();
         }
         0
     }
     fn write_ss_otp_fc_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::ss_otp_fc_base_addr_l = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_otp_fc_base_addr_l(val);
         }
     }
     fn read_ss_otp_fc_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_otp_fc_base_addr_h");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_otp_fc_base_addr_h();
         }
         0
     }
     fn write_ss_otp_fc_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::ss_otp_fc_base_addr_h = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_otp_fc_base_addr_h(val);
         }
     }
     fn read_ss_uds_seed_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_uds_seed_base_addr_l");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_uds_seed_base_addr_l();
         }
         0
     }
     fn write_ss_uds_seed_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::ss_uds_seed_base_addr_l = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_uds_seed_base_addr_l(val);
         }
     }
     fn read_ss_uds_seed_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_uds_seed_base_addr_h");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_uds_seed_base_addr_h();
         }
         0
     }
     fn write_ss_uds_seed_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::ss_uds_seed_base_addr_h = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_uds_seed_base_addr_h(val);
         }
@@ -1110,6 +1717,9 @@ pub trait SocPeripheral {
     fn read_ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read soc::ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset();
         }
@@ -1119,11 +1729,17 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_types::RvData,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset(val);
         }
     }
     fn read_ss_num_of_prod_debug_unlock_auth_pk_hashes(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read soc::ss_num_of_prod_debug_unlock_auth_pk_hashes");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_num_of_prod_debug_unlock_auth_pk_hashes();
         }
@@ -1133,6 +1749,9 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_types::RvData,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::ss_num_of_prod_debug_unlock_auth_pk_hashes = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_num_of_prod_debug_unlock_auth_pk_hashes(val);
         }
@@ -1143,62 +1762,95 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::SsDebugIntent::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_debug_intent");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_debug_intent();
         }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_ss_caliptra_dma_axi_user(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_caliptra_dma_axi_user");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_caliptra_dma_axi_user();
         }
         0
     }
     fn write_ss_caliptra_dma_axi_user(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::ss_caliptra_dma_axi_user = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_caliptra_dma_axi_user(val);
         }
     }
     fn read_ss_external_staging_area_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read soc::ss_external_staging_area_base_addr_l");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_external_staging_area_base_addr_l();
         }
         0
     }
     fn write_ss_external_staging_area_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::ss_external_staging_area_base_addr_l = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_external_staging_area_base_addr_l(val);
         }
     }
     fn read_ss_external_staging_area_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read soc::ss_external_staging_area_base_addr_h");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_external_staging_area_base_addr_h();
         }
         0
     }
     fn write_ss_external_staging_area_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::ss_external_staging_area_base_addr_h = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_external_staging_area_base_addr_h(val);
         }
     }
     fn read_ss_key_release_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_key_release_base_addr_l");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_key_release_base_addr_l();
         }
         0
     }
     fn write_ss_key_release_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::ss_key_release_base_addr_l = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_key_release_base_addr_l(val);
         }
     }
     fn read_ss_key_release_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_key_release_base_addr_h");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_key_release_base_addr_h();
         }
         0
     }
     fn write_ss_key_release_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::ss_key_release_base_addr_h = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_key_release_base_addr_h(val);
         }
@@ -1209,6 +1861,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::SsKeyReleaseSize::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_key_release_size");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_key_release_size();
         }
@@ -1221,6 +1876,12 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::SsKeyReleaseSize::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::ss_key_release_size = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_key_release_size(val);
         }
@@ -1231,6 +1892,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::SsOcpLockCtrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_ocp_lock_ctrl");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_ocp_lock_ctrl();
         }
@@ -1243,17 +1907,35 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::SsOcpLockCtrl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::ss_ocp_lock_ctrl = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_ocp_lock_ctrl(val);
         }
     }
     fn read_ss_strap_generic(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::ss_strap_generic[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_strap_generic(index);
         }
         0
     }
     fn write_ss_strap_generic(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::ss_strap_generic[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_strap_generic(val, index);
         }
@@ -1264,6 +1946,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::SsDbgServiceRegReq::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_dbg_service_reg_req");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_dbg_service_reg_req();
         }
@@ -1276,6 +1961,12 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::SsDbgServiceRegReq::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::ss_dbg_service_reg_req = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_dbg_service_reg_req(val);
         }
@@ -1286,6 +1977,9 @@ pub trait SocPeripheral {
         u32,
         registers_generated::soc::bits::SsDbgServiceRegRsp::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read soc::ss_dbg_service_reg_rsp");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_dbg_service_reg_rsp();
         }
@@ -1298,28 +1992,52 @@ pub trait SocPeripheral {
             registers_generated::soc::bits::SsDbgServiceRegRsp::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write soc::ss_dbg_service_reg_rsp = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_dbg_service_reg_rsp(val);
         }
     }
     fn read_ss_soc_dbg_unlock_level(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::ss_soc_dbg_unlock_level[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_soc_dbg_unlock_level(index);
         }
         0
     }
     fn write_ss_soc_dbg_unlock_level(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::ss_soc_dbg_unlock_level[{}] = 0x{:08x}" , index , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_soc_dbg_unlock_level(val, index);
         }
     }
     fn read_ss_generic_fw_exec_ctrl(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read soc::ss_generic_fw_exec_ctrl[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ss_generic_fw_exec_ctrl(index);
         }
         0
     }
     fn write_ss_generic_fw_exec_ctrl(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write soc::ss_generic_fw_exec_ctrl[{}] = 0x{:08x}" , index , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_ss_generic_fw_exec_ctrl(val, index);
         }
@@ -1534,6 +2252,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraHwErrorFatal::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_hw_error_fatal");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_hw_error_fatal)
     }
     fn write_cptra_hw_error_fatal(
@@ -1543,6 +2264,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraHwErrorFatal::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_hw_error_fatal = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_hw_error_fatal;
         let mut new_val = current_val;
@@ -1562,6 +2286,11 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_hw_error_non_fatal"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_hw_error_non_fatal)
     }
     fn write_cptra_hw_error_non_fatal(
@@ -1571,6 +2300,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_hw_error_non_fatal = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_hw_error_non_fatal;
         let mut new_val = current_val;
@@ -1583,9 +2315,15 @@ impl SocPeripheral for SocGenerated {
         self.cptra_hw_error_non_fatal = new_val;
     }
     fn read_cptra_fw_error_fatal(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_fw_error_fatal");
+        }
         self.cptra_fw_error_fatal
     }
     fn write_cptra_fw_error_fatal(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fw_error_fatal = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_fw_error_fatal;
         let mut new_val = current_val;
@@ -1594,9 +2332,17 @@ impl SocPeripheral for SocGenerated {
         self.cptra_fw_error_fatal = new_val;
     }
     fn read_cptra_fw_error_non_fatal(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_fw_error_non_fatal"
+            );
+        }
         self.cptra_fw_error_non_fatal
     }
     fn write_cptra_fw_error_non_fatal(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fw_error_non_fatal = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_fw_error_non_fatal;
         let mut new_val = current_val;
@@ -1605,9 +2351,15 @@ impl SocPeripheral for SocGenerated {
         self.cptra_fw_error_non_fatal = new_val;
     }
     fn read_cptra_hw_error_enc(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_hw_error_enc");
+        }
         self.cptra_hw_error_enc
     }
     fn write_cptra_hw_error_enc(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_hw_error_enc = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_hw_error_enc;
         let mut new_val = current_val;
@@ -1616,9 +2368,15 @@ impl SocPeripheral for SocGenerated {
         self.cptra_hw_error_enc = new_val;
     }
     fn read_cptra_fw_error_enc(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_fw_error_enc");
+        }
         self.cptra_fw_error_enc
     }
     fn write_cptra_fw_error_enc(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fw_error_enc = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_fw_error_enc;
         let mut new_val = current_val;
@@ -1627,6 +2385,9 @@ impl SocPeripheral for SocGenerated {
         self.cptra_fw_error_enc = new_val;
     }
     fn read_cptra_fw_extended_error_info(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read soc::cptra_fw_extended_error_info[{}]" , index);
+        }
         self.cptra_fw_extended_error_info[index]
     }
     fn write_cptra_fw_extended_error_info(
@@ -1634,6 +2395,9 @@ impl SocPeripheral for SocGenerated {
         val: caliptra_emu_types::RvData,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fw_extended_error_info[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_fw_extended_error_info[index];
         let mut new_val = current_val;
@@ -1642,9 +2406,18 @@ impl SocPeripheral for SocGenerated {
         self.cptra_fw_extended_error_info[index] = new_val;
     }
     fn read_cptra_boot_status(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_boot_status");
+        }
         self.cptra_boot_status
     }
     fn write_cptra_boot_status(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write soc::cptra_boot_status = 0x{:08x}",
+                val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_boot_status;
         let mut new_val = current_val;
@@ -1658,6 +2431,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraFlowStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_flow_status");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_flow_status)
     }
     fn write_cptra_flow_status(
@@ -1667,6 +2443,12 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraFlowStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write soc::cptra_flow_status = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_flow_status;
         let mut new_val = current_val;
@@ -1688,6 +2470,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraResetReason::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_reset_reason");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_reset_reason)
     }
     fn read_cptra_security_state(
@@ -1696,12 +2481,24 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraSecurityState::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_security_state");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_security_state)
     }
     fn read_cptra_mbox_valid_axi_user(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_mbox_valid_axi_user[{}]",
+                index
+            );
+        }
         self.cptra_mbox_valid_axi_user[index]
     }
     fn write_cptra_mbox_valid_axi_user(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_mbox_valid_axi_user[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_mbox_valid_axi_user[index];
         let mut new_val = current_val;
@@ -1716,6 +2513,12 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_mbox_axi_user_lock[{}]",
+                index
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_mbox_axi_user_lock[index])
     }
     fn write_cptra_mbox_axi_user_lock(
@@ -1726,6 +2529,9 @@ impl SocPeripheral for SocGenerated {
         >,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_mbox_axi_user_lock[{}] = 0x{:08x}" , index , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_mbox_axi_user_lock[index];
         let mut new_val = current_val;
@@ -1734,9 +2540,17 @@ impl SocPeripheral for SocGenerated {
         self.cptra_mbox_axi_user_lock[index] = new_val;
     }
     fn read_cptra_trng_valid_axi_user(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_trng_valid_axi_user"
+            );
+        }
         self.cptra_trng_valid_axi_user
     }
     fn write_cptra_trng_valid_axi_user(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_trng_valid_axi_user = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_trng_valid_axi_user;
         let mut new_val = current_val;
@@ -1750,6 +2564,11 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_trng_axi_user_lock"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_trng_axi_user_lock)
     }
     fn write_cptra_trng_axi_user_lock(
@@ -1759,6 +2578,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_trng_axi_user_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_trng_axi_user_lock;
         let mut new_val = current_val;
@@ -1767,9 +2589,18 @@ impl SocPeripheral for SocGenerated {
         self.cptra_trng_axi_user_lock = new_val;
     }
     fn read_cptra_trng_data(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_trng_data[{}]",
+                index
+            );
+        }
         self.cptra_trng_data[index]
     }
     fn write_cptra_trng_data(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_trng_data[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_trng_data[index];
         let mut new_val = current_val;
@@ -1783,6 +2614,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraTrngCtrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_trng_ctrl");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_trng_ctrl)
     }
     fn write_cptra_trng_ctrl(
@@ -1792,6 +2626,12 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraTrngCtrl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write soc::cptra_trng_ctrl = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_trng_ctrl;
         let mut new_val = current_val;
@@ -1805,6 +2645,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraTrngStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_trng_status");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_trng_status)
     }
     fn write_cptra_trng_status(
@@ -1814,6 +2657,12 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraTrngStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write soc::cptra_trng_status = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_trng_status;
         let mut new_val = current_val;
@@ -1829,6 +2678,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraFuseWrDone::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_fuse_wr_done");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_fuse_wr_done)
     }
     fn write_cptra_fuse_wr_done(
@@ -1838,6 +2690,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraFuseWrDone::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fuse_wr_done = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_fuse_wr_done;
         let mut new_val = current_val;
@@ -1846,9 +2701,15 @@ impl SocPeripheral for SocGenerated {
         self.cptra_fuse_wr_done = new_val;
     }
     fn read_cptra_timer_config(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_timer_config");
+        }
         self.cptra_timer_config
     }
     fn write_cptra_timer_config(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_timer_config = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_timer_config;
         let mut new_val = current_val;
@@ -1862,6 +2723,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraBootfsmGo::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_bootfsm_go");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_bootfsm_go)
     }
     fn write_cptra_bootfsm_go(
@@ -1871,6 +2735,12 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraBootfsmGo::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write soc::cptra_bootfsm_go = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_bootfsm_go;
         let mut new_val = current_val;
@@ -1879,9 +2749,17 @@ impl SocPeripheral for SocGenerated {
         self.cptra_bootfsm_go = new_val;
     }
     fn read_cptra_dbg_manuf_service_reg(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_dbg_manuf_service_reg"
+            );
+        }
         self.cptra_dbg_manuf_service_reg
     }
     fn write_cptra_dbg_manuf_service_reg(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_dbg_manuf_service_reg = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_dbg_manuf_service_reg;
         let mut new_val = current_val;
@@ -1895,6 +2773,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraClkGatingEn::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_clk_gating_en");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_clk_gating_en)
     }
     fn write_cptra_clk_gating_en(
@@ -1904,6 +2785,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraClkGatingEn::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_clk_gating_en = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_clk_gating_en;
         let mut new_val = current_val;
@@ -1912,12 +2796,24 @@ impl SocPeripheral for SocGenerated {
         self.cptra_clk_gating_en = new_val;
     }
     fn read_cptra_generic_input_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_generic_input_wires[{}]",
+                index
+            );
+        }
         self.cptra_generic_input_wires[index]
     }
     fn read_cptra_generic_output_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read soc::cptra_generic_output_wires[{}]" , index);
+        }
         self.cptra_generic_output_wires[index]
     }
     fn write_cptra_generic_output_wires(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_generic_output_wires[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_generic_output_wires[index];
         let mut new_val = current_val;
@@ -1931,12 +2827,24 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraHwRevId::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_hw_rev_id");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_hw_rev_id)
     }
     fn read_cptra_fw_rev_id(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_fw_rev_id[{}]",
+                index
+            );
+        }
         self.cptra_fw_rev_id[index]
     }
     fn write_cptra_fw_rev_id(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fw_rev_id[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_fw_rev_id[index];
         let mut new_val = current_val;
@@ -1950,6 +2858,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraHwConfig::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_hw_config");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_hw_config)
     }
     fn read_cptra_wdt_timer1_en(
@@ -1958,6 +2869,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraWdtTimer1En::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_timer1_en");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_timer1_en)
     }
     fn write_cptra_wdt_timer1_en(
@@ -1967,6 +2881,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraWdtTimer1En::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_wdt_timer1_en = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_timer1_en;
         let mut new_val = current_val;
@@ -1980,6 +2897,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_timer1_ctrl");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_timer1_ctrl)
     }
     fn write_cptra_wdt_timer1_ctrl(
@@ -1989,6 +2909,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_wdt_timer1_ctrl = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_timer1_ctrl;
         let mut new_val = current_val;
@@ -1997,6 +2920,9 @@ impl SocPeripheral for SocGenerated {
         self.cptra_wdt_timer1_ctrl = new_val;
     }
     fn read_cptra_wdt_timer1_timeout_period(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read soc::cptra_wdt_timer1_timeout_period[{}]" , index);
+        }
         self.cptra_wdt_timer1_timeout_period[index]
     }
     fn write_cptra_wdt_timer1_timeout_period(
@@ -2004,6 +2930,9 @@ impl SocPeripheral for SocGenerated {
         val: caliptra_emu_types::RvData,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_wdt_timer1_timeout_period[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_timer1_timeout_period[index];
         let mut new_val = current_val;
@@ -2017,6 +2946,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraWdtTimer2En::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_timer2_en");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_timer2_en)
     }
     fn write_cptra_wdt_timer2_en(
@@ -2026,6 +2958,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraWdtTimer2En::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_wdt_timer2_en = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_timer2_en;
         let mut new_val = current_val;
@@ -2039,6 +2974,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_timer2_ctrl");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_timer2_ctrl)
     }
     fn write_cptra_wdt_timer2_ctrl(
@@ -2048,6 +2986,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_wdt_timer2_ctrl = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_timer2_ctrl;
         let mut new_val = current_val;
@@ -2056,6 +2997,9 @@ impl SocPeripheral for SocGenerated {
         self.cptra_wdt_timer2_ctrl = new_val;
     }
     fn read_cptra_wdt_timer2_timeout_period(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read soc::cptra_wdt_timer2_timeout_period[{}]" , index);
+        }
         self.cptra_wdt_timer2_timeout_period[index]
     }
     fn write_cptra_wdt_timer2_timeout_period(
@@ -2063,6 +3007,9 @@ impl SocPeripheral for SocGenerated {
         val: caliptra_emu_types::RvData,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_wdt_timer2_timeout_period[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_timer2_timeout_period[index];
         let mut new_val = current_val;
@@ -2076,6 +3023,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraWdtStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_status");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_status)
     }
     fn write_cptra_wdt_status(
@@ -2085,6 +3035,12 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraWdtStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write soc::cptra_wdt_status = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_status;
         let mut new_val = current_val;
@@ -2095,9 +3051,17 @@ impl SocPeripheral for SocGenerated {
         self.cptra_wdt_status = new_val;
     }
     fn read_cptra_fuse_valid_axi_user(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_fuse_valid_axi_user"
+            );
+        }
         self.cptra_fuse_valid_axi_user
     }
     fn write_cptra_fuse_valid_axi_user(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fuse_valid_axi_user = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_fuse_valid_axi_user;
         let mut new_val = current_val;
@@ -2111,6 +3075,11 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_fuse_axi_user_lock"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_fuse_axi_user_lock)
     }
     fn write_cptra_fuse_axi_user_lock(
@@ -2120,6 +3089,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fuse_axi_user_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_fuse_axi_user_lock;
         let mut new_val = current_val;
@@ -2128,9 +3100,21 @@ impl SocPeripheral for SocGenerated {
         self.cptra_fuse_axi_user_lock = new_val;
     }
     fn read_cptra_wdt_cfg(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_wdt_cfg[{}]",
+                index
+            );
+        }
         self.cptra_wdt_cfg[index]
     }
     fn write_cptra_wdt_cfg(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write soc::cptra_wdt_cfg[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_cfg[index];
         let mut new_val = current_val;
@@ -2144,6 +3128,11 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_i_trng_entropy_config_0"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_i_trng_entropy_config_0)
     }
     fn write_cptra_i_trng_entropy_config_0(
@@ -2153,6 +3142,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_i_trng_entropy_config_0 = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_i_trng_entropy_config_0;
         let mut new_val = current_val;
@@ -2168,6 +3160,11 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_i_trng_entropy_config_1"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_i_trng_entropy_config_1)
     }
     fn write_cptra_i_trng_entropy_config_1(
@@ -2177,6 +3174,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_i_trng_entropy_config_1 = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_i_trng_entropy_config_1;
         let mut new_val = current_val;
@@ -2187,9 +3187,18 @@ impl SocPeripheral for SocGenerated {
         self.cptra_i_trng_entropy_config_1 = new_val;
     }
     fn read_cptra_rsvd_reg(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_rsvd_reg[{}]",
+                index
+            );
+        }
         self.cptra_rsvd_reg[index]
     }
     fn write_cptra_rsvd_reg(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_rsvd_reg[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_rsvd_reg[index];
         let mut new_val = current_val;
@@ -2198,9 +3207,15 @@ impl SocPeripheral for SocGenerated {
         self.cptra_rsvd_reg[index] = new_val;
     }
     fn read_cptra_hw_capabilities(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_hw_capabilities");
+        }
         self.cptra_hw_capabilities
     }
     fn write_cptra_hw_capabilities(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_hw_capabilities = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_hw_capabilities;
         let mut new_val = current_val;
@@ -2209,9 +3224,15 @@ impl SocPeripheral for SocGenerated {
         self.cptra_hw_capabilities = new_val;
     }
     fn read_cptra_fw_capabilities(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_fw_capabilities");
+        }
         self.cptra_fw_capabilities
     }
     fn write_cptra_fw_capabilities(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fw_capabilities = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_fw_capabilities;
         let mut new_val = current_val;
@@ -2225,6 +3246,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraXxxxxxxk::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::cptra_cap_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_cap_lock)
     }
     fn write_cptra_cap_lock(
@@ -2234,6 +3258,12 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraXxxxxxxk::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write soc::cptra_cap_lock = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_cap_lock;
         let mut new_val = current_val;
@@ -2242,9 +3272,18 @@ impl SocPeripheral for SocGenerated {
         self.cptra_cap_lock = new_val;
     }
     fn read_cptra_owner_pk_hash(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_owner_pk_hash[{}]",
+                index
+            );
+        }
         self.cptra_owner_pk_hash[index]
     }
     fn write_cptra_owner_pk_hash(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_owner_pk_hash[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.cptra_owner_pk_hash[index];
         let mut new_val = current_val;
@@ -2258,6 +3297,11 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::CptraXxxxxxxk::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::cptra_owner_pk_hash_lock"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_owner_pk_hash_lock)
     }
     fn write_cptra_owner_pk_hash_lock(
@@ -2267,6 +3311,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::CptraXxxxxxxk::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::cptra_owner_pk_hash_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_owner_pk_hash_lock;
         let mut new_val = current_val;
@@ -2275,6 +3322,12 @@ impl SocPeripheral for SocGenerated {
         self.cptra_owner_pk_hash_lock = new_val;
     }
     fn write_fuse_uds_seed(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write soc::fuse_uds_seed[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.fuse_uds_seed[index];
         let mut new_val = current_val;
@@ -2283,6 +3336,9 @@ impl SocPeripheral for SocGenerated {
         self.fuse_uds_seed[index] = new_val;
     }
     fn write_fuse_field_entropy(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_field_entropy[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.fuse_field_entropy[index];
         let mut new_val = current_val;
@@ -2291,9 +3347,18 @@ impl SocPeripheral for SocGenerated {
         self.fuse_field_entropy[index] = new_val;
     }
     fn read_fuse_vendor_pk_hash(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::fuse_vendor_pk_hash[{}]",
+                index
+            );
+        }
         self.fuse_vendor_pk_hash[index]
     }
     fn write_fuse_vendor_pk_hash(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_vendor_pk_hash[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.fuse_vendor_pk_hash[index];
         let mut new_val = current_val;
@@ -2307,6 +3372,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::FuseEccRevocation::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::fuse_ecc_revocation");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.fuse_ecc_revocation)
     }
     fn write_fuse_ecc_revocation(
@@ -2316,6 +3384,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::FuseEccRevocation::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_ecc_revocation = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.fuse_ecc_revocation;
         let mut new_val = current_val;
@@ -2324,9 +3395,17 @@ impl SocPeripheral for SocGenerated {
         self.fuse_ecc_revocation = new_val;
     }
     fn read_fuse_fmc_key_manifest_svn(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::fuse_fmc_key_manifest_svn"
+            );
+        }
         self.fuse_fmc_key_manifest_svn
     }
     fn write_fuse_fmc_key_manifest_svn(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_fmc_key_manifest_svn = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.fuse_fmc_key_manifest_svn;
         let mut new_val = current_val;
@@ -2335,9 +3414,18 @@ impl SocPeripheral for SocGenerated {
         self.fuse_fmc_key_manifest_svn = new_val;
     }
     fn read_fuse_runtime_svn(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::fuse_runtime_svn[{}]",
+                index
+            );
+        }
         self.fuse_runtime_svn[index]
     }
     fn write_fuse_runtime_svn(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_runtime_svn[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.fuse_runtime_svn[index];
         let mut new_val = current_val;
@@ -2351,6 +3439,11 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::fuse_anti_rollback_disable"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.fuse_anti_rollback_disable)
     }
     fn write_fuse_anti_rollback_disable(
@@ -2360,6 +3453,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_anti_rollback_disable = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.fuse_anti_rollback_disable;
         let mut new_val = current_val;
@@ -2368,9 +3464,18 @@ impl SocPeripheral for SocGenerated {
         self.fuse_anti_rollback_disable = new_val;
     }
     fn read_fuse_idevid_cert_attr(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::fuse_idevid_cert_attr[{}]",
+                index
+            );
+        }
         self.fuse_idevid_cert_attr[index]
     }
     fn write_fuse_idevid_cert_attr(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_idevid_cert_attr[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.fuse_idevid_cert_attr[index];
         let mut new_val = current_val;
@@ -2379,9 +3484,18 @@ impl SocPeripheral for SocGenerated {
         self.fuse_idevid_cert_attr[index] = new_val;
     }
     fn read_fuse_idevid_manuf_hsm_id(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::fuse_idevid_manuf_hsm_id[{}]",
+                index
+            );
+        }
         self.fuse_idevid_manuf_hsm_id[index]
     }
     fn write_fuse_idevid_manuf_hsm_id(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_idevid_manuf_hsm_id[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.fuse_idevid_manuf_hsm_id[index];
         let mut new_val = current_val;
@@ -2390,9 +3504,15 @@ impl SocPeripheral for SocGenerated {
         self.fuse_idevid_manuf_hsm_id[index] = new_val;
     }
     fn read_fuse_lms_revocation(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::fuse_lms_revocation");
+        }
         self.fuse_lms_revocation
     }
     fn write_fuse_lms_revocation(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_lms_revocation = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.fuse_lms_revocation;
         let mut new_val = current_val;
@@ -2406,6 +3526,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::FuseMldsaRevocation::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::fuse_mldsa_revocation");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.fuse_mldsa_revocation)
     }
     fn write_fuse_mldsa_revocation(
@@ -2415,6 +3538,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::FuseMldsaRevocation::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_mldsa_revocation = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.fuse_mldsa_revocation;
         let mut new_val = current_val;
@@ -2428,6 +3554,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::FuseSocSteppingId::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::fuse_soc_stepping_id");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.fuse_soc_stepping_id)
     }
     fn write_fuse_soc_stepping_id(
@@ -2437,6 +3566,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::FuseSocSteppingId::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_soc_stepping_id = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.fuse_soc_stepping_id;
         let mut new_val = current_val;
@@ -2445,9 +3577,15 @@ impl SocPeripheral for SocGenerated {
         self.fuse_soc_stepping_id = new_val;
     }
     fn read_fuse_manuf_dbg_unlock_token(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read soc::fuse_manuf_dbg_unlock_token[{}]" , index);
+        }
         self.fuse_manuf_dbg_unlock_token[index]
     }
     fn write_fuse_manuf_dbg_unlock_token(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_manuf_dbg_unlock_token[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.fuse_manuf_dbg_unlock_token[index];
         let mut new_val = current_val;
@@ -2461,6 +3599,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::FusePqcKeyType::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::fuse_pqc_key_type");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.fuse_pqc_key_type)
     }
     fn write_fuse_pqc_key_type(
@@ -2470,6 +3611,12 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::FusePqcKeyType::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write soc::fuse_pqc_key_type = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.fuse_pqc_key_type;
         let mut new_val = current_val;
@@ -2478,9 +3625,18 @@ impl SocPeripheral for SocGenerated {
         self.fuse_pqc_key_type = new_val;
     }
     fn read_fuse_soc_manifest_svn(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::fuse_soc_manifest_svn[{}]",
+                index
+            );
+        }
         self.fuse_soc_manifest_svn[index]
     }
     fn write_fuse_soc_manifest_svn(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_soc_manifest_svn[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.fuse_soc_manifest_svn[index];
         let mut new_val = current_val;
@@ -2494,6 +3650,11 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::fuse_soc_manifest_max_svn"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.fuse_soc_manifest_max_svn)
     }
     fn write_fuse_soc_manifest_max_svn(
@@ -2503,6 +3664,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::fuse_soc_manifest_max_svn = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.fuse_soc_manifest_max_svn;
         let mut new_val = current_val;
@@ -2511,9 +3675,21 @@ impl SocPeripheral for SocGenerated {
         self.fuse_soc_manifest_max_svn = new_val;
     }
     fn read_fuse_hek_seed(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::fuse_hek_seed[{}]",
+                index
+            );
+        }
         self.fuse_hek_seed[index]
     }
     fn write_fuse_hek_seed(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write soc::fuse_hek_seed[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.fuse_hek_seed[index];
         let mut new_val = current_val;
@@ -2522,9 +3698,17 @@ impl SocPeripheral for SocGenerated {
         self.fuse_hek_seed[index] = new_val;
     }
     fn read_ss_caliptra_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::ss_caliptra_base_addr_l"
+            );
+        }
         self.ss_caliptra_base_addr_l
     }
     fn write_ss_caliptra_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_caliptra_base_addr_l = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_caliptra_base_addr_l;
         let mut new_val = current_val;
@@ -2533,9 +3717,17 @@ impl SocPeripheral for SocGenerated {
         self.ss_caliptra_base_addr_l = new_val;
     }
     fn read_ss_caliptra_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::ss_caliptra_base_addr_h"
+            );
+        }
         self.ss_caliptra_base_addr_h
     }
     fn write_ss_caliptra_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_caliptra_base_addr_h = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_caliptra_base_addr_h;
         let mut new_val = current_val;
@@ -2544,9 +3736,15 @@ impl SocPeripheral for SocGenerated {
         self.ss_caliptra_base_addr_h = new_val;
     }
     fn read_ss_mci_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::ss_mci_base_addr_l");
+        }
         self.ss_mci_base_addr_l
     }
     fn write_ss_mci_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_mci_base_addr_l = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_mci_base_addr_l;
         let mut new_val = current_val;
@@ -2555,9 +3753,15 @@ impl SocPeripheral for SocGenerated {
         self.ss_mci_base_addr_l = new_val;
     }
     fn read_ss_mci_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::ss_mci_base_addr_h");
+        }
         self.ss_mci_base_addr_h
     }
     fn write_ss_mci_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_mci_base_addr_h = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_mci_base_addr_h;
         let mut new_val = current_val;
@@ -2566,9 +3770,17 @@ impl SocPeripheral for SocGenerated {
         self.ss_mci_base_addr_h = new_val;
     }
     fn read_ss_recovery_ifc_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::ss_recovery_ifc_base_addr_l"
+            );
+        }
         self.ss_recovery_ifc_base_addr_l
     }
     fn write_ss_recovery_ifc_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_recovery_ifc_base_addr_l = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_recovery_ifc_base_addr_l;
         let mut new_val = current_val;
@@ -2577,9 +3789,17 @@ impl SocPeripheral for SocGenerated {
         self.ss_recovery_ifc_base_addr_l = new_val;
     }
     fn read_ss_recovery_ifc_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::ss_recovery_ifc_base_addr_h"
+            );
+        }
         self.ss_recovery_ifc_base_addr_h
     }
     fn write_ss_recovery_ifc_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_recovery_ifc_base_addr_h = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_recovery_ifc_base_addr_h;
         let mut new_val = current_val;
@@ -2588,9 +3808,15 @@ impl SocPeripheral for SocGenerated {
         self.ss_recovery_ifc_base_addr_h = new_val;
     }
     fn read_ss_otp_fc_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::ss_otp_fc_base_addr_l");
+        }
         self.ss_otp_fc_base_addr_l
     }
     fn write_ss_otp_fc_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_otp_fc_base_addr_l = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_otp_fc_base_addr_l;
         let mut new_val = current_val;
@@ -2599,9 +3825,15 @@ impl SocPeripheral for SocGenerated {
         self.ss_otp_fc_base_addr_l = new_val;
     }
     fn read_ss_otp_fc_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::ss_otp_fc_base_addr_h");
+        }
         self.ss_otp_fc_base_addr_h
     }
     fn write_ss_otp_fc_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_otp_fc_base_addr_h = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_otp_fc_base_addr_h;
         let mut new_val = current_val;
@@ -2610,9 +3842,17 @@ impl SocPeripheral for SocGenerated {
         self.ss_otp_fc_base_addr_h = new_val;
     }
     fn read_ss_uds_seed_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::ss_uds_seed_base_addr_l"
+            );
+        }
         self.ss_uds_seed_base_addr_l
     }
     fn write_ss_uds_seed_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_uds_seed_base_addr_l = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_uds_seed_base_addr_l;
         let mut new_val = current_val;
@@ -2621,9 +3861,17 @@ impl SocPeripheral for SocGenerated {
         self.ss_uds_seed_base_addr_l = new_val;
     }
     fn read_ss_uds_seed_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::ss_uds_seed_base_addr_h"
+            );
+        }
         self.ss_uds_seed_base_addr_h
     }
     fn write_ss_uds_seed_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_uds_seed_base_addr_h = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_uds_seed_base_addr_h;
         let mut new_val = current_val;
@@ -2634,12 +3882,18 @@ impl SocPeripheral for SocGenerated {
     fn read_ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read soc::ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset");
+        }
         self.ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset
     }
     fn write_ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset(
         &mut self,
         val: caliptra_emu_types::RvData,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset;
         let mut new_val = current_val;
@@ -2648,12 +3902,18 @@ impl SocPeripheral for SocGenerated {
         self.ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset = new_val;
     }
     fn read_ss_num_of_prod_debug_unlock_auth_pk_hashes(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read soc::ss_num_of_prod_debug_unlock_auth_pk_hashes");
+        }
         self.ss_num_of_prod_debug_unlock_auth_pk_hashes
     }
     fn write_ss_num_of_prod_debug_unlock_auth_pk_hashes(
         &mut self,
         val: caliptra_emu_types::RvData,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_num_of_prod_debug_unlock_auth_pk_hashes = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_num_of_prod_debug_unlock_auth_pk_hashes;
         let mut new_val = current_val;
@@ -2667,12 +3927,23 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::SsDebugIntent::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::ss_debug_intent");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.ss_debug_intent)
     }
     fn read_ss_caliptra_dma_axi_user(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::ss_caliptra_dma_axi_user"
+            );
+        }
         self.ss_caliptra_dma_axi_user
     }
     fn write_ss_caliptra_dma_axi_user(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_caliptra_dma_axi_user = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_caliptra_dma_axi_user;
         let mut new_val = current_val;
@@ -2681,9 +3952,15 @@ impl SocPeripheral for SocGenerated {
         self.ss_caliptra_dma_axi_user = new_val;
     }
     fn read_ss_external_staging_area_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read soc::ss_external_staging_area_base_addr_l");
+        }
         self.ss_external_staging_area_base_addr_l
     }
     fn write_ss_external_staging_area_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_external_staging_area_base_addr_l = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_external_staging_area_base_addr_l;
         let mut new_val = current_val;
@@ -2692,9 +3969,15 @@ impl SocPeripheral for SocGenerated {
         self.ss_external_staging_area_base_addr_l = new_val;
     }
     fn read_ss_external_staging_area_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read soc::ss_external_staging_area_base_addr_h");
+        }
         self.ss_external_staging_area_base_addr_h
     }
     fn write_ss_external_staging_area_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_external_staging_area_base_addr_h = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_external_staging_area_base_addr_h;
         let mut new_val = current_val;
@@ -2703,9 +3986,17 @@ impl SocPeripheral for SocGenerated {
         self.ss_external_staging_area_base_addr_h = new_val;
     }
     fn read_ss_key_release_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::ss_key_release_base_addr_l"
+            );
+        }
         self.ss_key_release_base_addr_l
     }
     fn write_ss_key_release_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_key_release_base_addr_l = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_key_release_base_addr_l;
         let mut new_val = current_val;
@@ -2714,9 +4005,17 @@ impl SocPeripheral for SocGenerated {
         self.ss_key_release_base_addr_l = new_val;
     }
     fn read_ss_key_release_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::ss_key_release_base_addr_h"
+            );
+        }
         self.ss_key_release_base_addr_h
     }
     fn write_ss_key_release_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_key_release_base_addr_h = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_key_release_base_addr_h;
         let mut new_val = current_val;
@@ -2730,6 +4029,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::SsKeyReleaseSize::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::ss_key_release_size");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.ss_key_release_size)
     }
     fn write_ss_key_release_size(
@@ -2739,6 +4041,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::SsKeyReleaseSize::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_key_release_size = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.ss_key_release_size;
         let mut new_val = current_val;
@@ -2752,6 +4057,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::SsOcpLockCtrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::ss_ocp_lock_ctrl");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.ss_ocp_lock_ctrl)
     }
     fn write_ss_ocp_lock_ctrl(
@@ -2761,6 +4069,12 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::SsOcpLockCtrl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write soc::ss_ocp_lock_ctrl = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.ss_ocp_lock_ctrl;
         let mut new_val = current_val;
@@ -2769,9 +4083,18 @@ impl SocPeripheral for SocGenerated {
         self.ss_ocp_lock_ctrl = new_val;
     }
     fn read_ss_strap_generic(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::ss_strap_generic[{}]",
+                index
+            );
+        }
         self.ss_strap_generic[index]
     }
     fn write_ss_strap_generic(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_strap_generic[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_strap_generic[index];
         let mut new_val = current_val;
@@ -2785,6 +4108,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::SsDbgServiceRegReq::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::ss_dbg_service_reg_req");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.ss_dbg_service_reg_req)
     }
     fn write_ss_dbg_service_reg_req(
@@ -2794,6 +4120,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::SsDbgServiceRegReq::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_dbg_service_reg_req = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.ss_dbg_service_reg_req;
         let mut new_val = current_val;
@@ -2811,6 +4140,9 @@ impl SocPeripheral for SocGenerated {
         u32,
         registers_generated::soc::bits::SsDbgServiceRegRsp::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read soc::ss_dbg_service_reg_rsp");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.ss_dbg_service_reg_rsp)
     }
     fn write_ss_dbg_service_reg_rsp(
@@ -2820,6 +4152,9 @@ impl SocPeripheral for SocGenerated {
             registers_generated::soc::bits::SsDbgServiceRegRsp::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_dbg_service_reg_rsp = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.ss_dbg_service_reg_rsp;
         let mut new_val = current_val;
@@ -2846,9 +4181,18 @@ impl SocPeripheral for SocGenerated {
         self.ss_dbg_service_reg_rsp = new_val;
     }
     fn read_ss_soc_dbg_unlock_level(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::ss_soc_dbg_unlock_level[{}]",
+                index
+            );
+        }
         self.ss_soc_dbg_unlock_level[index]
     }
     fn write_ss_soc_dbg_unlock_level(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_soc_dbg_unlock_level[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_soc_dbg_unlock_level[index];
         let mut new_val = current_val;
@@ -2857,9 +4201,18 @@ impl SocPeripheral for SocGenerated {
         self.ss_soc_dbg_unlock_level[index] = new_val;
     }
     fn read_ss_generic_fw_exec_ctrl(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read soc::ss_generic_fw_exec_ctrl[{}]",
+                index
+            );
+        }
         self.ss_generic_fw_exec_ctrl[index]
     }
     fn write_ss_generic_fw_exec_ctrl(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write soc::ss_generic_fw_exec_ctrl[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ss_generic_fw_exec_ctrl[index];
         let mut new_val = current_val;

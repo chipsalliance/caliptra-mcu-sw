@@ -28,6 +28,12 @@ pub trait El2PicPeripheral {
         u32,
         registers_generated::el2_pic_ctrl::bits::Meipl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read el2_pic::meipl[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_meipl(index);
         }
@@ -41,6 +47,13 @@ pub trait El2PicPeripheral {
         >,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write el2_pic::meipl[{}] = 0x{:08x}",
+                index,
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_meipl(val, index);
         }
@@ -52,6 +65,12 @@ pub trait El2PicPeripheral {
         u32,
         registers_generated::el2_pic_ctrl::bits::Meip::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read el2_pic::meip[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_meip(index);
         }
@@ -64,6 +83,12 @@ pub trait El2PicPeripheral {
         u32,
         registers_generated::el2_pic_ctrl::bits::Meie::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read el2_pic::meie[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_meie(index);
         }
@@ -77,6 +102,13 @@ pub trait El2PicPeripheral {
         >,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write el2_pic::meie[{}] = 0x{:08x}",
+                index,
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_meie(val, index);
         }
@@ -87,6 +119,9 @@ pub trait El2PicPeripheral {
         u32,
         registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read el2_pic::mpiccfg");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_mpiccfg();
         }
@@ -99,6 +134,12 @@ pub trait El2PicPeripheral {
             registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write el2_pic::mpiccfg = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_mpiccfg(val);
         }
@@ -110,6 +151,12 @@ pub trait El2PicPeripheral {
         u32,
         registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read el2_pic::meigwctrl[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_meigwctrl(index);
         }
@@ -123,17 +170,36 @@ pub trait El2PicPeripheral {
         >,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write el2_pic::meigwctrl[{}] = 0x{:08x}",
+                index,
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_meigwctrl(val, index);
         }
     }
     fn read_meigwclr(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read el2_pic::meigwclr[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_meigwclr(index);
         }
         0
     }
     fn write_meigwclr(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write el2_pic::meigwclr[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_meigwclr(val, index);
         }
@@ -185,6 +251,12 @@ impl El2PicPeripheral for El2PicGenerated {
         u32,
         registers_generated::el2_pic_ctrl::bits::Meipl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read el2_pic::meipl[{}]",
+                index
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.meipl[index])
     }
     fn write_meipl(
@@ -195,6 +267,13 @@ impl El2PicPeripheral for El2PicGenerated {
         >,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write el2_pic::meipl[{}] = 0x{:08x}",
+                index,
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.meipl[index];
         let mut new_val = current_val;
@@ -209,6 +288,12 @@ impl El2PicPeripheral for El2PicGenerated {
         u32,
         registers_generated::el2_pic_ctrl::bits::Meip::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read el2_pic::meip[{}]",
+                index
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.meip[index])
     }
     fn read_meie(
@@ -218,6 +303,12 @@ impl El2PicPeripheral for El2PicGenerated {
         u32,
         registers_generated::el2_pic_ctrl::bits::Meie::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read el2_pic::meie[{}]",
+                index
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.meie[index])
     }
     fn write_meie(
@@ -228,6 +319,13 @@ impl El2PicPeripheral for El2PicGenerated {
         >,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write el2_pic::meie[{}] = 0x{:08x}",
+                index,
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.meie[index];
         let mut new_val = current_val;
@@ -241,6 +339,9 @@ impl El2PicPeripheral for El2PicGenerated {
         u32,
         registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read el2_pic::mpiccfg");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.mpiccfg)
     }
     fn write_mpiccfg(
@@ -250,6 +351,12 @@ impl El2PicPeripheral for El2PicGenerated {
             registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write el2_pic::mpiccfg = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mpiccfg;
         let mut new_val = current_val;
@@ -264,6 +371,12 @@ impl El2PicPeripheral for El2PicGenerated {
         u32,
         registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read el2_pic::meigwctrl[{}]",
+                index
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.meigwctrl[index])
     }
     fn write_meigwctrl(
@@ -274,6 +387,13 @@ impl El2PicPeripheral for El2PicGenerated {
         >,
         index: usize,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write el2_pic::meigwctrl[{}] = 0x{:08x}",
+                index,
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.meigwctrl[index];
         let mut new_val = current_val;
@@ -284,9 +404,21 @@ impl El2PicPeripheral for El2PicGenerated {
         self.meigwctrl[index] = new_val;
     }
     fn read_meigwclr(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read el2_pic::meigwclr[{}]",
+                index
+            );
+        }
         self.meigwclr[index]
     }
     fn write_meigwclr(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write el2_pic::meigwclr[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.meigwclr[index];
         let mut new_val = current_val;

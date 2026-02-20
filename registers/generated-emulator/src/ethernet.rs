@@ -27,6 +27,9 @@ pub trait EthernetPeripheral {
         u32,
         registers_generated::ethernet::bits::EthCtrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read ethernet::eth_ctrl");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_eth_ctrl();
         }
@@ -39,6 +42,12 @@ pub trait EthernetPeripheral {
             registers_generated::ethernet::bits::EthCtrl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write ethernet::eth_ctrl = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_eth_ctrl(val);
         }
@@ -49,6 +58,9 @@ pub trait EthernetPeripheral {
         u32,
         registers_generated::ethernet::bits::EthStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read ethernet::eth_status");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_eth_status();
         }
@@ -60,6 +72,9 @@ pub trait EthernetPeripheral {
         u32,
         registers_generated::ethernet::bits::EthTxLen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read ethernet::eth_tx_len");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_eth_tx_len();
         }
@@ -72,6 +87,12 @@ pub trait EthernetPeripheral {
             registers_generated::ethernet::bits::EthTxLen::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write ethernet::eth_tx_len = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_eth_tx_len(val);
         }
@@ -82,6 +103,9 @@ pub trait EthernetPeripheral {
         u32,
         registers_generated::ethernet::bits::EthRxLen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read ethernet::eth_rx_len");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_eth_rx_len();
         }
@@ -93,6 +117,9 @@ pub trait EthernetPeripheral {
         u32,
         registers_generated::ethernet::bits::EthTxPtr::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read ethernet::eth_tx_ptr");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_eth_tx_ptr();
         }
@@ -105,6 +132,12 @@ pub trait EthernetPeripheral {
             registers_generated::ethernet::bits::EthTxPtr::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write ethernet::eth_tx_ptr = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_eth_tx_ptr(val);
         }
@@ -115,6 +148,9 @@ pub trait EthernetPeripheral {
         u32,
         registers_generated::ethernet::bits::EthRxPtr::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read ethernet::eth_rx_ptr");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_eth_rx_ptr();
         }
@@ -127,17 +163,32 @@ pub trait EthernetPeripheral {
             registers_generated::ethernet::bits::EthRxPtr::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write ethernet::eth_rx_ptr = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_eth_rx_ptr(val);
         }
     }
     fn read_eth_mac_low(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read ethernet::eth_mac_low");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_eth_mac_low();
         }
         0
     }
     fn write_eth_mac_low(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write ethernet::eth_mac_low = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_eth_mac_low(val);
         }
@@ -148,6 +199,9 @@ pub trait EthernetPeripheral {
         u32,
         registers_generated::ethernet::bits::EthMacHigh::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read ethernet::eth_mac_high");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_eth_mac_high();
         }
@@ -160,22 +214,46 @@ pub trait EthernetPeripheral {
             registers_generated::ethernet::bits::EthMacHigh::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write ethernet::eth_mac_high = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_eth_mac_high(val);
         }
     }
     fn read_eth_tx_data(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read ethernet::eth_tx_data[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_eth_tx_data(index);
         }
         0
     }
     fn write_eth_tx_data(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write ethernet::eth_tx_data[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_eth_tx_data(val, index);
         }
     }
     fn read_eth_rx_data(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read ethernet::eth_rx_data[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_eth_rx_data(index);
         }
@@ -235,6 +313,9 @@ impl EthernetPeripheral for EthernetGenerated {
         u32,
         registers_generated::ethernet::bits::EthCtrl::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read ethernet::eth_ctrl");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.eth_ctrl)
     }
     fn write_eth_ctrl(
@@ -244,6 +325,12 @@ impl EthernetPeripheral for EthernetGenerated {
             registers_generated::ethernet::bits::EthCtrl::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write ethernet::eth_ctrl = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.eth_ctrl;
         let mut new_val = current_val;
@@ -261,6 +348,9 @@ impl EthernetPeripheral for EthernetGenerated {
         u32,
         registers_generated::ethernet::bits::EthStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read ethernet::eth_status");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.eth_status)
     }
     fn read_eth_tx_len(
@@ -269,6 +359,9 @@ impl EthernetPeripheral for EthernetGenerated {
         u32,
         registers_generated::ethernet::bits::EthTxLen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read ethernet::eth_tx_len");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.eth_tx_len)
     }
     fn write_eth_tx_len(
@@ -278,6 +371,12 @@ impl EthernetPeripheral for EthernetGenerated {
             registers_generated::ethernet::bits::EthTxLen::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write ethernet::eth_tx_len = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.eth_tx_len;
         let mut new_val = current_val;
@@ -291,6 +390,9 @@ impl EthernetPeripheral for EthernetGenerated {
         u32,
         registers_generated::ethernet::bits::EthRxLen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read ethernet::eth_rx_len");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.eth_rx_len)
     }
     fn read_eth_tx_ptr(
@@ -299,6 +401,9 @@ impl EthernetPeripheral for EthernetGenerated {
         u32,
         registers_generated::ethernet::bits::EthTxPtr::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read ethernet::eth_tx_ptr");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.eth_tx_ptr)
     }
     fn write_eth_tx_ptr(
@@ -308,6 +413,12 @@ impl EthernetPeripheral for EthernetGenerated {
             registers_generated::ethernet::bits::EthTxPtr::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write ethernet::eth_tx_ptr = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.eth_tx_ptr;
         let mut new_val = current_val;
@@ -321,6 +432,9 @@ impl EthernetPeripheral for EthernetGenerated {
         u32,
         registers_generated::ethernet::bits::EthRxPtr::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read ethernet::eth_rx_ptr");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.eth_rx_ptr)
     }
     fn write_eth_rx_ptr(
@@ -330,6 +444,12 @@ impl EthernetPeripheral for EthernetGenerated {
             registers_generated::ethernet::bits::EthRxPtr::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write ethernet::eth_rx_ptr = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.eth_rx_ptr;
         let mut new_val = current_val;
@@ -338,9 +458,18 @@ impl EthernetPeripheral for EthernetGenerated {
         self.eth_rx_ptr = new_val;
     }
     fn read_eth_mac_low(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read ethernet::eth_mac_low");
+        }
         self.eth_mac_low
     }
     fn write_eth_mac_low(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write ethernet::eth_mac_low = 0x{:08x}",
+                val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.eth_mac_low;
         let mut new_val = current_val;
@@ -354,6 +483,9 @@ impl EthernetPeripheral for EthernetGenerated {
         u32,
         registers_generated::ethernet::bits::EthMacHigh::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read ethernet::eth_mac_high");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.eth_mac_high)
     }
     fn write_eth_mac_high(
@@ -363,6 +495,12 @@ impl EthernetPeripheral for EthernetGenerated {
             registers_generated::ethernet::bits::EthMacHigh::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write ethernet::eth_mac_high = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.eth_mac_high;
         let mut new_val = current_val;
@@ -371,9 +509,18 @@ impl EthernetPeripheral for EthernetGenerated {
         self.eth_mac_high = new_val;
     }
     fn read_eth_tx_data(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read ethernet::eth_tx_data[{}]",
+                index
+            );
+        }
         self.eth_tx_data[index]
     }
     fn write_eth_tx_data(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write ethernet::eth_tx_data[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.eth_tx_data[index];
         let mut new_val = current_val;
@@ -382,6 +529,12 @@ impl EthernetPeripheral for EthernetGenerated {
         self.eth_tx_data[index] = new_val;
     }
     fn read_eth_rx_data(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read ethernet::eth_rx_data[{}]",
+                index
+            );
+        }
         self.eth_rx_data[index]
     }
 }

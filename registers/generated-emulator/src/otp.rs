@@ -27,6 +27,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::InterruptState::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::interrupt_state");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_interrupt_state();
         }
@@ -39,6 +42,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::InterruptState::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::interrupt_state = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_interrupt_state(val);
         }
@@ -49,6 +58,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::otp_interrupt_enable");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_otp_interrupt_enable();
         }
@@ -61,6 +73,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::otp_interrupt_enable = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_otp_interrupt_enable(val);
         }
@@ -72,6 +90,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::InterruptTest::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::interrupt_test = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_interrupt_test(val);
         }
@@ -83,6 +107,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::AlertTest::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::alert_test = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_alert_test(val);
         }
@@ -93,6 +123,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::OtpStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::otp_status");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_otp_status();
         }
@@ -104,6 +137,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::direct_access_regwen");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_direct_access_regwen();
         }
@@ -116,6 +152,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::direct_access_regwen = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_direct_access_regwen(val);
         }
@@ -127,6 +169,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::DirectAccessCmd::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::direct_access_cmd = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_direct_access_cmd(val);
         }
@@ -137,6 +185,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::direct_access_address");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_direct_access_address();
         }
@@ -149,6 +200,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::direct_access_address = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_direct_access_address(val);
         }
@@ -159,6 +216,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::check_trigger_regwen");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_check_trigger_regwen();
         }
@@ -171,6 +231,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::check_trigger_regwen = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_check_trigger_regwen(val);
         }
@@ -182,6 +248,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::CheckTrigger::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::check_trigger = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_check_trigger(val);
         }
@@ -193,39 +265,69 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::CheckRegwen::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::check_regwen = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_check_regwen(val);
         }
     }
     fn read_check_timeout(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::check_timeout");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_check_timeout();
         }
         0
     }
     fn write_check_timeout(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::check_timeout = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_check_timeout(val);
         }
     }
     fn read_integrity_check_period(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::integrity_check_period");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_integrity_check_period();
         }
         0
     }
     fn write_integrity_check_period(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::integrity_check_period = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_integrity_check_period(val);
         }
     }
     fn read_consistency_check_period(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::consistency_check_period");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_consistency_check_period();
         }
         0
     }
     fn write_consistency_check_period(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::consistency_check_period = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_consistency_check_period(val);
         }
@@ -236,6 +338,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::sw_manuf_partition_read_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_sw_manuf_partition_read_lock();
         }
@@ -248,6 +353,9 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::sw_manuf_partition_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_sw_manuf_partition_read_lock(val);
         }
@@ -258,6 +366,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::svn_partition_read_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_svn_partition_read_lock();
         }
@@ -270,6 +381,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::svn_partition_read_lock = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_svn_partition_read_lock(val);
         }
@@ -280,6 +397,11 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::vendor_test_partition_read_lock"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_test_partition_read_lock();
         }
@@ -292,6 +414,9 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::vendor_test_partition_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_vendor_test_partition_read_lock(val);
         }
@@ -302,6 +427,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_manuf_partition_read_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_hashes_manuf_partition_read_lock();
         }
@@ -314,6 +442,9 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::vendor_hashes_manuf_partition_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_vendor_hashes_manuf_partition_read_lock(val);
         }
@@ -324,6 +455,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_prod_partition_read_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_hashes_prod_partition_read_lock();
         }
@@ -336,6 +470,9 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::vendor_hashes_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_vendor_hashes_prod_partition_read_lock(val);
         }
@@ -346,6 +483,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_revocations_prod_partition_read_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_revocations_prod_partition_read_lock();
         }
@@ -358,6 +498,9 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::vendor_revocations_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_vendor_revocations_prod_partition_read_lock(val);
         }
@@ -368,6 +511,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_non_secret_prod_partition_read_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_non_secret_prod_partition_read_lock();
         }
@@ -380,6 +526,9 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::vendor_non_secret_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_vendor_non_secret_prod_partition_read_lock(val);
         }
@@ -390,6 +539,11 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd0ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_0_read_lock"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_0_read_lock();
         }
@@ -402,6 +556,9 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd0ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::cptra_ss_lock_hek_prod_0_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_ss_lock_hek_prod_0_read_lock(val);
         }
@@ -412,6 +569,11 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd1ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_1_read_lock"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_1_read_lock();
         }
@@ -424,6 +586,9 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd1ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::cptra_ss_lock_hek_prod_1_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_ss_lock_hek_prod_1_read_lock(val);
         }
@@ -434,6 +599,11 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd2ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_2_read_lock"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_2_read_lock();
         }
@@ -446,6 +616,9 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd2ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::cptra_ss_lock_hek_prod_2_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_ss_lock_hek_prod_2_read_lock(val);
         }
@@ -456,6 +629,11 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd3ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_3_read_lock"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_3_read_lock();
         }
@@ -468,6 +646,9 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd3ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::cptra_ss_lock_hek_prod_3_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_ss_lock_hek_prod_3_read_lock(val);
         }
@@ -478,6 +659,11 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd4ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_4_read_lock"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_4_read_lock();
         }
@@ -490,6 +676,9 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd4ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::cptra_ss_lock_hek_prod_4_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_ss_lock_hek_prod_4_read_lock(val);
         }
@@ -500,6 +689,11 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd5ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_5_read_lock"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_5_read_lock();
         }
@@ -512,6 +706,9 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd5ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::cptra_ss_lock_hek_prod_5_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_ss_lock_hek_prod_5_read_lock(val);
         }
@@ -522,6 +719,11 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd6ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_6_read_lock"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_6_read_lock();
         }
@@ -534,6 +736,9 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd6ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::cptra_ss_lock_hek_prod_6_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_ss_lock_hek_prod_6_read_lock(val);
         }
@@ -544,6 +749,11 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd7ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_7_read_lock"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_7_read_lock();
         }
@@ -556,28 +766,43 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd7ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::cptra_ss_lock_hek_prod_7_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         if let Some(generated) = self.generated() {
             generated.write_cptra_ss_lock_hek_prod_7_read_lock(val);
         }
     }
     fn read_vendor_pk_hash_volatile_lock(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::vendor_pk_hash_volatile_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_pk_hash_volatile_lock();
         }
         0
     }
     fn write_vendor_pk_hash_volatile_lock(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::vendor_pk_hash_volatile_lock = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_vendor_pk_hash_volatile_lock(val);
         }
     }
     fn read_ratchet_seed_volatile_lock(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::ratchet_seed_volatile_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_ratchet_seed_volatile_lock();
         }
         0
     }
     fn write_ratchet_seed_volatile_lock(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::ratchet_seed_volatile_lock = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_ratchet_seed_volatile_lock(val);
         }
@@ -586,6 +811,9 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr0::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::csr0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_csr0();
         }
@@ -598,6 +826,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::Csr0::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::csr0 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_csr0(val);
         }
@@ -606,6 +840,9 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr1::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::csr1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_csr1();
         }
@@ -618,6 +855,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::Csr1::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::csr1 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_csr1(val);
         }
@@ -626,6 +869,9 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr2::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::csr2");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_csr2();
         }
@@ -638,6 +884,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::Csr2::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::csr2 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_csr2(val);
         }
@@ -646,6 +898,9 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr3::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::csr3");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_csr3();
         }
@@ -658,6 +913,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::Csr3::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::csr3 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_csr3(val);
         }
@@ -666,6 +927,9 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr4::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::csr4");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_csr4();
         }
@@ -678,6 +942,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::Csr4::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::csr4 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_csr4(val);
         }
@@ -686,6 +956,9 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr5::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::csr5");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_csr5();
         }
@@ -698,6 +971,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::Csr5::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::csr5 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_csr5(val);
         }
@@ -706,6 +985,9 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr6::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::csr6");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_csr6();
         }
@@ -718,6 +1000,12 @@ pub trait OtpPeripheral {
             registers_generated::otp_ctrl::bits::Csr6::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write otp::csr6 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_csr6(val);
         }
@@ -726,6 +1014,9 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr7::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::csr7");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_csr7();
         }
@@ -737,6 +1028,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_0();
         }
@@ -748,6 +1042,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_1();
         }
@@ -759,6 +1056,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_2");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_2();
         }
@@ -770,6 +1070,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_3");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_3();
         }
@@ -781,6 +1084,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_4");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_4();
         }
@@ -792,6 +1098,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_5");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_5();
         }
@@ -803,6 +1112,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_6");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_6();
         }
@@ -814,6 +1126,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_7");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_7();
         }
@@ -825,6 +1140,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_8");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_8();
         }
@@ -836,6 +1154,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_9");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_9();
         }
@@ -847,6 +1168,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_10");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_10();
         }
@@ -858,6 +1182,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_11");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_11();
         }
@@ -869,6 +1196,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_12");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_12();
         }
@@ -880,6 +1210,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_13");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_13();
         }
@@ -891,6 +1224,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_14");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_14();
         }
@@ -902,6 +1238,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_15");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_15();
         }
@@ -913,6 +1252,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_16");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_16();
         }
@@ -924,6 +1266,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_17");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_17();
         }
@@ -935,6 +1280,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_18");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_18();
         }
@@ -946,6 +1294,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_19");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_19();
         }
@@ -957,6 +1308,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_20");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_20();
         }
@@ -968,6 +1322,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_21");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_21();
         }
@@ -979,6 +1336,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_22");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_22();
         }
@@ -990,6 +1350,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_23");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_23();
         }
@@ -1001,6 +1364,9 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_24");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_24();
         }
@@ -1012,124 +1378,199 @@ pub trait OtpPeripheral {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_25");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_25();
         }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::dai_wdata_rf_direct_access_wdata_0"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_dai_wdata_rf_direct_access_wdata_0();
         }
         0
     }
     fn write_dai_wdata_rf_direct_access_wdata_0(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::dai_wdata_rf_direct_access_wdata_0 = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_dai_wdata_rf_direct_access_wdata_0(val);
         }
     }
     fn read_dai_wdata_rf_direct_access_wdata_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::dai_wdata_rf_direct_access_wdata_1"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_dai_wdata_rf_direct_access_wdata_1();
         }
         0
     }
     fn write_dai_wdata_rf_direct_access_wdata_1(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: write otp::dai_wdata_rf_direct_access_wdata_1 = 0x{:08x}" , val);
+        }
         if let Some(generated) = self.generated() {
             generated.write_dai_wdata_rf_direct_access_wdata_1(val);
         }
     }
     fn read_dai_rdata_rf_direct_access_rdata_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::dai_rdata_rf_direct_access_rdata_0"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_dai_rdata_rf_direct_access_rdata_0();
         }
         0
     }
     fn read_dai_rdata_rf_direct_access_rdata_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::dai_rdata_rf_direct_access_rdata_1"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_dai_rdata_rf_direct_access_rdata_1();
         }
         0
     }
     fn read_sw_test_unlock_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::sw_test_unlock_partition_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_sw_test_unlock_partition_digest_digest_0();
         }
         0
     }
     fn read_sw_test_unlock_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::sw_test_unlock_partition_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_sw_test_unlock_partition_digest_digest_1();
         }
         0
     }
     fn read_secret_manuf_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::secret_manuf_partition_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_secret_manuf_partition_digest_digest_0();
         }
         0
     }
     fn read_secret_manuf_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::secret_manuf_partition_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_secret_manuf_partition_digest_digest_1();
         }
         0
     }
     fn read_secret_prod_partition_0_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_0_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_secret_prod_partition_0_digest_digest_0();
         }
         0
     }
     fn read_secret_prod_partition_0_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_0_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_secret_prod_partition_0_digest_digest_1();
         }
         0
     }
     fn read_secret_prod_partition_1_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_1_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_secret_prod_partition_1_digest_digest_0();
         }
         0
     }
     fn read_secret_prod_partition_1_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_1_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_secret_prod_partition_1_digest_digest_1();
         }
         0
     }
     fn read_secret_prod_partition_2_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_2_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_secret_prod_partition_2_digest_digest_0();
         }
         0
     }
     fn read_secret_prod_partition_2_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_2_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_secret_prod_partition_2_digest_digest_1();
         }
         0
     }
     fn read_secret_prod_partition_3_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_3_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_secret_prod_partition_3_digest_digest_0();
         }
         0
     }
     fn read_secret_prod_partition_3_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_3_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_secret_prod_partition_3_digest_digest_1();
         }
         0
     }
     fn read_sw_manuf_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::sw_manuf_partition_digest_digest_0"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_sw_manuf_partition_digest_digest_0();
         }
         0
     }
     fn read_sw_manuf_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read otp::sw_manuf_partition_digest_digest_1"
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_sw_manuf_partition_digest_digest_1();
         }
@@ -1138,6 +1579,9 @@ pub trait OtpPeripheral {
     fn read_secret_lc_transition_partition_digest_digest_0(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::secret_lc_transition_partition_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_secret_lc_transition_partition_digest_digest_0();
         }
@@ -1146,42 +1590,63 @@ pub trait OtpPeripheral {
     fn read_secret_lc_transition_partition_digest_digest_1(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::secret_lc_transition_partition_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_secret_lc_transition_partition_digest_digest_1();
         }
         0
     }
     fn read_vendor_test_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_test_partition_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_test_partition_digest_digest_0();
         }
         0
     }
     fn read_vendor_test_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_test_partition_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_test_partition_digest_digest_1();
         }
         0
     }
     fn read_vendor_hashes_manuf_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_manuf_partition_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_hashes_manuf_partition_digest_digest_0();
         }
         0
     }
     fn read_vendor_hashes_manuf_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_manuf_partition_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_hashes_manuf_partition_digest_digest_1();
         }
         0
     }
     fn read_vendor_hashes_prod_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_prod_partition_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_hashes_prod_partition_digest_digest_0();
         }
         0
     }
     fn read_vendor_hashes_prod_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_prod_partition_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_hashes_prod_partition_digest_digest_1();
         }
@@ -1190,6 +1655,9 @@ pub trait OtpPeripheral {
     fn read_vendor_revocations_prod_partition_digest_digest_0(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_revocations_prod_partition_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_revocations_prod_partition_digest_digest_0();
         }
@@ -1198,18 +1666,27 @@ pub trait OtpPeripheral {
     fn read_vendor_revocations_prod_partition_digest_digest_1(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_revocations_prod_partition_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_revocations_prod_partition_digest_digest_1();
         }
         0
     }
     fn read_vendor_secret_prod_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_secret_prod_partition_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_secret_prod_partition_digest_digest_0();
         }
         0
     }
     fn read_vendor_secret_prod_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_secret_prod_partition_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_secret_prod_partition_digest_digest_1();
         }
@@ -1218,6 +1695,9 @@ pub trait OtpPeripheral {
     fn read_vendor_non_secret_prod_partition_digest_digest_0(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_non_secret_prod_partition_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_non_secret_prod_partition_digest_digest_0();
         }
@@ -1226,102 +1706,153 @@ pub trait OtpPeripheral {
     fn read_vendor_non_secret_prod_partition_digest_digest_1(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_non_secret_prod_partition_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_vendor_non_secret_prod_partition_digest_digest_1();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_0_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_0_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_0_digest_digest_0();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_0_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_0_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_0_digest_digest_1();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_1_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_1_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_1_digest_digest_0();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_1_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_1_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_1_digest_digest_1();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_2_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_2_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_2_digest_digest_0();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_2_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_2_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_2_digest_digest_1();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_3_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_3_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_3_digest_digest_0();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_3_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_3_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_3_digest_digest_1();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_4_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_4_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_4_digest_digest_0();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_4_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_4_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_4_digest_digest_1();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_5_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_5_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_5_digest_digest_0();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_5_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_5_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_5_digest_digest_1();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_6_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_6_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_6_digest_digest_0();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_6_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_6_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_6_digest_digest_1();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_7_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_7_digest_digest_0");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_7_digest_digest_0();
         }
         0
     }
     fn read_cptra_ss_lock_hek_prod_7_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Non-functional register stub: read otp::cptra_ss_lock_hek_prod_7_digest_digest_1");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_cptra_ss_lock_hek_prod_7_digest_digest_1();
         }
@@ -1587,6 +2118,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::InterruptState::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::interrupt_state");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_state)
     }
     fn write_interrupt_state(
@@ -1596,6 +2130,12 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::InterruptState::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::interrupt_state = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.interrupt_state;
         let mut new_val = current_val;
@@ -1611,6 +2151,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::otp_interrupt_enable");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.otp_interrupt_enable)
     }
     fn write_otp_interrupt_enable(
@@ -1620,6 +2163,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::otp_interrupt_enable = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.otp_interrupt_enable;
         let mut new_val = current_val;
@@ -1636,6 +2182,12 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::InterruptTest::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::interrupt_test = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.interrupt_test;
         let mut new_val = current_val;
@@ -1652,6 +2204,12 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::AlertTest::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::alert_test = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.alert_test;
         let mut new_val = current_val;
@@ -1673,6 +2231,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::OtpStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::otp_status");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.otp_status)
     }
     fn read_direct_access_regwen(
@@ -1681,6 +2242,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::direct_access_regwen");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.direct_access_regwen)
     }
     fn write_direct_access_regwen(
@@ -1690,6 +2254,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::direct_access_regwen = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.direct_access_regwen;
         let mut new_val = current_val;
@@ -1704,6 +2271,12 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::DirectAccessCmd::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::direct_access_cmd = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.direct_access_cmd;
         let mut new_val = current_val;
@@ -1721,6 +2294,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::direct_access_address");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.direct_access_address)
     }
     fn write_direct_access_address(
@@ -1730,6 +2306,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::direct_access_address = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.direct_access_address;
         let mut new_val = current_val;
@@ -1743,6 +2322,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::check_trigger_regwen");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.check_trigger_regwen)
     }
     fn write_check_trigger_regwen(
@@ -1752,6 +2334,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::check_trigger_regwen = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.check_trigger_regwen;
         let mut new_val = current_val;
@@ -1766,6 +2351,12 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::CheckTrigger::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::check_trigger = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.check_trigger;
         let mut new_val = current_val;
@@ -1782,6 +2373,12 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::CheckRegwen::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::check_regwen = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.check_regwen;
         let mut new_val = current_val;
@@ -1790,9 +2387,18 @@ impl OtpPeripheral for OtpGenerated {
         self.check_regwen = new_val;
     }
     fn read_check_timeout(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::check_timeout");
+        }
         self.check_timeout
     }
     fn write_check_timeout(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::check_timeout = 0x{:08x}",
+                val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.check_timeout;
         let mut new_val = current_val;
@@ -1801,9 +2407,15 @@ impl OtpPeripheral for OtpGenerated {
         self.check_timeout = new_val;
     }
     fn read_integrity_check_period(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::integrity_check_period");
+        }
         self.integrity_check_period
     }
     fn write_integrity_check_period(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::integrity_check_period = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.integrity_check_period;
         let mut new_val = current_val;
@@ -1812,9 +2424,17 @@ impl OtpPeripheral for OtpGenerated {
         self.integrity_check_period = new_val;
     }
     fn read_consistency_check_period(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::consistency_check_period"
+            );
+        }
         self.consistency_check_period
     }
     fn write_consistency_check_period(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::consistency_check_period = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.consistency_check_period;
         let mut new_val = current_val;
@@ -1828,6 +2448,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::sw_manuf_partition_read_lock"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.sw_manuf_partition_read_lock)
     }
     fn write_sw_manuf_partition_read_lock(
@@ -1837,6 +2462,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::sw_manuf_partition_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.sw_manuf_partition_read_lock;
         let mut new_val = current_val;
@@ -1850,6 +2478,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::svn_partition_read_lock"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.svn_partition_read_lock)
     }
     fn write_svn_partition_read_lock(
@@ -1859,6 +2492,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::svn_partition_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.svn_partition_read_lock;
         let mut new_val = current_val;
@@ -1872,6 +2508,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_test_partition_read_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.vendor_test_partition_read_lock)
     }
     fn write_vendor_test_partition_read_lock(
@@ -1881,6 +2520,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::vendor_test_partition_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.vendor_test_partition_read_lock;
         let mut new_val = current_val;
@@ -1894,6 +2536,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_manuf_partition_read_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.vendor_hashes_manuf_partition_read_lock)
     }
     fn write_vendor_hashes_manuf_partition_read_lock(
@@ -1903,6 +2548,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::vendor_hashes_manuf_partition_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.vendor_hashes_manuf_partition_read_lock;
         let mut new_val = current_val;
@@ -1916,6 +2564,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_prod_partition_read_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.vendor_hashes_prod_partition_read_lock)
     }
     fn write_vendor_hashes_prod_partition_read_lock(
@@ -1925,6 +2576,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::vendor_hashes_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.vendor_hashes_prod_partition_read_lock;
         let mut new_val = current_val;
@@ -1938,6 +2592,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_revocations_prod_partition_read_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.vendor_revocations_prod_partition_read_lock)
     }
     fn write_vendor_revocations_prod_partition_read_lock(
@@ -1947,6 +2604,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::vendor_revocations_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.vendor_revocations_prod_partition_read_lock;
         let mut new_val = current_val;
@@ -1960,6 +2620,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_non_secret_prod_partition_read_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.vendor_non_secret_prod_partition_read_lock)
     }
     fn write_vendor_non_secret_prod_partition_read_lock(
@@ -1969,6 +2632,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::vendor_non_secret_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.vendor_non_secret_prod_partition_read_lock;
         let mut new_val = current_val;
@@ -1982,6 +2648,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd0ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_0_read_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_0_read_lock)
     }
     fn write_cptra_ss_lock_hek_prod_0_read_lock(
@@ -1991,6 +2660,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd0ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::cptra_ss_lock_hek_prod_0_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_ss_lock_hek_prod_0_read_lock;
         let mut new_val = current_val;
@@ -2004,6 +2676,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd1ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_1_read_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_1_read_lock)
     }
     fn write_cptra_ss_lock_hek_prod_1_read_lock(
@@ -2013,6 +2688,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd1ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::cptra_ss_lock_hek_prod_1_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_ss_lock_hek_prod_1_read_lock;
         let mut new_val = current_val;
@@ -2026,6 +2704,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd2ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_2_read_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_2_read_lock)
     }
     fn write_cptra_ss_lock_hek_prod_2_read_lock(
@@ -2035,6 +2716,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd2ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::cptra_ss_lock_hek_prod_2_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_ss_lock_hek_prod_2_read_lock;
         let mut new_val = current_val;
@@ -2048,6 +2732,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd3ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_3_read_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_3_read_lock)
     }
     fn write_cptra_ss_lock_hek_prod_3_read_lock(
@@ -2057,6 +2744,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd3ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::cptra_ss_lock_hek_prod_3_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_ss_lock_hek_prod_3_read_lock;
         let mut new_val = current_val;
@@ -2070,6 +2760,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd4ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_4_read_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_4_read_lock)
     }
     fn write_cptra_ss_lock_hek_prod_4_read_lock(
@@ -2079,6 +2772,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd4ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::cptra_ss_lock_hek_prod_4_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_ss_lock_hek_prod_4_read_lock;
         let mut new_val = current_val;
@@ -2092,6 +2788,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd5ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_5_read_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_5_read_lock)
     }
     fn write_cptra_ss_lock_hek_prod_5_read_lock(
@@ -2101,6 +2800,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd5ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::cptra_ss_lock_hek_prod_5_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_ss_lock_hek_prod_5_read_lock;
         let mut new_val = current_val;
@@ -2114,6 +2816,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd6ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_6_read_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_6_read_lock)
     }
     fn write_cptra_ss_lock_hek_prod_6_read_lock(
@@ -2123,6 +2828,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd6ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::cptra_ss_lock_hek_prod_6_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_ss_lock_hek_prod_6_read_lock;
         let mut new_val = current_val;
@@ -2136,6 +2844,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::CptraSsLockHekProd7ReadLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_7_read_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.cptra_ss_lock_hek_prod_7_read_lock)
     }
     fn write_cptra_ss_lock_hek_prod_7_read_lock(
@@ -2145,6 +2856,9 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::CptraSsLockHekProd7ReadLock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::cptra_ss_lock_hek_prod_7_read_lock = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.cptra_ss_lock_hek_prod_7_read_lock;
         let mut new_val = current_val;
@@ -2153,9 +2867,17 @@ impl OtpPeripheral for OtpGenerated {
         self.cptra_ss_lock_hek_prod_7_read_lock = new_val;
     }
     fn read_vendor_pk_hash_volatile_lock(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::vendor_pk_hash_volatile_lock"
+            );
+        }
         self.vendor_pk_hash_volatile_lock
     }
     fn write_vendor_pk_hash_volatile_lock(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::vendor_pk_hash_volatile_lock = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.vendor_pk_hash_volatile_lock;
         let mut new_val = current_val;
@@ -2164,9 +2886,17 @@ impl OtpPeripheral for OtpGenerated {
         self.vendor_pk_hash_volatile_lock = new_val;
     }
     fn read_ratchet_seed_volatile_lock(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::ratchet_seed_volatile_lock"
+            );
+        }
         self.ratchet_seed_volatile_lock
     }
     fn write_ratchet_seed_volatile_lock(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::ratchet_seed_volatile_lock = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.ratchet_seed_volatile_lock;
         let mut new_val = current_val;
@@ -2178,6 +2908,9 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr0::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::csr0");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.csr0)
     }
     fn write_csr0(
@@ -2187,6 +2920,12 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::Csr0::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::csr0 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.csr0;
         let mut new_val = current_val;
@@ -2206,6 +2945,9 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr1::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::csr1");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.csr1)
     }
     fn write_csr1(
@@ -2215,6 +2957,12 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::Csr1::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::csr1 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.csr1;
         let mut new_val = current_val;
@@ -2234,6 +2982,9 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr2::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::csr2");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.csr2)
     }
     fn write_csr2(
@@ -2243,6 +2994,12 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::Csr2::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::csr2 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.csr2;
         let mut new_val = current_val;
@@ -2254,6 +3011,9 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr3::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::csr3");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.csr3)
     }
     fn write_csr3(
@@ -2263,6 +3023,12 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::Csr3::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::csr3 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.csr3;
         let mut new_val = current_val;
@@ -2278,6 +3044,9 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr4::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::csr4");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.csr4)
     }
     fn write_csr4(
@@ -2287,6 +3056,12 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::Csr4::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::csr4 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.csr4;
         let mut new_val = current_val;
@@ -2304,6 +3079,9 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr5::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::csr5");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.csr5)
     }
     fn write_csr5(
@@ -2313,6 +3091,12 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::Csr5::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::csr5 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.csr5;
         let mut new_val = current_val;
@@ -2328,6 +3112,9 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr6::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::csr6");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.csr6)
     }
     fn write_csr6(
@@ -2337,6 +3124,12 @@ impl OtpPeripheral for OtpGenerated {
             registers_generated::otp_ctrl::bits::Csr6::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write otp::csr6 = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.csr6;
         let mut new_val = current_val;
@@ -2354,6 +3147,9 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr7::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::csr7");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.csr7)
     }
     fn read_err_code_rf_err_code_0(
@@ -2362,6 +3158,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_0");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_0)
     }
     fn read_err_code_rf_err_code_1(
@@ -2370,6 +3169,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_1");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_1)
     }
     fn read_err_code_rf_err_code_2(
@@ -2378,6 +3180,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_2");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_2)
     }
     fn read_err_code_rf_err_code_3(
@@ -2386,6 +3191,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_3");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_3)
     }
     fn read_err_code_rf_err_code_4(
@@ -2394,6 +3202,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_4");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_4)
     }
     fn read_err_code_rf_err_code_5(
@@ -2402,6 +3213,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_5");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_5)
     }
     fn read_err_code_rf_err_code_6(
@@ -2410,6 +3224,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_6");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_6)
     }
     fn read_err_code_rf_err_code_7(
@@ -2418,6 +3235,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_7");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_7)
     }
     fn read_err_code_rf_err_code_8(
@@ -2426,6 +3246,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_8");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_8)
     }
     fn read_err_code_rf_err_code_9(
@@ -2434,6 +3257,9 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_9");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_9)
     }
     fn read_err_code_rf_err_code_10(
@@ -2442,6 +3268,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_10"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_10)
     }
     fn read_err_code_rf_err_code_11(
@@ -2450,6 +3281,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_11"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_11)
     }
     fn read_err_code_rf_err_code_12(
@@ -2458,6 +3294,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_12"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_12)
     }
     fn read_err_code_rf_err_code_13(
@@ -2466,6 +3307,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_13"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_13)
     }
     fn read_err_code_rf_err_code_14(
@@ -2474,6 +3320,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_14"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_14)
     }
     fn read_err_code_rf_err_code_15(
@@ -2482,6 +3333,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_15"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_15)
     }
     fn read_err_code_rf_err_code_16(
@@ -2490,6 +3346,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_16"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_16)
     }
     fn read_err_code_rf_err_code_17(
@@ -2498,6 +3359,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_17"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_17)
     }
     fn read_err_code_rf_err_code_18(
@@ -2506,6 +3372,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_18"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_18)
     }
     fn read_err_code_rf_err_code_19(
@@ -2514,6 +3385,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_19"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_19)
     }
     fn read_err_code_rf_err_code_20(
@@ -2522,6 +3398,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_20"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_20)
     }
     fn read_err_code_rf_err_code_21(
@@ -2530,6 +3411,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_21"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_21)
     }
     fn read_err_code_rf_err_code_22(
@@ -2538,6 +3424,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_22"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_22)
     }
     fn read_err_code_rf_err_code_23(
@@ -2546,6 +3437,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_23"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_23)
     }
     fn read_err_code_rf_err_code_24(
@@ -2554,6 +3450,11 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_24"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_24)
     }
     fn read_err_code_rf_err_code_25(
@@ -2562,12 +3463,23 @@ impl OtpPeripheral for OtpGenerated {
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read otp::err_code_rf_err_code_25"
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_25)
     }
     fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::dai_wdata_rf_direct_access_wdata_0");
+        }
         self.dai_wdata_rf_direct_access_wdata_0
     }
     fn write_dai_wdata_rf_direct_access_wdata_0(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::dai_wdata_rf_direct_access_wdata_0 = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.dai_wdata_rf_direct_access_wdata_0;
         let mut new_val = current_val;
@@ -2576,9 +3488,15 @@ impl OtpPeripheral for OtpGenerated {
         self.dai_wdata_rf_direct_access_wdata_0 = new_val;
     }
     fn read_dai_wdata_rf_direct_access_wdata_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::dai_wdata_rf_direct_access_wdata_1");
+        }
         self.dai_wdata_rf_direct_access_wdata_1
     }
     fn write_dai_wdata_rf_direct_access_wdata_1(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write otp::dai_wdata_rf_direct_access_wdata_1 = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.dai_wdata_rf_direct_access_wdata_1;
         let mut new_val = current_val;
@@ -2587,153 +3505,291 @@ impl OtpPeripheral for OtpGenerated {
         self.dai_wdata_rf_direct_access_wdata_1 = new_val;
     }
     fn read_dai_rdata_rf_direct_access_rdata_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::dai_rdata_rf_direct_access_rdata_0");
+        }
         self.dai_rdata_rf_direct_access_rdata_0
     }
     fn read_dai_rdata_rf_direct_access_rdata_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::dai_rdata_rf_direct_access_rdata_1");
+        }
         self.dai_rdata_rf_direct_access_rdata_1
     }
     fn read_sw_test_unlock_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::sw_test_unlock_partition_digest_digest_0");
+        }
         self.sw_test_unlock_partition_digest_digest_0
     }
     fn read_sw_test_unlock_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::sw_test_unlock_partition_digest_digest_1");
+        }
         self.sw_test_unlock_partition_digest_digest_1
     }
     fn read_secret_manuf_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::secret_manuf_partition_digest_digest_0");
+        }
         self.secret_manuf_partition_digest_digest_0
     }
     fn read_secret_manuf_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::secret_manuf_partition_digest_digest_1");
+        }
         self.secret_manuf_partition_digest_digest_1
     }
     fn read_secret_prod_partition_0_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_0_digest_digest_0");
+        }
         self.secret_prod_partition_0_digest_digest_0
     }
     fn read_secret_prod_partition_0_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_0_digest_digest_1");
+        }
         self.secret_prod_partition_0_digest_digest_1
     }
     fn read_secret_prod_partition_1_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_1_digest_digest_0");
+        }
         self.secret_prod_partition_1_digest_digest_0
     }
     fn read_secret_prod_partition_1_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_1_digest_digest_1");
+        }
         self.secret_prod_partition_1_digest_digest_1
     }
     fn read_secret_prod_partition_2_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_2_digest_digest_0");
+        }
         self.secret_prod_partition_2_digest_digest_0
     }
     fn read_secret_prod_partition_2_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_2_digest_digest_1");
+        }
         self.secret_prod_partition_2_digest_digest_1
     }
     fn read_secret_prod_partition_3_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_3_digest_digest_0");
+        }
         self.secret_prod_partition_3_digest_digest_0
     }
     fn read_secret_prod_partition_3_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_3_digest_digest_1");
+        }
         self.secret_prod_partition_3_digest_digest_1
     }
     fn read_sw_manuf_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::sw_manuf_partition_digest_digest_0");
+        }
         self.sw_manuf_partition_digest_digest_0
     }
     fn read_sw_manuf_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::sw_manuf_partition_digest_digest_1");
+        }
         self.sw_manuf_partition_digest_digest_1
     }
     fn read_secret_lc_transition_partition_digest_digest_0(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::secret_lc_transition_partition_digest_digest_0");
+        }
         self.secret_lc_transition_partition_digest_digest_0
     }
     fn read_secret_lc_transition_partition_digest_digest_1(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::secret_lc_transition_partition_digest_digest_1");
+        }
         self.secret_lc_transition_partition_digest_digest_1
     }
     fn read_vendor_test_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_test_partition_digest_digest_0");
+        }
         self.vendor_test_partition_digest_digest_0
     }
     fn read_vendor_test_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_test_partition_digest_digest_1");
+        }
         self.vendor_test_partition_digest_digest_1
     }
     fn read_vendor_hashes_manuf_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_manuf_partition_digest_digest_0");
+        }
         self.vendor_hashes_manuf_partition_digest_digest_0
     }
     fn read_vendor_hashes_manuf_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_manuf_partition_digest_digest_1");
+        }
         self.vendor_hashes_manuf_partition_digest_digest_1
     }
     fn read_vendor_hashes_prod_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_prod_partition_digest_digest_0");
+        }
         self.vendor_hashes_prod_partition_digest_digest_0
     }
     fn read_vendor_hashes_prod_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_prod_partition_digest_digest_1");
+        }
         self.vendor_hashes_prod_partition_digest_digest_1
     }
     fn read_vendor_revocations_prod_partition_digest_digest_0(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_revocations_prod_partition_digest_digest_0");
+        }
         self.vendor_revocations_prod_partition_digest_digest_0
     }
     fn read_vendor_revocations_prod_partition_digest_digest_1(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_revocations_prod_partition_digest_digest_1");
+        }
         self.vendor_revocations_prod_partition_digest_digest_1
     }
     fn read_vendor_secret_prod_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_secret_prod_partition_digest_digest_0");
+        }
         self.vendor_secret_prod_partition_digest_digest_0
     }
     fn read_vendor_secret_prod_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_secret_prod_partition_digest_digest_1");
+        }
         self.vendor_secret_prod_partition_digest_digest_1
     }
     fn read_vendor_non_secret_prod_partition_digest_digest_0(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_non_secret_prod_partition_digest_digest_0");
+        }
         self.vendor_non_secret_prod_partition_digest_digest_0
     }
     fn read_vendor_non_secret_prod_partition_digest_digest_1(
         &mut self,
     ) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::vendor_non_secret_prod_partition_digest_digest_1");
+        }
         self.vendor_non_secret_prod_partition_digest_digest_1
     }
     fn read_cptra_ss_lock_hek_prod_0_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_0_digest_digest_0");
+        }
         self.cptra_ss_lock_hek_prod_0_digest_digest_0
     }
     fn read_cptra_ss_lock_hek_prod_0_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_0_digest_digest_1");
+        }
         self.cptra_ss_lock_hek_prod_0_digest_digest_1
     }
     fn read_cptra_ss_lock_hek_prod_1_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_1_digest_digest_0");
+        }
         self.cptra_ss_lock_hek_prod_1_digest_digest_0
     }
     fn read_cptra_ss_lock_hek_prod_1_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_1_digest_digest_1");
+        }
         self.cptra_ss_lock_hek_prod_1_digest_digest_1
     }
     fn read_cptra_ss_lock_hek_prod_2_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_2_digest_digest_0");
+        }
         self.cptra_ss_lock_hek_prod_2_digest_digest_0
     }
     fn read_cptra_ss_lock_hek_prod_2_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_2_digest_digest_1");
+        }
         self.cptra_ss_lock_hek_prod_2_digest_digest_1
     }
     fn read_cptra_ss_lock_hek_prod_3_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_3_digest_digest_0");
+        }
         self.cptra_ss_lock_hek_prod_3_digest_digest_0
     }
     fn read_cptra_ss_lock_hek_prod_3_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_3_digest_digest_1");
+        }
         self.cptra_ss_lock_hek_prod_3_digest_digest_1
     }
     fn read_cptra_ss_lock_hek_prod_4_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_4_digest_digest_0");
+        }
         self.cptra_ss_lock_hek_prod_4_digest_digest_0
     }
     fn read_cptra_ss_lock_hek_prod_4_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_4_digest_digest_1");
+        }
         self.cptra_ss_lock_hek_prod_4_digest_digest_1
     }
     fn read_cptra_ss_lock_hek_prod_5_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_5_digest_digest_0");
+        }
         self.cptra_ss_lock_hek_prod_5_digest_digest_0
     }
     fn read_cptra_ss_lock_hek_prod_5_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_5_digest_digest_1");
+        }
         self.cptra_ss_lock_hek_prod_5_digest_digest_1
     }
     fn read_cptra_ss_lock_hek_prod_6_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_6_digest_digest_0");
+        }
         self.cptra_ss_lock_hek_prod_6_digest_digest_0
     }
     fn read_cptra_ss_lock_hek_prod_6_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_6_digest_digest_1");
+        }
         self.cptra_ss_lock_hek_prod_6_digest_digest_1
     }
     fn read_cptra_ss_lock_hek_prod_7_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_7_digest_digest_0");
+        }
         self.cptra_ss_lock_hek_prod_7_digest_digest_0
     }
     fn read_cptra_ss_lock_hek_prod_7_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: read otp::cptra_ss_lock_hek_prod_7_digest_digest_1");
+        }
         self.cptra_ss_lock_hek_prod_7_digest_digest_1
     }
 }

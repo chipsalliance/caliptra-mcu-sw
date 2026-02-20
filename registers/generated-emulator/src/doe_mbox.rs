@@ -27,18 +27,30 @@ pub trait DoeMboxPeripheral {
         u32,
         registers_generated::doe_mbox::bits::DoeMboxLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read doe_mbox::doe_mbox_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_doe_mbox_lock();
         }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_doe_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read doe_mbox::doe_mbox_dlen");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_doe_mbox_dlen();
         }
         0
     }
     fn write_doe_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write doe_mbox::doe_mbox_dlen = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_doe_mbox_dlen(val);
         }
@@ -49,6 +61,9 @@ pub trait DoeMboxPeripheral {
         u32,
         registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read doe_mbox::doe_mbox_status");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_doe_mbox_status();
         }
@@ -61,6 +76,12 @@ pub trait DoeMboxPeripheral {
             registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write doe_mbox::doe_mbox_status = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_doe_mbox_status(val);
         }
@@ -71,6 +92,9 @@ pub trait DoeMboxPeripheral {
         u32,
         registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read doe_mbox::doe_mbox_event");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_doe_mbox_event();
         }
@@ -83,17 +107,35 @@ pub trait DoeMboxPeripheral {
             registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write doe_mbox::doe_mbox_event = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_doe_mbox_event(val);
         }
     }
     fn read_doe_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: read doe_mbox::doe_mbox_sram[{}]",
+                index
+            );
+        }
         if let Some(generated) = self.generated() {
             return generated.read_doe_mbox_sram(index);
         }
         0
     }
     fn write_doe_mbox_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write doe_mbox::doe_mbox_sram[{}] = 0x{:08x}",
+                index, val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_doe_mbox_sram(val, index);
         }
@@ -142,12 +184,21 @@ impl DoeMboxPeripheral for DoeMboxGenerated {
         u32,
         registers_generated::doe_mbox::bits::DoeMboxLock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read doe_mbox::doe_mbox_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.doe_mbox_lock)
     }
     fn read_doe_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read doe_mbox::doe_mbox_dlen");
+        }
         self.doe_mbox_dlen
     }
     fn write_doe_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write doe_mbox::doe_mbox_dlen = 0x{:08x}" , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.doe_mbox_dlen;
         let mut new_val = current_val;
@@ -161,6 +212,9 @@ impl DoeMboxPeripheral for DoeMboxGenerated {
         u32,
         registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read doe_mbox::doe_mbox_status");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.doe_mbox_status)
     }
     fn write_doe_mbox_status(
@@ -170,6 +224,9 @@ impl DoeMboxPeripheral for DoeMboxGenerated {
             registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write doe_mbox::doe_mbox_status = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.doe_mbox_status;
         let mut new_val = current_val;
@@ -187,6 +244,9 @@ impl DoeMboxPeripheral for DoeMboxGenerated {
         u32,
         registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read doe_mbox::doe_mbox_event");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.doe_mbox_event)
     }
     fn write_doe_mbox_event(
@@ -196,6 +256,9 @@ impl DoeMboxPeripheral for DoeMboxGenerated {
             registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write doe_mbox::doe_mbox_event = 0x{:08x}" , val . reg . get ());
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.doe_mbox_event;
         let mut new_val = current_val;
@@ -206,9 +269,18 @@ impl DoeMboxPeripheral for DoeMboxGenerated {
         self.doe_mbox_event = new_val;
     }
     fn read_doe_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: read doe_mbox::doe_mbox_sram[{}]",
+                index
+            );
+        }
         self.doe_mbox_sram[index]
     }
     fn write_doe_mbox_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln ! ("[EMU] Generated default register handler: write doe_mbox::doe_mbox_sram[{}] = 0x{:08x}" , index , val);
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.doe_mbox_sram[index];
         let mut new_val = current_val;

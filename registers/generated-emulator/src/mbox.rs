@@ -25,57 +25,99 @@ pub trait MboxPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read mbox::mbox_lock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_mbox_lock();
         }
         caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mbox_user(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read mbox::mbox_user");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_mbox_user();
         }
         0
     }
     fn read_mbox_cmd(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read mbox::mbox_cmd");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_mbox_cmd();
         }
         0
     }
     fn write_mbox_cmd(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write mbox::mbox_cmd = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_mbox_cmd(val);
         }
     }
     fn read_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read mbox::mbox_dlen");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_mbox_dlen();
         }
         0
     }
     fn write_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write mbox::mbox_dlen = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_mbox_dlen(val);
         }
     }
     fn read_mbox_datain(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read mbox::mbox_datain");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_mbox_datain();
         }
         0
     }
     fn write_mbox_datain(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write mbox::mbox_datain = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_mbox_datain(val);
         }
     }
     fn read_mbox_dataout(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read mbox::mbox_dataout");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_mbox_dataout();
         }
         0
     }
     fn write_mbox_dataout(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write mbox::mbox_dataout = 0x{:08x}",
+                val
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_mbox_dataout(val);
         }
@@ -86,6 +128,9 @@ pub trait MboxPeripheral {
         u32,
         registers_generated::mbox::bits::MboxExecute::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read mbox::mbox_execute");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_mbox_execute();
         }
@@ -98,6 +143,12 @@ pub trait MboxPeripheral {
             registers_generated::mbox::bits::MboxExecute::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write mbox::mbox_execute = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_mbox_execute(val);
         }
@@ -108,6 +159,9 @@ pub trait MboxPeripheral {
         u32,
         registers_generated::mbox::bits::MboxStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read mbox::mbox_status");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_mbox_status();
         }
@@ -120,6 +174,12 @@ pub trait MboxPeripheral {
             registers_generated::mbox::bits::MboxStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write mbox::mbox_status = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_mbox_status(val);
         }
@@ -130,6 +190,9 @@ pub trait MboxPeripheral {
         u32,
         registers_generated::mbox::bits::MboxUnlock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read mbox::mbox_unlock");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_mbox_unlock();
         }
@@ -142,6 +205,12 @@ pub trait MboxPeripheral {
             registers_generated::mbox::bits::MboxUnlock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write mbox::mbox_unlock = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_mbox_unlock(val);
         }
@@ -150,6 +219,9 @@ pub trait MboxPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::TapMode::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Non-functional register stub: read mbox::tap_mode");
+        }
         if let Some(generated) = self.generated() {
             return generated.read_tap_mode();
         }
@@ -162,6 +234,12 @@ pub trait MboxPeripheral {
             registers_generated::mbox::bits::TapMode::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Non-functional register stub: write mbox::tap_mode = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         if let Some(generated) = self.generated() {
             generated.write_tap_mode(val);
         }
@@ -218,15 +296,30 @@ impl MboxPeripheral for MboxGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read mbox::mbox_lock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.mbox_lock)
     }
     fn read_mbox_user(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read mbox::mbox_user");
+        }
         self.mbox_user
     }
     fn read_mbox_cmd(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read mbox::mbox_cmd");
+        }
         self.mbox_cmd
     }
     fn write_mbox_cmd(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write mbox::mbox_cmd = 0x{:08x}",
+                val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.mbox_cmd;
         let mut new_val = current_val;
@@ -235,9 +328,18 @@ impl MboxPeripheral for MboxGenerated {
         self.mbox_cmd = new_val;
     }
     fn read_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read mbox::mbox_dlen");
+        }
         self.mbox_dlen
     }
     fn write_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write mbox::mbox_dlen = 0x{:08x}",
+                val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.mbox_dlen;
         let mut new_val = current_val;
@@ -246,9 +348,18 @@ impl MboxPeripheral for MboxGenerated {
         self.mbox_dlen = new_val;
     }
     fn read_mbox_datain(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read mbox::mbox_datain");
+        }
         self.mbox_datain
     }
     fn write_mbox_datain(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write mbox::mbox_datain = 0x{:08x}",
+                val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.mbox_datain;
         let mut new_val = current_val;
@@ -257,9 +368,18 @@ impl MboxPeripheral for MboxGenerated {
         self.mbox_datain = new_val;
     }
     fn read_mbox_dataout(&mut self) -> caliptra_emu_types::RvData {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read mbox::mbox_dataout");
+        }
         self.mbox_dataout
     }
     fn write_mbox_dataout(&mut self, val: caliptra_emu_types::RvData) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write mbox::mbox_dataout = 0x{:08x}",
+                val
+            );
+        }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.mbox_dataout;
         let mut new_val = current_val;
@@ -273,6 +393,9 @@ impl MboxPeripheral for MboxGenerated {
         u32,
         registers_generated::mbox::bits::MboxExecute::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read mbox::mbox_execute");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.mbox_execute)
     }
     fn write_mbox_execute(
@@ -282,6 +405,12 @@ impl MboxPeripheral for MboxGenerated {
             registers_generated::mbox::bits::MboxExecute::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write mbox::mbox_execute = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mbox_execute;
         let mut new_val = current_val;
@@ -295,6 +424,9 @@ impl MboxPeripheral for MboxGenerated {
         u32,
         registers_generated::mbox::bits::MboxStatus::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read mbox::mbox_status");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.mbox_status)
     }
     fn write_mbox_status(
@@ -304,6 +436,12 @@ impl MboxPeripheral for MboxGenerated {
             registers_generated::mbox::bits::MboxStatus::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write mbox::mbox_status = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mbox_status;
         let mut new_val = current_val;
@@ -317,6 +455,9 @@ impl MboxPeripheral for MboxGenerated {
         u32,
         registers_generated::mbox::bits::MboxUnlock::Register,
     > {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read mbox::mbox_unlock");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.mbox_unlock)
     }
     fn write_mbox_unlock(
@@ -326,6 +467,12 @@ impl MboxPeripheral for MboxGenerated {
             registers_generated::mbox::bits::MboxUnlock::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write mbox::mbox_unlock = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.mbox_unlock;
         let mut new_val = current_val;
@@ -337,6 +484,9 @@ impl MboxPeripheral for MboxGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::TapMode::Register>
     {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!("[EMU] Generated default register handler: read mbox::tap_mode");
+        }
         caliptra_emu_bus::ReadWriteRegister::new(self.tap_mode)
     }
     fn write_tap_mode(
@@ -346,6 +496,12 @@ impl MboxPeripheral for MboxGenerated {
             registers_generated::mbox::bits::TapMode::Register,
         >,
     ) {
+        if crate::stub_warnings::stub_warnings_enabled() {
+            eprintln!(
+                "[EMU] Generated default register handler: write mbox::tap_mode = 0x{:08x}",
+                val.reg.get()
+            );
+        }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.tap_mode;
         let mut new_val = current_val;
