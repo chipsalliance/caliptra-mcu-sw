@@ -11,4 +11,4 @@ name = "lwip-rs-example"
 path = "src/main.rs"
 
 [dependencies]
-lwip-rs.workspace = true
+lwip-rs = { workspace = true, default-features = true }

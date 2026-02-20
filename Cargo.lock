@@ -3442,6 +3442,7 @@ dependencies = [
 name = "network-app-rom-test"
 version = "0.1.0"
 dependencies = [
+ "lwip-rs",
  "network-drivers",
  "network-hil",
  "zerocopy",
@@ -3458,6 +3459,7 @@ dependencies = [
  "network-config",
  "network-hil",
  "registers-generated",
+ "riscv-csr",
  "romtime",
  "tock-registers",
 ]

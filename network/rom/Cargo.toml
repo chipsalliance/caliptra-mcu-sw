@@ -16,3 +16,5 @@ network-drivers.workspace = true
 [features]
 default = []
 test-network-rom-dhcp-discover = ["network-app-rom-test"]
+test-network-rom-lwip-dhcp = ["network-app-rom-test/lwip-dhcp", "network-app-rom-test"]
+test-network-rom-lwip-dhcp6 = ["network-app-rom-test/lwip-dhcp6", "network-app-rom-test"]

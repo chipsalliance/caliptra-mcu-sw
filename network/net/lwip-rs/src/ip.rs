@@ -62,10 +62,12 @@ impl From<[u8; 4]> for Ipv4Addr {
 }
 
 /// IPv6 address wrapper
+#[cfg(feature = "ipv6")]
 #[derive(Clone, Copy, Default)]
 #[repr(transparent)]
 pub struct Ipv6Addr(pub(crate) ffi::ip6_addr_t);
 
+#[cfg(feature = "ipv6")]
 impl Ipv6Addr {
     pub fn new(segments: [u16; 8]) -> Self {
         let mut addr = ffi::ip6_addr_t::default();
@@ -103,6 +105,7 @@ impl Ipv6Addr {
     }
 }
 
+#[cfg(feature = "ipv6")]
 impl fmt::Display for Ipv6Addr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = self.segments();
@@ -114,6 +117,7 @@ impl fmt::Display for Ipv6Addr {
     }
 }
 
+#[cfg(feature = "ipv6")]
 impl fmt::Debug for Ipv6Addr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Ipv6Addr({})", self)

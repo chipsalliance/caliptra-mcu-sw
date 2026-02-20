@@ -217,7 +217,7 @@ mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" 
 mcu-platforms-common = { path = "platforms/common" }
 mcu-rom-common = { path = "rom" }
 mcu-test-harness = {path = "platforms/test_harness"}
-lwip-rs = { path = "network/net/lwip-rs" }
+lwip-rs = { path = "network/net/lwip-rs", default-features = false }
 network-app-rom-test = { path = "network/app/test" }
 network-config = { path = "network/config" }
 network-drivers = { path = "network/drivers" }

@@ -7,6 +7,12 @@ edition.workspace = true
 description = "Test applications for Network Coprocessor ROM"
 
 [dependencies]
+lwip-rs = { workspace = true, default-features = false, features = ["baremetal"], optional = true }
 network-drivers.workspace = true
 network-hil.workspace = true
 zerocopy.workspace = true
+
+[features]
+default = []
+lwip-dhcp = ["lwip-rs"]
+lwip-dhcp6 = ["lwip-rs", "lwip-rs/baremetal-ipv6"]
