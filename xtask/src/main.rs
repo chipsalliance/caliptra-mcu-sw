@@ -223,6 +223,20 @@ enum Commands {
         #[arg(long)]
         otp_mmap_hjson: Option<PathBuf>,
     },
+    /// Generate a rust library with static fuse values.
+    AutogenFuseLib {
+        /// Path to otp_ctrl_mmap.hjson file. Default: hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson
+        #[arg(long)]
+        otp_mmap_hjson: Option<PathBuf>,
+
+        /// Path to fuse values HJSON file.
+        #[arg(long)]
+        otp_values_hjson: Option<PathBuf>,
+
+        /// Path to output rust library file.
+        #[arg(long)]
+        otp_values_lib: Option<PathBuf>,
+    },
     /// Check dependencies
     Deps,
     /// Manage FPGA Life cycle
@@ -476,6 +490,15 @@ fn main() {
             addrmap,
             fuses_hjson.as_deref(),
             otp_mmap_hjson.as_deref(),
+        ),
+        Commands::AutogenFuseLib {
+            otp_mmap_hjson,
+            otp_values_hjson,
+            otp_values_lib,
+        } => fuses::autogen_fuse_lib(
+            otp_mmap_hjson.as_deref(),
+            otp_values_hjson.as_deref(),
+            otp_values_lib.as_deref(),
         ),
         Commands::Deps => deps::check(),
         #[cfg(feature = "fpga_realtime")]
