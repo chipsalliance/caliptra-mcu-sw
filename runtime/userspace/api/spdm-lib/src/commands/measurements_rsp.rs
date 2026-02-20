@@ -8,11 +8,14 @@ use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
 use crate::measurements::{MeasurementsError, SpdmMeasurements};
+use crate::platform::crypto::provider::SpdmCryptoProvider;
+use crate::protocol::common::RequesterContext;
 use crate::protocol::*;
 use crate::session::SessionInfo;
 use crate::state::ConnectionState;
 use crate::transcript::{Transcript, TranscriptContext};
 use bitfield::bitfield;
+use core::mem::size_of;
 use libapi_caliptra::crypto::asym::*;
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use libapi_caliptra::crypto::rng::Rng;
@@ -95,6 +98,7 @@ pub(crate) struct MeasurementsResponse {
 }
 
 impl MeasurementsResponse {
+    #[allow(clippy::too_many_arguments)]
     pub async fn get_chunk(
         &self,
         measurements: &mut SpdmMeasurements<'_>,
@@ -102,6 +106,7 @@ impl MeasurementsResponse {
         cert_store: &dyn SpdmCertStore,
         offset: usize,
         chunk_buf: &mut [u8],
+        crypto: &mut dyn SpdmCryptoProvider,
         mut session_info: Option<&mut SessionInfo>,
     ) -> CommandResult<usize> {
         // Calculate the size of the response
@@ -173,6 +178,7 @@ impl MeasurementsResponse {
                 TranscriptContext::L1,
                 session_info.as_deref_mut(),
                 &chunk_buf[..copied],
+                crypto,
             )
             .await
             .map_err(|e| (false, CommandError::Transcript(e)))?;
@@ -504,6 +510,7 @@ pub(crate) async fn generate_measurements_response<'a>(
                 ctx.device_certs_store,
                 0,
                 rsp_buf,
+                ctx.crypto_provider,
                 session_info,
             )
             .await?;

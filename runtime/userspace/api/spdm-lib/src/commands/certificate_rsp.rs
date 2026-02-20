@@ -9,6 +9,7 @@ use crate::codec::{Codec, CommonCodec, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
+use crate::platform::crypto::provider::SpdmCryptoProvider;
 use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::{Transcript, TranscriptContext};
@@ -127,6 +128,7 @@ impl CertificateResponse {
         cert_store: &dyn SpdmCertStore,
         cert_rsp_offset: usize,
         chunk: &mut [u8],
+        crypto: &mut dyn SpdmCryptoProvider,
     ) -> CommandResult<usize> {
         let certchain_offset: usize;
         let mut chunk_data_len = 0;
@@ -164,7 +166,12 @@ impl CertificateResponse {
         }
 
         shared_transcript
-            .append(TranscriptContext::M1, None, &chunk[..chunk_data_len])
+            .append(
+                TranscriptContext::M1,
+                None,
+                &chunk[..chunk_data_len],
+                crypto,
+            )
             .await
             .map_err(|e| (false, CommandError::Transcript(e)))?;
         Ok(chunk_data_len)

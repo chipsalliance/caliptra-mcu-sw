@@ -90,6 +90,28 @@ impl DpeCertChain {
             return Err(CertStoreError::InvalidOffset);
         }
 
-        self.read_device_ecc_cert_chain(offset, buf).await
+        // Clamp chunk requests to the platform mailbox limit (MAX_CERT_PORTION_SIZE)
+        // and read in multiple iterations to fill the provided buffer.
+        let mut remaining = buf.len().min(cert_chain_len.saturating_sub(offset));
+        let mut pos = 0usize;
+
+        while remaining > 0 {
+            let req = remaining.min(MAX_CERT_PORTION_SIZE);
+            let end = pos + req;
+
+            let read_len = self
+                .read_device_ecc_cert_chain(offset + pos, &mut buf[pos..end])
+                .await?;
+
+            pos += read_len;
+            remaining = remaining.saturating_sub(read_len);
+
+            // If the platform returned less than requested, we reached the end of available data.
+            if read_len < req {
+                break;
+            }
+        }
+
+        Ok(pos)
     }
 }

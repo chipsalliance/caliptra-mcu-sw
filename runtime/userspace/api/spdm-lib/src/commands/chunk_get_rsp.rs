@@ -167,6 +167,7 @@ async fn encode_chunk_data(
                         ctx.device_certs_store,
                         offset,
                         chunk_buf,
+                        ctx.crypto_provider,
                     )
                     .await?;
                 rsp.pull_data(chunk_size)
@@ -181,6 +182,7 @@ async fn encode_chunk_data(
                         ctx.device_certs_store,
                         offset,
                         chunk_buf,
+                        ctx.crypto_provider,
                         None,
                     )
                     .await?;

@@ -1,18 +1,21 @@
 // Licensed under the Apache-2.0 license
 
+extern crate alloc;
+
 use crate::cert_store::MAX_CERT_SLOTS_SUPPORTED;
+use crate::platform::crypto::hash::{SpdmHash, SpdmHashAlgoType, SpdmHashError, SHA384_HASH_SIZE};
+use crate::platform::crypto::provider::SpdmCryptoProvider;
 use crate::protocol::SpdmVersion;
 use crate::session::SessionInfo;
+use alloc::boxed::Box;
 use arrayvec::ArrayVec;
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
-use libapi_caliptra::error::CaliptraApiError;
 
 #[derive(Debug, PartialEq)]
 pub enum TranscriptError {
     BufferOverflow,
     InvalidState,
     MissingSessionInfo,
-    CaliptraApi(CaliptraApiError),
+    Hash(SpdmHashError),
 }
 
 pub type TranscriptResult<T> = Result<T, TranscriptError>;
@@ -49,12 +52,12 @@ pub(crate) struct Transcript {
     // where
     // B = Concatenate (GET_DIGESTS, DIGESTS, GET_CERTIFICATE, CERTIFICATE)
     // C = Concatenate (CHALLENGE, CHALLENGE_AUTH excluding signature)
-    hash_ctx_m1: Option<HashContext>,
+    hash_ctx_m1: Option<Box<dyn SpdmHash>>,
     // Hash Context for `L1`
     // L1 = Concatenate(A, M) if SPDM_VERSION >= 1.2 or L1 = Concatenate(M) if SPDM_VERSION < 1.2
     // where
     // M = Concatenate (GET_MEASUREMENTS, MEASUREMENTS\signature)
-    hash_ctx_l1: Option<HashContext>,
+    hash_ctx_l1: Option<Box<dyn SpdmHash>>,
 }
 
 impl Transcript {
@@ -116,15 +119,19 @@ impl Transcript {
         context: TranscriptContext,
         session_info: Option<&mut SessionInfo>,
         data: &[u8],
+        crypto: &mut dyn SpdmCryptoProvider,
     ) -> TranscriptResult<()> {
         match context {
             TranscriptContext::Vca => self.append_vca(data),
             TranscriptContext::Digests => self.append_digests(data),
-            TranscriptContext::M1 => self.append_m1(data).await,
-            TranscriptContext::L1 => self.append_l1(self.spdm_version, session_info, data).await,
+            TranscriptContext::M1 => self.append_m1(data, crypto).await,
+            TranscriptContext::L1 => {
+                self.append_l1(self.spdm_version, session_info, data, crypto)
+                    .await
+            }
             TranscriptContext::Th => {
                 if let Some(session) = session_info {
-                    self.append_th(session, data).await
+                    self.append_th(session, data, crypto).await
                 } else {
                     Err(TranscriptError::MissingSessionInfo)
                 }
@@ -153,9 +160,7 @@ impl Transcript {
             TranscriptContext::M1 => {
                 // M1 always uses global hash context
                 if let Some(ctx) = &mut self.hash_ctx_m1 {
-                    ctx.finalize(hash)
-                        .await
-                        .map_err(TranscriptError::CaliptraApi)?;
+                    ctx.finalize(hash).await.map_err(TranscriptError::Hash)?;
                     if finish_hash {
                         self.hash_ctx_m1 = None;
                     }
@@ -169,9 +174,7 @@ impl Transcript {
                     Some(session) => {
                         // Use session-specific L1 hash context
                         if let Some(ctx) = &mut session.session_transcript.hash_ctx_l1 {
-                            ctx.finalize(hash)
-                                .await
-                                .map_err(TranscriptError::CaliptraApi)?;
+                            ctx.finalize(hash).await.map_err(TranscriptError::Hash)?;
                             if finish_hash {
                                 session.session_transcript.hash_ctx_l1 = None;
                             }
@@ -183,9 +186,7 @@ impl Transcript {
                     None => {
                         // Use global L1 hash context
                         if let Some(ctx) = &mut self.hash_ctx_l1 {
-                            ctx.finalize(hash)
-                                .await
-                                .map_err(TranscriptError::CaliptraApi)?;
+                            ctx.finalize(hash).await.map_err(TranscriptError::Hash)?;
                             if finish_hash {
                                 self.hash_ctx_l1 = None;
                             }
@@ -201,9 +202,7 @@ impl Transcript {
                 match session_info {
                     Some(session) => {
                         if let Some(ctx) = &mut session.session_transcript.hash_ctx_th {
-                            ctx.finalize(hash)
-                                .await
-                                .map_err(TranscriptError::CaliptraApi)?;
+                            ctx.finalize(hash).await.map_err(TranscriptError::Hash)?;
                             if finish_hash {
                                 session.session_transcript.hash_ctx_th = None;
                             }
@@ -237,18 +236,20 @@ impl Transcript {
         Ok(())
     }
 
-    async fn append_m1(&mut self, data: &[u8]) -> TranscriptResult<()> {
+    async fn append_m1(
+        &mut self,
+        data: &[u8],
+        crypto: &mut dyn SpdmCryptoProvider,
+    ) -> TranscriptResult<()> {
         if let Some(ctx) = &mut self.hash_ctx_m1 {
-            ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
+            ctx.update(data).await.map_err(TranscriptError::Hash)
         } else {
             let vca_data = self.vca_buf.as_slice();
-            let mut ctx = HashContext::new();
-            ctx.init(HashAlgoType::SHA384, Some(vca_data))
+            let mut ctx = crypto.create_hasher();
+            ctx.init(SpdmHashAlgoType::SHA384, Some(vca_data))
                 .await
-                .map_err(TranscriptError::CaliptraApi)?;
-            ctx.update(data)
-                .await
-                .map_err(TranscriptError::CaliptraApi)?;
+                .map_err(TranscriptError::Hash)?;
+            ctx.update(data).await.map_err(TranscriptError::Hash)?;
             self.hash_ctx_m1 = Some(ctx);
             Ok(())
         }
@@ -259,12 +260,13 @@ impl Transcript {
         spdm_version: SpdmVersion,
         session_info: Option<&mut SessionInfo>,
         data: &[u8],
+        crypto: &mut dyn SpdmCryptoProvider,
     ) -> TranscriptResult<()> {
         match session_info {
             Some(session) => {
                 // Use session-specific hash context
                 if let Some(ctx) = &mut session.session_transcript.hash_ctx_l1 {
-                    ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
+                    ctx.update(data).await.map_err(TranscriptError::Hash)
                 } else {
                     let vca_data = if spdm_version >= SpdmVersion::V12 {
                         Some(self.vca_buf.as_slice())
@@ -272,13 +274,11 @@ impl Transcript {
                         None
                     };
 
-                    let mut ctx = HashContext::new();
-                    ctx.init(HashAlgoType::SHA384, vca_data)
+                    let mut ctx = crypto.create_hasher();
+                    ctx.init(SpdmHashAlgoType::SHA384, vca_data)
                         .await
-                        .map_err(TranscriptError::CaliptraApi)?;
-                    ctx.update(data)
-                        .await
-                        .map_err(TranscriptError::CaliptraApi)?;
+                        .map_err(TranscriptError::Hash)?;
+                    ctx.update(data).await.map_err(TranscriptError::Hash)?;
                     session.session_transcript.hash_ctx_l1 = Some(ctx);
                     Ok(())
                 }
@@ -286,7 +286,7 @@ impl Transcript {
             None => {
                 // Use global hash context
                 if let Some(ctx) = &mut self.hash_ctx_l1 {
-                    ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
+                    ctx.update(data).await.map_err(TranscriptError::Hash)
                 } else {
                     let vca_data = if spdm_version >= SpdmVersion::V12 {
                         Some(self.vca_buf.as_slice())
@@ -294,13 +294,11 @@ impl Transcript {
                         None
                     };
 
-                    let mut ctx = HashContext::new();
-                    ctx.init(HashAlgoType::SHA384, vca_data)
+                    let mut ctx = crypto.create_hasher();
+                    ctx.init(SpdmHashAlgoType::SHA384, vca_data)
                         .await
-                        .map_err(TranscriptError::CaliptraApi)?;
-                    ctx.update(data)
-                        .await
-                        .map_err(TranscriptError::CaliptraApi)?;
+                        .map_err(TranscriptError::Hash)?;
+                    ctx.update(data).await.map_err(TranscriptError::Hash)?;
                     self.hash_ctx_l1 = Some(ctx);
                     Ok(())
                 }
@@ -312,9 +310,10 @@ impl Transcript {
         &mut self,
         session_info: &mut SessionInfo,
         data: &[u8],
+        crypto: &mut dyn SpdmCryptoProvider,
     ) -> TranscriptResult<()> {
         if let Some(ctx) = &mut session_info.session_transcript.hash_ctx_th {
-            ctx.update(data).await.map_err(TranscriptError::CaliptraApi)
+            ctx.update(data).await.map_err(TranscriptError::Hash)
         } else {
             let vca_data = self.vca_buf.as_slice();
             let digests_data = self
@@ -322,16 +321,14 @@ impl Transcript {
                 .as_ref()
                 .map(|buf| buf.as_slice())
                 .unwrap_or(&[]);
-            let mut ctx = HashContext::new();
-            ctx.init(HashAlgoType::SHA384, Some(vca_data))
+            let mut ctx = crypto.create_hasher();
+            ctx.init(SpdmHashAlgoType::SHA384, Some(vca_data))
                 .await
-                .map_err(TranscriptError::CaliptraApi)?;
+                .map_err(TranscriptError::Hash)?;
             ctx.update(digests_data)
                 .await
-                .map_err(TranscriptError::CaliptraApi)?;
-            ctx.update(data)
-                .await
-                .map_err(TranscriptError::CaliptraApi)?;
+                .map_err(TranscriptError::Hash)?;
+            ctx.update(data).await.map_err(TranscriptError::Hash)?;
             session_info.session_transcript.hash_ctx_th = Some(ctx);
             Ok(())
         }
@@ -345,7 +342,7 @@ pub(crate) struct SessionTranscript {
     // L1 = Concatenate(A, M) if SPDM_VERSION >= 1.2 or L1 = Concatenate(M) if SPDM_VERSION < 1.2
     // where
     // M = Concatenate (GET_MEASUREMENTS, MEASUREMENTS\signature)
-    pub(crate) hash_ctx_l1: Option<HashContext>,
+    pub(crate) hash_ctx_l1: Option<Box<dyn SpdmHash>>,
     // Hash Context for `TH1/TH2`
     // TH1 = Concatenate(A, D, Ct, Ksig/Khmac)
     // where
@@ -355,7 +352,7 @@ pub(crate) struct SessionTranscript {
     // Khmac = Concatenate(KEY_EXCHANGE, KEY_EXCHANGE_RSP excluding ResponderVerifyData)
     //
     // TH2 = TODO
-    pub(crate) hash_ctx_th: Option<HashContext>,
+    pub(crate) hash_ctx_th: Option<Box<dyn SpdmHash>>,
 }
 
 impl SessionTranscript {

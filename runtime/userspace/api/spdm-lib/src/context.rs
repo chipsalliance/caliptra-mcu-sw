@@ -11,6 +11,7 @@ use crate::commands::{
 };
 use crate::error::*;
 use crate::measurements::SpdmMeasurements;
+use crate::platform::crypto::provider::SpdmCryptoProvider;
 use crate::protocol::algorithms::*;
 use crate::protocol::common::{ReqRespCode, SpdmMsgHdr};
 use crate::protocol::version::*;
@@ -43,6 +44,7 @@ pub struct SpdmContext<'a> {
     pub(crate) large_resp_context: LargeResponseCtx,
     pub(crate) session_mgr: SessionManager,
     pub(crate) vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
+    pub(crate) crypto_provider: &'a mut dyn SpdmCryptoProvider,
 }
 
 impl<'a> SpdmContext<'a> {
@@ -56,6 +58,7 @@ impl<'a> SpdmContext<'a> {
         device_certs_store: &'a dyn SpdmCertStore,
         measurements: SpdmMeasurements<'a>,
         vdm_handlers: Option<&'a mut [&'a mut dyn VdmHandler]>,
+        crypto_provider: &'a mut dyn SpdmCryptoProvider,
     ) -> SpdmResult<Self> {
         validate_supported_versions(supported_versions)?;
 
@@ -74,6 +77,7 @@ impl<'a> SpdmContext<'a> {
             large_resp_context: LargeResponseCtx::default(),
             session_mgr: SessionManager::new(),
             vdm_handlers,
+            crypto_provider,
         })
     }
 
@@ -315,7 +319,7 @@ impl<'a> SpdmContext<'a> {
         };
 
         self.shared_transcript
-            .append(transcript_context, session_info, data)
+            .append(transcript_context, session_info, data, self.crypto_provider)
             .await
             .map_err(|e| (false, CommandError::Transcript(e)))
     }
