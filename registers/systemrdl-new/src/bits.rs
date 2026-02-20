@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license.
 
-use std::{fmt::Display, str::FromStr};
+use std::{fmt::Display, ops::Not, str::FromStr};
 
 fn mask(w: u64) -> Result<u64, ()> {
     if w > 64 {
@@ -17,6 +17,7 @@ pub struct Bits {
     w: u64,
     val: u64,
 }
+
 impl Bits {
     pub fn new(w: u64, val: u64) -> Bits {
         let mask = if w < 64 {
@@ -32,7 +33,26 @@ impl Bits {
     pub fn val(&self) -> u64 {
         self.val
     }
+
+    pub fn wrapping_neg(&self) -> Bits {
+        Bits {
+            w: self.w,
+            val: self.val.wrapping_neg() & mask(self.w).unwrap(),
+        }
+    }
 }
+
+impl Not for Bits {
+    type Output = Bits;
+
+    fn not(self) -> Self::Output {
+        Bits {
+            w: self.w,
+            val: !self.val & mask(self.w).unwrap(),
+        }
+    }
+}
+
 impl FromStr for Bits {
     type Err = ();
 

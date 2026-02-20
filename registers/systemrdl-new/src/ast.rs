@@ -140,13 +140,13 @@ pub enum ComponentType {
     Constraint,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IntegerType {
     Bit,
     Longint,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BasicDataType {
     IntegerType(IntegerType),
     UnsignedIntegerType(IntegerType),
@@ -155,12 +155,12 @@ pub enum BasicDataType {
     Identifier(String),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Root {
     pub descriptions: Vec<Description>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Description {
     ComponentDef(Component),
     EnumDef(EnumDef),
@@ -210,7 +210,7 @@ impl std::str::FromStr for Root {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataType {
     BasicDataType(BasicDataType),
     AccessType,
@@ -219,72 +219,72 @@ pub enum DataType {
     OnWriteType,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArrayType {}
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ParamDefElem {
     ParamDefElem(DataType, String, Option<ArrayType>, Option<ConstantExpr>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EnumEntry {
     pub id: String,
     pub expr: Option<ConstantExpr>,
     pub property_assignments: Vec<ExplicitPropertyAssignment>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExplicitPropertyAssignment {
     Assignment(IdentityOrPropKeyword, Option<PropAssignmentRhs>),
     EncodeAssignment(String),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PropAssignmentRhs {
     ConstantExpr(ConstantExpr),
     PrecedenceType(PrecedenceType),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EnumDef {
     pub id: String,
     pub body: Vec<EnumEntry>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StructDef {
     pub id: String,
     pub base: Option<String>,
     pub body: Vec<StructElem>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StructElem {
     pub struct_type: StructType,
     pub id: String,
     pub array_type: Option<ArrayType>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum StructType {
     DataType(DataType),
     ComponentType(ComponentType),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConstraintDef {
     Exp(String, ConstraintBody, Vec<String>),
     Anon(ConstraintBody, Vec<String>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConstraintLhs {
     This,
     InstanceRef(InstanceRef),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConstraintElem {
     ConstantExpr(ConstantExpr),
     ConstraintPropAssignment(ConstraintPropAssignment),
@@ -292,49 +292,49 @@ pub enum ConstraintElem {
     ConstraintInsideId(ConstraintLhs, String),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ConstraintPropAssignment {
     pub id: String,
     pub expr: ConstantExpr,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConstraintValue {
     ConstantExpr(ConstantExpr),
     Range(ConstantExpr, ConstantExpr),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ConstraintBody {
     pub elements: Vec<ConstraintElem>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExplicitComponentInst {
     pub component_inst_type: Option<ComponentInstType>,
     pub component_inst_alias: Option<ComponentInstAlias>,
-    pub id: String,
+    pub component_name: String,
     pub component_insts: ComponentInsts,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ComponentInstAlias {
     pub id: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PropertyAssignment {
     ExplicitOrDefaultPropAssignment(ExplicitOrDefaultPropAssignment),
     PostPropAssignment(PostPropAssignment),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExplicitPropModifier {
     pub prop_mod: PropMod,
     pub id: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PropMod {
     PosEdge,
     NegEdge,
@@ -343,33 +343,46 @@ pub enum PropMod {
     NonSticky,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+impl std::fmt::Display for PropMod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            PropMod::PosEdge => "posedge",
+            PropMod::NegEdge => "negedge",
+            PropMod::BothEdge => "bothedge",
+            PropMod::Level => "level",
+            PropMod::NonSticky => "nonsticky",
+        };
+        f.write_str(s)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExplicitOrDefaultPropAssignment {
     ExplicitPropModifier(Option<DefaultKeyword>, ExplicitPropModifier),
     ExplicitPropAssignment(Option<DefaultKeyword>, ExplicitPropertyAssignment),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DefaultKeyword {}
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PostPropAssignment {
     PropRef(PropRef, Option<PropAssignmentRhs>),
     PostEncodeAssignment(PostEncodeAssignment),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PropRef {
     pub iref: InstanceRef,
     pub id_or_prop: IdentityOrPropKeyword,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PostEncodeAssignment {
     pub iref: InstanceRef,
     pub id: String,
 }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ComponentBodyElem {
     ComponentDef(Component),
     EnumDef(EnumDef),
@@ -379,40 +392,42 @@ pub enum ComponentBodyElem {
     PropertyAssignment(PropertyAssignment),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ComponentBody {
     pub elements: Vec<ComponentBodyElem>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ParamDef {
     Params(Vec<ParamDefElem>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum ComponentDef {
-    Named(ComponentType, String, Option<ParamDef>, ComponentBody),
-    Anon(ComponentType, ComponentBody),
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ComponentDef {
+    pub type_: ComponentType,
+    pub name: Option<String>,
+    pub param_def: Option<ParamDef>,
+    pub body: ComponentBody,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ComponentInstType {
     Internal,
     External,
 }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParamElem {
     pub id: String,
     pub param_value: ConstantExpr,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ComponentInsts {
     pub param_insts: Vec<ParamElem>,
     pub component_insts: Vec<ComponentInst>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PrimaryLiteral {
     Number(u64),
     Bits(Bits),
@@ -426,13 +441,13 @@ pub enum PrimaryLiteral {
     This,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConstantPrimary {
     Base(ConstantPrimaryBase),
     Cast(ConstantPrimaryBase, Box<ConstantExpr>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConstantPrimaryBase {
     PrimaryLiteral(PrimaryLiteral),
     ConstantConcat(Vec<ConstantExpr>),
@@ -445,24 +460,24 @@ pub enum ConstantPrimaryBase {
     ArrayLiteral(Vec<ConstantExpr>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstanceRef {
     pub elements: Vec<InstanceRefElement>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstanceRefElement {
     pub id: String,
     pub arrays: Vec<ConstantExpr>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IdentityOrPropKeyword {
     Id(String),
     PropKeyword(PropKeyword),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PropKeyword {
     Sw,
     Hw,
@@ -485,20 +500,20 @@ impl std::fmt::Display for PropKeyword {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstanceOrPropRef {
     pub iref: InstanceRef,
     pub id_or_prop: Option<IdentityOrPropKeyword>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StructLiteralElement {
     pub id: String,
     pub expr: ConstantExpr,
 }
 
 #[allow(unused)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UnaryOp {
     LogicalNot,
     Plus,
@@ -513,7 +528,7 @@ pub enum UnaryOp {
 }
 
 #[allow(unused)]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BinaryOp {
     AndAnd,
     OrOr,
@@ -537,7 +552,7 @@ pub enum BinaryOp {
     Power,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConstantExpr {
     ConstantPrimary(ConstantPrimary, Option<Box<ConstantExprContinue>>),
     UnaryOp(
@@ -547,7 +562,7 @@ pub enum ConstantExpr {
     ),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ConstantExprContinue {
     BinaryOp(
         BinaryOp,
@@ -561,13 +576,13 @@ pub enum ConstantExprContinue {
     ),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ArrayOrRange {
     Array(Vec<ConstantExpr>),
     Range(Range),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ComponentInst {
     pub id: String,
     pub array_or_range: Option<ArrayOrRange>,
@@ -577,26 +592,26 @@ pub struct ComponentInst {
     pub percent_equals: Option<ConstantExpr>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Range {
     Range(ConstantExpr, ConstantExpr),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Component {
     pub def: ComponentDef,
     pub inst_type: Option<ComponentInstType>,
     pub insts: Option<ComponentInsts>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PropertyCompType {
     ComponentType(ComponentType),
     Constraint,
     All,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PropertyAttribute {
     PropertyType(PropertyType),
     PropertyUsage(Vec<PropertyCompType>),
@@ -604,13 +619,13 @@ pub enum PropertyAttribute {
     PropertyConstraint,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PropertyType {
     pub property_data_type: PropertyDataType,
     pub array_type: Option<ArrayType>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PropertyDataType {
     ComponentPrimaryType(ComponentType),
     Ref,
@@ -618,7 +633,7 @@ pub enum PropertyDataType {
     BasicDataType(BasicDataType),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PropertyDefinition {
     pub id: String,
     pub body: Vec<PropertyAttribute>,

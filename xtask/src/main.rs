@@ -7,6 +7,33 @@ use mcu_builder::ImageCfg;
 use mcu_firmware_bundler::args::Commands as BundleCommands;
 use std::path::PathBuf;
 
+/// Parse an offset range in the format START:END (hex values supported).
+fn parse_offset_range(s: &str) -> Result<(usize, usize), String> {
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() != 2 {
+        return Err("Expected format START:END (e.g., 0x0:0x100)".to_string());
+    }
+    let start = parse_hex_usize(parts[0])?;
+    let end = parse_hex_usize(parts[1])?;
+    if start > end {
+        return Err(format!(
+            "Start (0x{:x}) must be <= end (0x{:x})",
+            start, end
+        ));
+    }
+    Ok((start, end))
+}
+
+fn parse_hex_usize(s: &str) -> Result<usize, String> {
+    let s = s.trim();
+    if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        usize::from_str_radix(hex, 16).map_err(|e| format!("Invalid hex number '{}': {}", s, e))
+    } else {
+        s.parse::<usize>()
+            .map_err(|e| format!("Invalid number '{}': {}", s, e))
+    }
+}
+
 mod auth_manifest;
 mod cargo_lock;
 mod clippy;
@@ -21,6 +48,8 @@ mod header;
 mod network;
 mod pldm_fw_pkg;
 mod precheckin;
+mod rdl_gen;
+mod rdl_gen_firmware;
 mod registers;
 mod rom;
 mod runtime;
@@ -296,6 +325,60 @@ enum Commands {
         #[command(subcommand)]
         cmd: network::NetworkCommands,
     },
+    /// [Temporary] Generate registers from RDL using the new generator
+    RdlGen {
+        /// Path to the RDL file
+        #[arg(short, long, required = true)]
+        file: PathBuf,
+
+        /// Name of the addrmap to generate
+        #[arg(short, long, required = true)]
+        addrmap: String,
+
+        /// Base address for the addrmap
+        #[arg(short, long, value_parser = maybe_hex::<usize>, default_value = "0")]
+        base_addr: usize,
+
+        /// Output file (if not specified, prints to stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Additional suffixes to strip from names (case-insensitive).
+        /// Default suffixes (_csr, _reg, _top, _ifc, _ctrl, csr) are always stripped.
+        #[arg(long = "strip-suffix")]
+        strip_suffixes: Vec<String>,
+
+        /// Prefixes to strip from names (case-insensitive).
+        /// Example: --strip-prefix caliptra_
+        #[arg(long = "strip-prefix")]
+        strip_prefixes: Vec<String>,
+
+        /// Disable default suffix stripping.
+        /// By default, common suffixes like _csr, _reg, _top, _ifc, _ctrl, csr are stripped.
+        #[arg(long)]
+        no_default_strip: bool,
+
+        /// Only include registers within this offset range (inclusive, hex).
+        /// Format: START:END (e.g., --include-offset-range 0x0:0x100)
+        #[arg(long = "include-offset-range", value_parser = parse_offset_range)]
+        include_offset_ranges: Vec<(usize, usize)>,
+
+        /// Exclude registers within this offset range (inclusive, hex).
+        /// Format: START:END (e.g., --exclude-offset-range 0x200:0x300)
+        #[arg(long = "exclude-offset-range", value_parser = parse_offset_range)]
+        exclude_offset_ranges: Vec<(usize, usize)>,
+
+        /// Exclude registers or blocks whose name matches (case-insensitive).
+        #[arg(long = "exclude-name")]
+        exclude_names: Vec<String>,
+    },
+
+    /// [Temporary] Generate all firmware registers using the new generator
+    RdlGenFirmware {
+        /// Check mode - don't write files, just verify generation works
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -507,6 +590,33 @@ fn main() {
         },
         Commands::FirmwareBundler { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
         Commands::Network { cmd } => network::run(cmd.clone()),
+        Commands::RdlGen {
+            file,
+            addrmap,
+            base_addr,
+            output,
+            strip_suffixes,
+            strip_prefixes,
+            no_default_strip,
+            include_offset_ranges,
+            exclude_offset_ranges,
+            exclude_names,
+        } => rdl_gen::generate(
+            file,
+            addrmap,
+            *base_addr,
+            output.as_deref(),
+            strip_suffixes,
+            strip_prefixes,
+            *no_default_strip,
+            include_offset_ranges,
+            exclude_offset_ranges,
+            exclude_names,
+        ),
+        Commands::RdlGenFirmware { check } => {
+            let project_root = std::env::current_dir().expect("Failed to get current directory");
+            rdl_gen_firmware::generate(&project_root, *check)
+        }
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);

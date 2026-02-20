@@ -97,7 +97,9 @@ fn integer_type_bit(i: &mut Tokens<'_>) -> Result<IntegerType> {
 
 // integer_atom_type ::= longint
 fn integer_type_longint(i: &mut Tokens<'_>) -> Result<IntegerType> {
-    TokenKind::Longint.parse_next(i).map(|_| IntegerType::Bit)
+    TokenKind::Longint
+        .parse_next(i)
+        .map(|_| IntegerType::Longint)
 }
 
 // simple_type ::= integer_type
@@ -552,7 +554,7 @@ fn explicit_component_inst(i: &mut Tokens<'_>) -> Result<ExplicitComponentInst> 
     Ok(ExplicitComponentInst {
         component_inst_type,
         component_inst_alias,
-        id,
+        component_name: id,
         component_insts,
     })
 }
@@ -771,16 +773,26 @@ fn component_body_elem(i: &mut Tokens<'_>) -> Result<ComponentBodyElem> {
 
 // component_named_def ::= component_type id [ param_def ] component_body
 fn component_named_def(i: &mut Tokens<'_>) -> Result<ComponentDef> {
-    let (ct, id, pd, body) =
+    let (type_, name, param_def, body) =
         (component_type, identifier, opt(param_def), component_body).parse_next(i)?;
 
-    Ok(ComponentDef::Named(ct, id, pd, body))
+    Ok(ComponentDef {
+        type_,
+        name: Some(name),
+        param_def,
+        body,
+    })
 }
 
 // component_anon_def::= component_type component_body
 fn component_anon_def(i: &mut Tokens<'_>) -> Result<ComponentDef> {
-    let (ct, body) = (component_type, component_body).parse_next(i)?;
-    Ok(ComponentDef::Anon(ct, body))
+    let (type_, body) = (component_type, component_body).parse_next(i)?;
+    Ok(ComponentDef {
+        type_,
+        name: None,
+        param_def: None,
+        body,
+    })
 }
 
 // component_inst_type ::= external | internal
@@ -1003,9 +1015,10 @@ fn struct_literal_body(i: &mut Tokens<'_>) -> Result<Vec<StructLiteralElement>> 
     separated(0.., struct_literal_element, TokenKind::Comma).parse_next(i)
 }
 
-// array_literal_body ::= constant_expression { , constant_expression }
+// errata states that 0 is allowed
+// array_literal_body ::= [ constant_expression { , constant_expression } ]
 fn array_literal_body(i: &mut Tokens<'_>) -> Result<Vec<ConstantExpr>> {
-    separated(1.., constant_expr, TokenKind::Comma).parse_next(i)
+    separated(0.., constant_expr, TokenKind::Comma).parse_next(i)
 }
 
 // array_literal ::= '{ array_literal_body }
@@ -1101,15 +1114,42 @@ fn unary_operator(i: &mut Tokens<'_>) -> Result<UnaryOp> {
             kind: TokenKind::Or,
             ..
         }) => Ok(UnaryOp::Or),
-        // not supported by our lexer
-        // Some(Token::Not) => Ok(UnaryOp::LogicalNot),
-        // Some(Token::Plus) => Ok(UnaryOp::Plus),
-        // Some(Token::Minus) => Ok(UnaryOp::Minus),
-        // Some(Token::BitwiseNot) => Ok(UnaryOp::Not),
-        // Some(Token::Nand) => Ok(UnaryOp::Nand),
-        // Some(Token::Nor) => Ok(UnaryOp::Nor),
-        // Some(Token::Xor) => Ok(UnaryOp::Xor),
-        // Some(Token::Xnor) => Ok(UnaryOp::Xnor),
+        Some(Token {
+            kind: TokenKind::Not,
+            ..
+        }) => Ok(UnaryOp::LogicalNot),
+        Some(Token {
+            kind: TokenKind::Plus,
+            ..
+        }) => Ok(UnaryOp::Plus),
+        Some(Token {
+            kind: TokenKind::Minus,
+            ..
+        }) => Ok(UnaryOp::Minus),
+        Some(Token {
+            kind: TokenKind::Tilde,
+            ..
+        }) => Ok(UnaryOp::Not),
+        Some(Token {
+            kind: TokenKind::TildeAnd,
+            ..
+        }) => Ok(UnaryOp::Nand),
+        Some(Token {
+            kind: TokenKind::TildeOr,
+            ..
+        }) => Ok(UnaryOp::Nor),
+        Some(Token {
+            kind: TokenKind::Xor,
+            ..
+        }) => Ok(UnaryOp::Xor),
+        Some(Token {
+            kind: TokenKind::TildeXor,
+            ..
+        }) => Ok(UnaryOp::Xnor),
+        Some(Token {
+            kind: TokenKind::XorTilde,
+            ..
+        }) => Ok(UnaryOp::Xnor),
         _ => fail.parse_next(i)?,
     }
 }
@@ -1127,12 +1167,30 @@ fn binary_operator(i: &mut Tokens<'_>) -> Result<BinaryOp> {
             kind: TokenKind::OrOr,
             ..
         }) => Ok(BinaryOp::OrOr),
-        // Some(Token::LessThan) => Ok(BinaryOp::LessThan),
-        // Some(Token::GreaterThan) => Ok(BinaryOp::GreaterThan),
-        // Some(Token::LessThanOrEqual) => Ok(BinaryOp::LessThanOrEqual),
-        // Some(Token::GreaterThanOrEqual) => Ok(BinaryOp::GreaterThanOrEqual),
-        // Some(Token::RightShift) => Ok(BinaryOp::RightShift),
-        // Some(Token::LeftShift) => Ok(BinaryOp::LeftShift),
+        Some(Token {
+            kind: TokenKind::LessThan,
+            ..
+        }) => Ok(BinaryOp::LessThan),
+        Some(Token {
+            kind: TokenKind::GreaterThan,
+            ..
+        }) => Ok(BinaryOp::GreaterThan),
+        Some(Token {
+            kind: TokenKind::LessThanOrEqual,
+            ..
+        }) => Ok(BinaryOp::LessThanOrEqual),
+        Some(Token {
+            kind: TokenKind::GreaterThanOrEqual,
+            ..
+        }) => Ok(BinaryOp::GreaterThanOrEqual),
+        Some(Token {
+            kind: TokenKind::RightShift,
+            ..
+        }) => Ok(BinaryOp::RightShift),
+        Some(Token {
+            kind: TokenKind::LeftShift,
+            ..
+        }) => Ok(BinaryOp::LeftShift),
         Some(Token {
             kind: TokenKind::And,
             ..
@@ -1141,14 +1199,42 @@ fn binary_operator(i: &mut Tokens<'_>) -> Result<BinaryOp> {
             kind: TokenKind::Or,
             ..
         }) => Ok(BinaryOp::Or),
-        // Some(Token::Xor) => Ok(BinaryOp::Xor),
-        // Some(Token::Xnor) => Ok(BinaryOp::Xnor),
-        // Some(Token::Times) => Ok(BinaryOp::Times),
-        // Some(Token::Divide) => Ok(BinaryOp::Divide),
-        // Some(Token::Modulus) => Ok(BinaryOp::Modulus),
-        // Some(Token::Plus) => Ok(BinaryOp::Plus),
-        // Some(Token::Minus) => Ok(BinaryOp::Minus),
-        // Some(Token::Power) => Ok(BinaryOp::Power),
+        Some(Token {
+            kind: TokenKind::Xor,
+            ..
+        }) => Ok(BinaryOp::Xor),
+        Some(Token {
+            kind: TokenKind::TildeXor,
+            ..
+        }) => Ok(BinaryOp::Xnor),
+        Some(Token {
+            kind: TokenKind::XorTilde,
+            ..
+        }) => Ok(BinaryOp::Xnor),
+        Some(Token {
+            kind: TokenKind::Star,
+            ..
+        }) => Ok(BinaryOp::Times),
+        Some(Token {
+            kind: TokenKind::Slash,
+            ..
+        }) => Ok(BinaryOp::Divide),
+        Some(Token {
+            kind: TokenKind::Percent,
+            ..
+        }) => Ok(BinaryOp::Modulus),
+        Some(Token {
+            kind: TokenKind::Plus,
+            ..
+        }) => Ok(BinaryOp::Plus),
+        Some(Token {
+            kind: TokenKind::Minus,
+            ..
+        }) => Ok(BinaryOp::Minus),
+        Some(Token {
+            kind: TokenKind::Power,
+            ..
+        }) => Ok(BinaryOp::Power),
         Some(Token {
             kind: TokenKind::EqualsEquals,
             ..

@@ -1,0 +1,39 @@
+// Test RDL file with mixed register widths - sequential layout (no explicit offsets)
+
+addrmap mixed_widths_seq {
+    name = "Mixed Width Sequential";
+    desc = "Test sequential offset calculation with different register widths";
+
+    // 8-bit registers
+    reg reg8_t {
+        regwidth = 8;
+        field {} data[7:0];
+    };
+
+    // 16-bit register  
+    reg reg16_t {
+        regwidth = 16;
+        field {} value[15:0];
+    };
+
+    // 32-bit register
+    reg reg32_t {
+        regwidth = 32;
+        field {} value[31:0];
+    };
+
+    // 64-bit register
+    reg reg64_t {
+        regwidth = 64;
+        field {} value[63:0];
+    };
+
+    // Sequential instances - no explicit offsets
+    // PeakRDL should auto-calculate: 0x0, 0x1, 0x2, 0x4, 0xC
+    reg8_t  first_byte;      // @0x0 (1 byte)
+    reg8_t  second_byte;     // @0x1 (1 byte)
+    reg16_t first_half;      // @0x2 (2 bytes)
+    reg32_t first_word;      // @0x4 (4 bytes)
+    reg64_t first_dword;     // @0x8 (8 bytes)
+    reg8_t  trailing_byte;   // @0x10 (1 byte)
+};
