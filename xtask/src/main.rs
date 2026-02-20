@@ -286,9 +286,8 @@ enum Commands {
         #[command(subcommand)]
         subcommand: AuthManifestCommands,
     },
-    /// A collection of experimental composition commands.  These are not intended for production
-    /// use, but can be used to test the functionality of the composition functionality.
-    Experimental {
+    /// Commands related to firmware bundling.
+    FirmwareBundler {
         #[command(subcommand)]
         cmd: BundleCommands,
     },
@@ -506,7 +505,7 @@ fn main() {
             } => auth_manifest::create(images, mcu_image, output),
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
-        Commands::Experimental { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
+        Commands::FirmwareBundler { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
         Commands::Network { cmd } => network::run(cmd.clone()),
     };
     result.unwrap_or_else(|e| {
