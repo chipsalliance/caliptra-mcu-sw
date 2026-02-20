@@ -1310,6 +1310,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |  1 |            irq_o           |   r  | 0x0 |  — |
 |  2 |recovery_payload_available_o|   r  | 0x0 |  — |
 |  3 | recovery_image_activated_o |   r  | 0x0 |  — |
+| 31 |      use_ext_i3c_host      |  rw  | 0x0 |  — |
 
 #### use_spare_i3c_core field
 
@@ -1324,6 +1325,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 <p>RSVD in core</p>
 
 #### recovery_image_activated_o field
+
+<p>RSVD in core</p>
+
+#### use_ext_i3c_host field
 
 <p>RSVD in core</p>
 

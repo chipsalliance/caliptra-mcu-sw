@@ -23,15 +23,23 @@ module caliptra_package_axi_top (
     output wire xilinx_i3c_aresetn,
     output wire axi_reset,
 
-    input wire axi_i3c_scl_t,
-    input wire axi_i3c_scl_o,
-    input wire axi_i3c_scl_pullup_en,
-    input wire axi_i3c_sda_t,
-    input wire axi_i3c_sda_o,
-    input wire axi_i3c_sda_pullup_en,
+    // I3C connections to external I3C daughter card
+    output EXT_SDA_UP,
+    output EXT_SDA_IN,
+    output EXT_SDA_EN,
+    input  EXT_SDA,
+    input  EXT_SCL,
+
+    // I3C signals from AXI I3C
+    input wire xilinx_scl_t,
+    input wire xilinx_scl_o,
+    input wire xilinx_scl_pullup_en,
+    input wire xilinx_sda_t,
+    input wire xilinx_sda_o,
+    input wire xilinx_sda_pullup_en,
     // I3C signals back to AXI I3C
-    output wire SCL,
-    output wire SDA,
+    output wire xilinx_scl,
+    output wire xilinx_sda,
 
     // Caliptra AXI Interface
     input  wire [31:0] S_AXI_CALIPTRA_AWADDR,
@@ -558,14 +566,20 @@ caliptra_wrapper_top cptra_wrapper (
     .xilinx_i3c_aresetn(xilinx_i3c_aresetn),
     .axi_reset(axi_reset),
 
-    .axi_i3c_scl_t(axi_i3c_scl_t),
-    .axi_i3c_scl_o(axi_i3c_scl_o),
-    .axi_i3c_scl_pullup_en(axi_i3c_scl_pullup_en),
-    .axi_i3c_sda_t(axi_i3c_sda_t),
-    .axi_i3c_sda_o(axi_i3c_sda_o),
-    .axi_i3c_sda_pullup_en(axi_i3c_sda_pullup_en),
-    .SCL(SCL),
-    .SDA(SDA),
+    .EXT_SDA_UP(EXT_SDA_UP),
+    .EXT_SDA_IN(EXT_SDA_IN),
+    .EXT_SDA_EN(EXT_SDA_EN),
+    .EXT_SDA(EXT_SDA),
+    .EXT_SCL(EXT_SCL),
+
+    .xilinx_scl_t(xilinx_scl_t),
+    .xilinx_scl_o(xilinx_scl_o),
+    .xilinx_scl_pullup_en(xilinx_scl_pullup_en),
+    .xilinx_sda_t(xilinx_sda_t),
+    .xilinx_sda_o(xilinx_sda_o),
+    .xilinx_sda_pullup_en(xilinx_sda_pullup_en),
+    .xilinx_scl(xilinx_scl),
+    .xilinx_sda(xilinx_sda),
 
     // Caliptra AXI Interface
     .S_AXI_CALIPTRA_AWADDR(S_AXI_CALIPTRA_AWADDR),
