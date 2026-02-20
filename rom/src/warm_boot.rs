@@ -56,15 +56,18 @@ impl BootFlow for WarmBoot {
         let state = SecurityState::from(mci.security_state());
         let lifecycle = state.device_lifecycle();
         match (state.debug_locked(), lifecycle) {
-            (false, _) => mci.configure_wdt(straps.mcu_wdt_cfg0_debug, straps.mcu_wdt_cfg1_debug),
+            (false, _) => mci.configure_wdt(
+                straps.mcu_wdt_cfg0_debug.into(),
+                straps.mcu_wdt_cfg1_debug.into(),
+            ),
             (true, DeviceLifecycle::Manufacturing) => {
                 mci.configure_wdt(
-                    straps.mcu_wdt_cfg0_manufacturing,
-                    straps.mcu_wdt_cfg1_manufacturing,
+                    straps.mcu_wdt_cfg0_manufacturing.into(),
+                    straps.mcu_wdt_cfg1_manufacturing.into(),
                 );
             }
             (true, _) => {
-                mci.configure_wdt(straps.mcu_wdt_cfg0, straps.mcu_wdt_cfg1);
+                mci.configure_wdt(straps.mcu_wdt_cfg0.into(), straps.mcu_wdt_cfg1.into());
             }
         }
         mci.set_flow_checkpoint(McuRomBootStatus::WatchdogConfigured.into());

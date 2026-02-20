@@ -233,10 +233,10 @@ impl CaliptraSoC {
         }))
     }
 
-    /// Executes a mailbox request assembled from a header part and additional
-    /// `&[u32]` payload parts.  The first element of `parts` must begin with a
-    /// [`MailboxReqHeader`] (its checksum is computed automatically).  The
-    /// remaining parts are concatenated after it in order.
+    /// Executes a mailbox request assembled from a mutable header and
+    /// read-only `&[u32]` payload parts. The header's first word (the
+    /// [`MailboxReqHeader`] checksum) is computed automatically. The payload
+    /// parts are concatenated after the header in order.
     ///
     /// This avoids copying large buffers (e.g. MLDSA keys/signatures) onto the
     /// stack — the caller can pass references to wherever the data already
@@ -245,18 +245,19 @@ impl CaliptraSoC {
     pub fn exec_mailbox_req_u32_parts(
         &mut self,
         cmd: u32,
-        parts: &mut [&mut [u32]],
+        hdr: &mut [u32],
+        data_parts: &[&[u32]],
         resp: &mut [u32],
     ) -> core::result::Result<(), CaliptraApiError> {
-        if parts.is_empty() || parts[0].is_empty() {
+        if hdr.is_empty() {
             return Err(CaliptraApiError::MailboxReqTypeTooSmall);
         }
 
         // Compute total length in bytes.
-        let mut total_words: usize = 0;
+        let mut total_words: usize = hdr.len();
         let mut pi = 0;
-        while pi < parts.len() {
-            total_words += parts[pi].len();
+        while pi < data_parts.len() {
+            total_words += data_parts[pi].len();
             pi += 1;
         }
         let total_bytes = total_words * 4;
@@ -272,38 +273,42 @@ impl CaliptraSoC {
                 .wrapping_add(b[3] as u32)
         }
         let mut chksum = sum_word_bytes(cmd);
-        // First part: skip word 0 (the header checksum slot)
+        // Header: skip word 0 (the checksum slot)
         let mut wi = 1;
-        while wi < parts[0].len() {
-            chksum = chksum.wrapping_add(sum_word_bytes(parts[0][wi]));
+        while wi < hdr.len() {
+            chksum = chksum.wrapping_add(sum_word_bytes(hdr[wi]));
             wi += 1;
         }
-        // Remaining parts: sum all words
-        pi = 1;
-        while pi < parts.len() {
+        // Data parts: sum all words
+        pi = 0;
+        while pi < data_parts.len() {
             wi = 0;
-            while wi < parts[pi].len() {
-                chksum = chksum.wrapping_add(sum_word_bytes(parts[pi][wi]));
+            while wi < data_parts[pi].len() {
+                chksum = chksum.wrapping_add(sum_word_bytes(data_parts[pi][wi]));
                 wi += 1;
             }
             pi += 1;
         }
         let chksum = 0u32.wrapping_sub(chksum);
 
-        // Write checksum into the header (first u32 of first part).
-        parts[0][0] = chksum;
+        // Write checksum into the header (first u32).
+        hdr[0] = chksum;
 
-        // Stream all parts to the mailbox.
-        let iter = parts.iter().flat_map(|p| p.iter().copied());
+        // Stream header + all data parts to the mailbox.
+        let iter = hdr
+            .iter()
+            .copied()
+            .chain(data_parts.iter().flat_map(|p| p.iter().copied()));
         self.start_mailbox_req(cmd, total_bytes, iter)?;
         let resp_len_bytes = resp.len() * 4;
         match self.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
-            Ok(Some(resp_iter)) => {
-                for (i, r) in resp_iter.enumerate() {
+            Ok(Some(mut resp_iter)) => {
+                for (i, r) in resp_iter.by_ref().enumerate() {
                     if i < resp.len() {
                         resp[i] = r;
                     }
                 }
+                resp_iter.verify_checksum()?;
                 Ok(())
             }
             Err(err) => Err(err),
@@ -335,12 +340,13 @@ impl CaliptraSoC {
         self.start_mailbox_req(cmd, req.len() * 4, req.iter().copied())?;
         let resp_len_bytes = resp.len() * 4;
         match self.finish_mailbox_resp(resp_len_bytes, resp_len_bytes) {
-            Ok(Some(resp_iter)) => {
-                for (i, r) in resp_iter.enumerate() {
+            Ok(Some(mut resp_iter)) => {
+                for (i, r) in resp_iter.by_ref().enumerate() {
                     if i < resp.len() {
                         resp[i] = r;
                     }
                 }
+                resp_iter.verify_checksum()?;
                 Ok(())
             }
             Err(err) => Err(err),

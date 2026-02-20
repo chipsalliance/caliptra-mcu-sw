@@ -34,18 +34,18 @@ use mcu_rom_common::flash::flash_partition::FlashPartition;
 use mcu_rom_common::hil::FlashStorage;
 use mcu_rom_common::memory::SimpleFlash;
 use mcu_rom_common::{fatal_error, RomParameters};
-use mcu_rom_common::{DotBlob, DotRecoveryHandler};
+use mcu_rom_common::{DotRecoveryHandler, DOT_BLOB_SIZE};
 use romtime::HexWord;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
 /// DOT recovery handler using MCI mbox0.
 /// Reads a backup DOT blob from offset 2048 in the DOT flash memory region.
 struct TestDotRecoveryHandler {
-    blob: [u8; core::mem::size_of::<DotBlob>()],
+    blob: [u8; DOT_BLOB_SIZE],
 }
 
 impl DotRecoveryHandler for TestDotRecoveryHandler {
-    fn read_recovery_blob(&self) -> mcu_error::McuResult<[u8; core::mem::size_of::<DotBlob>()]> {
+    fn read_recovery_blob(&self) -> mcu_error::McuResult<[u8; DOT_BLOB_SIZE]> {
         Ok(self.blob)
     }
 }
@@ -75,18 +75,6 @@ pub extern "C" fn rom_entry() -> ! {
 
     const EMULATOR_DOT_FLASH_ADDR: *mut u8 = 0x8100_0000 as *mut u8;
     const EMULATOR_DOT_FLASH_SIZE: usize = 4 * 1024;
-
-    // Read backup blob from DOT flash region before creating the flash wrapper
-    let recovery_backup_blob = {
-        const RECOVERY_BLOB_OFFSET: usize = 2048;
-        let mut blob = [0u8; core::mem::size_of::<DotBlob>()];
-        let mut i = 0;
-        while i < blob.len() {
-            blob[i] = unsafe { *EMULATOR_DOT_FLASH_ADDR.add(RECOVERY_BLOB_OFFSET + i) };
-            i += 1;
-        }
-        blob
-    };
 
     let raw_dot_flash = unsafe {
         core::slice::from_raw_parts_mut(EMULATOR_DOT_FLASH_ADDR, EMULATOR_DOT_FLASH_SIZE)
@@ -208,6 +196,17 @@ pub extern "C" fn rom_entry() -> ! {
         };
         mcu_rom_common::rom_start(rom_parameters);
     } else {
+        // Read backup blob from DOT flash region
+        let recovery_backup_blob = {
+            const RECOVERY_BLOB_OFFSET: usize = 2048;
+            let mut blob = [0u8; DOT_BLOB_SIZE];
+            let mut i = 0;
+            while i < blob.len() {
+                blob[i] = unsafe { *EMULATOR_DOT_FLASH_ADDR.add(RECOVERY_BLOB_OFFSET + i) };
+                i += 1;
+            }
+            blob
+        };
         let recovery_handler = TestDotRecoveryHandler {
             blob: recovery_backup_blob,
         };
@@ -235,7 +234,11 @@ pub extern "C" fn rom_entry() -> ! {
             } else {
                 None
             },
-            dot_recovery_transport: Some(&challenge_transport),
+            dot_recovery_transport: if cfg!(feature = "test-dot-recovery") {
+                Some(&challenge_transport)
+            } else {
+                None
+            },
             ..Default::default()
         });
     }

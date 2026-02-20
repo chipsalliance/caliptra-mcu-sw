@@ -108,39 +108,56 @@ impl ColdBoot {
 }
 
 /// Attempts DOT recovery using available recovery mechanisms.
-/// Tries challenge/response transport first, then backup blob handler.
+/// The order is determined by `params.dot_recovery_policy`.
 /// If recovery succeeds, triggers a warm reset (never returns).
-/// If recovery fails or no handler is available, returns to caller.
+/// If recovery fails or no handler is available, returns the last error (if any).
 fn attempt_dot_recovery(
     env: &mut RomEnv,
     dot_fuses: &crate::DotFuses,
     params: &RomParameters,
     dot_flash: &dyn crate::hil::FlashStorage,
     key_type: CmStableKeyType,
-) {
-    // Try challenge/response transport first
-    if let Some(transport) = params.dot_recovery_transport {
+) -> Option<McuError> {
+    use crate::DotRecoveryPolicy;
+
+    fn try_challenge(
+        env: &mut RomEnv,
+        dot_fuses: &crate::DotFuses,
+        params: &RomParameters,
+        dot_flash: &dyn crate::hil::FlashStorage,
+        key_type: CmStableKeyType,
+    ) -> Option<McuError> {
+        let transport = params.dot_recovery_transport?;
+        if params.dot_recovery_wdt_timeout > 0 {
+            env.mci.configure_wdt(params.dot_recovery_wdt_timeout, 1);
+        }
         romtime::println!("[mcu-rom] Attempting DOT recovery via challenge/response");
         match device_ownership_transfer::dot_recovery_challenge_flow(
             env, dot_fuses, transport, dot_flash, key_type,
         ) {
             Ok(()) => {
                 romtime::println!("[mcu-rom] DOT challenge recovery succeeded, resetting");
-                // TODO: we should probably trigger a cold reset somehow?
                 env.mci.trigger_warm_reset();
                 fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
             }
             Err(err) => {
                 romtime::println!(
-                    "[mcu-rom] DOT challenge recovery failed: {}, trying next recovery option",
+                    "[mcu-rom] DOT challenge recovery failed: {}",
                     HexWord(err.into())
                 );
+                Some(err)
             }
         }
     }
 
-    // Fall back to backup blob handler
-    if let Some(recovery_handler) = params.dot_recovery_handler {
+    fn try_backup_blob(
+        env: &mut RomEnv,
+        dot_fuses: &crate::DotFuses,
+        params: &RomParameters,
+        dot_flash: &dyn crate::hil::FlashStorage,
+        key_type: CmStableKeyType,
+    ) -> Option<McuError> {
+        let recovery_handler = params.dot_recovery_handler?;
         romtime::println!("[mcu-rom] Attempting DOT recovery via backup blob");
         match device_ownership_transfer::dot_recovery_flow(
             env,
@@ -151,7 +168,6 @@ fn attempt_dot_recovery(
         ) {
             Ok(()) => {
                 romtime::println!("[mcu-rom] DOT backup recovery succeeded, resetting");
-                // TODO: we should probably trigger a cold reset somehow?
                 env.mci.trigger_warm_reset();
                 fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
             }
@@ -160,10 +176,32 @@ fn attempt_dot_recovery(
                     "[mcu-rom] DOT backup recovery failed: {}",
                     HexWord(err.into())
                 );
-                fatal_error(err);
+                Some(err)
             }
         }
     }
+
+    let mut last_err = None;
+    match params.dot_recovery_policy {
+        DotRecoveryPolicy::ChallengeFirst => {
+            last_err = try_challenge(env, dot_fuses, params, dot_flash, key_type);
+            last_err = try_backup_blob(env, dot_fuses, params, dot_flash, key_type).or(last_err);
+        }
+        DotRecoveryPolicy::BackupBlobFirst => {
+            last_err = try_backup_blob(env, dot_fuses, params, dot_flash, key_type);
+            last_err = try_challenge(env, dot_fuses, params, dot_flash, key_type).or(last_err);
+        }
+        DotRecoveryPolicy::ChallengeOnly => {
+            last_err = try_challenge(env, dot_fuses, params, dot_flash, key_type);
+        }
+        DotRecoveryPolicy::BackupBlobOnly => {
+            last_err = try_backup_blob(env, dot_fuses, params, dot_flash, key_type);
+        }
+        DotRecoveryPolicy::None => {}
+    }
+
+    romtime::println!("[mcu-rom] DOT recovery failed: no recovery mechanism succeeded");
+    last_err
 }
 
 impl BootFlow for ColdBoot {
@@ -271,16 +309,19 @@ impl BootFlow for ColdBoot {
             let lifecycle = state.device_lifecycle();
             match (state.debug_locked(), lifecycle) {
                 (false, _) => {
-                    mci.configure_wdt(straps.mcu_wdt_cfg0_debug, straps.mcu_wdt_cfg1_debug);
+                    mci.configure_wdt(
+                        straps.mcu_wdt_cfg0_debug.into(),
+                        straps.mcu_wdt_cfg1_debug.into(),
+                    );
                 }
                 (true, DeviceLifecycle::Manufacturing) => {
                     mci.configure_wdt(
-                        straps.mcu_wdt_cfg0_manufacturing,
-                        straps.mcu_wdt_cfg1_manufacturing,
+                        straps.mcu_wdt_cfg0_manufacturing.into(),
+                        straps.mcu_wdt_cfg1_manufacturing.into(),
                     );
                 }
                 (true, _) => {
-                    mci.configure_wdt(straps.mcu_wdt_cfg0, straps.mcu_wdt_cfg1);
+                    mci.configure_wdt(straps.mcu_wdt_cfg0.into(), straps.mcu_wdt_cfg1.into());
                 }
             }
         } else {
@@ -399,7 +440,7 @@ impl BootFlow for ColdBoot {
         // Determine owner PK hash: from DOT flow if available, otherwise from fuses
         let owner_pk_hash = if let Some(dot_flash) = params.dot_flash {
             romtime::println!("[mcu-rom] Reading DOT blob");
-            let mut dot_blob = [0u8; core::mem::size_of::<DotBlob>()];
+            let mut dot_blob = [0u8; device_ownership_transfer::DOT_BLOB_SIZE];
             if let Err(err) = dot_flash.read(&mut dot_blob, 0) {
                 romtime::println!(
                     "[mcu-rom] Fatal error reading DOT blob from flash: {}",
@@ -415,12 +456,13 @@ impl BootFlow for ColdBoot {
                     let key_type = params
                         .dot_stable_key_type
                         .unwrap_or(CmStableKeyType::IDevId);
-                    attempt_dot_recovery(env, &dot_fuses, &params, dot_flash, key_type);
+                    let recovery_err =
+                        attempt_dot_recovery(env, &dot_fuses, &params, dot_flash, key_type);
                     // If recovery didn't reset, it's a fatal error
                     romtime::println!(
                         "[mcu-rom] DOT fuses are initialized but DOT blob is empty/corrupt"
                     );
-                    fatal_error(McuError::ROM_COLD_BOOT_DOT_ERROR);
+                    fatal_error(recovery_err.unwrap_or(McuError::ROM_COLD_BOOT_DOT_ERROR));
                 }
                 romtime::println!("[mcu-rom] DOT blob is empty; skipping DOT flow");
                 device_ownership_transfer::load_owner_pkhash(&env.otp)
@@ -441,7 +483,14 @@ impl BootFlow for ColdBoot {
                             let key_type = params
                                 .dot_stable_key_type
                                 .unwrap_or(CmStableKeyType::IDevId);
-                            attempt_dot_recovery(env, &dot_fuses, &params, dot_flash, key_type);
+                            let recovery_err =
+                                attempt_dot_recovery(env, &dot_fuses, &params, dot_flash, key_type);
+                            if let Some(e) = recovery_err {
+                                romtime::println!(
+                                    "[mcu-rom] DOT recovery failed: {}",
+                                    HexWord(e.into())
+                                );
+                            }
                         }
                         romtime::println!(
                             "[mcu-rom] Fatal error performing Device Ownership Transfer: {}",
@@ -503,7 +552,7 @@ impl BootFlow for ColdBoot {
                 }
             }
             fatal_error(McuError::ROM_COLD_BOOT_FINISH_RI_DOWNLOAD_ERROR);
-        };
+        }
         mci.set_flow_checkpoint(McuRomBootStatus::RiDownloadFirmwareComplete.into());
         mci.set_flow_milestone(McuBootMilestones::RI_DOWNLOAD_COMPLETED.into());
 

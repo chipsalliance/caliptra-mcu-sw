@@ -24,6 +24,7 @@ use mcu_error::{McuError, McuResult};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
 const DOT_LABEL: &[u8] = b"Caliptra DOT stable key";
+pub const DOT_BLOB_SIZE: usize = core::mem::size_of::<DotBlob>();
 
 #[derive(Clone, Debug, FromBytes, IntoBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct LakPkHash(pub [u32; 12]);
@@ -323,7 +324,7 @@ fn cm_hmac(env: &mut RomEnv, key: &Cmk, fields: &DotBlobFields) -> McuResult<[u3
     let req = CmHmacDotBlobReq {
         cmk: transmute!(key.0),
         hash_algorithm: CmHashAlgorithm::Sha512.into(),
-        data_size: core::mem::size_of_val(fields) as u32,
+        data_size: core::mem::size_of::<DotBlobFields>() as u32,
         data: fields.clone(),
         ..Default::default()
     };
@@ -600,40 +601,24 @@ fn cm_sha384(env: &mut RomEnv, data_parts: &[&[u32]]) -> McuResult<[u8; SHA384_D
 
     let mut resp32: [u32; core::mem::size_of::<CmShaResp>() / 4] = transmute!(CmShaResp::default());
 
-    // Build the parts array: header + up to 4 data slices.
-    // Data parts are read-only but exec_mailbox_req_u32_parts needs &mut [u32]
-    // because it writes the checksum into parts[0].  The data parts are only
-    // read, so the cast is safe.
-    let mut parts_buf: [&mut [u32]; 5] = [&mut [], &mut [], &mut [], &mut [], &mut []];
-    if data_parts.len() > 4 {
-        romtime::println!("[mcu-rom-dot] CM_SHA too many data parts");
-        return Err(McuError::ROM_DOT_RECOVERY_CHALLENGE_FAILED);
-    }
-    parts_buf[0] = &mut hdr;
-    let mut i = 0;
-    while i < data_parts.len() {
-        // SAFETY: exec_mailbox_req_u32_parts only mutates parts[0] (header).
-        parts_buf[i + 1] = unsafe {
-            core::slice::from_raw_parts_mut(data_parts[i].as_ptr() as *mut u32, data_parts[i].len())
-        };
-        i += 1;
-    }
-    let parts = &mut parts_buf[..data_parts.len() + 1];
-
-    if let Err(err) =
-        env.soc_manager
-            .exec_mailbox_req_u32_parts(CommandId::CM_SHA.into(), parts, &mut resp32)
-    {
+    if let Err(err) = env.soc_manager.exec_mailbox_req_u32_parts(
+        CommandId::CM_SHA.into(),
+        &mut hdr,
+        data_parts,
+        &mut resp32,
+    ) {
         romtime::println!("[mcu-rom-dot] CM_SHA failed: {:?}", err);
         return Err(McuError::ROM_DOT_RECOVERY_CHALLENGE_FAILED);
     }
 
     let resp: CmShaResp = transmute!(resp32);
+    let src = resp
+        .hash
+        .get(..SHA384_DIGEST_SIZE)
+        .ok_or(McuError::ROM_DOT_RECOVERY_CHALLENGE_FAILED)?;
     let mut hash = [0u8; SHA384_DIGEST_SIZE];
-    let mut j = 0;
-    while j < SHA384_DIGEST_SIZE {
-        hash[j] = resp.hash[j];
-        j += 1;
+    for (d, s) in hash.iter_mut().zip(src.iter()) {
+        *d = *s;
     }
     Ok(hash)
 }
@@ -698,13 +683,6 @@ fn cm_ecdsa384_verify(
     signature_s: &[u8; 48],
     hash: &[u8; 48],
 ) -> McuResult<()> {
-    // EcdsaVerifyReq [u8; 48] fields must be in big-endian byte order because
-    // the Caliptra firmware converts them via u32::from_be_bytes internally.
-    //
-    // EccP384PublicKey.x/y holds [u32; 12] where each u32 is the LE
-    // interpretation of the on-wire big-endian bytes (i.e., the raw SRAM
-    // value = u32::from_le_bytes(SEC1_BE_bytes)).  Converting back via
-    // to_le_bytes() recovers the original big-endian byte order.
     let mut pub_key_x = [0u8; 48];
     let mut pub_key_y = [0u8; 48];
     let mut i = 0;
@@ -763,7 +741,7 @@ fn cm_mldsa87_verify(
     //   part 1: pub_key  (borrowed)
     //   part 2: signature (borrowed)
     //   part 3: message_size (u32) + message data (u32 words)
-    let mut hdr: [u32; 1] = [0u32]; // MailboxReqHeader = 4 bytes = 1 u32
+    let mut hdr = [0u32; core::mem::size_of::<MailboxReqHeader>() / 4];
     let message_bytes = (message.len() * 4) as u32;
     // message_size word + message data; 64 u32s supports messages up to 252 bytes
     const MAX_MSG_WORDS: usize = 64;
@@ -777,22 +755,16 @@ fn cm_mldsa87_verify(
         msg_part[i + 1] = message[i];
         i += 1;
     }
-    let msg_slice = &mut msg_part[..1 + message.len()];
+    let msg_slice: &[u32] = &msg_part[..1 + message.len()];
 
-    // SAFETY: pub_key and signature are only read (not mutated) by the mailbox
-    // streaming code; only parts[0] has its checksum written.
-    let pub_key_mut =
-        unsafe { core::slice::from_raw_parts_mut(pub_key.as_ptr() as *mut u32, pub_key.len()) };
-    let sig_mut =
-        unsafe { core::slice::from_raw_parts_mut(signature.as_ptr() as *mut u32, signature.len()) };
-
-    let mut parts: [&mut [u32]; 4] = [&mut hdr, pub_key_mut, sig_mut, msg_slice];
+    let data_parts: &[&[u32]] = &[pub_key, signature, msg_slice];
     let mut resp32: [u32; core::mem::size_of::<MailboxRespHeader>() / 4] =
         transmute!(MailboxRespHeader::default());
 
     if let Err(err) = env.soc_manager.exec_mailbox_req_u32_parts(
         CommandId::MLDSA87_SIGNATURE_VERIFY.into(),
-        &mut parts,
+        &mut hdr,
+        data_parts,
         &mut resp32,
     ) {
         romtime::println!("[mcu-rom-dot] MLDSA87_SIGNATURE_VERIFY failed: {:?}", err);
@@ -814,7 +786,7 @@ pub trait DotRecoveryHandler {
     ///
     /// Returns the raw bytes of a backup DOT blob that will be authenticated
     /// against the current DOT_EFFECTIVE_KEY before being written to flash.
-    fn read_recovery_blob(&self) -> McuResult<[u8; core::mem::size_of::<DotBlob>()]>;
+    fn read_recovery_blob(&self) -> McuResult<[u8; DOT_BLOB_SIZE]>;
 }
 
 /// Performs DOT recovery by authenticating a backup blob and writing it to flash.

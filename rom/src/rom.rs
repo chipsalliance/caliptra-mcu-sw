@@ -601,6 +601,27 @@ pub fn verify_mcu_mbox_axi_users(
     Ok(())
 }
 
+/// Policy controlling which DOT recovery mechanisms are attempted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DotRecoveryPolicy {
+    /// Try challenge/response first, then backup blob (default).
+    ChallengeFirst,
+    /// Try backup blob first, then challenge/response.
+    BackupBlobFirst,
+    /// Only attempt challenge/response recovery.
+    ChallengeOnly,
+    /// Only attempt backup blob recovery.
+    BackupBlobOnly,
+    /// Do not attempt any recovery.
+    None,
+}
+
+impl Default for DotRecoveryPolicy {
+    fn default() -> Self {
+        Self::ChallengeFirst
+    }
+}
+
 #[derive(Default)]
 pub struct RomParameters<'a> {
     pub lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
@@ -618,6 +639,13 @@ pub struct RomParameters<'a> {
     pub dot_recovery_handler: Option<&'a dyn crate::DotRecoveryHandler>,
     /// Recovery transport for full challenge/response DOT recovery protocol.
     pub dot_recovery_transport: Option<&'a dyn crate::RecoveryTransport>,
+    /// DOT recovery watchdog timeout in clock cycles. If non-zero, the MCU
+    /// watchdog is configured with this value before waiting for mbox0
+    /// commands during challenge/response recovery. 0 = no watchdog.
+    pub dot_recovery_wdt_timeout: u64,
+    /// Which DOT recovery mechanisms to attempt and in what order.
+    /// Defaults to challenge/response first, then backup blob.
+    pub dot_recovery_policy: DotRecoveryPolicy,
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,

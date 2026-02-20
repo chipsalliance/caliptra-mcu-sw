@@ -309,7 +309,11 @@ mod test {
             }
             _ => {
                 println!("Could not find prebuilt firmware binaries, building firmware...");
-                build_test_binaries(params.feature, params.network_rom_feature, params.rom_feature)
+                build_test_binaries(
+                    params.feature,
+                    params.network_rom_feature,
+                    params.rom_feature,
+                )
             }
         };
 
