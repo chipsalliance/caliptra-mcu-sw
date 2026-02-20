@@ -16,6 +16,7 @@ fn main() {
     let target = env::var("TARGET").unwrap_or_default();
     let is_baremetal = env::var("CARGO_FEATURE_BAREMETAL").is_ok();
     let is_baremetal_ipv6 = env::var("CARGO_FEATURE_BAREMETAL_IPV6").is_ok();
+    let is_baremetal_tftp = env::var("CARGO_FEATURE_BAREMETAL_TFTP").is_ok();
 
     // Paths to lwIP
     let lwip_dir = manifest_dir.join("../lwip");
@@ -37,6 +38,11 @@ fn main() {
         // Enable IPv6 for baremetal-ipv6 feature
         if is_baremetal_ipv6 {
             builder.define("LWIP_BAREMETAL_IPV6", "1");
+        }
+
+        // Enable TFTP for baremetal-tftp feature
+        if is_baremetal_tftp {
+            builder.define("LWIP_BAREMETAL_TFTP", "1");
         }
 
         // For riscv32 cross-compilation with riscv64-unknown-elf-gcc
@@ -139,8 +145,8 @@ fn main() {
         }
     }
 
-    // App sources (host only)
-    if !is_baremetal {
+    // App sources
+    if !is_baremetal || is_baremetal_tftp {
         builder.file(lwip_src.join("apps/tftp/tftp.c"));
     }
 
@@ -184,6 +190,12 @@ fn main() {
         if is_baremetal_ipv6 {
             bindgen_builder = bindgen_builder
                 .clang_arg("-DLWIP_BAREMETAL_IPV6=1");
+        }
+
+        // Enable TFTP defines for bindgen when baremetal-tftp
+        if is_baremetal_tftp {
+            bindgen_builder = bindgen_builder
+                .clang_arg("-DLWIP_BAREMETAL_TFTP=1");
         }
     } else {
         bindgen_builder = bindgen_builder
@@ -272,6 +284,16 @@ fn main() {
             .allowlist_type("ip6_addr.*")
             .allowlist_var("IP6_ADDR_.*")
             .allowlist_var("LWIP_IPV6_NUM_ADDRESSES");
+    }
+
+    // Baremetal TFTP bindings
+    if is_baremetal_tftp {
+        bindgen_builder = bindgen_builder
+            .allowlist_function("tftp_init_client")
+            .allowlist_function("tftp_get")
+            .allowlist_function("tftp_cleanup")
+            .allowlist_type("tftp_context")
+            .allowlist_type("tftp_transfer_mode");
     }
 
     let bindings = bindgen_builder

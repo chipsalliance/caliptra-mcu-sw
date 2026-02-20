@@ -208,11 +208,14 @@ pub fn start(options: &ServerOptions) -> Result<()> {
         ),
     ];
 
-    // Only add TFTP-related DHCP options if TFTP is enabled and boot_file is non-empty
-    // Empty --dhcp-option=67, causes dnsmasq to segfault on some systems
+    // Use --dhcp-boot to set the BOOTP header fields (siaddr and file) that lwIP
+    // reads via LWIP_DHCP_BOOTP_FILE. Using --dhcp-option=66/67 only sends them as
+    // DHCP options in the options field, which lwIP does not parse.
     if options.enable_tftp && !options.boot_file.is_empty() {
-        args.push(format!("--dhcp-option=66,{}", options.tftp_server_addr)); // TFTP server
-        args.push(format!("--dhcp-option=67,{}", options.boot_file)); // Boot file name
+        args.push(format!(
+            "--dhcp-boot={},,{}",
+            options.boot_file, options.tftp_server_addr
+        ));
     }
 
     // DHCPv6 options (if enabled)

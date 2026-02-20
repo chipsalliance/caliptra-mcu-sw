@@ -28,3 +28,4 @@ dhcp6 = ["ipv6"]
 tftp = ["alloc", "spin"]  # TFTP requires alloc for String/CString
 baremetal = ["ipv4", "dhcp"]  # Bare-metal port (no OS, no TAP, no alloc required)
 baremetal-ipv6 = ["baremetal", "ipv6", "dhcp6"]  # Bare-metal with IPv6/SLAAC + stateless DHCPv6 support
+baremetal-tftp = ["baremetal"]  # Bare-metal with TFTP client (no alloc, no spin)

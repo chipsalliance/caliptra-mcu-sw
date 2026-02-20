@@ -106,9 +106,9 @@ pub struct NetworkMemoryMap {
 impl Default for NetworkMemoryMap {
     fn default() -> Self {
         NetworkMemoryMap {
-            // ROM at address 0x0 (64KB)
+            // ROM at address 0x0 (96KB)
             rom_offset: 0x0000_0000,
-            rom_size: 64 * 1024,
+            rom_size: 96 * 1024,
             rom_stack_size: 0x8000, // 32KB stack
             rom_estack_size: 0x200, // 512B exception stack
             rom_properties: MemoryRegionType::MEMORY,
@@ -298,7 +298,7 @@ impl NetworkMemoryMap {
 /// Default Network Coprocessor memory map for the emulator
 pub const DEFAULT_NETWORK_MEMORY_MAP: NetworkMemoryMap = NetworkMemoryMap {
     rom_offset: 0x0000_0000,
-    rom_size: 64 * 1024,
+    rom_size: 96 * 1024,
     rom_stack_size: 0x8000,
     rom_estack_size: 0x200,
     rom_properties: MemoryRegionType::MEMORY,
@@ -336,7 +336,7 @@ mod tests {
     fn test_default_memory_map() {
         let map = NetworkMemoryMap::default();
         assert_eq!(map.rom_offset, 0x0000_0000);
-        assert_eq!(map.rom_size, 64 * 1024);
+        assert_eq!(map.rom_size, 96 * 1024);
         assert_eq!(map.iccm_offset, 0x4000_0000);
         assert_eq!(map.iccm_size, 128 * 1024);
         assert_eq!(map.dccm_offset, 0x5000_0000);
@@ -376,7 +376,7 @@ mod tests {
         let hash_map = memory_map.hash_map();
 
         assert_eq!(hash_map.get("ROM_OFFSET").unwrap(), "0x0");
-        assert_eq!(hash_map.get("ROM_SIZE").unwrap(), "0x10000");
+        assert_eq!(hash_map.get("ROM_SIZE").unwrap(), "0x18000");
         assert_eq!(hash_map.get("ICCM_OFFSET").unwrap(), "0x40000000");
         assert_eq!(hash_map.get("ICCM_SIZE").unwrap(), "0x20000");
         assert_eq!(hash_map.get("DCCM_OFFSET").unwrap(), "0x50000000");

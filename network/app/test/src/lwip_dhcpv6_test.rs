@@ -20,10 +20,8 @@ Abstract:
 use lwip_rs::netif_baremetal::{BaremetalCallbacks, BaremetalNetIf};
 use lwip_rs::BaremetalSysCallbacks;
 use network_drivers::EthernetDriver;
-use network_drivers::TimerDriver;
 use network_drivers::{exit_emulator, println, MacAddr};
 use network_hil::ethernet::Ethernet;
-use network_hil::timers::Timers;
 
 /// Run the lwIP-based IPv6 SLAAC discovery test.
 ///
@@ -91,6 +89,9 @@ pub fn run(_eth: EthernetDriver) {
     const MAX_ITERATIONS: u32 = 500_000;
 
     for i in 0..MAX_ITERATIONS {
+        // Advance the software timer by 1ms each iteration
+        unsafe { SYS_NOW_COUNTER += 1; }
+
         // Process received packets and lwIP timeouts
         netif.poll();
 
@@ -157,14 +158,15 @@ fn eth_rx_available() -> bool {
     eth.rx_available()
 }
 
-/// Returns the current system time in milliseconds using the hardware timer.
+/// Global software timer counter, incremented by 1 each poll iteration.
+static mut SYS_NOW_COUNTER: u32 = 0;
+
+/// Returns the current system time in milliseconds using a software counter.
 ///
-/// Uses `TimerDriver::elapsed_ms()` to convert the RISC-V `mcycle` tick count
-/// into milliseconds since boot. The timer frequency determines the mapping
-/// from ticks to real time.
+/// Each poll() iteration increments the counter by 1ms, giving deterministic
+/// timer behaviour independent of the emulator's mcycle rate.
 fn sys_now_ms() -> u32 {
-    let timer = TimerDriver::new();
-    timer.elapsed_ms(0, timer.ticks()) as u32
+    unsafe { SYS_NOW_COUNTER }
 }
 
 /// Simple xorshift32 PRNG for lwIP.

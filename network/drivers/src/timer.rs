@@ -18,9 +18,18 @@ Abstract:
 use network_hil::timers::Timers;
 
 /// Estimated CPU clock frequency in Hz for the emulator. This is used to
-/// calculate elapsed time from tick counts. In a real implementation, this
-/// would be determined from hardware configuration or calibration.
-const EMULATOR_CPU_CLOCK_HZ: u64 = 100;
+/// convert tick counts (1 tick = 1 instruction) into elapsed time.
+///
+/// In the emulator, mcycle increments once per executed instruction.
+/// At 1 MHz: 1 tick = 1 µs virtual time. This balances:
+///   - ARP timing: the host kernel responds to ARP in ~100 µs real-time,
+///     during which the emulator runs ~50 000 instructions = 50 ms virtual,
+///     well under the 5-second ARP pending-entry timeout.
+///   - TFTP timeouts (10 s virtual) = 10 000 000 ticks, giving ample time
+///     for ARP to resolve and the first DATA packet to arrive.
+///   - DHCP timers (~500 ms virtual) fire every 500 000 ticks, still quick
+///     enough to keep the handshake responsive.
+const EMULATOR_CPU_CLOCK_HZ: u64 = 1_000_000;
 
 /// Timer driver for the Network Coprocessor.
 ///

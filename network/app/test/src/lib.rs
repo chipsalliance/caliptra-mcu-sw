@@ -21,3 +21,6 @@ pub mod lwip_dhcp_test;
 
 #[cfg(feature = "lwip-dhcp6")]
 pub mod lwip_dhcpv6_test;
+
+#[cfg(feature = "lwip-tftp")]
+pub mod lwip_tftp_test;

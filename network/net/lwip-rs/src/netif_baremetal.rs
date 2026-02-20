@@ -235,6 +235,24 @@ impl BaremetalNetIf {
         }
     }
 
+    /// Get the boot file name from the DHCP response.
+    ///
+    /// Returns the boot file name as a byte slice (without null terminator),
+    /// or an empty slice if no boot file was provided.
+    /// Requires `LWIP_DHCP_BOOTP_FILE = 1` in lwipopts.h.
+    pub fn dhcp_boot_file_name(&self) -> &[u8] {
+        unsafe {
+            let dhcp_ptr = self.dhcp.as_ptr();
+            let name = &(*dhcp_ptr).boot_file_name;
+            if name[0] == 0 {
+                return &[];
+            }
+            let len = name.iter().position(|&c| c == 0).unwrap_or(name.len());
+            // The array is i8 (c_char), cast to u8
+            core::slice::from_raw_parts(name.as_ptr() as *const u8, len)
+        }
+    }
+
     /// Get the current IPv4 address of the interface.
     pub fn ipv4_addr(&self) -> Ipv4Addr {
         unsafe {
@@ -480,8 +498,13 @@ unsafe extern "C" fn baremetal_linkoutput(
         q = (*q).next;
     }
 
+    // Pad to minimum Ethernet frame size (60 bytes) if needed.
+    // lwIP does not pad short frames (e.g., ARP = 42 bytes), but many
+    // Ethernet drivers/hardware require at least 60 bytes (64 with FCS).
+    let send_len = if total_len < 60 { 60 } else { total_len };
+
     // Send via the hardware driver
-    if (callbacks.transmit)(&buf[..total_len]) {
+    if (callbacks.transmit)(&buf[..send_len]) {
         ffi::err_enum_t_ERR_OK as ffi::err_t
     } else {
         ffi::err_enum_t_ERR_IF as ffi::err_t

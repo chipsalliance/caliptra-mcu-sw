@@ -145,7 +145,18 @@
    ---------- TFTP options ----------
    ------------------------------------
 */
+#ifdef LWIP_BAREMETAL_TFTP
+#define LWIP_TFTP                       1
+/* TFTP timeout for the emulator environment.
+   With EMULATOR_CPU_CLOCK_HZ=1000, 1 tick = 1ms virtual.
+   ARP pending entries survive ~5000 ticks (~5ms real), so the first
+   TFTP RRQ typically goes through without needing retransmission.
+   A 5-second virtual timeout is a generous fallback. */
+#define TFTP_MAX_RETRIES                5
+#define TFTP_TIMEOUT_MSECS              5000
+#else
 #define LWIP_TFTP                       0
+#endif
 
 /*
    ----------------------------------------

@@ -61,6 +61,13 @@ pub extern "C" fn main() -> ! {
         network_app_rom_test::lwip_dhcpv6_test::run(eth);
     }
 
+    #[cfg(feature = "test-network-rom-lwip-tftp")]
+    {
+        // Create Ethernet driver and run lwIP-based DHCP+TFTP test
+        let eth = EthernetDriver::new();
+        network_app_rom_test::lwip_tftp_test::run(eth);
+    }
+
     exit_emulator(0x00);
 }
 

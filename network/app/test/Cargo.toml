@@ -16,3 +16,4 @@ zerocopy.workspace = true
 default = []
 lwip-dhcp = ["lwip-rs"]
 lwip-dhcp6 = ["lwip-rs", "lwip-rs/baremetal-ipv6"]
+lwip-tftp = ["lwip-rs", "lwip-rs/baremetal-tftp"]

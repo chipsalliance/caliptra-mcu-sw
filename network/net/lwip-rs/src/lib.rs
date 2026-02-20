@@ -51,6 +51,9 @@ pub mod netif_baremetal;
 #[cfg(feature = "tftp")]
 pub mod tftp;
 
+#[cfg(feature = "baremetal-tftp")]
+pub mod tftp_baremetal;
+
 pub mod sys;
 
 pub use error::LwipError;
@@ -70,6 +73,9 @@ pub use netif_baremetal::BaremetalNetIf;
 
 #[cfg(feature = "tftp")]
 pub use tftp::{TftpClient, TftpStorageOps};
+
+#[cfg(feature = "baremetal-tftp")]
+pub use tftp_baremetal::{BaremetalTftpClient, BaremetalTftpOps};
 
 /// Initialize the lwIP stack. Must be called before any other lwIP functions.
 pub fn init() {

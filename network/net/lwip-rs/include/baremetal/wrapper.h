@@ -32,6 +32,12 @@
 /* UDP */
 #include "lwip/udp.h"
 
+/* TFTP (when enabled) */
+#ifdef LWIP_BAREMETAL_TFTP
+#include "lwip/apps/tftp_client.h"
+#include "lwip/apps/tftp_common.h"
+#endif
+
 /* IPv6 (when enabled) */
 #ifdef LWIP_BAREMETAL_IPV6
 #include "lwip/ip6_addr.h"
