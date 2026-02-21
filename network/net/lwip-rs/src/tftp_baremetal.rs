@@ -30,6 +30,8 @@ use core::slice;
 use crate::error::{check_err, LwipError, Result};
 use crate::ffi;
 use crate::ip::Ipv4Addr;
+#[cfg(feature = "baremetal-ipv6")]
+use crate::ip::Ipv6Addr;
 
 const TFTP_PORT: u16 = 69;
 
@@ -244,6 +246,63 @@ impl BaremetalTftpClient {
             server_addr.u_addr.ip4 = server.0;
             server_addr.type_ = 0; // IPADDR_TYPE_V4
         }
+
+        let err = unsafe {
+            ffi::tftp_get(
+                handle,
+                &server_addr,
+                TFTP_PORT,
+                fname_ptr,
+                ffi::tftp_transfer_mode_TFTP_MODE_OCTET,
+            )
+        };
+
+        if err != 0 {
+            unsafe { tftp_close_cb(handle) };
+        }
+
+        check_err(err)
+    }
+
+    /// Initiate a TFTP GET request over IPv6.
+    ///
+    /// `server` is the TFTP server IPv6 address.
+    /// `filename` must be a null-terminated byte string (e.g., `b"boot.bin\0"`).
+    ///
+    /// After calling this, poll lwIP (via `netif.poll()`) until `is_complete()`
+    /// returns true.
+    #[cfg(feature = "baremetal-ipv6")]
+    pub fn get_v6(&mut self, server: Ipv6Addr, filename: &[u8]) -> Result<()> {
+        if !self.initialized {
+            return Err(LwipError::NotConnected);
+        }
+
+        // Verify filename is null-terminated
+        if filename.is_empty() || filename[filename.len() - 1] != 0 {
+            return Err(LwipError::IllegalArgument);
+        }
+
+        // Reset transfer state
+        unsafe {
+            if let Some(ref mut s) = STATE {
+                s.bytes_received = 0;
+                s.has_error = false;
+                s.complete = false;
+            }
+        }
+
+        // Call open to get the handle
+        let fname_ptr = filename.as_ptr() as *const c_char;
+        let mode_ptr = b"octet\0".as_ptr() as *const c_char;
+        let handle = unsafe { tftp_open_cb(fname_ptr, mode_ptr, 1) };
+        if handle.is_null() {
+            return Err(LwipError::OutOfMemory);
+        }
+
+        // Build IPv6 server address
+        let mut server_addr: ffi::ip_addr_t = unsafe { core::mem::zeroed() };
+        server_addr.u_addr.ip6 = server.0;
+        server_addr.type_ = 6; // IPADDR_TYPE_V6
 
         let err = unsafe {
             ffi::tftp_get(

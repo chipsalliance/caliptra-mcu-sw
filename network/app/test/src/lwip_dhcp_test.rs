@@ -19,8 +19,10 @@ Abstract:
 use lwip_rs::netif_baremetal::{BaremetalCallbacks, BaremetalNetIf};
 use lwip_rs::BaremetalSysCallbacks;
 use network_drivers::EthernetDriver;
+use network_drivers::TimerDriver;
 use network_drivers::{exit_emulator, println, MacAddr};
 use network_hil::ethernet::Ethernet;
+use network_hil::timers::Timers;
 
 /// Run the lwIP-based DHCP discovery test.
 ///
@@ -82,9 +84,6 @@ pub fn run(_eth: EthernetDriver) {
     const MAX_ITERATIONS: u32 = 500_000;
 
     for i in 0..MAX_ITERATIONS {
-        // Advance the software timer by 1ms each iteration
-        unsafe { SYS_NOW_COUNTER += 1; }
-
         // Process received packets and lwIP timeouts
         netif.poll();
 
@@ -154,15 +153,10 @@ fn eth_rx_available() -> bool {
     eth.rx_available()
 }
 
-/// Global software timer counter, incremented by 1 each poll iteration.
-static mut SYS_NOW_COUNTER: u32 = 0;
-
-/// Returns the current system time in milliseconds using a software counter.
-///
-/// Each poll() iteration increments the counter by 1ms, giving deterministic
-/// timer behaviour independent of the emulator's mcycle rate.
+/// Returns the current system time in milliseconds using the hardware timer.
 fn sys_now_ms() -> u32 {
-    unsafe { SYS_NOW_COUNTER }
+    let timer = TimerDriver::new();
+    timer.elapsed_ms(0, timer.ticks()) as u32
 }
 
 /// Simple xorshift32 PRNG for lwIP.

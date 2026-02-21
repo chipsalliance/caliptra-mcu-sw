@@ -78,6 +78,12 @@ impl Ipv6Addr {
         Ipv6Addr(addr)
     }
 
+    /// Create an `Ipv6Addr` from raw `u32[4]` words in lwIP's internal format
+    /// (network byte order per word on little-endian targets).
+    pub const fn from_raw(addr: [u32; 4]) -> Self {
+        Ipv6Addr(ffi::ip6_addr_t { addr })
+    }
+
     pub fn any() -> Self {
         Ipv6Addr(ffi::ip6_addr_t::default())
     }
