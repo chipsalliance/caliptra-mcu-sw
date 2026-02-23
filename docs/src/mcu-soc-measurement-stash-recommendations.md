@@ -1,5 +1,12 @@
 # MCU and SoC Firmware Measurement Stashing: Recommendations
 
+## Topics for Discussion
+
+- During Recovery boot flow, should MCU FW measurement be stashed?
+- During FW Update,  should MCU FW measurement be stashed (extended)?
+- During Image Loading, should SoC FW measurements be stashed?
+- During FW Update, should SoC FW measurements be stashed (extended)?
+
 ## Background
 
 During the Caliptra recovery/boot flow and hitless update flows, firmware images (MCU RT FW and SoC FW)
@@ -42,19 +49,6 @@ let auth_and_stash_req = AuthorizeAndStashReq {
 };
 ```
 
-**Default Implementation** (`api/src/mailbox.rs`, line 2155):
-```rust
-impl Default for AuthorizeAndStashReq {
-    fn default() -> Self {
-        Self {
-            // ...
-            flags: AuthAndStashFlags::SKIP_STASH.bits(),  // Default is SKIP
-            // ...
-        }
-    }
-}
-```
-
 ---
 
 ## Specification Excerpts Supporting Measurement Stashing
@@ -78,23 +72,14 @@ impl Default for AuthorizeAndStashReq {
 >
 > — `doc/Caliptra.md`, line 278
 
-### 3. Subsystem mode — security-sensitive code MUST be stashed
-
-> *"Any security-sensitive code (eg. PLL programming) or configuration (eg. Fuse based Patching)
-> loaded by the MCU prior to Caliptra firmware boot **must be stashed within Caliptra**. If the MCU
-> exceeds Caliptra ROM's measurement stash capacity, attestation must be disabled until the next
-> cold reset."*
->
-> — `doc/Caliptra.md`, line 289
-
-### 4. Measurement Vault — Caliptra's stated purpose includes stashing
+### 3. Measurement Vault — Caliptra's stated purpose includes stashing
 
 > *"**Measurement Vault**: Caliptra shall support stashing of measurements for the code and
 > configuration of the SoC. Caliptra can provide these measurements via PCR Quote API or via DPE."*
 >
 > — `doc/Caliptra.md`, line 683
 
-### 5. Remote attestation depends on stashed measurements
+### 4. Remote attestation depends on stashed measurements
 
 > *"An Alias_RT-signed certificate over a leaf DPE key, which includes PCR3 as read by runtime
 > firmware, along with **other measurements previously stashed in SRAM**."*
@@ -106,14 +91,7 @@ impl Default for AuthorizeAndStashReq {
 >
 > — `doc/Caliptra.md`, line 819
 
-### 6. AUTHORIZE_AND_STASH — stashing is the default intent
-
-> *"The command also enables **stashing of the image hash by default** with an option to skip
-> stashing if needed."*
->
-> — `runtime/README.md`, line 1240
-
-### 7. Journey measurement tracking for SoC components
+### 5. Journey measurement tracking for SoC components
 
 > *"Caliptra shall maintain a reboot counter for each component. Caliptra shall increment the
 > reboot counter and **update the journey measurement** for calls that indicate that the component's
@@ -121,11 +99,118 @@ impl Default for AuthorizeAndStashReq {
 >
 > — `doc/Caliptra.md`, line 839
 
-### 8. MCU ROM must stash its own measurement
 
-> *"Stash the MCU ROM and other security-sensitive measurements to Caliptra."*
->
-> — `caliptra-mcu-sw/docs/src/rom.md`, line 72
+## PL0 Privilege Enforcement in Code
+
+PL0 is the high-privilege PAUSER level — only one PAUSER in the SoC may be PL0, and it is
+designated in the signed Caliptra firmware image header (`pl0_pauser` field). The following
+runtime commands enforce PL0-only access:
+
+| Command | File | Enforcement |
+|---|---|---|
+| `STASH_MEASUREMENT` | `runtime/src/stash_measurement.rs` (line 42) | Only PL0 can call — PL1 returns `RUNTIME_INCORRECT_PAUSER_PRIVILEGE_LEVEL` |
+| `CertifyKey` (X.509) | `runtime/src/invoke_dpe.rs` (line 90) | Only PL0 can request X.509 format |
+| `ExportCDI` | `runtime/src/invoke_dpe.rs` (line 95) | Only PL0 can export CDIs |
+| `SignWithExportedEcdsa` | `runtime/src/sign_with_exported_ecdsa.rs` (line 62) | Only PL0 |
+| `CertifyKeyExtended` | `runtime/src/certify_key_extended.rs` (line 41) | Only PL0 |
+| `RevokeExportedCdiHandle` | `runtime/src/revoke_exported_cdi_handle.rs` (line 29) | Only PL0 |
+| `ReallocateDpeContextLimits` | `runtime/src/reallocate_dpe_context_limits.rs` (line 44) | Only PL0 |
+| OCP LOCK commands | `runtime/src/ocp_lock/mod.rs` (line 1274) | Only PL0 |
+
+
+---
+
+## Journey Measurements: Caliptra FW vs SoC/MCU FW
+
+### What is a journey measurement?
+
+A journey measurement is a **cumulative cryptographic record** of every firmware/configuration
+state a component has passed through since cold boot. Unlike a "current" measurement (which
+captures only what is running *right now*), the journey captures the full update path.
+
+**Example:** A device cold boots firmware A, hitlessly updates to B, then to C.
+- **Current measurement** = hash(C) — only the latest state
+- **Journey measurement** = extend(extend(hash(A), hash(B)), hash(C)) — the full path \[A→B→C\]
+
+This matters because vulnerabilities in firmware B might have tainted the device even though
+B is no longer running. A remote verifier can walk the journey to detect if a known-bad
+version ever ran since cold boot.
+
+### Caliptra's own FW: dedicated current/cumulative PCR pairs
+
+Caliptra uses paired PCR registers to track the journey of its own internal firmware:
+
+| PCR | Type | Extended By | Purpose |
+|-----|------|-------------|---------|
+| PCR0 | Current | ROM | Current FMC measurement + ROM policy config |
+| PCR1 | Cumulative | ROM | **Journey** of FMC measurement + ROM policy config |
+| PCR2 | Current | FMC | Current RT FW + manifest measurements |
+| PCR3 | Cumulative | FMC | **Journey** of RT FW + manifest measurements |
+
+**"RT FW" here refers to Caliptra's own Runtime firmware** — the firmware running on the
+Caliptra microcontroller itself (not MCU or SoC firmware). The Caliptra boot chain is:
+
+| Stage | Full Name | Description |
+|-------|-----------|-------------|
+| ROM | Caliptra ROM | Immutable boot code baked into silicon |
+| FMC | First Mutable Code | First updatable Caliptra firmware, launched by ROM |
+| RT | Caliptra Runtime | Caliptra's runtime firmware, launched by FMC — handles mailbox commands, DPE, attestation |
+
+FMC extends both PCR2 (current) and PCR3 (cumulative) every time it loads an RT image
+(`fmc/src/flow/pcr.rs`, lines 64–67):
+
+```rust
+env.pcr_bank.extend_pcr(RT_FW_CURRENT_PCR, &mut env.sha2_512_384, data)?;  // PCR2
+env.pcr_bank.extend_pcr(RT_FW_JOURNEY_PCR, &mut env.sha2_512_384, data)?;  // PCR3
+```
+
+On every hitless update, PCR2 is **erased and re-extended** with the new RT measurement, while
+PCR3 **accumulates** (never erased — only reset on cold boot). The journey PCR (PCR3) is then
+copied into the DPE root context's `tci_cumulative` (`runtime/src/drivers.rs`, line 569):
+
+```rust
+env.state.contexts[root_idx].tci.tci_cumulative =
+    TciMeasurement(drivers.pcr_bank.read_pcr(RT_FW_JOURNEY_PCR).into());
+```
+
+PCR3 is included in DPE leaf key certificates, so a remote verifier can confirm through the
+certificate chain and the PCR log that no bad Caliptra RT firmware ever ran since cold boot.
+
+### SoC/MCU FW: no dedicated PCR pairs — uses PCR31 + DPE
+
+SoC and MCU firmware components do **NOT** get their own current/cumulative PCR pairs. Instead,
+their journey tracking relies on a different mechanism:
+
+| Mechanism | Storage | How it's populated |
+|-----------|---------|-------------------|
+| **PCR31** (cumulative) | Hardware register | Extended by each `STASH_MEASUREMENT` / `AUTHORIZE_AND_STASH` (without `SKIP_STASH`) |
+| **DPE child context nodes** | SRAM | A new DPE context node created per stash, building a tree |
+| **Reboot counter** | Per-component counter | Incremented on state changes |
+
+Per the spec ("Attestation of SoC update journey", `doc/Caliptra.md`, line 839):
+
+> *"Caliptra **shall** maintain a reboot counter for each component. Caliptra **shall** increment
+> the reboot counter and **update the journey measurement** for calls that indicate that the
+> component's state changed."*
+
+If MCU FW were properly stashed (not skipped), the journey would work like this:
+
+1. Cold boot → stash MCU FW A → PCR31 = extend(0, hash(A)), DPE context node created
+2. Hitless update to B → stash MCU FW B → PCR31 = extend(prev, hash(B)), another DPE node created
+3. Verifier can reconstruct the \[A→B\] journey from the DPE tree + PCR31 + event log
+
+### Current gap: NO journey tracking for MCU FW
+
+Since `SKIP_STASH` is set for MCU FW in both `recovery_flow.rs` (cold boot) and
+`activate_firmware.rs` (hitless update), **there is currently no journey tracking for MCU FW
+at all**. The measurement is authorized (hash-checked against the SoC Manifest) but never
+recorded — not in PCR31, not in DPE, and not in any dedicated PCR. This means:
+
+- A remote verifier **cannot** confirm which MCU FW version is running
+- A remote verifier **cannot** detect if a known-bad MCU FW version ran at any point since cold boot
+- The spec's journey tracking requirement for SoC components is not fulfilled for MCU FW
+
+---
 
 ---
 
