@@ -34,8 +34,21 @@ use mcu_rom_common::flash::flash_partition::FlashPartition;
 use mcu_rom_common::hil::FlashStorage;
 use mcu_rom_common::memory::SimpleFlash;
 use mcu_rom_common::{fatal_error, RomParameters};
+use mcu_rom_common::{DotRecoveryHandler, DOT_BLOB_SIZE};
 use romtime::HexWord;
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::{transmute, FromBytes, IntoBytes};
+
+/// DOT recovery handler using MCI mbox0.
+/// Reads a backup DOT blob from offset 2048 in the DOT flash memory region.
+struct TestDotRecoveryHandler {
+    blob: [u8; DOT_BLOB_SIZE],
+}
+
+impl DotRecoveryHandler for TestDotRecoveryHandler {
+    fn read_recovery_blob(&self) -> mcu_error::McuResult<[u8; DOT_BLOB_SIZE]> {
+        Ok(self.blob)
+    }
+}
 
 // re-export these so the common ROM can use it
 #[no_mangle]
@@ -291,6 +304,31 @@ pub extern "C" fn rom_entry() -> ! {
 
         romtime::println!("[mcu-rom] Booting from flash");
 
+        // Read backup blob from DOT flash region for test-dot-recovery feature
+        let recovery_backup_blob = {
+            const RECOVERY_BLOB_OFFSET: usize = 2048;
+            let mut blob = [0u8; DOT_BLOB_SIZE];
+            let mut i = 0;
+            while i < blob.len() {
+                blob[i] = unsafe { *EMULATOR_DOT_FLASH_ADDR.add(RECOVERY_BLOB_OFFSET + i) };
+                i += 1;
+            }
+            blob
+        };
+        let recovery_handler = TestDotRecoveryHandler {
+            blob: recovery_backup_blob,
+        };
+
+        // Create MCI mbox0 challenge/response transport for DOT recovery.
+        let challenge_transport = {
+            let mci_base: romtime::StaticRef<registers_generated::mci::regs::Mci> = unsafe {
+                romtime::StaticRef::new(
+                    MCU_MEMORY_MAP.mci_offset as *const registers_generated::mci::regs::Mci,
+                )
+            };
+            mcu_rom_common::Mbox0RecoveryTransport::new(mci_base)
+        };
+
         mcu_rom_common::rom_start(RomParameters {
             flash_partition_driver: Some(&mut flash_partition),
             dot_flash: Some(dot_flash),
@@ -304,9 +342,44 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox1_axi_users: mbox_axi_users,
             #[cfg(feature = "ocp-lock")]
             ocp_lock_config,
+            dot_recovery_handler: if cfg!(feature = "test-dot-recovery") {
+                Some(&recovery_handler)
+            } else {
+                None
+            },
+            dot_recovery_transport: if cfg!(feature = "test-dot-recovery") {
+                Some(&challenge_transport)
+            } else {
+                None
+            },
             ..Default::default()
         });
     } else {
+        // Read backup blob from DOT flash region
+        let recovery_backup_blob = {
+            const RECOVERY_BLOB_OFFSET: usize = 2048;
+            let mut blob = [0u8; DOT_BLOB_SIZE];
+            let mut i = 0;
+            while i < blob.len() {
+                blob[i] = unsafe { *EMULATOR_DOT_FLASH_ADDR.add(RECOVERY_BLOB_OFFSET + i) };
+                i += 1;
+            }
+            blob
+        };
+        let recovery_handler = TestDotRecoveryHandler {
+            blob: recovery_backup_blob,
+        };
+
+        // Create MCI mbox0 challenge/response transport for DOT recovery.
+        let challenge_transport = {
+            let mci_base: romtime::StaticRef<registers_generated::mci::regs::Mci> = unsafe {
+                romtime::StaticRef::new(
+                    MCU_MEMORY_MAP.mci_offset as *const registers_generated::mci::regs::Mci,
+                )
+            };
+            mcu_rom_common::Mbox0RecoveryTransport::new(mci_base)
+        };
+
         mcu_rom_common::rom_start(RomParameters {
             dot_flash: Some(dot_flash),
             cptra_mbox_axi_users: mbox_axi_users,
@@ -317,6 +390,16 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox1_axi_users: mbox_axi_users,
             #[cfg(feature = "ocp-lock")]
             ocp_lock_config,
+            dot_recovery_handler: if cfg!(feature = "test-dot-recovery") {
+                Some(&recovery_handler)
+            } else {
+                None
+            },
+            dot_recovery_transport: if cfg!(feature = "test-dot-recovery") {
+                Some(&challenge_transport)
+            } else {
+                None
+            },
             ..Default::default()
         });
     }

@@ -352,6 +352,7 @@ mod test {
         } = match FirmwareBinaries::from_env() {
             Ok(binaries)
                 if params.firmware_prefix.is_none()
+                    && params.rom_feature.is_none()
                     && (params.feature.is_none()
                         || has_prebuilt_binaries(params.feature.unwrap())) =>
             {
