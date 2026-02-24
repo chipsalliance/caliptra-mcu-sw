@@ -74,14 +74,13 @@ end_copy_data:
 .equ  EMU_CTRL_EXIT, 0x2000F000
 
 .section .text.init
-.align 2
+.align 8
 _exception_handler:
     # Save the SP to mscratch
     csrw mscratch, sp
-    
+
     # Switch to the exception stack
     la sp, ESTACK_START
 
     # Switch to the exception handler function
     jal exception_handler
-    

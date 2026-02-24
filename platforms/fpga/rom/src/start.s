@@ -68,11 +68,12 @@ end_copy_data:
     call main
 
 .section .text.init
-.align 2
+.align 8
+
 _exception_handler:
     # Save the SP to mscratch
     csrw mscratch, sp
-    
+
     # Switch to the exception stack
     la sp, ESTACK_START
 
