@@ -212,6 +212,247 @@ recorded — not in PCR31, not in DPE, and not in any dedicated PCR. This means:
 
 ---
 
+## DPE Tree Structure and MCU Journey Management Options
+
+### Resulting DPE tree after cold boot (current implementation)
+
+During `initialize_dpe()` on cold boot, RT builds the DPE tree in this order:
+
+1. **Root context (auto-init):** `DpeInstance::new_auto_init(tci_type="RTMR", measurement=PCR2)`,
+   then `tci_cumulative` overwritten with PCR3 (RT FW journey). Locality = `CALIPTRA_LOCALITY` (0xFFFFFFFF).
+2. **Valid PAUSER hash node:** `DeriveContext(default, hash(mbox_valid_pausers), tci_type="MBVP",
+   MAKE_DEFAULT | CHANGE_LOCALITY)`. Changes locality to `pl0_pauser`.
+3. **ROM measurement replay (0..N):** For each `STASH_MEASUREMENT` logged by ROM, a `DeriveContext`
+   with `MAKE_DEFAULT` chains below the PAUSER node at `pl0_pauser` locality.
+
+```
+Root (CALIPTRA_LOCALITY = 0xFFFFFFFF)
+│  tci_type: "RTMR"
+│  tci_current: PCR2 (current Caliptra RT FW measurement)
+│  tci_cumulative: PCR3 (Caliptra RT FW journey)
+│
+└── Valid PAUSER Hash (pl0_pauser locality, e.g. 0x1)
+    │  tci_type: "MBVP"
+    │  tci_current: SHA384(locked mbox valid pausers)
+    │
+    └── ROM Measurement 0 (pl0_pauser locality)
+        └── ROM Measurement 1
+            └── ... ROM Measurement N  ← current default handle
+```
+
+> **Note:** Each `DeriveContext` uses `MAKE_DEFAULT`, so the tree is a **linear chain** — each
+> new node becomes the default handle. The chain represents temporal order of stashing.
+
+### After MCU FW A is stashed and SoC images are authorized (proposed fix applied)
+
+If `recovery_flow.rs` is fixed to set `flags: 0` (stash enabled), and the MCU subsequently
+authorizes SoC images without `SKIP_STASH`:
+
+```
+Root ("RTMR" — Caliptra RT identity)
+└── Valid PAUSER Hash ("MBVP")
+    └── [ROM stashes 0..N]
+        └── MCU FW A                          ← stashed during recovery flow
+            │  tci_type: [2,0,0,0]
+            │  tci_current: SHA384(MCU FW A image)
+            │
+            └── SoC Image 1                   ← stashed by MCU via AUTHORIZE_AND_STASH
+                └── SoC Image 2
+                    └── SoC Image 3           ← current default handle
+```
+
+The DPE leaf key derived from the default handle now includes **every** measurement in the
+path: Caliptra RT → PAUSER config → ROM stashes → MCU FW A → SoC images. A `CertifyKey`
+on the default handle produces a certificate with all these in its DICE extensions.
+
+### Impact of MCU FW hitless update (naive stash — new node appended)
+
+If `activate_firmware.rs` also stashes MCU FW B (without `SKIP_STASH`), the new measurement
+chains below the **current default handle** (SoC Image 3, not MCU FW A):
+
+```
+Root ("RTMR")
+└── PAUSER ("MBVP")
+    └── [ROM stashes]
+        └── MCU FW A
+            └── SoC Image 1          ← authorized by MCU FW A
+                └── SoC Image 2
+                    └── SoC Image 3
+                        └── MCU FW B              ← appended after SoC images
+                            │                       (parent is SoC Image 3, not MCU FW A)
+                            └── [default handle]
+```
+
+**Problems with naive stash on hitless update:**
+
+- MCU FW B's parent is SoC Image 3, not MCU FW A — **doesn't reflect logical trust hierarchy**
+- If MCU FW B re-authorizes the same SoC images, **duplicates** are created
+- Each MCU update + SoC re-auth consumes additional DPE slots — **exhausts the 32-slot limit** quickly
+- With 3 SoC images, each MCU update cycle consumes 4 slots (1 MCU + 3 SoC re-stash)
+
+---
+
+### Options for MCU Journey Measurement Management
+
+The following options address how to track MCU FW journey measurements during hitless updates
+without the problems of naive stashing.
+
+---
+
+#### Option 1: Use Dedicated PCRs
+
+**Concept:** Allocate a separate general-purpose PCR (from PCR4–PCR30) specifically for MCU RT
+FW journey measurements. Do not use DPE for MCU journey tracking.
+
+**Flow:**
+
+```
+Cold boot:
+  EXTEND_PCR(PCR_MCU, hash(MCU FW A))       → PCR_MCU = extend(0, hash(A))
+  (MCU FW A node is stashed into DPE via recovery flow — one-time)
+
+Hitless update A→B:
+  EXTEND_PCR(PCR_MCU, hash(MCU FW B))       → PCR_MCU = extend(prev, hash(B))
+  (No new DPE node created)
+
+Hitless update B→C:
+  EXTEND_PCR(PCR_MCU, hash(MCU FW C))       → PCR_MCU = extend(prev, hash(C))
+```
+
+**DPE tree stays fixed after cold boot** — no new nodes on update:
+```
+Root ("RTMR")
+└── PAUSER ("MBVP")
+    └── [ROM stashes]
+        └── MCU FW A  (cold boot stash — never changes)
+            └── SoC Image 1 → SoC Image 2 → SoC Image 3
+```
+
+**MCU journey is tracked in PCR_MCU** and queryable via `PCR_QUOTE`.
+
+| Aspect | Assessment |
+|--------|-----------|
+| DPE slots consumed per update | 0 |
+| MCU journey visible | Yes — via dedicated PCR + event log |
+| MCU in DPE leaf certificate | Only cold boot measurement (static) |
+| Leaf key changes on MCU update | No — DPE tree unchanged |
+| Sealed secrets affected | No — leaf key stable |
+| Implementation complexity | Low — one `EXTEND_PCR` call per update |
+
+---
+
+#### Option 2: Use Default DPE Context with In-Place Update (`add_tci_measurement` / `RECURSIVE`)
+
+**Concept:** The MCU FW context is part of the default chain. On hitless update, instead of
+creating a new child node, **update the existing MCU context in-place** using DPE's
+`DeriveContext` with the `RECURSIVE` flag (or the internal `add_tci_measurement` function).
+
+`add_tci_measurement` updates the context without creating a new node:
+```rust
+// tci_cumulative = HASH(tci_cumulative || new_measurement)  — journey accumulates
+// tci_current = new_measurement                              — reflects current FW
+```
+
+**Flow:**
+
+```
+Cold boot:
+  DeriveContext(default, hash(MCU FW A), tci_type=[2,0,0,0], MAKE_DEFAULT)
+    → MCU node created in chain
+
+  Tree:
+  Root → PAUSER → [ROM] → MCU FW A → SoC 1 → SoC 2 → SoC 3
+                           tci_current: hash(A)
+                           tci_cumulative: hash(A)
+
+Hitless update A→B (in-place update on MCU node):
+  add_tci_measurement(MCU_handle, hash(MCU FW B))
+
+  Tree (SAME structure — no new nodes):
+  Root → PAUSER → [ROM] → MCU FW A → SoC 1 → SoC 2 → SoC 3
+                           tci_current: hash(B)           ← updated
+                           tci_cumulative: HASH(hash(A) || hash(B))  ← journey
+
+Hitless update B→C:
+  add_tci_measurement(MCU_handle, hash(MCU FW C))
+
+  Tree (still the same structure):
+  Root → PAUSER → [ROM] → MCU FW A → SoC 1 → SoC 2 → SoC 3
+                           tci_current: hash(C)
+                           tci_cumulative: HASH(HASH(hash(A)||hash(B)) || hash(C))
+```
+
+| Aspect | Assessment |
+|--------|-----------|
+| DPE slots consumed per update | 0 — one node forever |
+| MCU journey visible | Yes — `tci_cumulative` in the DPE node captures full journey |
+| MCU in DPE leaf certificate | Yes — always in the default chain, included in leaf cert DICE extensions |
+| Leaf key changes on MCU update | Yes — cumulative TCI changes, so derived leaf key changes |
+| Sealed secrets affected | Yes — must reseal before update (can use DPE simulation contexts) |
+| Implementation complexity | Medium — need to retrieve MCU handle and call `DeriveContext(RECURSIVE)` or internal API |
+| Remark | MCU context is in the default chain, so it's included in **all** PL0 DPE operations (CertifyKey, Sign, etc.) |
+
+---
+
+#### Option 3: Use Non-Default DPE Context Handle (separate branch)
+
+**Concept:** Keep the MCU FW context as a **sibling branch** (not in the default chain) so it
+doesn't affect normal PL0 SoC DPE operations. Use `RotateContext` to manage handles.
+
+**Flow:**
+
+```
+Cold boot — creating MCU as a sibling branch:
+
+  Step 1: RotateContext(default) → parent gets random handle H_parent
+  Step 2: DeriveContext(H_parent, hash(MCU FW A), RETAIN_PARENT) → MCU node created, returns H_mcu
+  Step 3: RotateContext(H_parent, TARGET_IS_DEFAULT) → parent becomes default again
+
+  Tree:
+  Root → PAUSER → [ROM] → Parent (default handle)
+                            ├── MCU FW A (non-default handle H_mcu — saved in persistent data)
+                            └── SoC 1 → SoC 2 → SoC 3 (default chain continues here)
+
+Hitless update A→B:
+  Retrieve H_mcu from persistent storage (or scan DPE contexts for tci_type=[2,0,0,0] in PL0 locality)
+  add_tci_measurement(H_mcu, hash(MCU FW B))
+
+  Tree (MCU node updated in place, default chain unaffected):
+  Root → PAUSER → [ROM] → Parent (default)
+                            ├── MCU FW (H_mcu) — tci_current: hash(B), tci_cumulative: journey
+                            └── SoC 1 → SoC 2 → SoC 3 (unchanged)
+```
+
+| Aspect | Assessment |
+|--------|-----------|
+| DPE slots consumed per update | 0 — one node forever |
+| MCU journey visible | Yes — `tci_cumulative` on the MCU branch |
+| MCU in DPE leaf certificate | **No** — not in the default path. Only visible if verifier queries the MCU branch specifically |
+| Leaf key on default path | Unchanged by MCU updates — SoC operations unaffected |
+| Sealed secrets on default path | Unaffected — default leaf key stable across MCU updates |
+| Implementation complexity | High — requires RotateContext + DeriveContext with RETAIN_PARENT + RotateContext back + persistent handle storage |
+| Remark | MCU handle must be stored in persistent storage or retrieved by scanning for `tci_type` in PL0 locality |
+
+---
+
+### Comparison of options
+
+| Aspect | Option 1: Dedicated PCR | Option 2: Default + in-place | Option 3: Non-default branch |
+|--------|:-:|:-:|:-:|
+| **DPE slots per update** | 0 | 0 | 0 |
+| **MCU in DPE leaf cert** | No (only via PCR Quote) | Yes (always) | Only on MCU-specific branch |
+| **Leaf key includes MCU** | No | Yes | Not on default path |
+| **Journey tracking** | PCR only | DPE `tci_cumulative` + PCR31 | DPE `tci_cumulative` + PCR31 |
+| **Impact on SoC FW ops** | None | MCU always in derivation path | None |
+| **Sealed secret stability** | Stable | Changes on MCU update | Stable on default path |
+| **Implementation effort** | Low | Medium | High |
+| **Spec compliance** | Partial — MCU not in DPE tree for attestation | Full — MCU in attestation chain | Partial — MCU not in default attestation |
+
+**Recommendation:** Option 2 provides the best balance of spec compliance, attestation
+completeness, and implementation simplicity. MCU FW running at PL0 privilege is
+security-critical, and having it in the default DPE derivation path ensures its measurement
+is always included in leaf certificates and key derivations — which is what the spec intends.
+
 ---
 
 ## Recommendations
