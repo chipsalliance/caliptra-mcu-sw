@@ -15,3 +15,15 @@ Abstract:
 #![no_std]
 
 pub mod dhcp_test;
+
+#[cfg(feature = "lwip-dhcp")]
+pub mod lwip_dhcp_test;
+
+#[cfg(feature = "lwip-dhcp6")]
+pub mod lwip_dhcpv6_test;
+
+#[cfg(feature = "lwip-tftp")]
+pub mod lwip_tftp_test;
+
+#[cfg(feature = "lwip-tftpv6")]
+pub mod lwip_tftpv6_test;

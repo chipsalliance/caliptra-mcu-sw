@@ -1365,7 +1365,7 @@ mod tests {
         assert_eq!(req.partial_len(), expected_len);
 
         req.length_bits = 0;
-        let expected_len = core::mem::size_of::<MailboxReqHeader>() + 4 * 4 + 0;
+        let expected_len = core::mem::size_of::<MailboxReqHeader>() + 4 * 4;
         assert_eq!(req.partial_len(), expected_len);
     }
 

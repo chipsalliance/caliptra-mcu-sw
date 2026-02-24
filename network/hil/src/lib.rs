@@ -14,5 +14,7 @@ Abstract:
 #![no_std]
 
 pub mod ethernet;
+pub mod timers;
 
 pub use ethernet::Ethernet;
+pub use timers::Timers;

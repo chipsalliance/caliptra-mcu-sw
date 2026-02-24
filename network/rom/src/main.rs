@@ -39,12 +39,34 @@ pub extern "C" fn main() -> ! {
     println!("=====================================");
     println!();
 
-    // Run the appropriate test based on feature flags
     #[cfg(feature = "test-network-rom-dhcp-discover")]
     {
-        // Create Ethernet driver
         let eth = EthernetDriver::new();
         network_app_rom_test::dhcp_test::run(eth);
+    }
+
+    #[cfg(feature = "test-network-rom-lwip-dhcp")]
+    {
+        let eth = EthernetDriver::new();
+        network_app_rom_test::lwip_dhcp_test::run(eth);
+    }
+
+    #[cfg(feature = "test-network-rom-lwip-dhcp6")]
+    {
+        let eth = EthernetDriver::new();
+        network_app_rom_test::lwip_dhcpv6_test::run(eth);
+    }
+
+    #[cfg(feature = "test-network-rom-lwip-tftp")]
+    {
+        let eth = EthernetDriver::new();
+        network_app_rom_test::lwip_tftp_test::run(eth);
+    }
+
+    #[cfg(feature = "test-network-rom-lwip-tftpv6")]
+    {
+        let eth = EthernetDriver::new();
+        network_app_rom_test::lwip_tftpv6_test::run(eth);
     }
 
     exit_emulator(0x00);

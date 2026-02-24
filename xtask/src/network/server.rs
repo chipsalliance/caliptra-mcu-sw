@@ -32,12 +32,16 @@ pub struct ServerOptions {
     // DHCPv6 options
     /// Enable IPv6 (DHCPv6 + RA)
     pub enable_ipv6: bool,
-    /// Start of DHCPv6 address range
+    /// Use SLAAC + stateless DHCPv6 mode (ra-stateless) instead of stateful DHCPv6
+    pub ipv6_slaac: bool,
+    /// Start of DHCPv6 address range (only used when ipv6_slaac is false)
     pub dhcp6_range_start: String,
-    /// End of DHCPv6 address range
+    /// End of DHCPv6 address range (only used when ipv6_slaac is false)
     pub dhcp6_range_end: String,
     /// DHCPv6 prefix length
     pub dhcp6_prefix_len: u8,
+    /// DHCPv6 prefix (used for SLAAC mode, e.g. "fd00:1234:5678::")
+    pub dhcp6_prefix: String,
     /// DHCPv6 lease time
     pub dhcp6_lease_time: String,
 
@@ -62,9 +66,11 @@ impl Default for ServerOptions {
 
             // DHCPv6 defaults
             enable_ipv6: true,
+            ipv6_slaac: false,
             dhcp6_range_start: "fd00:1234:5678::100".to_string(),
             dhcp6_range_end: "fd00:1234:5678::1ff".to_string(),
             dhcp6_prefix_len: 64,
+            dhcp6_prefix: "fd00:1234:5678::".to_string(),
             dhcp6_lease_time: "1h".to_string(),
 
             // TFTP defaults
@@ -200,22 +206,35 @@ pub fn start(options: &ServerOptions) -> Result<()> {
         ),
     ];
 
-    // Only add TFTP-related DHCP options if TFTP is enabled and boot_file is non-empty
-    // Empty --dhcp-option=67, causes dnsmasq to segfault on some systems
+    // Use --dhcp-boot to set the BOOTP header fields (siaddr and file) that lwIP
+    // reads via LWIP_DHCP_BOOTP_FILE. Using --dhcp-option=66/67 only sends them as
+    // DHCP options in the options field, which lwIP does not parse.
     if options.enable_tftp && !options.boot_file.is_empty() {
-        args.push(format!("--dhcp-option=66,{}", options.tftp_server_addr)); // TFTP server
-        args.push(format!("--dhcp-option=67,{}", options.boot_file)); // Boot file name
+        args.push(format!(
+            "--dhcp-boot={},,{}",
+            options.boot_file, options.tftp_server_addr
+        ));
     }
 
     // DHCPv6 options (if enabled)
     if options.enable_ipv6 {
-        args.push(format!(
-            "--dhcp-range={},{},{},{}",
-            options.dhcp6_range_start,
-            options.dhcp6_range_end,
-            options.dhcp6_prefix_len,
-            options.dhcp6_lease_time
-        ));
+        if options.ipv6_slaac {
+            // SLAAC + stateless DHCPv6 mode: RA has A flag (SLAAC addresses)
+            // and O flag (stateless DHCPv6 for DNS info)
+            args.push(format!(
+                "--dhcp-range={},ra-stateless,{}",
+                options.dhcp6_prefix, options.dhcp6_prefix_len,
+            ));
+        } else {
+            // Stateful DHCPv6 mode: specific address range
+            args.push(format!(
+                "--dhcp-range={},{},{},{}",
+                options.dhcp6_range_start,
+                options.dhcp6_range_end,
+                options.dhcp6_prefix_len,
+                options.dhcp6_lease_time
+            ));
+        }
         args.push("--enable-ra".to_string());
     }
 
