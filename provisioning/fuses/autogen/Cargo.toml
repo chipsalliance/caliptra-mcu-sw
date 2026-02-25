@@ -1,0 +1,19 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "provisioning-fuses"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+hex.workspace = true
+phf = { workspace = true, features = ["macros"] }
+serde = { workspace = true }
+serde-hjson = { workspace = true }
+
+[build-dependencies]
+anyhow.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde-hjson.workspace = true

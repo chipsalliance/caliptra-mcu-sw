@@ -30,6 +30,7 @@ mcu-builder.workspace = true
 mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true
 mcu-firmware-bundler.workspace = true
+provisioning-fuses.workspace = true
 mcu-rom-common.workspace = true
 mcu-hw-model = { workspace = true, optional = true }
 mcu-fuses-generator.workspace = true
