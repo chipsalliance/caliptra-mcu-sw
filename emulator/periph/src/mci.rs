@@ -2,7 +2,9 @@
 
 use crate::mcu_mbox0::McuMailbox0Internal;
 use crate::reset_reason::ResetReasonEmulator;
-use caliptra_emu_bus::{ActionHandle, BusMmio, Clock, ReadWriteRegister, Timer, TimerAction};
+use caliptra_emu_bus::{
+    ActionHandle, Bus, BusMmio, Clock, Ram, ReadWriteRegister, Timer, TimerAction,
+};
 use caliptra_emu_cpu::Irq;
 use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_types::RvData;
@@ -35,6 +37,10 @@ pub struct Mci {
 
     // emulates the RESET_REASON register
     reset_reason: ResetReasonEmulator,
+    /// Tracks whether the last reset cycle has completed, so we can
+    /// distinguish fresh FW update bits (written by Caliptra via DMA
+    /// for the current reset) from stale bits left over from a previous cycle.
+    reset_cycle_complete: bool,
     irq: Rc<RefCell<Irq>>,
     mcu_mailbox0: Option<McuMailbox0Internal>,
 
@@ -80,6 +86,7 @@ impl Mci {
             op_wdt_timer1_expired_action: None,
             op_wdt_timer2_expired_action: None,
             reset_reason,
+            reset_cycle_complete: false,
             irq,
             mcu_mailbox0,
             reset_requested: false,
@@ -394,10 +401,23 @@ impl MciPeripheral for Mci {
         self.ext_mci_regs.regs.borrow_mut().reset_request = val.reg.get();
 
         if val.reg.is_set(ResetRequest::McuReq) {
-            // Per hardware spec: mci_rst_b toggle with pwrgood high always
-            // sets WARM_RESET and clears FW update bits, regardless of
-            // the current reset_reason value.
-            self.reset_reason.handle_warm_reset();
+            let reason = self.reset_reason.get();
+            let has_fw_update_bits = {
+                let reg = ReadWriteRegister::<u32, ResetReason::Register>::new(reason);
+                reg.reg.is_set(ResetReason::FwBootUpdReset)
+                    || reg.reg.is_set(ResetReason::FwHitlessUpdReset)
+            };
+
+            if has_fw_update_bits && !self.reset_cycle_complete {
+                // Caliptra wrote FW update bits for this reset cycle
+                // (first reset after cold boot). Preserve them.
+            } else {
+                // Either no FW update bits (plain warm reset), or
+                // FW bits are stale from the previous reset cycle.
+                // Per hardware spec: mci_rst_b toggle sets WARM_RESET
+                // and clears FW update bits.
+                self.reset_reason.handle_warm_reset();
+            }
 
             // Schedule the reset status assertion
             println!("MCI: MCU reset requested");
@@ -1097,6 +1117,7 @@ impl MciPeripheral for Mci {
             if proceed_with_reboot {
                 println!("MCI: MCU proceeding with reboot");
                 self.reset_requested = false;
+                self.reset_cycle_complete = true;
                 self.timer.schedule_action_in(0, TimerAction::UpdateReset);
                 self.op_wdt_timer2_expired_action = None;
             }
@@ -1417,6 +1438,109 @@ mod tests {
         let combined = ((mci.read_mci_reg_mcu_rv_mtimecmp_h() as u64) << 32)
             | (mci.read_mci_reg_mcu_rv_mtimecmp_l() as u64);
         assert_eq!(combined, 0x0000_BEEF_FFFF_FFFEu64);
+    }
+
+    const RESET_REASON_OFFSET: u32 = 0x38;
+    const RESET_REQUEST_OFFSET: u32 = 0x100;
+
+    /// Bit masks for ResetReason register (from HW spec)
+    const FW_HITLESS_UPD_RESET_MASK: u32 = 1 << 0; // bit 0
+    const FW_BOOT_UPD_RESET_MASK: u32 = 1 << 1; // bit 1
+    const WARM_RESET_MASK: u32 = 1 << 2; // bit 2
+
+    /// Simulate the bug scenario:
+    /// 1. Cold boot: reset_reason = 0x0
+    /// 2. Caliptra writes FW_BOOT_UPD_RESET (0x2) via DMA before MCU_REQ
+    /// 3. First MCU_REQ: MCU should read reset_reason = 0x2
+    /// 4. Second MCU_REQ: MCU should read reset_reason = 0x4 (WARM_RESET)
+    #[test]
+    fn test_reset_reason_fw_boot_then_warm() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs.clone(),
+            Rc::new(RefCell::new(irq)),
+            None,
+            None,
+            None,
+            [0, 0],
+        );
+
+        // Step 1: Cold boot - reset_reason should be 0x0
+        assert_eq!(mci.read_mci_reg_reset_reason().reg.get(), 0x0);
+
+        // Step 2: Caliptra writes FW_BOOT_UPD_RESET via DMA (directly to shared regs)
+        ext_mci_regs.regs.borrow_mut().reset_reason = FW_BOOT_UPD_RESET_MASK;
+
+        // Verify it's visible through the MCI
+        assert_eq!(
+            mci.read_mci_reg_reset_reason().reg.get(),
+            FW_BOOT_UPD_RESET_MASK
+        );
+
+        // Step 3: MCU writes MCU_REQ - should preserve FW_BOOT_UPD_RESET
+        let mut reset_req = ReadWriteRegister::<u32, ResetRequest::Register>::new(0);
+        reset_req.reg.modify(ResetRequest::McuReq::SET);
+        mci.write_mci_reg_reset_request(reset_req);
+
+        assert!(mci.reset_requested);
+        // FW_BOOT_UPD_RESET should be preserved (Caliptra set it for this cycle)
+        assert_eq!(
+            mci.read_mci_reg_reset_reason().reg.get(),
+            FW_BOOT_UPD_RESET_MASK,
+            "First reset: FW_BOOT_UPD_RESET should be preserved"
+        );
+
+        // Simulate poll() completing the reset
+        mci.reset_requested = false;
+        mci.reset_cycle_complete = true;
+
+        // Step 4: Second MCU_REQ (no new FW update bits written by Caliptra)
+        // The stale FW_BOOT_UPD_RESET should be cleared and WARM_RESET set
+        let mut reset_req2 = ReadWriteRegister::<u32, ResetRequest::Register>::new(0);
+        reset_req2.reg.modify(ResetRequest::McuReq::SET);
+        mci.write_mci_reg_reset_request(reset_req2);
+
+        assert_eq!(
+            mci.read_mci_reg_reset_reason().reg.get(),
+            WARM_RESET_MASK,
+            "Second reset: should be WARM_RESET (stale FW bits cleared)"
+        );
+    }
+
+    /// Test that plain warm resets (no FW update bits) always produce WARM_RESET
+    #[test]
+    fn test_reset_reason_plain_warm_reset() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs.clone(),
+            Rc::new(RefCell::new(irq)),
+            None,
+            None,
+            None,
+            [0, 0],
+        );
+
+        // Cold boot: reset_reason = 0x0
+        assert_eq!(mci.read_mci_reg_reset_reason().reg.get(), 0x0);
+
+        // MCU_REQ without any FW update bits → should produce WARM_RESET
+        let mut reset_req = ReadWriteRegister::<u32, ResetRequest::Register>::new(0);
+        reset_req.reg.modify(ResetRequest::McuReq::SET);
+        mci.write_mci_reg_reset_request(reset_req);
+
+        assert_eq!(
+            mci.read_mci_reg_reset_reason().reg.get(),
+            WARM_RESET_MASK,
+            "Plain warm reset should produce WARM_RESET"
+        );
     }
 
     #[test]
