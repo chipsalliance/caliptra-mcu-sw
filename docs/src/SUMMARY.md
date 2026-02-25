@@ -3,6 +3,7 @@
 - [MCU Specification](./mcu.md)
 - [Reference ROM Specification](./rom.md)
     - [Device Ownership Transfer](./dot.md)
+        - [DOT I3C Recovery Protocol](./dot_i3c.md)
 - [Runtime Specification](./runtime.md)
     - [PLDM Package](./pldm_package.md)
     - [Flash Layout](./flash_layout.md)
