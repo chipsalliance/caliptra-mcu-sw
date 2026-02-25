@@ -159,7 +159,6 @@ pub struct FirmwareBinaries {
     pub caliptra_fw: Vec<u8>,
     pub mcu_rom: Vec<u8>,
     pub mcu_runtime: Vec<u8>,
-    pub network_rom: Vec<u8>,
     pub soc_manifest: Vec<u8>,
     pub test_roms: Vec<(String, Vec<u8>)>,
     pub caliptra_test_roms: Vec<(String, Vec<u8>)>,
@@ -176,7 +175,6 @@ impl FirmwareBinaries {
     const CALIPTRA_FW_NAME: &'static str = "caliptra_fw.bin";
     const MCU_ROM_NAME: &'static str = "mcu_rom.bin";
     const MCU_RUNTIME_NAME: &'static str = "mcu_runtime.bin";
-    const NETWORK_ROM_NAME: &'static str = "network_rom.bin";
     const SOC_MANIFEST_NAME: &'static str = "soc_manifest.bin";
     const FLASH_IMAGE_NAME: &'static str = "flash_image.bin";
     const PLDM_FW_PKG_NAME: &'static str = "pldm_fw_pkg.bin";
@@ -216,7 +214,6 @@ impl FirmwareBinaries {
                 Self::CALIPTRA_FW_NAME => binaries.caliptra_fw = data,
                 Self::MCU_ROM_NAME => binaries.mcu_rom = data,
                 Self::MCU_RUNTIME_NAME => binaries.mcu_runtime = data,
-                Self::NETWORK_ROM_NAME => binaries.network_rom = data,
                 Self::SOC_MANIFEST_NAME => binaries.soc_manifest = data,
                 name if name.contains("mcu-test-soc-manifest") => {
                     binaries.test_soc_manifests.push((name.to_string(), data));
@@ -458,7 +455,6 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let platform = platform.unwrap_or("emulator");
     let rom_features = rom_features.unwrap_or_default();
     let mcu_rom = crate::rom_build(Some(platform.to_string()), Some(rom_features.to_string()))?;
-    let network_rom = crate::network_rom_build()?;
 
     let mut used_filenames = std::collections::HashSet::new();
     let mut test_roms = vec![];
@@ -734,12 +730,6 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     add_to_zip(
         &PathBuf::from(mcu_runtime),
         FirmwareBinaries::MCU_RUNTIME_NAME,
-        &mut zip,
-        options,
-    )?;
-    add_to_zip(
-        &PathBuf::from(network_rom),
-        FirmwareBinaries::NETWORK_ROM_NAME,
         &mut zip,
         options,
     )?;

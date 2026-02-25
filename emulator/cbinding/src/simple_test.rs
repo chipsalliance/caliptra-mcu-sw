@@ -90,7 +90,6 @@ fn test_emulator_args_creation() {
         fuse_soc_manifest_svn: None,
         fuse_vendor_hashes_prod_partition: None,
         fuse_vendor_test_partition: None,
-        network_rom: None,
         stub_warnings: false,
     };
 

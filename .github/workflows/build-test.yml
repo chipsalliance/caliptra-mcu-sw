@@ -277,7 +277,6 @@ jobs:
             --exclude example-app \
             --exclude libtock_unittest \
             --exclude syscalls_tests \
-            --exclude network-rom \
             --archive-file /tmp/nextest-archive.tar.zst
           sccache --show-stats
 
