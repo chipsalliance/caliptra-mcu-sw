@@ -45,6 +45,7 @@ members = [
     "platforms/fpga/rom",
     "platforms/fpga/runtime",
     "platforms/test_harness",
+    "provisioning/fuses/autogen",
     "registers/fuses",
     "registers/generated-emulator",
     "registers/generated-firmware",
@@ -144,6 +145,7 @@ num-derive = "0.4.2"
 num-traits = "0.2"
 openssl = { version = "0.10", features = ["vendored"] }
 pkcs8 = "0.10.2"
+phf = "0.11"
 portable-atomic = "1.7.0"
 p384 = "0.13.0"
 prettyplease = "0.2.37"
@@ -207,6 +209,7 @@ mcu-config-emulator = { path = "platforms/emulator/config" }
 mcu-config-fpga = { path = "platforms/fpga/config" }
 mcu-error = { path = "error" }
 mcu-firmware-bundler = { path = "firmware-bundler" }
+provisioning-fuses = { path = "provisioning/fuses/autogen" }
 mcu-fuses-generator = { path = "registers/fuses" }
 mcu-hw-model = { path = "hw/model" }
 mcu-hw-model-test-fw = { path = "hw/model/test-fw" }

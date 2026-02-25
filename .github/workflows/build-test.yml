@@ -35,26 +35,6 @@ jobs:
       - name: Run precheckin
         run: cargo xtask precheckin
 
-  xtask-flows:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install required packages
-        run: |
-          sudo apt-get update -qy && \
-          sudo apt-get install -qy build-essential curl git && \
-          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
-
-      - name: Generate test fuse lib
-        run: |
-          cargo xtask autogen-fuse-lib
-
   build-firmware:
     runs-on: e2-standard-8
     timeout-minutes: 60

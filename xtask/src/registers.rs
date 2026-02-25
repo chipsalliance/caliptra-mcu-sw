@@ -3,6 +3,7 @@
 use anyhow::{anyhow, bail, Result};
 use mcu_builder::PROJECT_ROOT;
 use proc_macro2::{Ident, Literal, TokenStream};
+use provisioning_fuses::lib_generator::{HEADER_PREFIX, HEADER_SUFFIX};
 use quote::{format_ident, quote};
 use registers_generator::{
     camel_case, has_single_32_bit_field, hex_const, snake_case, FieldType, Register, RegisterBlock,
@@ -20,14 +21,6 @@ use std::str::FromStr;
 use std::sync::LazyLock;
 
 use crate::fuses::autogen_fuses;
-
-pub(crate) static HEADER_PREFIX: &str = r"/*
-Licensed under the Apache-2.0 license.
-";
-
-pub(crate) static HEADER_SUFFIX: &str = r"
-*/
-";
 
 static SKIP_TYPES: LazyLock<HashSet<&str>> = LazyLock::new(|| {
     HashSet::from([
