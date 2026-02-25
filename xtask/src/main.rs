@@ -149,10 +149,6 @@ enum Commands {
         #[arg(long)]
         rom_features: Option<String>,
 
-        /// Comma-separated list of feature flags to build Network ROMs with
-        #[arg(long)]
-        network_rom_features: Option<String>,
-
         #[arg(long)]
         runtime_features: Option<String>,
 
@@ -394,7 +390,6 @@ fn main() {
             output,
             platform,
             rom_features,
-            network_rom_features,
             runtime_features,
             separate_runtimes,
             soc_images,
@@ -404,7 +399,6 @@ fn main() {
             output: output.as_deref(),
             platform: platform.as_deref(),
             rom_features: rom_features.as_deref(),
-            network_rom_features: network_rom_features.as_deref(),
             runtime_features: runtime_features.as_deref(),
             separate_runtimes: *separate_runtimes,
             soc_images: soc_images.clone(),

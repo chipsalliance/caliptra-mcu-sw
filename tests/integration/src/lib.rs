@@ -262,7 +262,7 @@ mod test {
         let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
 
         // Network ROM is optional - build it if the build system supports it
-        let network_rom = match mcu_builder::network_rom_build(None) {
+        let network_rom = match mcu_builder::network_rom_build() {
             Ok(path) => std::fs::read(path).unwrap_or_default(),
             Err(_) => Vec::new(),
         };
