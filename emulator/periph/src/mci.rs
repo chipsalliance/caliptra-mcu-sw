@@ -394,12 +394,10 @@ impl MciPeripheral for Mci {
         self.ext_mci_regs.regs.borrow_mut().reset_request = val.reg.get();
 
         if val.reg.is_set(ResetRequest::McuReq) {
-            let reason = self.reset_reason.get();
-            // If the reason isn't set or it is set to warm reset, perform a warm reset
-            if reason == 0 || reason == ResetReason::WarmReset::SET.mask() {
-                // Set warm reset reason immediately
-                self.reset_reason.handle_warm_reset();
-            }
+            // Per hardware spec: mci_rst_b toggle with pwrgood high always
+            // sets WARM_RESET and clears FW update bits, regardless of
+            // the current reset_reason value.
+            self.reset_reason.handle_warm_reset();
 
             // Schedule the reset status assertion
             println!("MCI: MCU reset requested");
@@ -1053,18 +1051,21 @@ impl MciPeripheral for Mci {
         if self.reset_requested {
             // Handle MCU reset request
             let reset_reason = self.reset_reason.get();
-            let mcu_fw_exec_ctrl = self
-                .soc_regs
-                .as_ref()
-                .map(|regs| regs.ss_generic_fw_exec_ctrl().get(0).unwrap().read());
             // Only check MCU go bit for hitless updates (reset_reason bit 0 = hitless update)
             // For other resets, proceed without waiting for Caliptra
             let is_hitless_update = reset_reason & 0x1 != 0;
             let mut proceed_with_reboot = true;
-            if let Some(val) = mcu_fw_exec_ctrl {
-                // For hitless updates: MCU halts when FW_EXEC_CTRL[2] is cleared,
-                // sets reset_status, and waits for FW_EXEC_CTRL[2] to be set again
-                if is_hitless_update {
+
+            if is_hitless_update {
+                // For hitless updates: read ss_generic_fw_exec_ctrl to coordinate
+                // with Caliptra. MCU halts when FW_EXEC_CTRL[2] is cleared,
+                // sets reset_status, and waits for FW_EXEC_CTRL[2] to be set again.
+                let mcu_fw_exec_ctrl = self
+                    .soc_regs
+                    .as_ref()
+                    .map(|regs| regs.ss_generic_fw_exec_ctrl().get(0).unwrap().read());
+
+                if let Some(val) = mcu_fw_exec_ctrl {
                     if (val & (1 << 2)) == 0 {
                         // FW_EXEC_CTRL bit is cleared
                         if self.ext_mci_regs.regs.borrow().reset_status
@@ -1092,6 +1093,7 @@ impl MciPeripheral for Mci {
                     }
                 }
             }
+
             if proceed_with_reboot {
                 println!("MCI: MCU proceeding with reboot");
                 self.reset_requested = false;
