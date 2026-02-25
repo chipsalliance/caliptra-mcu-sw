@@ -1809,7 +1809,6 @@ dependencies = [
  "emulator-consts",
  "emulator-registers-generated",
  "lazy_static",
- "libc",
  "mcu-testing-common",
  "network-config",
  "num_enum",
