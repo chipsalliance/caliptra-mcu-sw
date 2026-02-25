@@ -51,7 +51,6 @@ SECTIONS
         *(.text.init )
         *(.text*)
         *(.rodata*)
-        *(.srodata*)
     }} > ROM
 
     ROM_DATA = .;

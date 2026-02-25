@@ -10,9 +10,7 @@ edition.workspace = true
 network-config.workspace = true
 
 [dependencies]
-network-app-rom-test = { workspace = true, optional = true }
-network-drivers.workspace = true
+network-config.workspace = true
 
 [features]
 default = []
-test-network-rom-dhcp-discover = ["network-app-rom-test"]
