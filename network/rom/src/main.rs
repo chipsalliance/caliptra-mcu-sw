@@ -21,6 +21,7 @@ use core::panic::PanicInfo;
 #[cfg(target_arch = "riscv32")]
 use core::arch::global_asm;
 
+#[cfg(target_arch = "riscv32")]
 use caliptra_mcu_network_drivers::{exit_emulator, println};
 
 // Include the startup assembly code
@@ -51,6 +52,7 @@ pub extern "C" fn main() -> ! {
 }
 
 /// Exception handler - called when CPU encounters an exception
+#[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub extern "C" fn exception_handler() {
     println!("EXCEPTION: Network ROM encountered an error!");
