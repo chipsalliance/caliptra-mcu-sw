@@ -1,21 +1,46 @@
 // Licensed under the Apache-2.0 license
 
-use crate::flash::flash_partition::FlashPartition;
+pub mod flash;
+
+use crate::{flash::flash_partition::FlashPartition, recovery::flash::FlashImageProvider};
 use bitfield::bitfield;
-use flash_image::{
-    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
-    SOC_MANIFEST_IDENTIFIER,
-};
 use registers_generated::i3c;
 use registers_generated::i3c::bits::{IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess};
 use romtime::StaticRef;
 use smlang::statemachine;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::IntoBytes;
 
 const ACTIVATE_RECOVERY_IMAGE_CMD: u32 = 0xF;
 const BYPASS_CFG_USE_I3C: u32 = 0x0;
 const BYPASS_CFG_AXI_DIRECT: u32 = 0x1;
+
+/// A trait defining how an image can be provided to the i3c recovery interface.  This allows
+/// multiple providers (e.g. flash, usb, etc.) to independently provide images while utilizing the
+/// same i3c bypass recovery load logic.
+pub trait ImageProvider {
+    /// A blocking call which waits until the image is ready to be loaded into the recovery
+    /// interface.  It will return the size of the image being loaded in bytes.  This must be called
+    /// prior to `next_bytes`.
+    ///
+    /// This could return an error if the underlying provider encounters an error waiting for the
+    /// image or processing any header related data.
+    fn image_ready(&mut self, image_index: u32) -> Result<usize, ()>;
+
+    /// Retrieve up to the next len(data) number of bytes in the image.  The slice will be updated
+    /// to include the new set of data, including having the length adjusted to indicate the number
+    /// of bytes actually loaded.
+    ///
+    /// This call will block if the next bytes are not yet available.  The data will only be
+    /// partially populated in the case the image ends prior to the entire buffer.  
+    ///
+    /// This could return an error if the underlying provider encounters an error reading the
+    /// image.
+    fn next_bytes(&mut self, data: &mut [u8]) -> Result<(), ()>;
+
+    /// Return the number of image bytes which have been loaded by the given provider.
+    fn bytes_loaded(&self) -> usize;
+}
 
 statemachine! {
     derive_states: [Clone, Copy, Debug],
@@ -125,20 +150,12 @@ pub mod dev_rec_status_code {
 
 /// State machine extended variables.
 pub(crate) struct Context {
-    recovery_image_index: u8,
-    image_size: u32,
-    flash_offset: u32,
-    pub transfer_offset: u32,
+    image_size: usize,
 }
 
 impl Context {
     pub(crate) fn new() -> Context {
-        Context {
-            recovery_image_index: 0,
-            image_size: 0,
-            flash_offset: 0,
-            transfer_offset: 0,
-        }
+        Context { image_size: 0 }
     }
 }
 
@@ -205,70 +222,18 @@ impl StateMachineContext for Context {
     }
 }
 
-pub fn get_flash_image_info(id: u32, flash_driver: &mut FlashPartition) -> Result<(u32, u32), ()> {
-    // Get the maximum size between FlashHeader and ImageHeader
-    // Use a buffer large enough for either header (FlashHeader or ImageHeader)
-    const MAX_HEADER_SIZE: usize = {
-        let flash_header_size = core::mem::size_of::<FlashHeader>();
-        let image_header_size = core::mem::size_of::<ImageHeader>();
-        if flash_header_size > image_header_size {
-            flash_header_size
-        } else {
-            image_header_size
-        }
-    };
-    let mut buf = [0u8; MAX_HEADER_SIZE];
-
-    // Read the flash header
-    flash_driver
-        .read(0, &mut buf[..core::mem::size_of::<FlashHeader>()])
-        .map_err(|_| ())?;
-
-    let flash_header = FlashHeader::ref_from_prefix(&buf[..core::mem::size_of::<FlashHeader>()])
-        .map_err(|_| ())?
-        .0;
-
-    let image_count = flash_header.image_count;
-
-    for i in 0..image_count as usize {
-        // Read the image header
-        let offset = core::mem::size_of::<FlashHeader>() + i * core::mem::size_of::<ImageHeader>();
-        flash_driver
-            .read(offset, &mut buf[..core::mem::size_of::<ImageHeader>()])
-            .map_err(|_| ())?;
-        let image_header =
-            ImageHeader::ref_from_prefix(&buf[..core::mem::size_of::<ImageHeader>()])
-                .map_err(|_| ())?
-                .0;
-
-        if image_header.identifier == id {
-            return Ok((image_header.offset, image_header.size));
-        }
-    }
-
-    Err(())
-}
-
-pub fn recovery_img_index_to_image_id(recovery_image_index: u32) -> Result<u32, ()> {
-    // Convert the recovery image index to the image ID
-    match recovery_image_index {
-        0 => Ok(CALIPTRA_FMC_RT_IDENTIFIER),
-        1 => Ok(SOC_MANIFEST_IDENTIFIER),
-        2 => Ok(MCU_RT_IDENTIFIER),
-        _ => Err(()),
-    }
-}
-
-pub fn load_flash_image_to_recovery(
+pub fn load_flash_image_to_recovery<'a>(
     i3c_periph: StaticRef<i3c::regs::I3c>,
-    flash_driver: &mut FlashPartition,
+    flash_driver: &'a mut FlashPartition<'a>,
 ) -> Result<(), ()> {
     let context = Context::new();
     let mut state_machine = StateMachine::new(context);
 
     let mut prev_state = States::ReadProtCap;
-    let mut next_print_offset = 0u32;
+    let mut next_print_checkpoint = 0;
     let mut start_cycle = None;
+
+    let mut image_provider = FlashImageProvider::new(flash_driver);
 
     i3c_periph
         .soc_mgmt_if_rec_intf_cfg
@@ -303,28 +268,20 @@ pub fn load_flash_image_to_recovery(
                     RecoveryStatus(i3c_periph.sec_fw_recovery_if_recovery_status.get());
                 let res = state_machine.process_event(Events::RecoveryStatus(recovery_status));
                 if res.is_ok() {
-                    state_machine.context_mut().recovery_image_index =
-                        recovery_status.rec_img_index() as u8;
+                    let recovery_image_index = recovery_status.rec_img_index();
                     romtime::println!(
                         "[mcu-rom] Starting recovery with image index {}",
-                        state_machine.context().recovery_image_index
+                        recovery_image_index
                     );
                     // Clear REC_INTF_CFG.REC_PAYLOAD_DONE bit to indicate image is not available
                     i3c_periph
                         .soc_mgmt_if_rec_intf_cfg
                         .modify(RecIntfCfg::RecPayloadDone.val(0));
-                    let image_info = get_flash_image_info(
-                        recovery_img_index_to_image_id(
-                            state_machine.context().recovery_image_index as u32,
-                        )?,
-                        flash_driver,
-                    )?;
-                    state_machine.context_mut().flash_offset = image_info.0;
-                    state_machine.context_mut().image_size = image_info.1;
-                    state_machine.context_mut().transfer_offset = 0;
+                    let image_size = image_provider.image_ready(recovery_image_index)?;
+                    state_machine.context_mut().image_size = image_size;
                     i3c_periph
                         .sec_fw_recovery_if_indirect_fifo_ctrl_1
-                        .set(state_machine.context().image_size / 4);
+                        .set((state_machine.context().image_size / 4) as u32);
                 }
             }
 
@@ -333,17 +290,17 @@ pub fn load_flash_image_to_recovery(
                     start_cycle = Some(romtime::mcycle());
                 }
 
-                let image_size = state_machine.context().image_size;
-                if state_machine.context().transfer_offset >= next_print_offset {
+                let bytes_loaded = image_provider.bytes_loaded();
+                if bytes_loaded >= next_print_checkpoint {
                     romtime::println!(
                         "[mcu-rom] Transferring image data at offset {} out of {}",
-                        state_machine.context().transfer_offset,
-                        image_size
+                        bytes_loaded,
+                        state_machine.context().image_size
                     );
-                    next_print_offset = state_machine.context().transfer_offset + image_size / 10;
+                    next_print_checkpoint = bytes_loaded + state_machine.context().image_size / 10;
                 }
 
-                if state_machine.context().transfer_offset >= image_size {
+                if bytes_loaded >= state_machine.context().image_size {
                     // Set REC_INTF_CFG.REC_PAYLOAD_DONE bit to indicate transfer complete
                     i3c_periph
                         .soc_mgmt_if_rec_intf_cfg
@@ -352,16 +309,11 @@ pub fn load_flash_image_to_recovery(
                     // If the transfer is complete, we can move to the next state
                     let _ = state_machine.process_event(Events::TransferComplete);
                     let end_cycle = romtime::mcycle();
-                    let cycles = end_cycle - start_cycle.unwrap_or_default();
-                    let transfer_rate = if cycles > 0 {
-                        (state_machine.context().image_size as u64 * 1000) / cycles
-                    } else {
-                        0
-                    };
+                    let cycles = (end_cycle - start_cycle.unwrap_or_default()).max(1);
                     romtime::println!(
                         "[mcu-rom] Image transfer complete after {} cycles (≈{} bytes per 1,000 cycles)",
                         cycles,
-                        transfer_rate,
+                        (state_machine.context().image_size as u64 * 1000) / cycles,
                     );
                 } else {
                     // wait for fifo empty before transferring full 256 bytes
@@ -371,24 +323,15 @@ pub fn load_flash_image_to_recovery(
                         .sec_fw_recovery_if_indirect_fifo_status_0
                         .is_set(IndirectFifoStatus0::Empty)
                     {
-                        let mut data = [0u32; 64];
-                        flash_driver
-                            .read(
-                                (state_machine.context().flash_offset
-                                    + state_machine.context().transfer_offset)
-                                    as usize,
-                                data.as_mut_bytes(),
-                            )
-                            .map_err(|_| ())?;
+                        let mut buf = [0u32; 64];
+                        let data = buf.as_mut_bytes();
+                        image_provider.next_bytes(data)?;
 
-                        let left = state_machine.context().image_size
-                            - state_machine.context().transfer_offset;
-                        let process = core::cmp::min(left, 256);
                         // load a dword at a time to recovery interface
-                        for dword in data.iter().take(process.div_ceil(4) as usize) {
+                        let dwords_loaded = data.len().div_ceil(4);
+                        for dword in buf.iter().take(dwords_loaded) {
                             i3c_periph.tti_tx_data_port.set(*dword);
                         }
-                        state_machine.context_mut().transfer_offset += process;
                     }
                 }
             }
