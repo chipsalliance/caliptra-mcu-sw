@@ -53,7 +53,7 @@ statemachine! {
         ActivateCheckRecoveryStatus + RecoveryStatus(RecoveryStatus) [check_recovery_status_awaiting]
              = ReadDeviceStatus,
 
-        ActivateCheckRecoveryStatus + RecoveryStatus(RecoveryStatus) [check_fw_recovery_success]
+        ActivateCheckRecoveryStatus + RecoveryStatus(RecoveryStatus) [check_recovery_status_booting_mcu_img]
              = Done,
 
     }
@@ -119,8 +119,13 @@ bitfield! {
 pub mod dev_rec_status_code {
     pub const AWAITING_IMAGE: u8 = 0x1;
     pub const BOOTING_IMAGE: u8 = 0x2;
+    #[allow(dead_code)]
     pub const RECOVERY_SUCCESS: u8 = 0x3;
     // 0x4-0xB: Reserved
+}
+
+pub mod rec_img_index {
+    pub const MCU_IMG_INDEX: u8 = 0x2;
 }
 
 /// State machine extended variables.
@@ -179,14 +184,6 @@ impl StateMachineContext for Context {
         }
     }
 
-    fn check_fw_recovery_success(&self, status: &RecoveryStatus) -> Result<bool, ()> {
-        if status.dev_rec_status() == dev_rec_status_code::RECOVERY_SUCCESS as u32 {
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
-
     /// Check that the device status is recovery pending
     fn check_device_status_recovery_pending(&self, status: &DeviceStatus0) -> Result<bool, ()> {
         if status.device_status() == device_status_code::RECOVERY_PENDING as u32 {
@@ -202,6 +199,11 @@ impl StateMachineContext for Context {
         } else {
             Ok(false)
         }
+    }
+
+    fn check_recovery_status_booting_mcu_img(&self, status: &RecoveryStatus) -> Result<bool, ()> {
+        Ok(self.check_fw_booting_image(status)?
+            && status.rec_img_index() == rec_img_index::MCU_IMG_INDEX as u32)
     }
 }
 
