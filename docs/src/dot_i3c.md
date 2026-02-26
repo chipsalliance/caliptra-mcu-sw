@@ -4,7 +4,7 @@ This document specifies the I3C-based transport protocol used for Device Ownersh
 
 ## Overview
 
-When the MCU ROM detects a corrupted or missing DOT blob while in ODD state (Locked or Disabled), the device enters DOT recovery mode. In this mode, the ROM or early RT waits for an external entity (typically the BMC) to send a backup DOT blob over I3C using the Target Transaction Interface (TTI).
+When the MCU ROM detects a corrupted or missing DOT blob while in ODD state (Locked or Disabled), the device enters DOT recovery mode. In this mode, the ROM or early RT waits for an external recovery agent to send a backup DOT blob over I3C.
 
 ### Recovery Trigger Conditions
 
@@ -12,6 +12,7 @@ DOT I3C recovery is entered when **any** of the following conditions are met:
 
 1. **Empty/erased DOT blob with DOT enabled**: The DOT blob in flash is all zeros or all 0xFF, but the `DOT_INITIALIZED` fuse is set, indicating the device expects a valid DOT blob.
 2. **Corrupt DOT blob in locked state**: The DOT blob exists in flash but fails HMAC authentication using the DOT_EFFECTIVE_KEY, and the DOT_FUSE_ARRAY is in ODD state (locked).
+3. **Both A/B copies invalid**: If the device stores redundant DOT blob copies (A/B partitions) and both copies are missing or fail authentication, recovery is triggered.
 
 ### `DOT_RECOVERY` Flow
 
