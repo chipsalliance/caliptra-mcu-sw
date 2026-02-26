@@ -49,6 +49,15 @@ For the emulator, there is a `--hw-revision 2.1.0` flag that can be used to sele
 
 For firmware, 2.1 features can be enabled using the `hw-2-1` feature flag when specifying dependencies.
 
+### Branch versions
+
+The table below details which versions of Caliptra are compatible with each other.
+
+| caliptra-mcu-sw | caliptra-sw  | core/subsystem |
+|-----------------|--------------|----------------|
+| main-2.1        | main         | 2.1.x RTL      |
+| main            | caliptra-2.0 | 2.0.x RTL      |
+
 ## Documentation
 
 The specification is published [here](https://chipsalliance.github.io/caliptra-mcu-sw/).
