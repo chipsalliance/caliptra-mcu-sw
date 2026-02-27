@@ -16,6 +16,7 @@ constant_time_eq.workspace = true
 flash-image.workspace = true
 mcu-config.workspace = true
 mcu-error.workspace = true
+otp-digest.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true
 smlang.workspace = true

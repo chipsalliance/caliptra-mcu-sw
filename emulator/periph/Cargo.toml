@@ -21,6 +21,7 @@ emulator-registers-generated.workspace = true
 lazy_static.workspace = true
 mcu-testing-common.workspace = true
 num_enum.workspace = true
+otp-digest.workspace = true
 registers-generated.workspace = true
 semver.workspace = true
 serde_json.workspace = true

@@ -10,6 +10,19 @@ use tock_registers::interfaces::{Readable, Writeable};
 
 use crate::{FuseLayout, LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_OFFSET};
 
+const DIGEST_SIZE: usize = 8;
+
+/// Describes an OTP partition for software digest computation.
+/// TODO: generate these automatically in xtask
+pub struct OtpPartition {
+    /// Byte offset of the partition within the OTP address space.
+    pub byte_offset: usize,
+    /// Total byte size of the partition (including the digest field if present).
+    pub byte_size: usize,
+    /// Whether this partition supports a software-computed digest.
+    pub sw_digest: bool,
+}
+
 // TODO: use the Lifecycle controller to read the Lifecycle state
 
 // TODO: this error mask is dependent on the specific fuse map
@@ -754,6 +767,68 @@ impl Otp {
             &mut fuses.vendor_non_secret_prod_partition,
         )?;
         Ok(fuses)
+    }
+
+    /// Compute the software digest of an OTP partition by reading its data
+    /// (excluding the trailing 8-byte digest field) and hashing it with the
+    /// PRESENT-based OTP digest algorithm.
+    ///
+    /// Uses streaming reads — only two OTP words are held in memory at a time,
+    /// so this works for arbitrarily large partitions.
+    ///
+    /// Returns `McuError::ROM_OTP_INVALID_DATA_ERROR` if the partition does not
+    /// have `sw_digest` set or if its size is too small to contain a digest.
+    pub fn compute_sw_digest(
+        &self,
+        partition: &OtpPartition,
+        iv: u64,
+        cnst: u128,
+    ) -> McuResult<u64> {
+        if !partition.sw_digest {
+            romtime::println!("[mcu-rom-otp] Partition does not support sw_digest");
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+        if partition.byte_size <= DIGEST_SIZE {
+            romtime::println!("[mcu-rom-otp] Partition too small for digest");
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+
+        let data_size = partition.byte_size - DIGEST_SIZE;
+        if data_size % 8 != 0 {
+            romtime::println!("[mcu-rom-otp] Partition data not 8-byte aligned for digest");
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+
+        // Read two words at a time from OTP, yielding u64 blocks to the
+        // streaming digest. No large stack buffer required.
+        let base_word = partition.byte_offset / 4;
+        let num_u64_blocks = data_size / 8;
+        let mut err: McuResult<()> = Ok(());
+
+        let blocks = (0..num_u64_blocks).map_while(|block_idx| {
+            if err.is_err() {
+                return None;
+            }
+            let w0 = match self.read_word(base_word + block_idx * 2) {
+                Ok(v) => v,
+                Err(e) => {
+                    err = Err(e);
+                    return None;
+                }
+            };
+            let w1 = match self.read_word(base_word + block_idx * 2 + 1) {
+                Ok(v) => v,
+                Err(e) => {
+                    err = Err(e);
+                    return None;
+                }
+            };
+            Some(w0 as u64 | ((w1 as u64) << 32))
+        });
+
+        let digest = otp_digest::otp_digest_iter(blocks, iv, cnst);
+        err?;
+        Ok(digest)
     }
 
     pub(crate) fn burn_lifecycle_tokens(&self, tokens: &LifecycleHashedTokens) -> McuResult<()> {

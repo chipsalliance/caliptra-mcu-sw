@@ -1,13 +1,14 @@
 // Licensed under the Apache-2.0 license.
 // Copyright lowRISC contributors (OpenTitan project).
 
-use core::convert::TryInto;
-
 // This section is converted from the OpenTitan project's Python implementation of OTP digest algorithm.
+
+#![no_std]
+
+const ROUNDS: usize = 32;
 
 /// Scramble a 64bit block with PRESENT cipher.
 fn present_64bit_encrypt(plain: u64, key: u128) -> u64 {
-    // Make sure data is within 64bit range
     Present::new_128(&key.to_le_bytes()).encrypt_block(plain)
 }
 
@@ -21,49 +22,48 @@ pub fn otp_unscramble(data: u64, key: u128) -> u64 {
 
 pub fn otp_digest(data: &[u8], iv: u64, cnst: u128) -> u64 {
     assert_eq!(data.len() % 8, 0);
-    let data_blocks = data
-        .chunks_exact(8)
-        .map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap()))
-        .collect::<Vec<u64>>();
-    otp_digest64(&data_blocks, iv, cnst)
+
+    let blocks = data.chunks_exact(8).map(|chunk| {
+        let mut bytes = [0u8; 8];
+        bytes.copy_from_slice(chunk);
+        u64::from_le_bytes(bytes)
+    });
+
+    otp_digest_iter(blocks, iv, cnst)
 }
 
-/// Compute digest over multiple 64bit data blocks.
-fn otp_digest64(data_blocks: &[u64], iv: u64, cnst: u128) -> u64 {
-    // Make a deepcopy since we're going to modify and pad the list.
-    let mut data_blocks = Vec::from(data_blocks);
-
-    // We need to align the number of data blocks to 2x64bit
-    // for the digest to work properly.
-    if data_blocks.len() % 2 == 1 {
-        data_blocks.push(data_blocks[data_blocks.len() - 1]);
-    }
-
-    // Append finalization constant.
-    data_blocks.push((cnst & 0xFFFF_FFFF_FFFF_FFFF) as u64);
-    data_blocks.push(((cnst >> 64) & 0xFFFF_FFFF_FFFF_FFFF) as u64);
-
-    // This computes a digest according to a Merkle-Damgard construction
-    // that uses the Davies-Meyer scheme to turn the PRESENT cipher into
-    // a one-way compression function. Digest finalization consists of
-    // a final digest round with a 128bit constant.
-    // See also: https://docs.opentitan.org/hw/ip/otp_ctrl/doc/index.html#scrambling-datapath
+/// Compute an OTP digest over an iterator of little-endian 64-bit data blocks.
+///
+/// This is equivalent to [`otp_digest`] but avoids requiring all data in memory
+/// at once — the caller can stream blocks from OTP word-by-word.
+pub fn otp_digest_iter(blocks: impl Iterator<Item = u64>, iv: u64, cnst: u128) -> u64 {
     let mut state = iv;
-    let mut last_b64 = None;
-    for b64 in data_blocks.iter() {
-        match last_b64 {
+    let mut prev: Option<u64> = None;
+
+    // Merkle-Damgard construction with Davies-Meyer compression (PRESENT cipher).
+    // See also: https://docs.opentitan.org/hw/ip/otp_ctrl/doc/index.html#scrambling-datapath
+    for block in blocks {
+        match prev {
             None => {
-                last_b64 = Some(*b64);
-                continue;
+                prev = Some(block);
             }
-            Some(last) => {
-                let b128 = last as u128 + ((*b64 as u128) << 64);
+            Some(b0) => {
+                let b128 = b0 as u128 | ((block as u128) << 64);
                 state ^= present_64bit_encrypt(state, b128);
-                last_b64 = None;
+                prev = None;
             }
         }
     }
-    assert!(last_b64.is_none());
+
+    // Align to 2x64bit: if odd number of blocks, duplicate the last one.
+    if let Some(last) = prev {
+        let b128 = last as u128 | ((last as u128) << 64);
+        state ^= present_64bit_encrypt(state, b128);
+    }
+
+    // Digest finalization with 128-bit constant.
+    state ^= present_64bit_encrypt(state, cnst);
+
     state
 }
 
@@ -71,47 +71,27 @@ fn otp_digest64(data_blocks: &[u64], iv: u64, cnst: u128) -> u64 {
 ///
 /// Based on version 1.2 of the following Python implementation
 /// <https://github.com/doegox/python-cryptoplus>
-pub(crate) struct Present {
-    round_keys: Vec<u64>,
+pub struct Present {
+    round_keys: [u64; ROUNDS],
 }
 
-pub(crate) type PresentErr = String;
-
-#[allow(dead_code)]
 impl Present {
-    pub fn try_new_rounds(key: Vec<u8>, rounds: usize) -> Result<Present, PresentErr> {
-        if !(1..=254).contains(&rounds) {
-            Err(format!("unsupported number of rounds {}", rounds))?;
-        }
-
-        let round_keys = match key.len() {
-            10 => generate_round_keys_80(key, rounds),
-            16 => generate_round_keys_128(key, rounds),
-            _ => Err("key length must be 80 or 128 bits")?,
-        };
-
-        Ok(Present { round_keys })
-    }
-
-    /// Create a new instance of the PRESENT cipher.
-    ///
-    /// Valid key lengths are 80 and 128 bits. All other key lengths will return an error.
-    pub(crate) fn try_new(key: Vec<u8>) -> Result<Present, PresentErr> {
-        Self::try_new_rounds(key, 32)
-    }
-
     /// Create a new 128-bit PRESENT cipher instance.
-    pub(crate) fn new_128(key: &[u8; 16]) -> Present {
-        Self::try_new(key.to_vec()).unwrap()
+    pub fn new_128(key: &[u8; 16]) -> Present {
+        Present {
+            round_keys: generate_round_keys_128(key),
+        }
     }
 
     /// Create a new 80-bit PRESENT cipher instance.
-    pub(crate) fn new_80(key: &[u8; 10]) -> Present {
-        Self::try_new(key.to_vec()).unwrap()
+    pub fn new_80(key: &[u8; 10]) -> Present {
+        Present {
+            round_keys: generate_round_keys_80(key),
+        }
     }
 
     /// Encrypt a 64-bit block.
-    pub(crate) fn encrypt_block(&self, block: u64) -> u64 {
+    pub fn encrypt_block(&self, block: u64) -> u64 {
         let mut state = block;
         state ^= self.round_keys[0];
         for round_key in &self.round_keys[1..] {
@@ -123,7 +103,7 @@ impl Present {
     }
 
     /// Decrypt a 64-bit block.
-    pub(crate) fn decrypt_block(&self, block: u64) -> u64 {
+    pub fn decrypt_block(&self, block: u64) -> u64 {
         let mut state = block;
         for round_key in self.round_keys[1..].iter().rev() {
             state ^= round_key;
@@ -157,20 +137,17 @@ const P_BOX_INV: [u8; 64] = [
 ];
 
 /// Generate the round_keys for an 80-bit key.
-fn generate_round_keys_80(key: Vec<u8>, rounds: usize) -> Vec<u64> {
-    // Pad out key so it fits in a u128 later.
-    let mut orig_key = key;
-    let mut key = vec![0u8; 6];
-    key.append(&mut orig_key);
+fn generate_round_keys_80(key: &[u8; 10]) -> [u64; ROUNDS] {
+    let mut round_keys = [0u64; ROUNDS];
 
-    // Convert key into a u128 for easier bit manipulation.
-    let key: &[u8; 16] = key.as_slice().try_into().unwrap();
-    let mut key = u128::from_le_bytes(*key);
+    // Pad out key so it fits in a u128.
+    let mut padded = [0u8; 16];
+    padded[6..16].copy_from_slice(key);
+    let mut key = u128::from_le_bytes(padded);
 
-    let mut round_keys = Vec::new();
-    for i in 1..rounds + 1 {
+    for (i, round_key) in round_keys.iter_mut().enumerate() {
         // rawKey[0:64]
-        let round_key = (key >> 16) as u64;
+        *round_key = (key >> 16) as u64;
 
         // 1. Rotate bits
         // rawKey[19:len(rawKey)]+rawKey[0:19]
@@ -178,48 +155,44 @@ fn generate_round_keys_80(key: Vec<u8>, rounds: usize) -> Vec<u64> {
 
         // 2. SBox
         // rawKey[76:80] = S(rawKey[76:80])
-        key = ((S_BOX[(key >> 76) as usize] as u128) << 76) | (key & (!0u128 >> (128 - 76)));
+        key =
+            ((S_BOX[((key >> 76) & 0xF) as usize] as u128) << 76) | (key & (!0u128 >> (128 - 76)));
 
         // 3. Salt
         // rawKey[15:20] ^ i
-        key ^= (i as u128) << 15;
-
-        round_keys.push(round_key);
+        key ^= ((i + 1) as u128) << 15;
     }
 
     round_keys
 }
 
 /// Generate the round_keys for a 128-bit key.
-fn generate_round_keys_128(key: Vec<u8>, rounds: usize) -> Vec<u64> {
-    let mut round_keys = Vec::new();
+fn generate_round_keys_128(key: &[u8; 16]) -> [u64; ROUNDS] {
+    let mut round_keys = [0u64; ROUNDS];
 
     // Convert key into a u128 for easier bit manipulation.
-    let key: &[u8; 16] = key.as_slice().try_into().unwrap();
     let mut key = u128::from_le_bytes(*key);
-    for i in 1..rounds + 1 {
+    for (i, round_key) in round_keys.iter_mut().enumerate() {
         // rawKey[0:64]
-        let round_key = (key >> 64) as u64;
+        *round_key = (key >> 64) as u64;
 
         // 1. Rotate bits
         key = key.rotate_left(61);
 
         // 2. SBox
-        key = ((S_BOX[(key >> 124) as usize] as u128) << 124)
+        key = ((S_BOX[((key >> 124) & 0xF) as usize] as u128) << 124)
             | ((S_BOX[((key >> 120) & 0xF) as usize] as u128) << 120)
             | (key & (!0u128 >> 8));
 
         // 3. Salt
         // rawKey[62:67] ^ i
-        key ^= (i as u128) << 62;
-
-        round_keys.push(round_key);
+        key ^= ((i + 1) as u128) << 62;
     }
 
     round_keys
 }
 
-/// SBox funciton for encryption.
+/// SBox function for encryption.
 fn s_box_layer(state: u64) -> u64 {
     let mut output: u64 = 0;
     for i in (0..64).step_by(4) {
@@ -228,7 +201,6 @@ fn s_box_layer(state: u64) -> u64 {
     output
 }
 
-#[allow(dead_code)]
 /// SBox inverse function for decryption.
 fn s_box_layer_dec(state: u64) -> u64 {
     let mut output: u64 = 0;
@@ -247,7 +219,6 @@ fn p_box_layer(state: u64) -> u64 {
     output
 }
 
-#[allow(dead_code)]
 /// PBox inverse function for decryption.
 fn p_box_layer_dec(state: u64) -> u64 {
     let mut output: u64 = 0;
@@ -259,6 +230,9 @@ fn p_box_layer_dec(state: u64) -> u64 {
 
 #[cfg(test)]
 mod test {
+    extern crate alloc;
+    use alloc::vec::Vec;
+
     use super::*;
 
     #[rustfmt::skip]
@@ -287,46 +261,46 @@ mod test {
 
     #[test]
     fn test_generate_80() {
-        let key = vec![0u8; 10];
-        let round_keys = generate_round_keys_80(key, 32);
+        let key = [0u8; 10];
+        let round_keys = generate_round_keys_80(&key);
         assert_eq!(round_keys, ROUND_KEYS_80);
     }
 
     #[test]
     fn test_generate_128() {
-        let key = vec![0u8; 16];
-        let round_keys = generate_round_keys_128(key, 32);
+        let key = [0u8; 16];
+        let round_keys = generate_round_keys_128(&key);
         assert_eq!(round_keys, ROUND_KEYS_128);
     }
 
     #[test]
     fn test_enc_80() {
-        let cipher = Present::try_new(vec![0; 10]).unwrap();
+        let cipher = Present::new_80(&[0; 10]);
         assert_eq!(cipher.encrypt_block(0), 0x5579c1387b228445);
     }
 
     #[test]
     fn test_dec_80() {
-        let cipher = Present::try_new(vec![0; 10]).unwrap();
+        let cipher = Present::new_80(&[0; 10]);
         assert_eq!(cipher.decrypt_block(0x5579c1387b228445), 0);
     }
 
     #[test]
     fn test_enc_128() {
-        let cipher = Present::try_new(vec![0; 16]).unwrap();
+        let cipher = Present::new_128(&[0; 16]);
         assert_eq!(cipher.encrypt_block(0), 0x96db702a2e6900af);
         assert_eq!(cipher.encrypt_block(!0), 0x3c6019e5e5edd563);
-        let cipher = Present::try_new(vec![0xff; 16]).unwrap();
+        let cipher = Present::new_128(&[0xff; 16]);
         assert_eq!(cipher.encrypt_block(0), 0x13238c710272a5d8);
         assert_eq!(cipher.encrypt_block(!0), 0x628d9fbd4218e5b4);
     }
 
     #[test]
     fn test_dec_128() {
-        let cipher = Present::try_new(vec![0; 16]).unwrap();
+        let cipher = Present::new_128(&[0; 16]);
         assert_eq!(cipher.decrypt_block(0x96db702a2e6900af), 0);
         assert_eq!(cipher.decrypt_block(0x3c6019e5e5edd563), !0);
-        let cipher = Present::try_new(vec![0xff; 16]).unwrap();
+        let cipher = Present::new_128(&[0xff; 16]);
         assert_eq!(cipher.decrypt_block(0x13238c710272a5d8), 0);
         assert_eq!(cipher.decrypt_block(0x628d9fbd4218e5b4), !0);
     }
@@ -337,5 +311,38 @@ mod test {
             present_64bit_encrypt(0x0123456789abcdef, 0x0123456789abcdef0123456789abcdefu128),
             0xe9d28685e671dd6
         );
+    }
+
+    #[test]
+    fn test_digest_iter_matches_digest() {
+        // Even number of blocks
+        let data: Vec<u8> = (0..32).collect();
+        let iv = 0x1234567890abcdef;
+        let cnst = 0xfedcba0987654321fedcba0987654321u128;
+        let expected = otp_digest(&data, iv, cnst);
+        let blocks = data
+            .chunks_exact(8)
+            .map(|c| u64::from_le_bytes(c.try_into().unwrap()));
+        assert_eq!(otp_digest_iter(blocks, iv, cnst), expected);
+
+        // Odd number of blocks
+        let data: Vec<u8> = (0..24).collect();
+        let expected = otp_digest(&data, iv, cnst);
+        let blocks = data
+            .chunks_exact(8)
+            .map(|c| u64::from_le_bytes(c.try_into().unwrap()));
+        assert_eq!(otp_digest_iter(blocks, iv, cnst), expected);
+
+        // Single block
+        let data = [0u8; 8];
+        let expected = otp_digest(&data, iv, cnst);
+        let blocks = data
+            .chunks_exact(8)
+            .map(|c| u64::from_le_bytes(c.try_into().unwrap()));
+        assert_eq!(otp_digest_iter(blocks, iv, cnst), expected);
+
+        // Empty
+        let expected = otp_digest(&[], iv, cnst);
+        assert_eq!(otp_digest_iter(core::iter::empty(), iv, cnst), expected);
     }
 }

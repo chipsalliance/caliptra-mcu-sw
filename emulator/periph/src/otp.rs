@@ -12,7 +12,6 @@ Abstract:
     We only support 32-bit granularity for now.
 
 --*/
-use crate::otp_digest;
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_types::{RvAddr, RvData};
 use caliptra_image_types::FwVerificationPqcKeyType;
