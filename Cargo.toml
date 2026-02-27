@@ -7,6 +7,7 @@ members = [
     "common/flash-image",
     "common/mcu-mbox",
     "common/mctp-vdm",
+    "common/ocp",
     "common/pldm",
     "common/poll",
     "common/testing",
