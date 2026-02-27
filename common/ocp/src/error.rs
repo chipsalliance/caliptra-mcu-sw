@@ -20,4 +20,6 @@ pub enum OcpError {
     MessageTooShort = 6,
     /// Message slice is longer than the expected command.
     MessageTooLong = 7,
+    /// RECOVERY_CTRL: Byte pattern in the recovery control is invalid.
+    RecoveryCtrlInvalid = 8,
 }
