@@ -35,7 +35,7 @@ Command Code: `0x4946_5057` ("IFPW")
 | entry      |  u32           | Entry to write                |
 | start bit  |  u32           | Starting bit to write to (least significant bit in entry is 0). |
 | length     | u32            | in bits                       |
-| data       | u8[...]        | length/8
+| data       | u8[...]        | length/8                      |
 
 
 *Table: `MC_FUSE_WRITE` output arguments*

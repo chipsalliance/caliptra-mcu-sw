@@ -241,8 +241,8 @@ PLDM update packages natively support selecting applicable components using the 
 
 | Component N + 1 structure      |
 | ------------------------------ |
-| Flash header
-| Checksum
+| Flash header                   |
+| Checksum                       |
 | Image Info (Caliptra FMC + RT) |
 | Image Info (SoC Manifest)      |
 | Image Info (MCU RT)            |

@@ -351,10 +351,10 @@ Command Code: `0x4D4C_4D56` ("MLMV")
 | hash                  | u8[48]   | SHA384 digest to verify. |
 
 *Table: `MC_LMS_SIG_VERIFY` output arguments*
-| **Name**    | **Type** | **Description**
-| --------    | -------- | ---------------
-| chksum      | u32      | Checksum over other output arguments, computed by MCU. Little endian.
-| fips_status | u32      | Indicates if the command is FIPS approved or an error.
+| **Name**    | **Type** | **Description** |
+| --------    | -------- | --------------- |
+| chksum      | u32      | Checksum over other output arguments, computed by MCU. Little endian. |
+| fips_status | u32      | Indicates if the command is FIPS approved or an error. |
 
 ### MC_ECDSA384_SIGN
 Requests to sign SHA-384 digest with DPE leaf cert.
