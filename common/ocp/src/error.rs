@@ -14,4 +14,14 @@ pub enum OcpError {
     ProtCapRecoveryMemoryAccessRequired = 3,
     /// The provided buffer is too small to hold the serialized message.
     BufferTooSmall = 4,
+    /// DEVICE_RESET: reserved value in Reset Control field (byte 0).
+    DeviceResetInvalidResetControl = 5,
+    /// DEVICE_RESET: reserved value in Forced Recovery field (byte 1).
+    DeviceResetInvalidForcedRecoveryMode = 6,
+    /// DEVICE_RESET: reserved value in Interface Control field (byte 2).
+    DeviceResetInvalidInterfaceControl = 7,
+    /// Message slice is too short for the expected command.
+    MessageTooShort = 8,
+    /// Message slice is longer than the expected command.
+    MessageTooLong = 9,
 }
