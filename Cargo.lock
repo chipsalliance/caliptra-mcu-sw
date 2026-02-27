@@ -3806,6 +3806,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33"
 
 [[package]]
+name = "ocp"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+]
+
+[[package]]
 name = "ocp-eat"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=49927b620f317ad4c459811f49baa56de197126c#49927b620f317ad4c459811f49baa56de197126c"
