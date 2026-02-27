@@ -823,6 +823,11 @@ pub struct RomParameters<'a> {
     pub stash_rom_digest: Option<bool>,
     #[cfg(feature = "ocp-lock")]
     pub ocp_lock_config: romtime::ocp_lock::RomConfig<'a>,
+    /// OTP digest IV and finalization constant (platform-specific RTL constants).
+    /// Required to use `Otp::compute_sw_digest`.
+    /// TODO: pass them to compute_sw_digest
+    pub otp_digest_iv: Option<u64>,
+    pub otp_digest_const: Option<u128>,
 }
 
 pub fn rom_start(params: RomParameters) {

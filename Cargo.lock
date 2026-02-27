@@ -1955,6 +1955,7 @@ dependencies = [
  "mcu-testing-common",
  "network-config",
  "num_enum",
+ "otp-digest",
  "registers-generated",
  "semver",
  "serde",
@@ -3441,6 +3442,7 @@ dependencies = [
  "flash-image",
  "mcu-config",
  "mcu-error",
+ "otp-digest",
  "registers-generated",
  "riscv-csr",
  "romtime",
@@ -3918,6 +3920,10 @@ name = "os_str_bytes"
 version = "6.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2355d85b9a3786f481747ced0e0ff2ba35213a1f9bd406ed906554d7af805a1"
+
+[[package]]
+name = "otp-digest"
+version = "0.1.0"
 
 [[package]]
 name = "p256"
@@ -4543,6 +4549,7 @@ dependencies = [
  "caliptra-api",
  "caliptra-registers",
  "mcu-error",
+ "otp-digest",
  "registers-generated",
  "riscv-csr",
  "rv32i",

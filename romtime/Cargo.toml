@@ -11,6 +11,7 @@ bitflags.workspace = true
 caliptra-api.workspace = true
 caliptra-registers.workspace = true
 mcu-error.workspace = true
+otp-digest.workspace = true
 registers-generated.workspace = true
 tock-registers.workspace = true
 ureg.workspace = true

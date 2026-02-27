@@ -667,6 +667,7 @@ impl BootFlow for ColdBoot {
             "[mcu-rom] Starting cold boot flow at time {}",
             romtime::mcycle()
         );
+
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::ColdBootFlowStarted.into());
 
