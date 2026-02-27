@@ -4,7 +4,7 @@ use crate::registers::{file_check_contents, rustfmt, write_file};
 use anyhow::Result;
 use mcu_builder::PROJECT_ROOT;
 use provisioning_fuses::lib_generator::{
-    OtpMmap, HEADER_PREFIX, HEADER_SUFFIX, OTP_CTRL_MMAP_DEFAULT_PATH, SKIP_PARTITIONS,
+    OtpMmap, HEADER_PREFIX, HEADER_SUFFIX, OTP_CTRL_MMAP_DEFAULT_PATH,
 };
 use registers_generator::snake_case;
 use std::fmt::Write;
@@ -153,24 +153,32 @@ fn build_partition_mmap(
 fn generate_fuse_partitions_from_otp(otp: &OtpMmap) -> Result<String> {
     let mut output = "".to_string();
 
-    output += "use zeroize::Zeroize;\n";
-    output += "/// Fuses contains the data in the OTP controller laid out as described in the controller configuration.\n";
-    output += "#[derive(Zeroize)]\n";
-    output += "pub struct Fuses {\n";
-    let mut impl_output = "impl Fuses {\n".to_string();
-    let mut default_impl_output = "impl Default for Fuses {\n".to_string();
-    default_impl_output += "fn default() -> Self {\n";
-    default_impl_output += "Self {\n";
+    // OtpPartitionInfo struct
+    output += "/// Describes an OTP partition with its location, size, and digest properties.\n";
+    output += "#[derive(Debug, Clone, Copy)]\n";
+    output += "pub struct OtpPartitionInfo {\n";
+    output += "    /// Partition name.\n";
+    output += "    pub name: &'static str,\n";
+    output += "    /// Byte offset of the partition within the OTP address space.\n";
+    output += "    pub byte_offset: usize,\n";
+    output += "    /// Total byte size of the partition (including the digest field if present).\n";
+    output += "    pub byte_size: usize,\n";
+    output += "    /// Whether this partition supports a software-computed digest.\n";
+    output += "    pub sw_digest: bool,\n";
+    output += "    /// Whether this partition has a hardware-computed digest.\n";
+    output += "    pub hw_digest: bool,\n";
+    output += "    /// Byte offset of the 8-byte digest field within OTP (if sw_digest or hw_digest is true).\n";
+    output += "    pub digest_offset: Option<usize>,\n";
+    output += "}\n";
+
     let mut const_output = "".to_string();
+    let mut partition_entries = Vec::new();
     let mut offset = 0;
 
     otp.partitions.iter().for_each(|partition| {
         let name = snake_case(&partition.name);
-        let digest_size: usize = if partition.hw_digest || partition.sw_digest {
-            8
-        } else {
-            0
-        };
+        let has_digest = partition.hw_digest || partition.sw_digest;
+        let digest_size: usize = if has_digest { 8 } else { 0 };
         let calculated_size = partition
             .items
             .iter()
@@ -195,40 +203,18 @@ fn generate_fuse_partitions_from_otp(otp: &OtpMmap) -> Result<String> {
             assert_eq!(calculated_size, size);
         }
 
-        if !SKIP_PARTITIONS.contains(&partition.name.as_str()) {
-            output += &format!("/// {}\n", &partition.desc.replace("\n", "\n/// "));
-            if !partition.secret {
-                output += "#[zeroize(skip)]\n";
-            }
-            output += &format!("pub {}: [u8; {}],\n", name, size);
-            default_impl_output += &format!("{}: [0; {}],\n", name, size);
+        // Digest is always the last 8 bytes of the partition
+        let digest_offset = if has_digest {
+            format!("Some(0x{:x})", offset + size - 8)
+        } else {
+            "None".to_string()
+        };
 
-            let mut item_offset: usize = offset;
-            partition.items.iter().for_each(|item| {
-                let item_name = snake_case(&item.name);
-                let item_size = item.size.parse::<usize>().unwrap();
-                // digests need to be 8-byte aligned
-                if item_name.to_ascii_lowercase().ends_with("digest") {
-                    item_offset = item_offset.next_multiple_of(8);
-                }
-                if item_size == 1 {
-                    impl_output += &format!("pub fn {}(&self) -> u8 {{\n", item_name);
-                    impl_output += &format!("    self.{}[{}]\n", name, item_offset - offset);
-                    impl_output += "}\n";
-                } else {
-                    impl_output += &format!("pub fn {}(&self) -> &[u8] {{\n", item_name);
-                    impl_output += &format!(
-                        "    &self.{}[{}..{}]\n",
-                        name,
-                        (item_offset - offset),
-                        (item_offset + item_size - offset)
-                    );
-                    impl_output += "}\n";
-                }
-                item_offset += item_size;
-            });
-            output += "\n";
-        }
+        partition_entries.push(format!(
+            "OtpPartitionInfo {{ name: \"{}\", byte_offset: 0x{:x}, byte_size: 0x{:x}, sw_digest: {}, hw_digest: {}, digest_offset: {} }}",
+            name, offset, size, partition.sw_digest, partition.hw_digest, digest_offset
+        ));
+
         const_output += &format!(
             "pub const {}_BYTE_OFFSET: usize = 0x{:x};\n",
             name.to_uppercase(),
@@ -241,11 +227,24 @@ fn generate_fuse_partitions_from_otp(otp: &OtpMmap) -> Result<String> {
         );
         offset += size;
     });
-    output += "}\n";
-    default_impl_output += "}\n}\n}\n";
-    impl_output += "}\n";
-    output += &impl_output;
-    output += &default_impl_output;
+
+    // Generate the OTP_PARTITIONS array
+    output += "/// All OTP partitions with their locations and digest properties.\npub const OTP_PARTITIONS: &[OtpPartitionInfo] = &[\n";
+    for e in &partition_entries {
+        writeln!(&mut output, "    {},", e)?;
+    }
+    output += "];\n";
+
+    // Generate named constants for each partition
+    for (i, partition) in otp.partitions.iter().enumerate() {
+        let name = snake_case(&partition.name);
+        output += &format!(
+            "pub const {}: &OtpPartitionInfo = &OTP_PARTITIONS[{}];\n",
+            name.to_uppercase(),
+            i
+        );
+    }
+
     output += &const_output;
 
     Ok(output)

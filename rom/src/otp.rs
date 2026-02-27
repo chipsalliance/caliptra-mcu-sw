@@ -2,26 +2,12 @@
 
 use core::fmt::Write;
 use mcu_error::{McuError, McuResult};
-use registers_generated::fuses;
-use registers_generated::fuses::{FuseEntryInfo, Fuses};
+use registers_generated::fuses::{self, FuseEntryInfo, OtpPartitionInfo};
 use registers_generated::otp_ctrl;
 use romtime::{HexBytes, HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
 use crate::{FuseLayout, LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_OFFSET};
-
-const DIGEST_SIZE: usize = 8;
-
-/// Describes an OTP partition for software digest computation.
-/// TODO: generate these automatically in xtask
-pub struct OtpPartition {
-    /// Byte offset of the partition within the OTP address space.
-    pub byte_offset: usize,
-    /// Total byte size of the partition (including the digest field if present).
-    pub byte_size: usize,
-    /// Whether this partition supports a software-computed digest.
-    pub sw_digest: bool,
-}
 
 // TODO: use the Lifecycle controller to read the Lifecycle state
 
@@ -730,45 +716,6 @@ impl Otp {
         Ok(())
     }
 
-    pub fn read_fuses(&self) -> McuResult<Fuses> {
-        let mut fuses = Fuses::default();
-
-        romtime::println!("[mcu-rom-otp] Reading partitions");
-        self.read_data(
-            fuses::SVN_PARTITION_BYTE_OFFSET,
-            fuses::SVN_PARTITION_BYTE_SIZE,
-            &mut fuses.svn_partition,
-        )?;
-        self.read_data(
-            fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_TEST_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_test_partition,
-        )?;
-        self.read_data(
-            fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_hashes_manuf_partition,
-        )?;
-        // TODO: read these again when the offsets are fixed
-        self.read_data(
-            fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_hashes_prod_partition,
-        )?;
-        self.read_data(
-            fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_revocations_prod_partition,
-        )?;
-        romtime::println!("[mcu-rom-otp] Reading vendor non-secret production partition");
-        self.read_data(
-            fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
-            fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_non_secret_prod_partition,
-        )?;
-        Ok(fuses)
-    }
-
     /// Compute the software digest of an OTP partition by reading its data
     /// (excluding the trailing 8-byte digest field) and hashing it with the
     /// PRESENT-based OTP digest algorithm.
@@ -780,10 +727,12 @@ impl Otp {
     /// have `sw_digest` set or if its size is too small to contain a digest.
     pub fn compute_sw_digest(
         &self,
-        partition: &OtpPartition,
+        partition: &OtpPartitionInfo,
         iv: u64,
         cnst: u128,
     ) -> McuResult<u64> {
+        const DIGEST_SIZE: usize = 8;
+
         if !partition.sw_digest {
             romtime::println!("[mcu-rom-otp] Partition does not support sw_digest");
             return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);

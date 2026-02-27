@@ -4013,7 +4013,6 @@ name = "registers-generated"
 version = "0.1.0"
 dependencies = [
  "tock-registers",
- "zeroize",
 ]
 
 [[package]]
