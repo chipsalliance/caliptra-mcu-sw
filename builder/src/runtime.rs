@@ -11,20 +11,12 @@
 #![allow(dead_code)]
 
 use crate::utils::manifest_file;
-use crate::{objcopy, target_binary, target_dir, OBJCOPY_FLAGS, PROJECT_ROOT, SYSROOT, TARGET};
-use anyhow::{anyhow, bail, Result};
-use elf::endian::AnyEndian;
-use elf::ElfBytes;
-use mcu_config::McuMemoryMap;
-use mcu_config_emulator::flash::LoggingFlashConfig;
+use crate::PROJECT_ROOT;
+use anyhow::Result;
 use mcu_firmware_bundler::args::{
     BuildArgs, BundleArgs, Commands as BundleCommands, Common, LdArgs,
 };
-use serde::{Deserialize, Serialize};
-use std::fs::File;
-use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::process::Command;
 
 pub fn runtime_build_with_apps(
     features: &[&str],
@@ -56,6 +48,29 @@ pub fn runtime_build_with_apps(
             runtime_features,
             ..Default::default()
         },
+        bundle: BundleArgs {
+            bundle_name: Some(output_name),
+        },
+    };
+
+    mcu_firmware_bundler::execute(bundle_cmd)?;
+    Ok(runtime_bin)
+}
+
+pub fn bare_metal_build() -> Result<PathBuf> {
+    let manifest = PROJECT_ROOT.join("runtime/bare-metal/manifest.toml");
+    let output_name = "runtime-bare-metal.bin".to_string();
+
+    let common = Common {
+        manifest,
+        ..Default::default()
+    };
+    let runtime_bin = common.release_dir()?.join(&output_name);
+
+    let bundle_cmd = BundleCommands::Bundle {
+        common,
+        ld: LdArgs::default(),
+        build: BuildArgs::default(),
         bundle: BundleArgs {
             bundle_name: Some(output_name),
         },

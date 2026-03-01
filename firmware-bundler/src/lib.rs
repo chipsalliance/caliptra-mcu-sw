@@ -120,15 +120,29 @@ fn dynamically_size(
         });
     }
 
-    // Update the kernels memory requirments.
-    manifest.kernel.exec_mem = Some(AllocationRequest {
-        size: sizes.kernel.instructions.next_multiple_of(TOCK_ALIGNMENT),
-        alignment: None,
-    });
-    manifest.kernel.data_mem = Some(AllocationRequest {
-        size: sizes.kernel.data.next_multiple_of(TOCK_ALIGNMENT),
-        alignment: None,
-    });
+    let is_bare_metal = manifest.runtime.is_bare_metal();
+    let runtime_binary = manifest.runtime.inner_mut();
+    let runtime_size = sizes.runtime.inner();
+
+    if is_bare_metal {
+        runtime_binary.exec_mem = Some(AllocationRequest {
+            size: runtime_size.instructions,
+            alignment: None,
+        });
+        runtime_binary.data_mem = Some(AllocationRequest {
+            size: runtime_size.data,
+            alignment: None,
+        });
+    } else {
+        runtime_binary.exec_mem = Some(AllocationRequest {
+            size: runtime_size.instructions.next_multiple_of(TOCK_ALIGNMENT),
+            alignment: None,
+        });
+        runtime_binary.data_mem = Some(AllocationRequest {
+            size: runtime_size.data.next_multiple_of(TOCK_ALIGNMENT),
+            alignment: None,
+        });
+    }
 
     // Update the requirements for each application.
     manifest

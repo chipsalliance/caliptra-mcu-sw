@@ -70,6 +70,7 @@ path = "src/lib.rs"
 
 [features]
 default = []
+test-bare-metal = []
 test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []

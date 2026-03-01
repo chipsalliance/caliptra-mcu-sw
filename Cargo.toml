@@ -50,6 +50,7 @@ members = [
     "registers/systemrdl",
     "rom",
     "romtime",
+    "runtime/bare-metal",
     "runtime/kernel/capsules",
     "runtime/kernel/components",
     "runtime/kernel/drivers/doe",

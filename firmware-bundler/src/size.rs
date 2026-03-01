@@ -5,7 +5,10 @@
 use anyhow::{anyhow, Result};
 use elf::{endian::AnyEndian, ElfBytes};
 
-use crate::build::{BuildOutput, BuiltBinary};
+use crate::{
+    build::{BuildOutput, BuiltBinary},
+    manifest::RuntimeVariant,
+};
 
 trait BinarySymbols {
     const INSTRUCTION_START_SYMBOL: &str;
@@ -52,14 +55,23 @@ pub struct BinarySize {
 /// The output from doing a sizing pass.
 #[derive(Debug, Clone)]
 pub struct SizeOutput {
-    pub kernel: BinarySize,
+    pub runtime: RuntimeVariant<BinarySize>,
     pub apps: Vec<BinarySize>,
 }
 
 /// Determine the sizes of the runtime applications. This could fail if the required symbols are not
 /// located within the elf.
 pub fn sizes(build: &BuildOutput) -> Result<SizeOutput> {
-    let kernel = binary_size::<KernelSymbols>(&build.kernel.0)?;
+    let runtime = build
+        .runtime
+        .clone()
+        .map(|(built, _)| binary_size::<KernelSymbols>(&built));
+
+    // Convert RuntimeVariant<Result<...>> to Result<RuntimeVariant<...>>
+    let runtime = match runtime {
+        RuntimeVariant::Kernel(r) => RuntimeVariant::Kernel(r?),
+        RuntimeVariant::BareMetal(r) => RuntimeVariant::BareMetal(r?),
+    };
 
     let apps = build
         .apps
@@ -67,7 +79,7 @@ pub fn sizes(build: &BuildOutput) -> Result<SizeOutput> {
         .map(|app| binary_size::<ApplicationSymbols>(&app.binary))
         .collect::<Result<Vec<_>>>()?;
 
-    Ok(SizeOutput { kernel, apps })
+    Ok(SizeOutput { runtime, apps })
 }
 
 /// Determine the instruction and data sizes of an application.

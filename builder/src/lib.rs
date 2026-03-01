@@ -13,7 +13,7 @@ pub use all::{
 };
 pub use caliptra::{AuthManifestOwnerConfig, CaliptraBuilder, ImageCfg};
 pub use rom::{rom_build, rom_ld_script, test_rom_build};
-pub use runtime::runtime_build_with_apps;
+pub use runtime::{bare_metal_build, runtime_build_with_apps};
 
 use anyhow::{anyhow, Result};
 use std::{
@@ -106,6 +106,7 @@ pub fn objcopy() -> Result<String> {
     })
 }
 
+#[allow(dead_code)]
 pub(crate) fn target_binary(name: &str) -> PathBuf {
     PROJECT_ROOT
         .join("target")

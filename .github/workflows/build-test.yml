@@ -267,6 +267,7 @@ jobs:
         run: |
           cargo --config "$EXTRA_CARGO_CONFIG" nextest archive \
             --workspace \
+            --exclude bare-metal-runtime \
             --exclude mcu-rom-emulator \
             --exclude mcu-rom-fpga \
             --exclude mcu-runtime-emulator \
