@@ -84,7 +84,6 @@ impl Default for MeasurementsRspFixed<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {
 
 impl CommonCodec for MeasurementsRspFixed<[u8; RESPONSE_FIXED_FIELDS_SIZE]> {}
 
-#[derive(Debug)]
 pub(crate) struct MeasurementsResponse {
     spdm_version: SpdmVersion,
     req_attr: GetMeasurementsReqAttr,
@@ -121,8 +120,25 @@ impl MeasurementsResponse {
             .measurement_block_size(self.meas_op, raw_bitstream_requested)
             .await
             .map_err(|e| (false, CommandError::Measurement(e)))?;
+
+        let record_start = RESPONSE_FIXED_FIELDS_SIZE;
+        let record_end = record_start + measurement_record_len;
+        let trailer_start = record_end;
+        let (variable_fields, trailer_len) = self.response_variable_fields().await?;
+        let signature_start = trailer_start + trailer_len;
+
+        // If signature is requested, avoid splitting it across chunks.
+        // If this chunk would partially overlap the signature, truncate to
+        // stop at the signature boundary so the next chunk gets the full signature.
+        if self.req_attr.signature_requested() == 1
+            && offset < signature_start
+            && offset + rem_len > signature_start
+            && offset + rem_len < signature_start + ECC_P384_SIGNATURE_SIZE
+        {
+            rem_len = signature_start - offset;
+        }
+
         // Fill the chunk buffer with the appropriate response sections
-        // Instead of a while loop, use a single-pass approach for clarity and efficiency.
         let mut copied = 0;
 
         // 1. Copy from the fixed response fields
@@ -137,8 +153,6 @@ impl MeasurementsResponse {
         }
 
         // 2. Copy from the measurement record
-        let record_start = RESPONSE_FIXED_FIELDS_SIZE;
-        let record_end = record_start + measurement_record_len;
         if rem_len > 0 && offset + copied < record_end {
             let meas_block_offset = (offset + copied).saturating_sub(record_start);
             let bytes_to_copy = (measurement_record_len - meas_block_offset).min(rem_len);
@@ -156,10 +170,11 @@ impl MeasurementsResponse {
         }
 
         // 3. Copy from the variable/trailer fields
-        let trailer_start = record_end;
-        if rem_len > 0 && offset + copied >= trailer_start {
+        if rem_len > 0
+            && offset + copied >= trailer_start
+            && offset + copied < trailer_start + trailer_len
+        {
             let trailer_offset = (offset + copied) - trailer_start;
-            let (variable_fields, trailer_len) = self.response_variable_fields().await?;
             let end = (trailer_len).min(trailer_offset + rem_len);
             let copy_len = end - trailer_offset;
             chunk_buf[copied..copied + copy_len]
@@ -177,8 +192,9 @@ impl MeasurementsResponse {
             .await
             .map_err(|e| (false, CommandError::Transcript(e)))?;
 
-        // 4. Copy from the signature if requested
-        let signature_start = trailer_start + self.response_variable_fields().await?.1;
+        // 4. Copy from the signature if requested.
+        // Due to the truncation above, the signature is always fully contained
+        // within a single chunk (offset + copied == signature_start).
         if rem_len > 0
             && self.req_attr.signature_requested() == 1
             && offset + copied >= signature_start
@@ -186,8 +202,9 @@ impl MeasurementsResponse {
             let signature = self
                 .l1_signature(self.asym_algo, shared_transcript, session_info, cert_store)
                 .await?;
+
             let sig_offset = (offset + copied) - signature_start;
-            let copy_len = (signature.len() - sig_offset).min(rem_len);
+            let copy_len = (ECC_P384_SIGNATURE_SIZE - sig_offset).min(rem_len);
             chunk_buf[copied..copied + copy_len]
                 .copy_from_slice(&signature[sig_offset..sig_offset + copy_len]);
             copied += copy_len;
