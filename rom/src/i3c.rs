@@ -165,7 +165,7 @@ impl I3c {
         regs.i3c_base_hc_control.modify(
             HcControl::ModeSelector::SET +
                 // clear is bus enabled, set is suspended
-                HcControl::BusEnable::CLEAR,
+                HcControl::BusEnable::SET,
         );
     }
 
