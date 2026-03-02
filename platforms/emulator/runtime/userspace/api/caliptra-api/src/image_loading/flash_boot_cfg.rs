@@ -9,7 +9,8 @@ use mcu_config::boot::{
 use mcu_config::flash::FlashPartition;
 use mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
-    PARTITION_TABLE,
+    PARTITION_TABLE, PARTITION_TABLE_COPY_0_OFFSET, PARTITION_TABLE_COPY_1_OFFSET,
+    prepare_dual_write, select_partition_table,
 };
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -30,24 +31,77 @@ impl FlashBootConfig {
         }
     }
 
-    pub async fn read_partition_table(&self) -> Result<PartitionTable, ErrorCode> {
-        let mut partition_table_data: [u8; core::mem::size_of::<PartitionTable>()] =
+    async fn read_partition_table_copy(&self, offset: usize) -> Option<PartitionTable> {
+        let mut buf: [u8; core::mem::size_of::<PartitionTable>()] =
             [0; core::mem::size_of::<PartitionTable>()];
+        if self
+            .flash_partition_syscall
+            .read(offset, core::mem::size_of::<PartitionTable>(), &mut buf)
+            .await
+            .is_err()
+        {
+            return None;
+        }
+        let (pt, _) = PartitionTable::read_from_prefix(&buf).ok()?;
+        let calc = StandAloneChecksumCalculator::new();
+        if pt.verify_checksum(&calc) {
+            Some(pt)
+        } else {
+            None
+        }
+    }
+
+    pub async fn read_partition_table(&self) -> Result<PartitionTable, ErrorCode> {
+        let copy_0 = self
+            .read_partition_table_copy(PARTITION_TABLE_COPY_0_OFFSET)
+            .await;
+        let copy_1 = self
+            .read_partition_table_copy(PARTITION_TABLE_COPY_1_OFFSET)
+            .await;
+
+        match select_partition_table(copy_0, copy_1) {
+            Some(pt) => Ok(pt),
+            None => Err(ErrorCode::Fail),
+        }
+    }
+
+    async fn write_partition_table_dual(
+        &self,
+        pt: &mut PartitionTable,
+    ) -> Result<(), ErrorCode> {
+        let gen_0 = self
+            .read_partition_table_copy(PARTITION_TABLE_COPY_0_OFFSET)
+            .await
+            .map(|p| p.generation);
+        let gen_1 = self
+            .read_partition_table_copy(PARTITION_TABLE_COPY_1_OFFSET)
+            .await
+            .map(|p| p.generation);
+
+        let (first, second) = prepare_dual_write(
+            pt,
+            gen_0,
+            gen_1,
+            PARTITION_TABLE_COPY_0_OFFSET as u32,
+            PARTITION_TABLE_COPY_1_OFFSET as u32,
+        );
+
         self.flash_partition_syscall
-            .read(
-                0,
+            .write(
+                first as usize,
                 core::mem::size_of::<PartitionTable>(),
-                &mut partition_table_data,
+                pt.as_bytes(),
             )
             .await?;
-        let (partition_table, _) =
-            PartitionTable::read_from_prefix(&partition_table_data).map_err(|_| ErrorCode::Fail)?;
-        // Verify checksum
-        let checksum_calculator = StandAloneChecksumCalculator::new();
-        if !partition_table.verify_checksum(&checksum_calculator) {
-            return Err(ErrorCode::Fail);
-        }
-        Ok(partition_table)
+        self.flash_partition_syscall
+            .write(
+                second as usize,
+                core::mem::size_of::<PartitionTable>(),
+                pt.as_bytes(),
+            )
+            .await?;
+
+        Ok(())
     }
 
     pub fn get_partition_from_id(
@@ -98,16 +152,7 @@ impl BootConfigAsync for FlashBootConfig {
             PartitionId::B => partition_table.partition_b_status = status as u16,
             _ => return Err(BootConfigError::InvalidPartition),
         }
-        // Write the updated partition table back to flash
-        let checksum_calculator = StandAloneChecksumCalculator::new();
-        partition_table.populate_checksum(&checksum_calculator);
-
-        self.flash_partition_syscall
-            .write(
-                0,
-                core::mem::size_of::<PartitionTable>(),
-                partition_table.as_bytes(),
-            )
+        self.write_partition_table_dual(&mut partition_table)
             .await
             .map_err(|_| BootConfigError::WriteFailed)?;
         Ok(())
@@ -126,7 +171,7 @@ impl BootConfigAsync for FlashBootConfig {
             .read_partition_table()
             .await
             .map_err(|_| BootConfigError::ReadFailed)?;
-        let (active_partition, _) = partition_table.get_active_partition();
+        let active_partition = partition_table.get_active_partition_id();
         Ok(active_partition)
     }
 
@@ -135,7 +180,7 @@ impl BootConfigAsync for FlashBootConfig {
             .read_partition_table()
             .await
             .map_err(|_| BootConfigError::ReadFailed)?;
-        let (active_partition, _) = partition_table.get_active_partition();
+        let active_partition = partition_table.get_active_partition_id();
 
         let other_partition = match active_partition {
             PartitionId::A => Ok(PartitionId::B),
@@ -155,7 +200,7 @@ impl BootConfigAsync for FlashBootConfig {
             .read_partition_table()
             .await
             .map_err(|_| BootConfigError::ReadFailed)?;
-        let (active_partition, _) = partition_table.get_active_partition();
+        let active_partition = partition_table.get_active_partition_id();
         match active_partition {
             PartitionId::A => Ok(PartitionId::B),
             PartitionId::B => Ok(PartitionId::A),
@@ -172,13 +217,7 @@ impl BootConfigAsync for FlashBootConfig {
             .await
             .map_err(|_| BootConfigError::ReadFailed)?;
         partition_table.set_active_partition(partition_id);
-        partition_table.populate_checksum(&StandAloneChecksumCalculator::new());
-        self.flash_partition_syscall
-            .write(
-                0,
-                core::mem::size_of::<PartitionTable>(),
-                partition_table.as_bytes(),
-            )
+        self.write_partition_table_dual(&mut partition_table)
             .await
             .map_err(|_| BootConfigError::WriteFailed)?;
         Ok(())
@@ -203,18 +242,42 @@ impl BootConfigAsync for FlashBootConfig {
             }
             _ => return Err(BootConfigError::InvalidPartition),
         };
-        // Write the updated partition table back to flash
-        let checksum_calculator = StandAloneChecksumCalculator::new();
-        partition_table.populate_checksum(&checksum_calculator);
+
+        // Dual-copy write
+        let gen_0 = self
+            .read_partition_table_copy(PARTITION_TABLE_COPY_0_OFFSET)
+            .await
+            .map(|p| p.generation);
+        let gen_1 = self
+            .read_partition_table_copy(PARTITION_TABLE_COPY_1_OFFSET)
+            .await
+            .map(|p| p.generation);
+
+        let (first, second) = prepare_dual_write(
+            &mut partition_table,
+            gen_0,
+            gen_1,
+            PARTITION_TABLE_COPY_0_OFFSET as u32,
+            PARTITION_TABLE_COPY_1_OFFSET as u32,
+        );
 
         self.flash_partition_syscall
             .write(
-                0,
+                first as usize,
                 core::mem::size_of::<PartitionTable>(),
                 partition_table.as_bytes(),
             )
             .await
             .map_err(|_| BootConfigError::WriteFailed)?;
+        self.flash_partition_syscall
+            .write(
+                second as usize,
+                core::mem::size_of::<PartitionTable>(),
+                partition_table.as_bytes(),
+            )
+            .await
+            .map_err(|_| BootConfigError::WriteFailed)?;
+
         Ok(boot_count)
     }
 
@@ -240,13 +303,7 @@ impl BootConfigAsync for FlashBootConfig {
         } else {
             RollbackEnable::Disabled as u32
         };
-        partition_table.populate_checksum(&StandAloneChecksumCalculator::new());
-        self.flash_partition_syscall
-            .write(
-                0,
-                core::mem::size_of::<PartitionTable>(),
-                partition_table.as_bytes(),
-            )
+        self.write_partition_table_dual(&mut partition_table)
             .await
             .map_err(|_| BootConfigError::WriteFailed)?;
         Ok(())

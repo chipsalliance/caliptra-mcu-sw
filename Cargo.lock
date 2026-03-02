@@ -2875,6 +2875,7 @@ dependencies = [
  "subst",
  "tbf-header",
  "tempfile",
+ "toml 0.8.23",
  "uuid",
  "walkdir",
  "zerocopy",
@@ -2917,6 +2918,7 @@ name = "mcu-config-emulator"
 version = "0.1.0"
 dependencies = [
  "mcu-config",
+ "partition-table",
  "zerocopy",
 ]
 
@@ -3555,6 +3557,14 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "windows-link",
+]
+
+[[package]]
+name = "partition-table"
+version = "0.1.0"
+dependencies = [
+ "mcu-config",
+ "zerocopy",
 ]
 
 [[package]]

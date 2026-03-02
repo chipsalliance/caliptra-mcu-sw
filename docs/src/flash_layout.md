@@ -10,10 +10,11 @@ The specific images of the flash consists of the Caliptra FW, MCU RT, SoC Manife
 
 A typical overall flash layout is:
 
-| Flash Layout |
-| ------------ |
-| Header       |
-| Payload      |
+| Flash Layout    |
+| --------------- |
+| Partition Table |
+| Header          |
+| Payload         |
 
 The Payload contains the following fields:
 
@@ -36,6 +37,54 @@ The Payload contains the following fields:
 * SoC Manifest (refer to the description of the [SoC Manifest](https://github.com/chipsalliance/caliptra-sw/blob/main/auth-manifest/README.md))
 * MCU RT: This is the image binary of the MCU Runtime firmware
 * Other SoC images (if any)
+
+## Partition Table
+
+The partition table is stored in a reserved region of flash and maintains metadata
+for A/B partition selection. Two copies are maintained for power-loss resilience.
+
+| Field                  | Size (bytes) | Description                                                |
+| ---------------------- | ------------ | ---------------------------------------------------------- |
+| Active Partition       | 4            | Indicates the currently active partition (A or B)          |
+| Partition A Boot Count | 2            | Number of boot attempts from Partition A                   |
+| Partition A Status     | 2            | Current status of Partition A (see Partition Status Values) |
+| Partition B Boot Count | 2            | Number of boot attempts from Partition B                   |
+| Partition B Status     | 2            | Current status of Partition B (see Partition Status Values) |
+| Rollback Enable        | 4            | Flag indicating whether rollback to the other partition is allowed |
+| Generation             | 4            | Monotonically increasing counter for determining the newer copy |
+| Reserved               | 4            | Reserved for future use                                    |
+| Checksum               | 4            | Checksum calculated over all preceding fields              |
+
+Total size: 28 bytes
+
+### Partition Status Values
+
+| Value | Description     |
+| ----- | --------------- |
+| 0     | Invalid         |
+| 1     | Valid           |
+| 2     | Boot Failed     |
+| 3     | Boot Successful |
+
+### Dual-Copy Redundancy
+
+Two copies of the partition table are stored at separate offsets to protect against
+power-loss during writes.
+
+#### Read Protocol
+
+1. Read both copies and validate their checksums.
+2. If both are valid, use the copy with the higher Generation value.
+3. If only one is valid, use that copy.
+4. If neither is valid, the partition table is considered corrupt.
+
+#### Write Protocol
+
+1. Increment the Generation field.
+2. Compute the Checksum over all fields.
+3. Write the updated partition table to the *non-active* copy location.
+4. Validate the write by reading back and verifying the checksum.
+5. Write the same data to the *active* copy location.
 
 ## Header
 

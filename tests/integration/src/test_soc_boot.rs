@@ -11,7 +11,7 @@ mod test {
     use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
     use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use mcu_config_emulator::flash::{
-        PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
+        PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION, get_active_partition,
     };
     use mcu_testing_common::DeviceLifecycle;
     use pldm_fw_pkg::manifest::{
@@ -261,7 +261,7 @@ mod test {
         let flash_offset = opts
             .partition_table
             .as_ref()
-            .and_then(|pt| pt.get_active_partition().1.as_ref().map(|p| p.offset))
+            .and_then(|pt| get_active_partition(&pt).1.as_ref().map(|p| p.offset))
             .unwrap_or(0);
         let (_, flash_image_path) = create_flash_image(
             new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
@@ -333,7 +333,7 @@ mod test {
         let flash_offset = opts
             .partition_table
             .as_ref()
-            .and_then(|pt| pt.get_active_partition().1.as_ref().map(|p| p.offset))
+            .and_then(|pt| get_active_partition(&pt).1.as_ref().map(|p| p.offset))
             .unwrap_or(0);
         let (_, flash_image_path) = create_flash_image(
             new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
@@ -635,7 +635,7 @@ mod test {
         let flash_offset = opts
             .partition_table
             .as_ref()
-            .and_then(|pt| pt.get_active_partition().1.as_ref().map(|p| p.offset))
+            .and_then(|pt| get_active_partition(&pt).1.as_ref().map(|p| p.offset))
             .unwrap_or(0);
 
         // Same image for all SOCs
@@ -839,8 +839,7 @@ mod test {
         let checksum_calculator = StandAloneChecksumCalculator::new();
         partition_table.populate_checksum(&checksum_calculator);
 
-        let flash_offset = partition_table
-            .get_active_partition()
+        let flash_offset = get_active_partition(&partition_table)
             .1
             .map_or(0, |p| p.offset);
 
@@ -943,8 +942,7 @@ mod test {
         let checksum_calculator = StandAloneChecksumCalculator::new();
         partition_table.populate_checksum(&checksum_calculator);
 
-        let flash_offset = partition_table
-            .get_active_partition()
+        let flash_offset = get_active_partition(&partition_table)
             .1
             .map_or(0, |p| p.offset);
         let (soc_images_paths, flash_image_path) = create_flash_image(

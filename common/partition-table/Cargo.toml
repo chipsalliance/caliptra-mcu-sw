@@ -1,12 +1,11 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "mcu-config-emulator"
+name = "partition-table"
 version.workspace = true
-authors.workspace = true
 edition.workspace = true
+authors.workspace = true
 
 [dependencies]
 mcu-config.workspace = true
-partition-table.workspace = true
 zerocopy.workspace = true

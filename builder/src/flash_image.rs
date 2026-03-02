@@ -355,6 +355,8 @@ pub fn write_partition_table(
     offset: usize,
     filename: &str,
 ) -> Result<()> {
+    use mcu_config_emulator::flash::{PARTITION_TABLE_COPY_0_OFFSET, PARTITION_TABLE_COPY_1_OFFSET};
+
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -362,14 +364,32 @@ pub fn write_partition_table(
         .open(filename)
         .map_err(|e| anyhow!(format!("Unable to open file {}: {}", filename, e)))?;
 
-    // Seek to the specified offset before writing
-    file.seek(std::io::SeekFrom::Start(offset as u64))
-        .map_err(|e| {
-            anyhow!(format!(
-                "Unable to seek to offset {} in file {}: {}",
-                offset, filename, e
-            ))
-        })?;
+    // Write copy 0
+    file.seek(std::io::SeekFrom::Start(
+        (offset + PARTITION_TABLE_COPY_0_OFFSET) as u64,
+    ))
+    .map_err(|e| {
+        anyhow!(format!(
+            "Unable to seek to offset {} in file {}: {}",
+            offset + PARTITION_TABLE_COPY_0_OFFSET,
+            filename,
+            e
+        ))
+    })?;
+    file.write_all(partition_table.as_bytes())?;
+
+    // Write copy 1
+    file.seek(std::io::SeekFrom::Start(
+        (offset + PARTITION_TABLE_COPY_1_OFFSET) as u64,
+    ))
+    .map_err(|e| {
+        anyhow!(format!(
+            "Unable to seek to offset {} in file {}: {}",
+            offset + PARTITION_TABLE_COPY_1_OFFSET,
+            filename,
+            e
+        ))
+    })?;
     file.write_all(partition_table.as_bytes())?;
 
     Ok(())

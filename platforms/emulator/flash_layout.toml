@@ -1,0 +1,32 @@
+# Caliptra MCU Flash Layout Configuration - Emulator Platform
+#
+# This file defines the flash layout for the emulator reference platform.
+# Vendors should create their own flash_layout.toml with platform-specific
+# values and pass it via --flash-config to the build tools.
+
+[flash]
+block_size = 65536
+
+[partition_table]
+offset = 0x00000000
+size = 65536
+copy_0_offset = 0x00000000
+copy_1_offset = 0x00008000
+
+[slot_a]
+name = "image_a"
+flash = "primary"
+offset = 0x00010000
+size = 0x00200000
+
+[slot_b]
+name = "image_b"
+flash = "secondary"
+offset = 0x00000000
+size = 0x00100000
+
+[staging]
+name = "staging"
+flash = "secondary"
+offset = 0x00100000
+size = 0x00100000
