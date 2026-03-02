@@ -12,7 +12,7 @@ mod test {
     use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
     use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use mcu_config_emulator::flash::{
-        PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
+        PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION, get_active_partition,
     };
     use mcu_config_emulator::EMULATOR_MEMORY_MAP;
     use mcu_testing_common::DeviceLifecycle;
@@ -679,8 +679,7 @@ mod test {
         let checksum_calculator = StandAloneChecksumCalculator::new();
         partition_table.populate_checksum(&checksum_calculator);
 
-        let flash_offset = partition_table
-            .get_active_partition()
+        let flash_offset = get_active_partition(&partition_table)
             .1
             .map_or(0, |p| p.offset);
 
@@ -805,8 +804,7 @@ mod test {
         let checksum_calculator = StandAloneChecksumCalculator::new();
         partition_table.populate_checksum(&checksum_calculator);
 
-        let flash_offset = partition_table
-            .get_active_partition()
+        let flash_offset = get_active_partition(&partition_table)
             .1
             .map_or(0, |p| p.offset);
         let (soc_images_paths, primary_flash_image_path) = create_flash_image(

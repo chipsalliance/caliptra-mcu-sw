@@ -24,6 +24,7 @@ mcu-config-fpga.workspace = true
 mcu-firmware-bundler.workspace = true
 pldm-fw-pkg.workspace = true
 serde.workspace = true
+toml.workspace = true
 semver.workspace = true
 subst.workspace = true
 tbf-header.workspace = true

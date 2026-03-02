@@ -292,6 +292,10 @@ enum Commands {
 enum FlashImageCommands {
     /// Create a new flash image
     Create {
+        /// Path to the flash layout configuration TOML file
+        #[arg(long, value_name = "FLASH_CONFIG", required = false)]
+        flash_config: Option<String>,
+
         /// Path to the Caliptra firmware file
         #[arg(long, value_name = "CALIPTRA_FW", required = true)]
         caliptra_fw: Option<String>,
@@ -427,6 +431,7 @@ fn main() {
         }
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
+                flash_config: _flash_config,
                 caliptra_fw,
                 soc_manifest,
                 mcu_runtime,

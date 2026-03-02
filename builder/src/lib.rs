@@ -4,6 +4,7 @@ mod all;
 mod caliptra;
 pub mod firmware;
 pub mod flash_image;
+pub mod flash_layout_config;
 mod rom;
 mod runtime;
 mod utils;

@@ -1,9 +1,14 @@
 // Licensed under the Apache-2.0 license
 
 use mcu_config::boot::{BootConfig, BootConfigError, PartitionId, PartitionStatus, RollbackEnable};
-use mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator};
+use mcu_config_emulator::flash::{
+    PartitionTable, StandAloneChecksumCalculator,
+    PARTITION_TABLE_COPY_0_OFFSET, PARTITION_TABLE_COPY_1_OFFSET,
+    prepare_dual_write, select_partition_table,
+};
 use mcu_rom_common::flash::flash_partition::FlashPartition;
 use zerocopy::{FromBytes, IntoBytes};
+
 pub struct FlashBootCfg<'a> {
     flash_driver: &'a mut FlashPartition<'a>,
 }
@@ -14,21 +19,69 @@ impl<'a> FlashBootCfg<'a> {
         Self { flash_driver }
     }
 
-    pub fn read_partition_table(&self) -> Result<PartitionTable, ()> {
-        let mut partition_table_data: [u8; core::mem::size_of::<PartitionTable>()] =
+    fn read_partition_table_copy(&self, offset: usize) -> Option<PartitionTable> {
+        let mut buf: [u8; core::mem::size_of::<PartitionTable>()] =
             [0; core::mem::size_of::<PartitionTable>()];
+        if self.flash_driver.read(offset, &mut buf).is_err() {
+            return None;
+        }
+        let (pt, _) = PartitionTable::read_from_prefix(&buf).ok()?;
+        let calc = StandAloneChecksumCalculator::new();
+        if pt.verify_checksum(&calc) {
+            Some(pt)
+        } else {
+            None
+        }
+    }
+
+    pub fn read_partition_table(&self) -> Result<PartitionTable, ()> {
+        let copy_0 = self.read_partition_table_copy(PARTITION_TABLE_COPY_0_OFFSET);
+        let copy_1 = self.read_partition_table_copy(PARTITION_TABLE_COPY_1_OFFSET);
+
+        match select_partition_table(copy_0, copy_1) {
+            Some(pt) => Ok(pt),
+            None => {
+                romtime::println!(
+                    "[mcu-rom] Both partition table copies invalid, creating default"
+                );
+                let mut pt = PartitionTable::new(
+                    PartitionId::A,
+                    0,
+                    PartitionStatus::Valid,
+                    0,
+                    PartitionStatus::Invalid,
+                    RollbackEnable::Enabled,
+                );
+                pt.populate_checksum(&StandAloneChecksumCalculator::new());
+                Ok(pt)
+            }
+        }
+    }
+
+    fn write_partition_table_dual(&mut self, pt: &mut PartitionTable) -> Result<(), ()> {
+        let gen_0 = self
+            .read_partition_table_copy(PARTITION_TABLE_COPY_0_OFFSET)
+            .map(|p| p.generation);
+        let gen_1 = self
+            .read_partition_table_copy(PARTITION_TABLE_COPY_1_OFFSET)
+            .map(|p| p.generation);
+
+        let (first, second) = prepare_dual_write(
+            pt,
+            gen_0,
+            gen_1,
+            PARTITION_TABLE_COPY_0_OFFSET as u32,
+            PARTITION_TABLE_COPY_1_OFFSET as u32,
+        );
+
         self.flash_driver
-            .read(0, &mut partition_table_data)
+            .write(first as usize, pt.as_bytes())
+            .map_err(|_| ())?;
+        self.flash_driver
+            .write(second as usize, pt.as_bytes())
             .map_err(|_| ())?;
 
-        let (partition_table, _) =
-            PartitionTable::read_from_prefix(&partition_table_data).map_err(|_| ())?;
-        // Verify checksum
-        let checksum_calculator = StandAloneChecksumCalculator::new();
-        if !partition_table.verify_checksum(&checksum_calculator) {
-            return Err(());
-        }
-        Ok(partition_table)
+        Ok(())
     }
 }
 
@@ -38,7 +91,7 @@ impl<'a> BootConfig for FlashBootCfg<'a> {
             .read_partition_table()
             .map_err(|_| BootConfigError::ReadFailed)?;
 
-        let (active_partition, _) = partition_table.get_active_partition();
+        let active_partition = partition_table.get_active_partition_id();
         Ok(active_partition)
     }
 
@@ -47,9 +100,7 @@ impl<'a> BootConfig for FlashBootCfg<'a> {
             .read_partition_table()
             .map_err(|_| BootConfigError::ReadFailed)?;
         partition_table.set_active_partition(partition_id);
-        partition_table.populate_checksum(&StandAloneChecksumCalculator::new());
-        self.flash_driver
-            .write(0, partition_table.as_bytes())
+        self.write_partition_table_dual(&mut partition_table)
             .map_err(|_| BootConfigError::WriteFailed)?;
         Ok(())
     }
@@ -69,13 +120,30 @@ impl<'a> BootConfig for FlashBootCfg<'a> {
             }
             _ => return Err(BootConfigError::InvalidPartition),
         };
-        // Write the updated partition table back to flash
-        let checksum_calculator = StandAloneChecksumCalculator::new();
-        partition_table.populate_checksum(&checksum_calculator);
+
+        // Dual-copy write
+        let gen_0 = self
+            .read_partition_table_copy(PARTITION_TABLE_COPY_0_OFFSET)
+            .map(|p| p.generation);
+        let gen_1 = self
+            .read_partition_table_copy(PARTITION_TABLE_COPY_1_OFFSET)
+            .map(|p| p.generation);
+
+        let (first, second) = prepare_dual_write(
+            &mut partition_table,
+            gen_0,
+            gen_1,
+            PARTITION_TABLE_COPY_0_OFFSET as u32,
+            PARTITION_TABLE_COPY_1_OFFSET as u32,
+        );
 
         self.flash_driver
-            .write(0, partition_table.as_bytes())
+            .write(first as usize, partition_table.as_bytes())
             .map_err(|_| BootConfigError::WriteFailed)?;
+        self.flash_driver
+            .write(second as usize, partition_table.as_bytes())
+            .map_err(|_| BootConfigError::WriteFailed)?;
+
         Ok(boot_count)
     }
 
@@ -99,9 +167,7 @@ impl<'a> BootConfig for FlashBootCfg<'a> {
         } else {
             RollbackEnable::Disabled as u32
         };
-        partition_table.populate_checksum(&StandAloneChecksumCalculator::new());
-        self.flash_driver
-            .write(0, partition_table.as_bytes())
+        self.write_partition_table_dual(&mut partition_table)
             .map_err(|_| BootConfigError::WriteFailed)?;
         Ok(())
     }
@@ -119,12 +185,7 @@ impl<'a> BootConfig for FlashBootCfg<'a> {
             PartitionId::B => partition_table.partition_b_status = status as u16,
             _ => return Err(BootConfigError::InvalidPartition),
         }
-        // Write the updated partition table back to flash
-        let checksum_calculator = StandAloneChecksumCalculator::new();
-        partition_table.populate_checksum(&checksum_calculator);
-
-        self.flash_driver
-            .write(0, partition_table.as_bytes())
+        self.write_partition_table_dual(&mut partition_table)
             .map_err(|_| BootConfigError::WriteFailed)?;
         Ok(())
     }

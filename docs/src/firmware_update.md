@@ -340,44 +340,15 @@ The location of A/B partitions can either reside on a single flash device or be 
 
 - **Partition Table**
 
-For the A/B partition mechanism, the bootloader (MCU ROM) determines which partition to load the firmware image from by using a partition selection mechanism. The implementation of partition selection is system-specific. A common approach involves using a partition table stored in a reserved area of flash. The table below shows an example partition table format:
-
-| Field Name         | Size   | Description                                 |
-|---------------------|--------|--------------------------------------------|
-| Active Partition    | 1 byte | Indicates the active partition (A or B).   |
-| Partition A Status   | 1 byte | Refer to Partition Status  for values |
-| Partition B Status   | 1 byte | Refer to Partition Status  for values.   |
-| Rollback Flag       | 1 byte | Indicates if rollback is required.         |
-| Reserved            | 4 byte | Reserved                                   |
-| CheckSum            | 4 byte |                                            |
-
-- **Partition Status**
-
-Bits 7:4:  Boot Attempt Count
-
-Bits 3:0:
-| Value | Description     |
-|-------|-----------------|
-|   0   | Invalid         |
-|   1   | Valid           |
-|   2   | Boot Failed     |
-|   3   | Boot Successful |
+The partition table format, including field definitions, partition status values, and the dual-copy redundancy protocol, is defined in [Flash Layout](./flash_layout.md#partition-table).
 
 - **Partition Table Usage**
     - During Normal Boot
-        - The  MCU ROM reads the partition table to determine:
-            - The active partition to boot from.
-            - Whether the active partition is valid and bootable.
-        - If the active partition is valid, the bootloader loads the firmware image from it and boots the system.
-        - If the firmware in the active partition fails to boot (e.g., due to corruption or verification failure), the bootloader:
-            - Checks the Rollback Flag.
-            - Switches to the other partition if rollback is required.
+        - MCU ROM reads the partition table to determine the active partition and whether it is valid and bootable.
+        - If the active partition is valid, the bootloader loads the firmware image and boots.
+        - If boot fails, the bootloader checks the Rollback Enable flag and switches to the other partition if rollback is enabled.
     - During Firmware Update
-        - In the `ActivateFirmware` phase, the partition table or status flags are updated to mark the inactive partition as the new active partition.
-        - Steps to Update:
-            1. Set the `Active Partition` field to the inactive partition (A or B).
-            2. Optionally mark the previously active partition as inactive or valid for rollback.
-            3. Write the updated partition table or status flags back to the reserved area in non-volatile memory.
+        - In the `ActivateFirmware` phase, the partition table is updated to mark the inactive partition as the new active partition using the dual-copy write protocol.
 
 ### Partial firmware update
 
