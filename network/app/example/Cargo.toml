@@ -11,4 +11,4 @@ name = "caliptra-mcu-lwip-rs-example"
 path = "src/main.rs"
 
 [dependencies]
-caliptra-mcu-lwip-rs.workspace = true
+caliptra-mcu-lwip-rs = { workspace = true, default-features = true }

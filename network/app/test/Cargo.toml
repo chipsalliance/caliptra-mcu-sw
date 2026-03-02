@@ -7,6 +7,14 @@ edition.workspace = true
 description = "Test applications for Network Coprocessor ROM"
 
 [dependencies]
+caliptra-mcu-lwip-rs = { workspace = true, default-features = false, features = ["baremetal"], optional = true }
 caliptra-mcu-network-drivers.workspace = true
 caliptra-mcu-network-hil.workspace = true
 zerocopy.workspace = true
+
+[features]
+default = []
+lwip-dhcp = ["caliptra-mcu-lwip-rs"]
+lwip-dhcp6 = ["caliptra-mcu-lwip-rs", "caliptra-mcu-lwip-rs/baremetal-ipv6"]
+lwip-tftp = ["caliptra-mcu-lwip-rs", "caliptra-mcu-lwip-rs/baremetal-tftp"]
+lwip-tftpv6 = ["caliptra-mcu-lwip-rs", "caliptra-mcu-lwip-rs/baremetal-tftpv6"]

@@ -32,20 +32,42 @@ global_asm!(include_str!("start.s"));
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub extern "C" fn main() -> ! {
+    use caliptra_mcu_network_drivers::EthernetDriver;
+
     println!();
     println!("=====================================");
     println!("  Network Coprocessor ROM Started!  ");
     println!("=====================================");
     println!();
 
-    // Run the appropriate test based on feature flags
     #[cfg(feature = "test-network-rom-dhcp-discover")]
     {
-        use caliptra_mcu_network_drivers::EthernetDriver;
-
-        // Create Ethernet driver
         let eth = EthernetDriver::new();
         caliptra_mcu_network_app_rom_test::dhcp_test::run(eth);
+    }
+
+    #[cfg(feature = "test-network-rom-lwip-dhcp")]
+    {
+        let eth = EthernetDriver::new();
+        caliptra_mcu_network_app_rom_test::lwip_dhcp_test::run(eth);
+    }
+
+    #[cfg(feature = "test-network-rom-lwip-dhcp6")]
+    {
+        let eth = EthernetDriver::new();
+        caliptra_mcu_network_app_rom_test::lwip_dhcpv6_test::run(eth);
+    }
+
+    #[cfg(feature = "test-network-rom-lwip-tftp")]
+    {
+        let eth = EthernetDriver::new();
+        caliptra_mcu_network_app_rom_test::lwip_tftp_test::run(eth);
+    }
+
+    #[cfg(feature = "test-network-rom-lwip-tftpv6")]
+    {
+        let eth = EthernetDriver::new();
+        caliptra_mcu_network_app_rom_test::lwip_tftpv6_test::run(eth);
     }
 
     exit_emulator(0x00);
