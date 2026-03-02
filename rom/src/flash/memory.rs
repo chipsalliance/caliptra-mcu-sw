@@ -47,16 +47,8 @@ impl FlashStorage for SimpleFlash {
     fn write(&self, buffer: &[u8], address: usize) -> Result<(), FlashDrvError> {
         let mem = self.memory.take();
         let result = match mem.get_mut(address..address + buffer.len()) {
-            Some(slice) if buffer.len() == slice.len() => {
-                // Use copy_nonoverlapping to avoid copy_from_slice panic path
-                // (same pattern as read above).
-                unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        buffer.as_ptr(),
-                        slice.as_mut_ptr(),
-                        buffer.len(),
-                    );
-                }
+            Some(slice) => {
+                slice.copy_from_slice(buffer);
                 Ok(())
             }
             _ => Err(FlashDrvError::INVAL),

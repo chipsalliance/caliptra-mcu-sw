@@ -86,49 +86,6 @@ impl DotFuses {
     }
 }
 
-/// Loads the DOT fuses from the vendor non-secret production partition.
-/// TODO: Use the proper fuse reading, writing, and definition infrastructure from
-/// a more flexible place.
-///
-/// This function reads the DOT fuse state including the enabled flag,
-/// burned fuse count, and recovery public key hash from the vendor-specific
-/// fuse partition.
-///
-/// # Arguments
-/// * `fuses` - The fuse data structure containing all fuse partitions.
-///
-/// # Returns
-/// * `DotFuses` - The loaded DOT fuse state.
-pub fn load_dot_fuses(otp: &Otp) -> McuResult<DotFuses> {
-    // Copy the DOT fuse partition bytes and transmute to structured data
-    let mut raw_bytes = [0u8; DOT_FUSE_PARTITION_DATA_SIZE.next_multiple_of(4)];
-    otp.read_vendor_non_secret_prod_partition(&mut raw_bytes)?;
-    let (raw_data, _) = DotFusePartitionData::ref_from_prefix(&raw_bytes)
-        .map_err(|_| McuError::ROM_OTP_READ_ERROR)?;
-
-    // Copy fields from packed struct to avoid unaligned access
-    let dot_initialized = raw_data.dot_initialized;
-    let dot_fuse_array = raw_data.dot_fuse_array;
-    let recovery_pk_hash_data = raw_data.recovery_pk_hash;
-
-    // Count burned fuses in the fuse array (8 u32s = 256 bits)
-    let burned_count = dot_fuse_array.iter().map(|w| w.count_ones()).sum::<u32>() as u16;
-    let total_count = (dot_fuse_array.len() * 32) as u16;
-
-    // Use recovery public key hash directly (already u32 array)
-    let recovery_pk_hash = if recovery_pk_hash_data.iter().all(|&x| x == 0) {
-        None
-    } else {
-        Some(RecoveryPkHash(recovery_pk_hash_data))
-    };
-
-    Ok(DotFuses {
-        enabled: dot_initialized != 0,
-        burned: burned_count,
-        total: total_count,
-        recovery_pk_hash,
-    })
-}
 ///
 /// This retrieves the owner PK hash from the OTP fuses, a.k.a., the
 /// Code Authentication Key (CAK). This hash is used to
@@ -303,38 +260,29 @@ fn cm_derive_stable_key(
     };
     let mut info = [0u8; 32];
     const LABEL_LEN: usize = DOT_LABEL.len();
-    info.get_mut(..LABEL_LEN)
-        .ok_or(McuError::ROM_COLD_BOOT_DOT_ERROR)?
-        .copy_from_slice(DOT_LABEL);
+    info[..LABEL_LEN].copy_from_slice(DOT_LABEL);
     let fuse_slice: [u8; 2] = derivation_value.to_le_bytes();
     // copy_from_slice wants to insert a panic for some reason
     info[LABEL_LEN] = fuse_slice[0];
     info[LABEL_LEN + 1] = fuse_slice[1];
 
-    let mut req = CmDeriveStableKeyReq {
+    let mut resp = [0u32; core::mem::size_of::<CmDeriveStableKeyResp>() / 4];
+    let req = CmDeriveStableKeyReq {
         info,
         key_type: key_type.into(),
         ..Default::default()
     };
-    let mut resp_buf = [0u8; core::mem::size_of::<CmDeriveStableKeyResp>()];
+    let mut req32: [u32; core::mem::size_of::<CmDeriveStableKeyReq>() / 4] = transmute!(req);
 
-    let resp_len = env
-        .soc_manager
-        .exec_mailbox_req(
-            CommandId::CM_DERIVE_STABLE_KEY.into(),
-            req.as_mut_bytes(),
-            &mut resp_buf,
-        )
-        .map_err(|err| {
-            romtime::println!("[mcu-rom] Error deriving DOT stable key: {:?}", err);
-            McuError::ROM_COLD_BOOT_DOT_ERROR
-        })?;
-    let resp = CmDeriveStableKeyResp::read_from_bytes(
-        resp_buf
-            .get(..resp_len)
-            .ok_or(McuError::ROM_COLD_BOOT_DOT_ERROR)?,
-    )
-    .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+    if let Err(err) = env.soc_manager.exec_mailbox_req_u32(
+        CommandId::CM_DERIVE_STABLE_KEY.into(),
+        &mut req32,
+        &mut resp,
+    ) {
+        romtime::println!("[mcu-rom] Error deriving DOT stable key: {:?}", err);
+        return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
+    }
+    let resp: CmDeriveStableKeyResp = transmute!(resp);
     let dot_effective_key = DotEffectiveKey(Cmk(transmute!(resp.cmk)));
     Ok(dot_effective_key)
 }
@@ -364,6 +312,7 @@ impl Default for CmHmacReq {
 
 /// Calls Caliptra to compute an HMAC.
 fn cm_hmac(env: &mut RomEnv, key: &Cmk, data: &[u8]) -> McuResult<[u32; 16]> {
+    let mut resp = [0u32; core::mem::size_of::<CmHmacResp>() / 4];
     let mut req = CmHmacReq {
         cmk: transmute!(key.0),
         hash_algorithm: CmHashAlgorithm::Sha512.into(),
@@ -379,31 +328,21 @@ fn cm_hmac(env: &mut RomEnv, key: &Cmk, data: &[u8]) -> McuResult<[u32; 16]> {
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
     // should be impossible for this slice to fail but the compiler seems to generate a panic
-    let src = data.get(..len).ok_or(McuError::ROM_COLD_BOOT_DOT_ERROR)?;
-    let dst = req
-        .data
+    req.data
         .get_mut(..len)
-        .ok_or(McuError::ROM_COLD_BOOT_DOT_ERROR)?;
-    // Use copy_nonoverlapping to avoid copy_from_slice panic path
-    unsafe {
-        core::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), len);
+        .ok_or(McuError::ROM_COLD_BOOT_DOT_ERROR)?
+        .copy_from_slice(&data[..len]);
+
+    let mut req: [u32; core::mem::size_of::<CmHmacReq>() / 4] = transmute!(req);
+
+    if let Err(err) =
+        env.soc_manager
+            .exec_mailbox_req_u32(CommandId::CM_HMAC.into(), &mut req, &mut resp)
+    {
+        romtime::println!("[mcu-rom] Error computing HMAC: {:?}", err);
+        return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
-
-    let mut resp_buf = [0u8; core::mem::size_of::<CmHmacResp>()];
-
-    let resp_len = env
-        .soc_manager
-        .exec_mailbox_req(CommandId::CM_HMAC.into(), req.as_mut_bytes(), &mut resp_buf)
-        .map_err(|err| {
-            romtime::println!("[mcu-rom] Error computing HMAC: {:?}", err);
-            McuError::ROM_COLD_BOOT_DOT_ERROR
-        })?;
-    let resp = CmHmacResp::read_from_bytes(
-        resp_buf
-            .get(..resp_len)
-            .ok_or(McuError::ROM_COLD_BOOT_DOT_ERROR)?,
-    )
-    .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+    let resp: CmHmacResp = transmute!(resp);
     Ok(transmute!(resp.mac))
 }
 
@@ -425,11 +364,7 @@ fn cm_hmac(env: &mut RomEnv, key: &Cmk, data: &[u8]) -> McuResult<[u32; 16]> {
 pub fn verify_dot_blob(env: &mut RomEnv, blob: &DotBlob, key: &DotEffectiveKey) -> McuResult<()> {
     let blob_data = blob.as_bytes();
     // compute the HMAC over everything except the HMAC itself
-    let hmac_size = blob.hmac.len() * 4;
-    let data_len = blob_data.len().saturating_sub(hmac_size);
-    let blob_data = blob_data
-        .get(..data_len)
-        .ok_or(McuError::ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR)?;
+    let blob_data = &blob_data[..blob_data.len() - (blob.hmac.len() * 4)];
     let verify = cm_hmac(env, &key.0, blob_data)?;
     if !constant_time_eq::constant_time_eq(verify.as_bytes(), blob.hmac.as_bytes()) {
         romtime::println!("[mcu-rom] DOT blob HMAC did not match");

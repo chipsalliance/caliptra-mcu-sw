@@ -8,6 +8,8 @@ use crate::objcopy;
 use crate::utils::manifest_file;
 use crate::{PROJECT_ROOT, TARGET};
 use caliptra_builder::FwId;
+use caliptra_image_crypto::RustCrypto as Crypto;
+use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
 use mcu_config::McuMemoryMap;
 use mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 
@@ -44,7 +46,24 @@ pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<P
         &rom_binary,
     )?;
     assert!(rom_binary.exists(), "{rom_binary:?} does not exist");
+    append_rom_digest(&rom_binary)?;
     Ok(rom_binary)
+}
+
+/// Pad the ROM binary to its full size and append a SHA384 digest of its contents to the end.
+fn append_rom_digest(binary: &PathBuf) -> Result<()> {
+    let mut data = std::fs::read(binary)?;
+    const ROM_SIZE: usize = 64 * 1024;
+    const DIGEST_SIZE: usize = 48;
+    const DIGEST_OFFSET: usize = ROM_SIZE - DIGEST_SIZE;
+    data.resize(ROM_SIZE, 0);
+    let crypto = Crypto::default();
+    let digest = from_hw_format(&crypto.sha384_digest(&data[0..DIGEST_OFFSET])?);
+    // Write ROM digest to last 48 bytes.
+    data[DIGEST_OFFSET..].copy_from_slice(&digest);
+    std::fs::write(binary, data)?;
+
+    Ok(())
 }
 
 pub fn test_rom_build(platform: Option<&str>, fwid: &FwId) -> Result<String> {

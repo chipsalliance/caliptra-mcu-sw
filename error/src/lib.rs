@@ -363,6 +363,11 @@ impl McuError {
             "Cold boot encrypted firmware activate finish error"
         ),
         (
+            ROM_COLD_BOOT_ROM_DIGEST_MISMATCH,
+            0x1_0016,
+            "Cold boot ROM integrity check failed"
+        ),
+        (
             ROM_SOC_WDT_CFG_OUT_OF_RANGE,
             0x5_0013,
             "Caliptra WDT config index out of range"
