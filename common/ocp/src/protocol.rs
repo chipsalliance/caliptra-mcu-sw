@@ -5,6 +5,7 @@
 pub mod device_reset;
 pub mod prot_cap;
 pub mod recovery_ctrl;
+pub mod recovery_status;
 
 /// Recovery interface command codes.
 ///

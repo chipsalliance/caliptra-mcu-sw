@@ -22,4 +22,8 @@ pub enum OcpError {
     MessageTooLong = 7,
     /// RECOVERY_CTRL: Byte pattern in the recovery control is invalid.
     RecoveryCtrlInvalid = 8,
+    /// RECOVERY_STATUS: image_index exceeds 4-bit range (0-15).
+    RecoveryStatusImageIndexOutOfRange = 9,
+    /// RECOVERY_STATUS: reserved value in Device Recovery Status field (byte 0, bits 0-3).
+    RecoveryStatusInvalidStatus = 10,
 }
