@@ -97,12 +97,15 @@ pub extern "C" fn rom_entry() -> ! {
     struct EmulatorOcpPlatform;
 
     #[cfg(feature = "ocp-lock")]
-    fn get_hek_partition(slot: usize) -> romtime::otp::OtpPartition {
-        romtime::otp::OtpPartition {
+    fn get_hek_partition(slot: usize) -> registers_generated::fuses::OtpPartitionInfo {
+        registers_generated::fuses::OtpPartitionInfo {
+            name: "cptra_ss_lock_hek_prod",
             byte_offset: registers_generated::fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET
                 + slot * 48,
             byte_size: 40,
             sw_digest: true,
+            hw_digest: false,
+            digest_offset: None,
         }
     }
 

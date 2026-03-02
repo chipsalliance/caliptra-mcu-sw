@@ -12,8 +12,8 @@ Abstract:
 
 --*/
 
-use crate::fuses::OwnerPkHash;
 use crate::flash::hil::FlashStorage;
+use crate::fuses::OwnerPkHash;
 use crate::RomEnv;
 use caliptra_api::mailbox::{
     CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacResp, CmShaReqHdr,

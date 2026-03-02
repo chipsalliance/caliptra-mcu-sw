@@ -35,69 +35,6 @@ const DIGEST_IV: u64 = 0x90C7F21F6224F027;
 
 const TOTAL_SIZE: usize = fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE;
 
-const PARTITIONS: [(usize, usize); 15] = [
-    (
-        fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
-        fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
-    ),
-    (
-        fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET,
-        fuses::SECRET_MANUF_PARTITION_BYTE_SIZE,
-    ),
-    (
-        fuses::SECRET_PROD_PARTITION_0_BYTE_OFFSET,
-        fuses::SECRET_PROD_PARTITION_0_BYTE_SIZE,
-    ),
-    (
-        fuses::SECRET_PROD_PARTITION_1_BYTE_OFFSET,
-        fuses::SECRET_PROD_PARTITION_1_BYTE_SIZE,
-    ),
-    (
-        fuses::SECRET_PROD_PARTITION_2_BYTE_OFFSET,
-        fuses::SECRET_PROD_PARTITION_2_BYTE_SIZE,
-    ),
-    (
-        fuses::SECRET_PROD_PARTITION_3_BYTE_OFFSET,
-        fuses::SECRET_PROD_PARTITION_3_BYTE_SIZE,
-    ),
-    (
-        fuses::SW_MANUF_PARTITION_BYTE_OFFSET,
-        fuses::SW_MANUF_PARTITION_BYTE_SIZE,
-    ),
-    (
-        fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET,
-        fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_SIZE,
-    ),
-    (
-        fuses::SVN_PARTITION_BYTE_OFFSET,
-        fuses::SVN_PARTITION_BYTE_SIZE,
-    ),
-    (
-        fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET,
-        fuses::VENDOR_TEST_PARTITION_BYTE_SIZE,
-    ),
-    (
-        fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET,
-        fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE,
-    ),
-    (
-        fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET,
-        fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
-    ),
-    (
-        fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,
-        fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
-    ),
-    (
-        fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET,
-        fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE,
-    ),
-    (
-        fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
-        fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE,
-    ),
-];
-
 /// Used to hold the state that is saved between emulator runs.
 #[derive(Deserialize, Serialize)]
 struct OtpState {
@@ -131,7 +68,7 @@ pub struct Otp {
     status: ReadWriteRegister<u32, OtpStatus::Register>,
     timer: Timer,
     partitions: Rc<RefCell<Vec<u8>>>,
-    digests: [u32; PARTITIONS.len() * 2],
+    digests: [u32; fuses::OTP_PARTITIONS.len() * 2],
     /// Partitions to calculate digests for on reset.
     calculate_digests_on_reset: HashSet<usize>,
     generated: OtpGenerated,
@@ -187,7 +124,7 @@ impl Otp {
             calculate_digests_on_reset: HashSet::new(),
             timer: Timer::new(clock),
             partitions,
-            digests: [0; PARTITIONS.len() * 2],
+            digests: [0; fuses::OTP_PARTITIONS.len() * 2],
             generated: OtpGenerated::default(),
             fips_zeroization_cmd: args.fips_zeroization_cmd.clone(),
         };
@@ -257,10 +194,16 @@ impl Otp {
     }
 
     fn calculate_digest(&mut self, partition: usize) {
-        if partition >= PARTITIONS.len() - 1 {
+        let p = match fuses::OTP_PARTITIONS.get(partition) {
+            Some(p) => p,
+            None => return,
+        };
+        // Skip lifecycle partition — it has no software/hardware digest
+        if !p.sw_digest && !p.hw_digest {
             return;
         }
-        let (addr, size) = PARTITIONS[partition];
+        let addr = p.byte_offset;
+        let size = p.byte_size;
         let partitions = self.partitions.borrow();
         let digest =
             otp_digest::otp_digest(&partitions[addr..addr + size], DIGEST_IV, DIGEST_CONST);
@@ -455,16 +398,15 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
         } else if self.direct_access_cmd.reg.read(DirectAccessCmd::Digest) == 1 {
             // clear bottom two bits
             let addr = (self.direct_access_address & 0xffff_fffc) as usize;
-            let mut partition = PARTITIONS.len() - 1;
-            for (i, p) in PARTITIONS.iter().enumerate() {
-                if addr == p.0 {
-                    partition = i;
-                    break;
+            if let Some(partition) = fuses::OTP_PARTITIONS
+                .iter()
+                .position(|p| addr == p.byte_offset)
+            {
+                let p = &fuses::OTP_PARTITIONS[partition];
+                // Only schedule digest calculation for partitions that have a digest
+                if p.sw_digest || p.hw_digest {
+                    self.calculate_digests_on_reset.insert(partition);
                 }
-            }
-            // cowardly refuse to calculate digests for the lifecycle partition
-            if partition != PARTITIONS.len() - 1 {
-                self.calculate_digests_on_reset.insert(partition);
             }
         }
 

@@ -5,7 +5,7 @@
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
-use registers_generated::fuses::{self, Fuses};
+use registers_generated::fuses;
 
 /// The driver number for Caliptra OTP commands.
 pub const DRIVER_NUM: usize = 0xD000_0000;
@@ -78,7 +78,7 @@ impl Otp {
             | hek @ reg::LOCK_HEK_PROD_7 => {
                 // TODO: investigate using a cache instead of the actual fuses to reduce wear and
                 // increase performance
-                let hek_num_words = size_of_val(&Fuses::default().cptra_ss_lock_hek_prod_0) / 4;
+                let hek_num_words = fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE / 4;
                 if app.reg_index >= hek_num_words as u32 {
                     return CommandReturn::failure(ErrorCode::INVAL);
                 }
@@ -112,7 +112,7 @@ impl Otp {
             | hek @ reg::LOCK_HEK_PROD_5
             | hek @ reg::LOCK_HEK_PROD_6
             | hek @ reg::LOCK_HEK_PROD_7 => {
-                let hek_num_words = size_of_val(&Fuses::default().cptra_ss_lock_hek_prod_0) / 4;
+                let hek_num_words = fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE / 4;
                 if app.reg_index >= hek_num_words as u32 {
                     return CommandReturn::failure(ErrorCode::INVAL);
                 }

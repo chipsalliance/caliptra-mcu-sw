@@ -3,8 +3,7 @@
 use crate::{HexBytes, HexWord, StaticRef};
 use core::fmt::Write;
 use mcu_error::{McuError, McuResult};
-use registers_generated::fuses;
-use registers_generated::fuses::FuseEntryInfo;
+use registers_generated::fuses::{self, FuseEntryInfo, OtpPartitionInfo};
 use registers_generated::otp_ctrl;
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -58,17 +57,6 @@ pub const PROD_DEBUG_UNLOCK_PK_ENTRIES: [&FuseEntryInfo; 8] = [
 ];
 
 const DIGEST_SIZE: usize = 8;
-
-/// Describes an OTP partition for software digest computation.
-/// TODO: generate these automatically in xtask
-pub struct OtpPartition {
-    /// Byte offset of the partition within the OTP address space.
-    pub byte_offset: usize,
-    /// Total byte size of the partition (including the digest field if present).
-    pub byte_size: usize,
-    /// Whether this partition supports a software-computed digest.
-    pub sw_digest: bool,
-}
 
 pub struct Otp {
     registers: StaticRef<otp_ctrl::regs::OtpCtrl>,
@@ -725,7 +713,7 @@ impl Otp {
     /// have `sw_digest` set or if its size is too small to contain a digest.
     pub fn compute_sw_digest(
         &self,
-        partition: &OtpPartition,
+        partition: &OtpPartitionInfo,
         iv: u64,
         cnst: u128,
     ) -> McuResult<u64> {
