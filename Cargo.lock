@@ -1969,6 +1969,7 @@ dependencies = [
 name = "caliptra-mcu-network-app-rom-test"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-lwip-rs",
  "caliptra-mcu-network-drivers",
  "caliptra-mcu-network-hil",
  "zerocopy",
@@ -1986,6 +1987,7 @@ dependencies = [
  "caliptra-mcu-network-hil",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
+ "riscv-csr",
  "tock-registers",
 ]
 

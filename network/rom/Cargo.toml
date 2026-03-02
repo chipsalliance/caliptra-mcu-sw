@@ -20,3 +20,7 @@ test = false
 [features]
 default = []
 test-network-rom-dhcp-discover = ["caliptra-mcu-network-app-rom-test"]
+test-network-rom-lwip-dhcp = ["caliptra-mcu-network-app-rom-test/lwip-dhcp", "caliptra-mcu-network-app-rom-test"]
+test-network-rom-lwip-dhcp6 = ["caliptra-mcu-network-app-rom-test/lwip-dhcp6", "caliptra-mcu-network-app-rom-test"]
+test-network-rom-lwip-tftp = ["caliptra-mcu-network-app-rom-test/lwip-tftp", "caliptra-mcu-network-app-rom-test"]
+test-network-rom-lwip-tftpv6 = ["caliptra-mcu-network-app-rom-test/lwip-tftpv6", "caliptra-mcu-network-app-rom-test"]
