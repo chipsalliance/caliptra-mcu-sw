@@ -7,8 +7,8 @@ use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
 use caliptra_mcu_romtime::println;
 use core::cell::Cell;
-use core::fmt::Write;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
+
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, GrantKernelData, UpcallCount};
 use kernel::processbuffer::{ReadableProcessBuffer, WriteableProcessBuffer};
 use kernel::syscall::{CommandReturn, SyscallDriver};

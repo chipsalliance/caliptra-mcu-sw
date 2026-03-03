@@ -14,7 +14,6 @@ Abstract:
 
 use crate::flash::flash_drv::{FpgaFlashCtrl, PRIMARY_FLASH_CTRL_BASE, SECONDARY_FLASH_CTRL_BASE};
 use crate::io::{print_to_console, EXITER, FATAL_ERROR_HANDLER, FPGA_WRITER};
-use core::fmt::Write;
 
 #[cfg(target_arch = "riscv32")]
 core::arch::global_asm!(include_str!("start.s"));
