@@ -36,4 +36,6 @@ pub enum OcpError {
     IndirectCtrlImoNotAligned = 14,
     /// INDIRECT_STATUS: reserved CMS region type value (byte 1, bits 0-2).
     IndirectStatusInvalidCmsRegionType = 15,
+    /// INDIRECT_FIFO_CTRL: reserved value in Reset field (byte 1).
+    IndirectFifoCtrlInvalidReset = 16,
 }
