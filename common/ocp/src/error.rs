@@ -38,4 +38,6 @@ pub enum OcpError {
     IndirectStatusInvalidCmsRegionType = 15,
     /// INDIRECT_FIFO_CTRL: reserved value in Reset field (byte 1).
     IndirectFifoCtrlInvalidReset = 16,
+    /// INDIRECT_FIFO_STATUS: reserved CMS region type value (byte 1, bits 0-2).
+    IndirectFifoStatusInvalidRegionType = 17,
 }
