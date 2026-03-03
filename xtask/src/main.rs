@@ -304,6 +304,10 @@ enum FlashImageCommands {
         #[arg(long, value_name = "MCU_RUNTIME", required = true)]
         mcu_runtime: Option<String>,
 
+        /// Path to the Platform Descriptor Store (PDS) binary
+        #[arg(long, value_name = "PDS", required = false)]
+        pds: Option<String>,
+
         /// List of SoC images
         /// Example: --soc-images /tmp/a.bin --soc-images /tmp/b.bin
         #[arg(long, value_name = "SOC_IMAGE", num_args=1.., required = false)]
@@ -430,12 +434,14 @@ fn main() {
                 caliptra_fw,
                 soc_manifest,
                 mcu_runtime,
+                pds,
                 soc_images,
                 output,
             } => mcu_builder::flash_image::flash_image_create(
                 caliptra_fw,
                 soc_manifest,
                 mcu_runtime,
+                pds,
                 soc_images,
                 0,
                 output,

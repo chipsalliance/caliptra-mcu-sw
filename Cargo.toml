@@ -5,6 +5,7 @@ members = [
     "builder",
     "common/config",
     "common/flash-image",
+    "common/pds",
     "common/mcu-mbox",
     "common/otp-digest",
     "common/mctp-vdm",
@@ -193,6 +194,7 @@ flash-ctrl-emulator = { path = "platforms/emulator/runtime/kernel/drivers/flash_
 flash-ctrl-fpga = { path = "platforms/fpga/runtime/drivers/flash_ctrl"}
 flash-driver = { path = "runtime/kernel/drivers/flash" }
 flash-image = { path = "common/flash-image" }
+pds = { path = "common/pds" }
 i3c-driver = { path = "runtime/kernel/drivers/i3c" }
 libtockasync = { path = "runtime/userspace/libtockasync" }
 mcu-builder = { path = "builder" }

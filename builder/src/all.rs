@@ -913,6 +913,7 @@ fn create_flash_image(
         &caliptra_fw_path.map(|p| p.to_string_lossy().to_string()),
         &soc_manifest_path.map(|p| p.to_string_lossy().to_string()),
         &mcu_runtime_path.map(|p| p.to_string_lossy().to_string()),
+        &None, // pds_path
         &Some(
             soc_images_paths
                 .iter()

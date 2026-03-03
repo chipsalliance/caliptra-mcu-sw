@@ -89,6 +89,7 @@ mod test {
             &caliptra_fw_path_str,
             &soc_manifest_path_str,
             &mcu_runtime_path_str,
+            &None, // pds_path
             &Some(
                 soc_images_paths
                     .iter()

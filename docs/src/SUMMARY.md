@@ -7,6 +7,7 @@
 - [Runtime Specification](./runtime.md)
     - [PLDM Package](./pldm_package.md)
     - [Flash Layout](./flash_layout.md)
+        - [Platform Descriptor Store](./platform_descriptor_store.md)
     - [Flash Controller](./flash_controller.md)
     - [Image Loading](./image_loading.md)
     - [MCTP](./mctp.md)

@@ -3,7 +3,8 @@
 use anyhow::{anyhow, bail, Result};
 use flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, FLASH_IMAGE_MAGIC_NUMBER, HEADER_VERSION,
-    MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
+    MCU_RT_IDENTIFIER, PLATFORM_DESCRIPTOR_STORE_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER,
+    SOC_MANIFEST_IDENTIFIER,
 };
 use mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
@@ -199,6 +200,7 @@ pub fn flash_image_create(
     caliptra_fw_path: &Option<String>,
     soc_manifest_path: &Option<String>,
     mcu_runtime_path: &Option<String>,
+    pds_path: &Option<String>,
     soc_image_paths: &Option<Vec<String>>,
     offset: usize,
     output_path: &str,
@@ -221,6 +223,12 @@ pub fn flash_image_create(
     if let Some(mcu_runtime_path) = mcu_runtime_path {
         content = load_file(mcu_runtime_path)?;
         images.push(FirmwareImage::new(MCU_RT_IDENTIFIER, &content)?);
+    }
+
+    let pds_content;
+    if let Some(pds_path) = pds_path {
+        pds_content = load_file(pds_path)?;
+        images.push(FirmwareImage::new(PLATFORM_DESCRIPTOR_STORE_IDENTIFIER, &pds_content)?);
     }
 
     // Load SOC images into a buffer
@@ -427,6 +435,7 @@ mod tests {
             &Some(caliptra_fw.path().to_str().unwrap().to_string()),
             &Some(soc_manifest.path().to_str().unwrap().to_string()),
             &Some(mcu_runtime.path().to_str().unwrap().to_string()),
+            &None, // pds_path
             &soc_image_paths,
             0,
             output_path,
