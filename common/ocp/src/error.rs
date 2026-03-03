@@ -32,4 +32,10 @@ pub enum OcpError {
     IndirectStatusInvalidCmsRegionType = 12,
     /// INDIRECT_FIFO_CTRL: reserved value in Reset field (byte 1).
     IndirectFifoCtrlInvalid = 13,
+    /// DEVICE_STATUS: vendor status exceeds maximum length of 248 bytes.
+    DeviceStatusVendorStatusTooLong = 14,
+    /// DEVICE_STATUS: heartbeat value exceeds 12-bit range (0-4095).
+    DeviceStatusHeartbeatOutOfRange = 15,
+    /// DEVICE_STATUS: VendorSpecific recovery reason code is not in range 0x80-0xFF.
+    DeviceStatusInvalidVendorReasonCode = 16,
 }
