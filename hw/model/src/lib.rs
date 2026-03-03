@@ -252,6 +252,9 @@ pub struct InitParams<'a> {
     /// When true, set secrets_valid so DOE reads UDS/FE from strap registers
     /// for deterministic IDevID on FPGA (needed for attestation tests).
     pub use_strap_secrets: bool,
+
+    /// When true, do not provision default LC tokens or other fuses.
+    pub skip_otp_provisioning: bool,
 }
 
 impl InitParams<'_> {
@@ -333,6 +336,7 @@ impl Default for InitParams<'_> {
             active_i3c1: false,
             vendor_test_partition: None,
             use_strap_secrets: false,
+            skip_otp_provisioning: false,
         }
     }
 }
@@ -741,6 +745,11 @@ pub trait McuHwModel {
 
     fn mci_fw_fatal_error(&mut self) -> Option<u32> {
         Some(self.mcu_manager().mci().fw_error_fatal().read()).filter(|&e| e != 0)
+    }
+
+    fn clear_mci_fw_fatal_error(&mut self) {
+        self.mcu_manager()
+            .with_mci(|mci| mci.fw_error_fatal().write(|_| 0x0));
     }
 
     /// Returns true if the network CPU is initialized.

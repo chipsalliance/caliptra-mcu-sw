@@ -90,7 +90,10 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "test-usb-ocp-recovery",
 ];
 
-pub const BARE_METAL_BINARIES: &[&str] = &["caliptra-mcu-bare-metal"];
+pub const BARE_METAL_BINARIES: &[&str] = &[
+    "caliptra-mcu-bare-metal",
+    "caliptra-mcu-provisioning-test-unlocked-fw",
+];
 
 /// A single ROM build target (platform + feature combo). Shared between
 /// `cargo xtask sizes` (size reporting), `test_panic_missing` (panic-free

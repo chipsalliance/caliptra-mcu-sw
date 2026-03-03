@@ -5,12 +5,13 @@ mod test_jtag_taps;
 mod test_lc_transitions;
 mod test_manuf_debug_unlock;
 mod test_prod_debug_unlock;
+mod test_provisioning;
 mod test_uds;
 
 #[cfg(test)]
 mod test {
     use caliptra_hw_model::jtag::{CsrReg, DmReg};
-    use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
+    use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap, OpenOcdJtagTap};
     use caliptra_hw_model::Fuses;
     use caliptra_mcu_builder::FirmwareBinaries;
     use caliptra_mcu_config_fpga::FPGA_MEMORY_MAP;
@@ -19,6 +20,7 @@ mod test {
 
     use anyhow::{bail, Result};
 
+    use std::path::PathBuf;
     use std::time::Duration;
 
     pub const ALLHALTED_MASK: u32 = 1 << 9;
@@ -50,6 +52,16 @@ mod test {
         m
     }
 
+    pub fn connect_mcu_tap(model: &mut DefaultHwModel) -> Result<OpenOcdJtagTap> {
+        let jtag_params = JtagParams {
+            openocd: PathBuf::from("openocd"),
+            adapter_speed_khz: 1000,
+            log_stdio: true,
+        };
+        println!("Connecting to MCU TAP ...");
+        let mcu_tap = model.jtag_tap_connect(&jtag_params, JtagTap::CaliptraMcuTap)?;
+        Ok(*mcu_tap)
+    }
     /// Write/Read words to SRAM over the system bus.
     pub fn sysbus_write_read(
         tap: &mut OpenOcdJtagTap,
@@ -70,7 +82,6 @@ mod test {
         }
         Ok(true)
     }
-
     /// Check if a debug module is active.
     fn check_debug_module_active(tap: &mut OpenOcdJtagTap) -> Result<bool> {
         // Check dmstatus.allrunning and dmstatus.anyrunning bits to see if

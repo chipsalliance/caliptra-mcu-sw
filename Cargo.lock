@@ -1952,12 +1952,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-provisioning-common"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-bare-metal-io",
+ "caliptra-mcu-error",
+ "caliptra-mcu-provisioning-fuses",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "tock-registers",
+]
+
+[[package]]
 name = "caliptra-mcu-provisioning-fuses"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "caliptra-mcu-fusegen",
  "caliptra-mcu-registers-generated",
+]
+
+[[package]]
+name = "caliptra-mcu-provisioning-test-unlocked-fw"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-bare-metal-io",
+ "caliptra-mcu-error",
+ "caliptra-mcu-provisioning-common",
+ "caliptra-mcu-provisioning-fuses",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "tock-registers",
 ]
 
 [[package]]

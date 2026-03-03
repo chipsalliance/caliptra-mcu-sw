@@ -1,14 +1,16 @@
 // Licensed under the Apache-2.0 license
 
+use std::mem::offset_of;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
 use caliptra_api::checksum::calc_checksum;
 use caliptra_api::mailbox::CommandId;
-use caliptra_hw_model::jtag::CaliptraCoreReg;
+use caliptra_hw_model::jtag::{CaliptraCoreReg, CsrReg};
 use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
 
 use anyhow::{anyhow, Context, Result};
+use caliptra_mcu_registers_generated::mci::regs::Mci;
 use int_enum::IntEnum;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -114,4 +116,37 @@ pub fn jtag_get_caliptra_mailbox_resp(tap: &mut OpenOcdJtagTap) -> Result<Vec<u8
     tap.write_reg(&CaliptraCoreReg::MboxExecute, 0x0)
         .context("Unable to clear MboxExecute.")?;
     Ok(rsp_bytes)
+}
+
+pub fn sideload_binary(
+    tap: &mut OpenOcdJtagTap,
+    bytes: &[u8],
+    offset: u32,
+    mci_base_addr: u32,
+) -> Result<()> {
+    // Disable watchdog timers to prevent reset during JTAG sideloading
+    tap.write_memory_32(
+        mci_base_addr + offset_of!(Mci, mci_reg_wdt_timer1_en) as u32,
+        0,
+    )?;
+    tap.write_memory_32(
+        mci_base_addr + offset_of!(Mci, mci_reg_wdt_timer2_en) as u32,
+        0,
+    )?;
+
+    let mut words = Vec::with_capacity((bytes.len() + 3) / 4);
+    for chunk in bytes.chunks(4) {
+        let mut word_bytes = [0u8; 4];
+        word_bytes[..chunk.len()].copy_from_slice(chunk);
+        words.push(u32::from_le_bytes(word_bytes));
+    }
+
+    for (i, word) in words.iter().enumerate() {
+        let addr = offset + (i as u32) * 4;
+        tap.write_memory_32(addr, *word)?;
+    }
+
+    tap.write_csr_reg(CsrReg::Dpc, offset)?;
+
+    Ok(())
 }

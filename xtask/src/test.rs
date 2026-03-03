@@ -29,6 +29,7 @@ const EXCLUDED_PACKAGES: &[&str] = &[
     "caliptra-mcu-libtock_unittest",
     "caliptra-mcu-syscalls_tests",
     "caliptra-mcu-network-rom",
+    "caliptra-mcu-provisioning-test-unlocked-fw",
 ];
 
 pub(crate) fn test(args: TestArgs) -> Result<()> {
