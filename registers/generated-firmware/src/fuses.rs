@@ -245,7 +245,88 @@ pub struct FuseEntryInfo {
     /// Layout for interpreting the raw bits
     pub layout: FuseLayoutType,
 }
-pub const PARTITIONS: &[Partition] = &[];
+pub const PARTITIONS: &[Partition] = &[
+    Partition {
+        num: 0,
+        name: "SW_TEST_UNLOCK_PARTITION",
+        dot: false,
+    },
+    Partition {
+        num: 1,
+        name: "SECRET_MANUF_PARTITION",
+        dot: false,
+    },
+    Partition {
+        num: 2,
+        name: "SECRET_PROD_PARTITION_0",
+        dot: false,
+    },
+    Partition {
+        num: 3,
+        name: "SECRET_PROD_PARTITION_1",
+        dot: false,
+    },
+    Partition {
+        num: 4,
+        name: "SECRET_PROD_PARTITION_2",
+        dot: false,
+    },
+    Partition {
+        num: 5,
+        name: "SECRET_PROD_PARTITION_3",
+        dot: false,
+    },
+    Partition {
+        num: 6,
+        name: "SW_MANUF_PARTITION",
+        dot: false,
+    },
+    Partition {
+        num: 7,
+        name: "SECRET_LC_TRANSITION_PARTITION",
+        dot: false,
+    },
+    Partition {
+        num: 8,
+        name: "SVN_PARTITION",
+        dot: false,
+    },
+    Partition {
+        num: 9,
+        name: "VENDOR_TEST_PARTITION",
+        dot: false,
+    },
+    Partition {
+        num: 10,
+        name: "VENDOR_HASHES_MANUF_PARTITION",
+        dot: false,
+    },
+    Partition {
+        num: 11,
+        name: "VENDOR_HASHES_PROD_PARTITION",
+        dot: false,
+    },
+    Partition {
+        num: 12,
+        name: "VENDOR_REVOCATIONS_PROD_PARTITION",
+        dot: false,
+    },
+    Partition {
+        num: 13,
+        name: "VENDOR_SECRET_PROD_PARTITION",
+        dot: false,
+    },
+    Partition {
+        num: 14,
+        name: "VENDOR_NON_SECRET_PROD_PARTITION",
+        dot: false,
+    },
+    Partition {
+        num: 15,
+        name: "LIFE_CYCLE",
+        dot: false,
+    },
+];
 pub const SECRET_VENDOR_FUSES: &[Fuse] = &[Fuse {
     name: "vendor_recovery_pk_hash",
     size: Bytes(48),
@@ -311,3 +392,1347 @@ pub const DOT_INITIALIZED: &FuseEntryInfo = &FUSE_ENTRY_TABLE[0];
 pub const DOT_FUSE_ARRAY: &FuseEntryInfo = &FUSE_ENTRY_TABLE[1];
 /// Fuse entry for `vendor_recovery_pk_hash`.
 pub const VENDOR_RECOVERY_PK_HASH: &FuseEntryInfo = &FUSE_ENTRY_TABLE[2];
+/// OTP item entry for `CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN`.
+pub const OTP_CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 0,
+    entry_num: 0,
+    byte_offset: 0x0,
+    byte_size: 64,
+    name: "CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN",
+    layout: FuseLayoutType::Single { bits: 512 },
+};
+/// OTP item entry for `CPTRA_CORE_ANTI_ROLLBACK_DISABLE`.
+pub const OTP_CPTRA_CORE_ANTI_ROLLBACK_DISABLE: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 6,
+    entry_num: 0,
+    byte_offset: 0xd0,
+    byte_size: 4,
+    name: "CPTRA_CORE_ANTI_ROLLBACK_DISABLE",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR`.
+pub const OTP_CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 6,
+    entry_num: 1,
+    byte_offset: 0xd4,
+    byte_size: 96,
+    name: "CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR",
+    layout: FuseLayoutType::Single { bits: 768 },
+};
+/// OTP item entry for `SOC_SPECIFIC_IDEVID_CERTIFICATE`.
+pub const OTP_SOC_SPECIFIC_IDEVID_CERTIFICATE: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 6,
+    entry_num: 2,
+    byte_offset: 0x134,
+    byte_size: 4,
+    name: "SOC_SPECIFIC_IDEVID_CERTIFICATE",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_IDEVID_MANUF_HSM_IDENTIFIER`.
+pub const OTP_CPTRA_CORE_IDEVID_MANUF_HSM_IDENTIFIER: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 6,
+    entry_num: 3,
+    byte_offset: 0x138,
+    byte_size: 16,
+    name: "CPTRA_CORE_IDEVID_MANUF_HSM_IDENTIFIER",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_CORE_SOC_STEPPING_ID`.
+pub const OTP_CPTRA_CORE_SOC_STEPPING_ID: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 6,
+    entry_num: 4,
+    byte_offset: 0x148,
+    byte_size: 4,
+    name: "CPTRA_CORE_SOC_STEPPING_ID",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_0`.
+pub const OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_0: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 6,
+    entry_num: 5,
+    byte_offset: 0x14c,
+    byte_size: 48,
+    name: "CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_0",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_1`.
+pub const OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_1: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 6,
+    entry_num: 6,
+    byte_offset: 0x17c,
+    byte_size: 48,
+    name: "CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_1",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_2`.
+pub const OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_2: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 6,
+    entry_num: 7,
+    byte_offset: 0x1ac,
+    byte_size: 48,
+    name: "CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_2",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_3`.
+pub const OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_3: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 6,
+    entry_num: 8,
+    byte_offset: 0x1dc,
+    byte_size: 48,
+    name: "CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_3",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_4`.
+pub const OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_4: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 6,
+    entry_num: 9,
+    byte_offset: 0x20c,
+    byte_size: 48,
+    name: "CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_4",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_5`.
+pub const OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_5: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 6,
+    entry_num: 10,
+    byte_offset: 0x23c,
+    byte_size: 48,
+    name: "CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_5",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_6`.
+pub const OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_6: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 6,
+    entry_num: 11,
+    byte_offset: 0x26c,
+    byte_size: 48,
+    name: "CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_6",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_7`.
+pub const OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_7: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 6,
+    entry_num: 12,
+    byte_offset: 0x29c,
+    byte_size: 48,
+    name: "CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_7",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_SS_TEST_UNLOCK_TOKEN_1`.
+pub const OTP_CPTRA_SS_TEST_UNLOCK_TOKEN_1: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 7,
+    entry_num: 0,
+    byte_offset: 0x2d8,
+    byte_size: 16,
+    name: "CPTRA_SS_TEST_UNLOCK_TOKEN_1",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_SS_TEST_UNLOCK_TOKEN_2`.
+pub const OTP_CPTRA_SS_TEST_UNLOCK_TOKEN_2: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 7,
+    entry_num: 1,
+    byte_offset: 0x2e8,
+    byte_size: 16,
+    name: "CPTRA_SS_TEST_UNLOCK_TOKEN_2",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_SS_TEST_UNLOCK_TOKEN_3`.
+pub const OTP_CPTRA_SS_TEST_UNLOCK_TOKEN_3: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 7,
+    entry_num: 2,
+    byte_offset: 0x2f8,
+    byte_size: 16,
+    name: "CPTRA_SS_TEST_UNLOCK_TOKEN_3",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_SS_TEST_UNLOCK_TOKEN_4`.
+pub const OTP_CPTRA_SS_TEST_UNLOCK_TOKEN_4: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 7,
+    entry_num: 3,
+    byte_offset: 0x308,
+    byte_size: 16,
+    name: "CPTRA_SS_TEST_UNLOCK_TOKEN_4",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_SS_TEST_UNLOCK_TOKEN_5`.
+pub const OTP_CPTRA_SS_TEST_UNLOCK_TOKEN_5: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 7,
+    entry_num: 4,
+    byte_offset: 0x318,
+    byte_size: 16,
+    name: "CPTRA_SS_TEST_UNLOCK_TOKEN_5",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_SS_TEST_UNLOCK_TOKEN_6`.
+pub const OTP_CPTRA_SS_TEST_UNLOCK_TOKEN_6: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 7,
+    entry_num: 5,
+    byte_offset: 0x328,
+    byte_size: 16,
+    name: "CPTRA_SS_TEST_UNLOCK_TOKEN_6",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_SS_TEST_UNLOCK_TOKEN_7`.
+pub const OTP_CPTRA_SS_TEST_UNLOCK_TOKEN_7: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 7,
+    entry_num: 6,
+    byte_offset: 0x338,
+    byte_size: 16,
+    name: "CPTRA_SS_TEST_UNLOCK_TOKEN_7",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_SS_TEST_EXIT_TO_MANUF_TOKEN`.
+pub const OTP_CPTRA_SS_TEST_EXIT_TO_MANUF_TOKEN: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 7,
+    entry_num: 7,
+    byte_offset: 0x348,
+    byte_size: 16,
+    name: "CPTRA_SS_TEST_EXIT_TO_MANUF_TOKEN",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_SS_MANUF_TO_PROD_TOKEN`.
+pub const OTP_CPTRA_SS_MANUF_TO_PROD_TOKEN: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 7,
+    entry_num: 8,
+    byte_offset: 0x358,
+    byte_size: 16,
+    name: "CPTRA_SS_MANUF_TO_PROD_TOKEN",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_SS_PROD_TO_PROD_END_TOKEN`.
+pub const OTP_CPTRA_SS_PROD_TO_PROD_END_TOKEN: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 7,
+    entry_num: 9,
+    byte_offset: 0x368,
+    byte_size: 16,
+    name: "CPTRA_SS_PROD_TO_PROD_END_TOKEN",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_SS_RMA_TOKEN`.
+pub const OTP_CPTRA_SS_RMA_TOKEN: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 7,
+    entry_num: 10,
+    byte_offset: 0x378,
+    byte_size: 16,
+    name: "CPTRA_SS_RMA_TOKEN",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_CORE_FMC_KEY_MANIFEST_SVN`.
+pub const OTP_CPTRA_CORE_FMC_KEY_MANIFEST_SVN: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 8,
+    entry_num: 0,
+    byte_offset: 0x390,
+    byte_size: 4,
+    name: "CPTRA_CORE_FMC_KEY_MANIFEST_SVN",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_RUNTIME_SVN`.
+pub const OTP_CPTRA_CORE_RUNTIME_SVN: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 8,
+    entry_num: 1,
+    byte_offset: 0x394,
+    byte_size: 16,
+    name: "CPTRA_CORE_RUNTIME_SVN",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_CORE_SOC_MANIFEST_SVN`.
+pub const OTP_CPTRA_CORE_SOC_MANIFEST_SVN: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 8,
+    entry_num: 2,
+    byte_offset: 0x3a4,
+    byte_size: 16,
+    name: "CPTRA_CORE_SOC_MANIFEST_SVN",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_CORE_SOC_MANIFEST_MAX_SVN`.
+pub const OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 8,
+    entry_num: 3,
+    byte_offset: 0x3b4,
+    byte_size: 4,
+    name: "CPTRA_CORE_SOC_MANIFEST_MAX_SVN",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `VENDOR_TEST`.
+pub const OTP_VENDOR_TEST: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 9,
+    entry_num: 0,
+    byte_offset: 0x3b8,
+    byte_size: 56,
+    name: "VENDOR_TEST",
+    layout: FuseLayoutType::Single { bits: 448 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_0`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_0: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 10,
+    entry_num: 0,
+    byte_offset: 0x3f8,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_0",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_0`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_0: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 10,
+    entry_num: 1,
+    byte_offset: 0x428,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_0",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_SS_OWNER_PK_HASH`.
+pub const OTP_CPTRA_SS_OWNER_PK_HASH: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 0,
+    byte_offset: 0x438,
+    byte_size: 48,
+    name: "CPTRA_SS_OWNER_PK_HASH",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_SS_OWNER_PQC_KEY_TYPE`.
+pub const OTP_CPTRA_SS_OWNER_PQC_KEY_TYPE: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 1,
+    byte_offset: 0x468,
+    byte_size: 4,
+    name: "CPTRA_SS_OWNER_PQC_KEY_TYPE",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_SS_OWNER_PK_HASH_VALID`.
+pub const OTP_CPTRA_SS_OWNER_PK_HASH_VALID: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 2,
+    byte_offset: 0x46c,
+    byte_size: 4,
+    name: "CPTRA_SS_OWNER_PK_HASH_VALID",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_1`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_1: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 3,
+    byte_offset: 0x470,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_1",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_1`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_1: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 4,
+    byte_offset: 0x4a0,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_1",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_2`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_2: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 5,
+    byte_offset: 0x4a4,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_2",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_2`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_2: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 6,
+    byte_offset: 0x4d4,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_2",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_3`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_3: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 7,
+    byte_offset: 0x4d8,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_3",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_3`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_3: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 8,
+    byte_offset: 0x508,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_3",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_4`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_4: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 9,
+    byte_offset: 0x50c,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_4",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_4`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_4: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 10,
+    byte_offset: 0x53c,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_4",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_5`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_5: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 11,
+    byte_offset: 0x540,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_5",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_5`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_5: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 12,
+    byte_offset: 0x570,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_5",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_6`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_6: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 13,
+    byte_offset: 0x574,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_6",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_6`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_6: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 14,
+    byte_offset: 0x5a4,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_6",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_7`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_7: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 15,
+    byte_offset: 0x5a8,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_7",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_7`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_7: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 16,
+    byte_offset: 0x5d8,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_7",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_8`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_8: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 17,
+    byte_offset: 0x5dc,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_8",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_8`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_8: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 18,
+    byte_offset: 0x60c,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_8",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_9`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_9: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 19,
+    byte_offset: 0x610,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_9",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_9`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_9: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 20,
+    byte_offset: 0x640,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_9",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_10`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_10: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 21,
+    byte_offset: 0x644,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_10",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_10`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_10: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 22,
+    byte_offset: 0x674,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_10",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_11`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_11: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 23,
+    byte_offset: 0x678,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_11",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_11`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_11: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 24,
+    byte_offset: 0x6a8,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_11",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_12`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_12: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 25,
+    byte_offset: 0x6ac,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_12",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_12`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_12: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 26,
+    byte_offset: 0x6dc,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_12",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_13`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_13: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 27,
+    byte_offset: 0x6e0,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_13",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_13`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_13: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 28,
+    byte_offset: 0x710,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_13",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_14`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_14: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 29,
+    byte_offset: 0x714,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_14",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_14`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_14: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 30,
+    byte_offset: 0x744,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_14",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_15`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_15: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 31,
+    byte_offset: 0x748,
+    byte_size: 48,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_15",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_CORE_PQC_KEY_TYPE_15`.
+pub const OTP_CPTRA_CORE_PQC_KEY_TYPE_15: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 32,
+    byte_offset: 0x778,
+    byte_size: 4,
+    name: "CPTRA_CORE_PQC_KEY_TYPE_15",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_VENDOR_PK_HASH_VALID`.
+pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 11,
+    entry_num: 33,
+    byte_offset: 0x77c,
+    byte_size: 16,
+    name: "CPTRA_CORE_VENDOR_PK_HASH_VALID",
+    layout: FuseLayoutType::Single { bits: 128 },
+};
+/// OTP item entry for `CPTRA_SS_OWNER_ECC_REVOCATION`.
+pub const OTP_CPTRA_SS_OWNER_ECC_REVOCATION: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 0,
+    byte_offset: 0x798,
+    byte_size: 4,
+    name: "CPTRA_SS_OWNER_ECC_REVOCATION",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_SS_OWNER_LMS_REVOCATION`.
+pub const OTP_CPTRA_SS_OWNER_LMS_REVOCATION: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 1,
+    byte_offset: 0x79c,
+    byte_size: 4,
+    name: "CPTRA_SS_OWNER_LMS_REVOCATION",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_SS_OWNER_MLDSA_REVOCATION`.
+pub const OTP_CPTRA_SS_OWNER_MLDSA_REVOCATION: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 2,
+    byte_offset: 0x7a0,
+    byte_size: 4,
+    name: "CPTRA_SS_OWNER_MLDSA_REVOCATION",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_0`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_0: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 3,
+    byte_offset: 0x7a4,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_0",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_0`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_0: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 4,
+    byte_offset: 0x7a8,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_0",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_0`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_0: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 5,
+    byte_offset: 0x7ac,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_0",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_1`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_1: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 6,
+    byte_offset: 0x7b0,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_1",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_1`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_1: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 7,
+    byte_offset: 0x7b4,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_1",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_1`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_1: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 8,
+    byte_offset: 0x7b8,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_1",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_2`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_2: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 9,
+    byte_offset: 0x7bc,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_2",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_2`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_2: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 10,
+    byte_offset: 0x7c0,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_2",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_2`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_2: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 11,
+    byte_offset: 0x7c4,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_2",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_3`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_3: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 12,
+    byte_offset: 0x7c8,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_3",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_3`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_3: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 13,
+    byte_offset: 0x7cc,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_3",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_3`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_3: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 14,
+    byte_offset: 0x7d0,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_3",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_4`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_4: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 15,
+    byte_offset: 0x7d4,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_4",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_4`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_4: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 16,
+    byte_offset: 0x7d8,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_4",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_4`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_4: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 17,
+    byte_offset: 0x7dc,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_4",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_5`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_5: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 18,
+    byte_offset: 0x7e0,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_5",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_5`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_5: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 19,
+    byte_offset: 0x7e4,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_5",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_5`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_5: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 20,
+    byte_offset: 0x7e8,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_5",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_6`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_6: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 21,
+    byte_offset: 0x7ec,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_6",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_6`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_6: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 22,
+    byte_offset: 0x7f0,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_6",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_6`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_6: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 23,
+    byte_offset: 0x7f4,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_6",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_7`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_7: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 24,
+    byte_offset: 0x7f8,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_7",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_7`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_7: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 25,
+    byte_offset: 0x7fc,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_7",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_7`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_7: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 26,
+    byte_offset: 0x800,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_7",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_8`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_8: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 27,
+    byte_offset: 0x804,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_8",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_8`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_8: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 28,
+    byte_offset: 0x808,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_8",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_8`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_8: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 29,
+    byte_offset: 0x80c,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_8",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_9`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_9: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 30,
+    byte_offset: 0x810,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_9",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_9`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_9: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 31,
+    byte_offset: 0x814,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_9",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_9`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_9: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 32,
+    byte_offset: 0x818,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_9",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_10`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_10: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 33,
+    byte_offset: 0x81c,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_10",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_10`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_10: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 34,
+    byte_offset: 0x820,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_10",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_10`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_10: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 35,
+    byte_offset: 0x824,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_10",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_11`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_11: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 36,
+    byte_offset: 0x828,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_11",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_11`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_11: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 37,
+    byte_offset: 0x82c,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_11",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_11`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_11: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 38,
+    byte_offset: 0x830,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_11",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_12`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_12: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 39,
+    byte_offset: 0x834,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_12",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_12`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_12: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 40,
+    byte_offset: 0x838,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_12",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_12`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_12: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 41,
+    byte_offset: 0x83c,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_12",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_13`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_13: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 42,
+    byte_offset: 0x840,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_13",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_13`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_13: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 43,
+    byte_offset: 0x844,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_13",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_13`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_13: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 44,
+    byte_offset: 0x848,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_13",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_14`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_14: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 45,
+    byte_offset: 0x84c,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_14",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_14`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_14: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 46,
+    byte_offset: 0x850,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_14",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_14`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_14: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 47,
+    byte_offset: 0x854,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_14",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_ECC_REVOCATION_15`.
+pub const OTP_CPTRA_CORE_ECC_REVOCATION_15: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 48,
+    byte_offset: 0x858,
+    byte_size: 4,
+    name: "CPTRA_CORE_ECC_REVOCATION_15",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_LMS_REVOCATION_15`.
+pub const OTP_CPTRA_CORE_LMS_REVOCATION_15: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 49,
+    byte_offset: 0x85c,
+    byte_size: 4,
+    name: "CPTRA_CORE_LMS_REVOCATION_15",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `CPTRA_CORE_MLDSA_REVOCATION_15`.
+pub const OTP_CPTRA_CORE_MLDSA_REVOCATION_15: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 12,
+    entry_num: 50,
+    byte_offset: 0x860,
+    byte_size: 4,
+    name: "CPTRA_CORE_MLDSA_REVOCATION_15",
+    layout: FuseLayoutType::Single { bits: 32 },
+};
+/// OTP item entry for `vendor_recovery_pk_hash`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 0,
+    byte_offset: 0x870,
+    byte_size: 32,
+    name: "vendor_recovery_pk_hash",
+    layout: FuseLayoutType::Single { bits: 384 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_1`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_1: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 1,
+    byte_offset: 0x890,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_1",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_2`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_2: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 2,
+    byte_offset: 0x8b0,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_2",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_3`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_3: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 3,
+    byte_offset: 0x8d0,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_3",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_4`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_4: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 4,
+    byte_offset: 0x8f0,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_4",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_5`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_5: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 5,
+    byte_offset: 0x910,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_5",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_6`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_6: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 6,
+    byte_offset: 0x930,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_6",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_7`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_7: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 7,
+    byte_offset: 0x950,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_7",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_8`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_8: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 8,
+    byte_offset: 0x970,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_8",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_9`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_9: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 9,
+    byte_offset: 0x990,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_9",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_10`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_10: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 10,
+    byte_offset: 0x9b0,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_10",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_11`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_11: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 11,
+    byte_offset: 0x9d0,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_11",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_12`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_12: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 12,
+    byte_offset: 0x9f0,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_12",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_13`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_13: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 13,
+    byte_offset: 0xa10,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_13",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_14`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_14: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 14,
+    byte_offset: 0xa30,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_14",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_15`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_15: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 13,
+    entry_num: 15,
+    byte_offset: 0xa50,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_15",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `dot_initialized`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_0: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 0,
+    byte_offset: 0xa78,
+    byte_size: 32,
+    name: "dot_initialized",
+    layout: FuseLayoutType::LinearMajorityVote {
+        bits: 1,
+        duplication: 3,
+    },
+};
+/// OTP item entry for `dot_fuse_array`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_1: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 1,
+    byte_offset: 0xa98,
+    byte_size: 32,
+    name: "dot_fuse_array",
+    layout: FuseLayoutType::OneHot { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 2,
+    byte_offset: 0xab8,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 3,
+    byte_offset: 0xad8,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 4,
+    byte_offset: 0xaf8,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 5,
+    byte_offset: 0xb18,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 6,
+    byte_offset: 0xb38,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 7,
+    byte_offset: 0xb58,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_7",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 8,
+    byte_offset: 0xb78,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 9,
+    byte_offset: 0xb98,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_10`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_10: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 10,
+    byte_offset: 0xbb8,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_10",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_11`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_11: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 11,
+    byte_offset: 0xbd8,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_11",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_12`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_12: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 12,
+    byte_offset: 0xbf8,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_12",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_13`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_13: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 13,
+    byte_offset: 0xc18,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_13",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_14`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_14: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 14,
+    byte_offset: 0xc38,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_14",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
+/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_15`.
+pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_15: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 14,
+    entry_num: 15,
+    byte_offset: 0xc58,
+    byte_size: 32,
+    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_15",
+    layout: FuseLayoutType::Single { bits: 256 },
+};
