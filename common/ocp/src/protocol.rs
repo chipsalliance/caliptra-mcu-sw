@@ -2,6 +2,7 @@
 
 //! OCP Secure Firmware Recovery protocol definitions (spec v1.1, Section 9).
 
+pub mod device_id;
 pub mod device_reset;
 pub mod device_status;
 pub mod hw_status;
