@@ -5776,6 +5776,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "caliptra-api-types",
  "caliptra-auth-man-types",
  "caliptra-bitstream-downloader",
@@ -5787,6 +5788,7 @@ dependencies = [
  "cc",
  "clap 4.5.51",
  "clap-num",
+ "ecdsa",
  "elf",
  "fusegen",
  "hex",
@@ -5797,6 +5799,7 @@ dependencies = [
  "mcu-fuses-generator",
  "mcu-hw-model",
  "mcu-rom-common",
+ "p384",
  "pldm-fw-pkg",
  "proc-macro2",
  "quote",
@@ -5805,11 +5808,15 @@ dependencies = [
  "semver",
  "serde",
  "serde-hjson",
+ "serde_json",
+ "sha2",
  "sudo",
  "tempfile",
  "toml 0.8.23",
+ "uuid",
  "walkdir",
  "zerocopy",
+ "zip",
 ]
 
 [[package]]

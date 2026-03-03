@@ -95,6 +95,7 @@ aes-gcm = "0.10.3"
 anyhow = "1.0.97"
 arrayvec = { version = "0.7.4", default-features = false }
 async-trait = "0.1.87"
+base64 = "0.22"
 bitfield = "0.14.0"
 bitflags = "2.4.0"
 bit-vec = "0.6.3"
