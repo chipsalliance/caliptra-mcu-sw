@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license
-
-pub mod lib_generator;
+#![no_std]
 
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
