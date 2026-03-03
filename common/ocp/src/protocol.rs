@@ -4,6 +4,7 @@
 
 pub mod device_reset;
 pub mod device_status;
+pub mod hw_status;
 pub mod indirect_ctrl;
 pub mod indirect_fifo_ctrl;
 pub mod indirect_fifo_status;
