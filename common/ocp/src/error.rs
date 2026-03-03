@@ -34,4 +34,6 @@ pub enum OcpError {
     RecoveryStatusImageIndexOutOfRange = 13,
     /// INDIRECT_CTRL: IMO is not 4-byte aligned (bits 1:0 must be zero).
     IndirectCtrlImoNotAligned = 14,
+    /// INDIRECT_STATUS: reserved CMS region type value (byte 1, bits 0-2).
+    IndirectStatusInvalidCmsRegionType = 15,
 }
