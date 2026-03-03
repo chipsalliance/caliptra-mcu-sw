@@ -2,10 +2,8 @@
 
 use crate::registers::{file_check_contents, rustfmt, write_file};
 use anyhow::Result;
+use fusegen::{OtpMmap, HEADER_PREFIX, HEADER_SUFFIX, OTP_CTRL_MMAP_DEFAULT_PATH, SKIP_PARTITIONS};
 use mcu_builder::PROJECT_ROOT;
-use provisioning_fuses::lib_generator::{
-    OtpMmap, HEADER_PREFIX, HEADER_SUFFIX, OTP_CTRL_MMAP_DEFAULT_PATH, SKIP_PARTITIONS,
-};
 use registers_generator::snake_case;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};

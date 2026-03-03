@@ -47,7 +47,8 @@ members = [
     "platforms/fpga/rom",
     "platforms/fpga/runtime",
     "platforms/test_harness",
-    "provisioning/fuses/autogen",
+    "provisioning/fuses/fusegen",
+    "provisioning/fuses/lib",
     "registers/fuses",
     "registers/generated-emulator",
     "registers/generated-firmware",
@@ -149,7 +150,7 @@ num-derive = "0.4.2"
 num-traits = "0.2"
 openssl = { version = "0.10", features = ["vendored"] }
 pkcs8 = "0.10.2"
-phf = "0.11"
+phf = { version = "0.11", default-features = false }
 portable-atomic = "1.7.0"
 p384 = "0.13.0"
 prettyplease = "0.2.37"
@@ -205,6 +206,7 @@ flash-ctrl-emulator = { path = "platforms/emulator/runtime/kernel/drivers/flash_
 flash-ctrl-fpga = { path = "platforms/fpga/runtime/drivers/flash_ctrl"}
 flash-driver = { path = "runtime/kernel/drivers/flash" }
 flash-image = { path = "common/flash-image" }
+fusegen = { path = "provisioning/fuses/fusegen" }
 i3c-driver = { path = "runtime/kernel/drivers/i3c" }
 libtockasync = { path = "runtime/userspace/libtockasync" }
 mcu-builder = { path = "builder" }
@@ -214,7 +216,6 @@ mcu-config-emulator = { path = "platforms/emulator/config" }
 mcu-config-fpga = { path = "platforms/fpga/config" }
 mcu-error = { path = "error" }
 mcu-firmware-bundler = { path = "firmware-bundler" }
-provisioning-fuses = { path = "provisioning/fuses/autogen" }
 mcu-fuses-generator = { path = "registers/fuses" }
 mcu-hw-model = { path = "hw/model" }
 mcu-hw-model-test-fw = { path = "hw/model/test-fw" }
@@ -240,6 +241,7 @@ pldm-common = { path = "common/pldm"}
 pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
 pldm-ua = { path = "emulator/bmc/pldm-ua"}
 poll-common = { path = "common/poll"}
+provisioning-fuses = { path = "provisioning/fuses/lib" }
 registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }

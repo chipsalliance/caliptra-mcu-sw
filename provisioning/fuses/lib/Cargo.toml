@@ -1,0 +1,13 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "provisioning-fuses"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+phf = { workspace = true,  features = ["macros"] }
+
+[build-dependencies]
+fusegen.workspace = true
+anyhow.workspace = true
