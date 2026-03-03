@@ -1,12 +1,14 @@
 // Licensed under the Apache-2.0 license
 
 mod cert_store;
+mod crypto_provider;
 mod device_cert_store;
 mod device_measurements;
 mod endorsement_certs;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 mod integration_example;
 
+use crate::spdm::crypto_provider::CaliptraCryptoProvider;
 #[cfg(feature = "test-mctp-spdm-responder-conformance")]
 use crate::spdm::device_measurements::ocp_eat::init_target_env_claims;
 use core::fmt::Write;
@@ -90,6 +92,8 @@ async fn spdm_mctp_responder() {
     };
 
     let local_algorithms = LocalDeviceAlgorithms::default();
+    // Out-of-tree SPDM crypto provider backed by Caliptra
+    let mut crypto_provider = CaliptraCryptoProvider::new();
 
     // Create a wrapper for the global certificate store
     let shared_cert_store = SharedCertStore::new();
@@ -116,6 +120,7 @@ async fn spdm_mctp_responder() {
         &shared_cert_store,
         device_measurements,
         None, // VDM handlers are not supported for MCTP transport in this configuration
+        &mut crypto_provider,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
@@ -171,6 +176,8 @@ async fn spdm_doe_responder() {
     device_doe_algorithms.set_other_param_support();
 
     let local_algorithms = LocalDeviceAlgorithms::new(device_doe_algorithms);
+    // Out-of-tree SPDM crypto provider backed by Caliptra
+    let mut crypto_provider = CaliptraCryptoProvider::new();
 
     // Create a wrapper for the global certificate store
     let shared_cert_store = SharedCertStore::new();
@@ -230,6 +237,7 @@ async fn spdm_doe_responder() {
         &shared_cert_store,
         device_measurements,
         vdm_handlers,
+        &mut crypto_provider,
     ) {
         Ok(ctx) => ctx,
         Err(e) => {
