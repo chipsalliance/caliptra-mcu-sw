@@ -28,4 +28,6 @@ pub enum OcpError {
     RecoveryStatusInvalidStatus = 10,
     /// INDIRECT_CTRL: IMO is not 4-byte aligned (bits 1:0 must be zero).
     IndirectCtrlImoNotAligned = 11,
+    /// INDIRECT_STATUS: reserved CMS region type value (byte 1, bits 0-2).
+    IndirectStatusInvalidCmsRegionType = 12,
 }
