@@ -5,6 +5,7 @@
 pub mod device_reset;
 pub mod indirect_ctrl;
 pub mod indirect_fifo_ctrl;
+pub mod indirect_fifo_status;
 pub mod indirect_status;
 pub mod prot_cap;
 pub mod recovery_ctrl;
