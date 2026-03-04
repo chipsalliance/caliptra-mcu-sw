@@ -6,5 +6,6 @@
 
 #![cfg_attr(not(test), no_std)]
 
+pub mod cms;
 pub mod error;
 pub mod protocol;

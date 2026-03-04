@@ -45,3 +45,18 @@ pub enum OcpError {
     /// DEVICE_ID: vendor-specific string exceeds maximum length of 231 bytes.
     DeviceIdVendorStringTooLong = 19,
 }
+
+/// Errors returned by CMS region operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CmsError {
+    /// Attempted to write to a read-only region.
+    ReadOnly,
+    /// Attempted to read from a write-only region.
+    WriteOnly,
+    /// Attempted to push into a full FIFO.
+    FifoFull,
+    /// Attempted to pop from an empty FIFO.
+    FifoEmpty,
+    /// Attempted a transaction on a polling region that is not ready.
+    PollingNotReady,
+}
