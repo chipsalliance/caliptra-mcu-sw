@@ -10,6 +10,7 @@ use std::path::PathBuf;
 mod auth_manifest;
 mod cargo_lock;
 mod clippy;
+mod corim;
 mod deps;
 mod docs;
 mod emulator_cbinding;
@@ -178,6 +179,11 @@ enum Commands {
         /// Path to the PLDM manifest TOML file
         #[arg(short, long, value_name = "MANIFEST", required = false)]
         pldm_manifest: Option<String>,
+    },
+    /// Generate CoRIM (Concise Reference Integrity Manifest) from build artifacts
+    Corim {
+        #[command(subcommand)]
+        subcommand: CorimCommands,
     },
     /// Commands related to flash images
     FlashImage {
@@ -387,6 +393,55 @@ enum EmulatorCbindingCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum CorimCommands {
+    /// Generate a reference-value CoRIM from a firmware bundle
+    #[command(long_about = "\
+Generate a reference-value CoRIM from a firmware bundle.
+
+Reads the all-build ZIP bundle (from `cargo xtask all-build`) and produces
+CoMID/CoRIM CBOR files with reference value digests for each firmware component.
+
+Components are auto-discovered from the bundle:
+  mkey 0: FMC_INFO      - Caliptra FMC (from caliptra_fw.bin)
+  mkey 1: RT_INFO        - Caliptra Runtime (from caliptra_fw.bin)
+  mkey 2: SOC_MANIFEST   - Authorization Manifest (soc_manifest.bin)
+  mkey 3+: SoC firmware  - Auto-discovered from AuthManifest metadata
+
+CONFIG FILE (--config):
+  Optional JSON file controlling vendor/model, hash algorithm, output
+  directory, and signing. Run `cargo xtask corim sample-config` to see
+  a fully annotated sample. All fields are optional with defaults:
+
+    vendor      \"ChipsAlliance\"    Vendor string for SoC components
+    model       \"Caliptra-SS\"      Model string for SoC components
+    hash_algo   \"sha-384\"          Digest algorithm (sha-256 or sha-384)
+    output_dir  \"target/corim\"     Output directory
+    signing     (default test key)  Always signs; uses deterministic P-384 test key by default
+
+  Signing modes (mutually exclusive):
+    test_key    Seed string for deterministic P-384 test key generation (default if omitted)
+    key + cert  Paths to external JWK (RFC 7517) key and DER certificate
+
+EXAMPLES:
+  # Signed with default test key, all defaults:
+  cargo xtask corim gen-refval --bundle target/all-fw.zip
+
+  # With custom config (signing, vendor, etc.):
+  cargo xtask corim gen-refval --bundle target/all-fw.zip --config config.json")]
+    GenRefval {
+        /// Path to the firmware bundle ZIP (from `cargo xtask all-build`)
+        #[arg(long, value_name = "BUNDLE", required = true)]
+        bundle: String,
+
+        /// Path to JSON config file (vendor, model, hash_algo, signing, etc.)
+        #[arg(long, value_name = "CONFIG")]
+        config: Option<String>,
+    },
+    /// Print a sample JSON config file with all fields documented
+    SampleConfig,
+}
+
 fn main() {
     let cli = Xtask::parse();
     let result = match &cli.xtask {
@@ -504,6 +559,16 @@ fn main() {
                 output,
             } => auth_manifest::create(images, mcu_image, output),
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
+        },
+        Commands::Corim { subcommand } => match subcommand {
+            CorimCommands::GenRefval { bundle, config } => {
+                corim::CorimConfig::load(config.as_deref())
+                    .and_then(|cfg| corim::generate(bundle, cfg))
+            }
+            CorimCommands::SampleConfig => {
+                corim::CorimConfig::print_sample();
+                Ok(())
+            }
         },
         Commands::FirmwareBundler { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
         Commands::Network { cmd } => network::run(cmd.clone()),
