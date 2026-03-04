@@ -8,5 +8,7 @@
 
 pub mod cms;
 pub mod error;
+pub mod interface;
 pub mod protocol;
 pub mod usb;
+pub mod vendor;
