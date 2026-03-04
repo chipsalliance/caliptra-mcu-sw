@@ -63,3 +63,8 @@ pub const EMULATOR_MCU_STRAPS: McuStraps = McuStraps {
     active_i3c: ACTIVE_I3C,
     ..McuStraps::default()
 };
+
+/// The MRAC value which should be populated for this memory map.  This corresponds to a value
+/// utilized within the global start assembly and thus must be unmangled.
+#[no_mangle]
+pub static MRAC_VALUE: u32 = EMULATOR_MEMORY_MAP.compute_mrac();
