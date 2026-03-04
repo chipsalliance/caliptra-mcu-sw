@@ -14,12 +14,14 @@ Abstract:
 
 --*/
 
+use crate::network_mbox::NetworkMailboxInternal;
 use crate::{EmuCtrl, Ethernet, TapDevice, Uart};
 use caliptra_emu_bus::Event;
 use caliptra_emu_bus::{Bus, BusError, Clock, Ram, Rom};
 use caliptra_emu_cpu::{Pic, PicMmioRegisters};
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use caliptra_mcu_emulator_registers_generated::ethernet::EthernetBus;
+use caliptra_mcu_emulator_registers_generated::network_mbox::NetworkMboxBus;
 use caliptra_mcu_network_config::DEFAULT_NETWORK_MEMORY_MAP;
 use std::{
     cell::RefCell,
@@ -28,7 +30,6 @@ use std::{
     sync::{mpsc, Arc, Mutex},
 };
 
-/// Offsets for peripherals mounted to the Network Coprocessor bus.
 #[derive(Debug, Clone)]
 pub struct NetworkRootBusOffsets {
     pub rom_offset: u32,
@@ -45,6 +46,8 @@ pub struct NetworkRootBusOffsets {
     pub pic_size: u32,
     pub eth_offset: u32,
     pub eth_size: u32,
+    pub network_mbox_offset: u32,
+    pub network_mbox_size: u32,
 }
 
 impl Default for NetworkRootBusOffsets {
@@ -64,11 +67,12 @@ impl Default for NetworkRootBusOffsets {
             pic_size: DEFAULT_NETWORK_MEMORY_MAP.pic_size,
             eth_offset: DEFAULT_NETWORK_MEMORY_MAP.eth_offset,
             eth_size: DEFAULT_NETWORK_MEMORY_MAP.eth_size,
+            network_mbox_offset: DEFAULT_NETWORK_MEMORY_MAP.network_mbox_offset,
+            network_mbox_size: DEFAULT_NETWORK_MEMORY_MAP.network_mbox_size,
         }
     }
 }
 
-/// Network Root Bus Arguments
 #[derive(Default)]
 pub struct NetworkRootBusArgs {
     pub pic: Rc<Pic>,
@@ -78,6 +82,7 @@ pub struct NetworkRootBusArgs {
     pub uart_output: Option<Rc<RefCell<Vec<u8>>>>,
     pub uart_rx: Option<Arc<Mutex<Option<u8>>>>,
     pub tap_device: Option<Arc<Mutex<Box<dyn TapDevice>>>>,
+    pub network_mbox: Option<NetworkMailboxInternal>,
     pub offsets: NetworkRootBusOffsets,
 }
 
@@ -99,6 +104,7 @@ pub struct NetworkRootBus {
     pub dccm: Rc<RefCell<Ram>>,
     pub pic_regs: PicMmioRegisters,
     pub eth: EthernetBus,
+    pub network_mbox: Option<NetworkMboxBus>,
     event_sender: Option<mpsc::Sender<Event>>,
     offsets: NetworkRootBusOffsets,
 }
@@ -125,6 +131,10 @@ impl NetworkRootBus {
             periph: Box::new(eth),
         };
 
+        let network_mbox = args.network_mbox.map(|mbox| NetworkMboxBus {
+            periph: Box::new(mbox),
+        });
+
         Ok(Self {
             rom,
             iccm: Rc::new(RefCell::new(iccm)),
@@ -133,12 +143,12 @@ impl NetworkRootBus {
             ctrl,
             pic_regs: pic.mmio_regs(clock.clone()),
             eth: eth_bus,
+            network_mbox,
             event_sender: None,
             offsets: args.offsets,
         })
     }
 
-    /// Load data into ICCM at the specified offset
     pub fn load_iccm(&mut self, offset: usize, data: &[u8]) {
         if offset + data.len() > self.iccm.borrow().len() as usize {
             panic!("Data exceeds ICCM size");
@@ -149,25 +159,21 @@ impl NetworkRootBus {
 
 impl Bus for NetworkRootBus {
     fn read(&mut self, size: RvSize, addr: RvAddr) -> Result<RvData, BusError> {
-        // ROM access
         if addr >= self.offsets.rom_offset && addr < self.offsets.rom_offset + self.offsets.rom_size
         {
             return self.rom.read(size, addr - self.offsets.rom_offset);
         }
-        // UART access
         if addr >= self.offsets.uart_offset
             && addr < self.offsets.uart_offset + self.offsets.uart_size
         {
             return self.uart.read(size, addr - self.offsets.uart_offset);
         }
-        // Control register access
         if addr >= self.offsets.ctrl_offset
             && addr < self.offsets.ctrl_offset + self.offsets.ctrl_size
         {
             let ctrl_addr = addr - self.offsets.ctrl_offset;
             return self.ctrl.read(size, ctrl_addr);
         }
-        // ICCM access
         if addr >= self.offsets.iccm_offset
             && addr < self.offsets.iccm_offset + self.offsets.iccm_size
         {
@@ -176,7 +182,6 @@ impl Bus for NetworkRootBus {
                 .borrow_mut()
                 .read(size, addr - self.offsets.iccm_offset);
         }
-        // DCCM access
         if addr >= self.offsets.dccm_offset
             && addr < self.offsets.dccm_offset + self.offsets.dccm_size
         {
@@ -185,39 +190,42 @@ impl Bus for NetworkRootBus {
                 .borrow_mut()
                 .read(size, addr - self.offsets.dccm_offset);
         }
-        // PIC access
         if addr >= self.offsets.pic_offset && addr < self.offsets.pic_offset + self.offsets.pic_size
         {
             return self.pic_regs.read(size, addr - self.offsets.pic_offset);
         }
-        // Ethernet access
         if addr >= self.offsets.eth_offset && addr < self.offsets.eth_offset + self.offsets.eth_size
         {
             return self.eth.read(size, addr - self.offsets.eth_offset);
+        }
+        if addr >= self.offsets.network_mbox_offset
+            && addr < self.offsets.network_mbox_offset + self.offsets.network_mbox_size
+        {
+            let mbox = self
+                .network_mbox
+                .as_mut()
+                .expect("network_mbox is not initialized");
+            return mbox.read(size, addr - self.offsets.network_mbox_offset);
         }
         Err(BusError::LoadAccessFault)
     }
 
     fn write(&mut self, size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
-        // ROM is read-only, but we still check the range
         if addr >= self.offsets.rom_offset && addr < self.offsets.rom_offset + self.offsets.rom_size
         {
-            return Err(BusError::StoreAccessFault); // ROM is read-only
+            return Err(BusError::StoreAccessFault);
         }
-        // UART access
         if addr >= self.offsets.uart_offset
             && addr < self.offsets.uart_offset + self.offsets.uart_size
         {
             return self.uart.write(size, addr - self.offsets.uart_offset, val);
         }
-        // Control register access
         if addr >= self.offsets.ctrl_offset
             && addr < self.offsets.ctrl_offset + self.offsets.ctrl_size
         {
             let ctrl_addr = addr - self.offsets.ctrl_offset;
             return self.ctrl.write(size, ctrl_addr, val);
         }
-        // ICCM access
         if addr >= self.offsets.iccm_offset
             && addr < self.offsets.iccm_offset + self.offsets.iccm_size
         {
@@ -226,7 +234,6 @@ impl Bus for NetworkRootBus {
                 .borrow_mut()
                 .write(size, addr - self.offsets.iccm_offset, val);
         }
-        // DCCM access
         if addr >= self.offsets.dccm_offset
             && addr < self.offsets.dccm_offset + self.offsets.dccm_size
         {
@@ -235,17 +242,24 @@ impl Bus for NetworkRootBus {
                 .borrow_mut()
                 .write(size, addr - self.offsets.dccm_offset, val);
         }
-        // PIC access
         if addr >= self.offsets.pic_offset && addr < self.offsets.pic_offset + self.offsets.pic_size
         {
             return self
                 .pic_regs
                 .write(size, addr - self.offsets.pic_offset, val);
         }
-        // Ethernet access
         if addr >= self.offsets.eth_offset && addr < self.offsets.eth_offset + self.offsets.eth_size
         {
             return self.eth.write(size, addr - self.offsets.eth_offset, val);
+        }
+        if addr >= self.offsets.network_mbox_offset
+            && addr < self.offsets.network_mbox_offset + self.offsets.network_mbox_size
+        {
+            let mbox = self
+                .network_mbox
+                .as_mut()
+                .expect("network_mbox is not initialized");
+            return mbox.write(size, addr - self.offsets.network_mbox_offset, val);
         }
         Err(BusError::StoreAccessFault)
     }

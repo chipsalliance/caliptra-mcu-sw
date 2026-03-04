@@ -8,6 +8,7 @@ use crate::trace_path_or_env;
 use crate::InitParams;
 use crate::McuHwModel;
 use crate::McuManager;
+use crate::NetworkManager;
 use crate::DEFAULT_LIFECYCLE_RAW_TOKENS;
 use anyhow::bail;
 use anyhow::Result;
@@ -34,6 +35,7 @@ use caliptra_mcu_emulator_caliptra::StartCaliptraArgs;
 use caliptra_mcu_emulator_periph::DummyFlashCtrl;
 use caliptra_mcu_emulator_periph::LcCtrl;
 use caliptra_mcu_emulator_periph::McuRootBusOffsets;
+use caliptra_mcu_emulator_periph::NetworkMailboxInternal;
 use caliptra_mcu_emulator_periph::NetworkRootBus;
 use caliptra_mcu_emulator_periph::{
     I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp, OtpArgs,
@@ -402,6 +404,7 @@ impl McuHwModel for ModelEmulated {
 
         let usb_periph = caliptra_mcu_emulator_periph::UsbDevPeriph::new();
         let usb_host_controller = usb_periph.host_controller();
+        let network_mbox = NetworkMailboxInternal::new(&clock.clone());
 
         let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
             vec![Box::new(mcu_root_bus), Box::new(soc_to_caliptra)];
@@ -414,6 +417,7 @@ impl McuHwModel for ModelEmulated {
             Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
             Some(Box::new(secondary_flash_controller)),
+            Some(Box::new(network_mbox.clone())),
             Some(Box::new(mci)),
             None,
             None,
@@ -503,6 +507,7 @@ impl McuHwModel for ModelEmulated {
                 clock: network_clock.clone(),
                 uart_output: Some(network_uart_output.clone()),
                 tap_device: params.network_tap_device.clone(),
+                network_mbox: Some(network_mbox),
                 ..Default::default()
             };
 
@@ -752,6 +757,10 @@ impl McuHwModel for ModelEmulated {
             .map(|output| String::from_utf8_lossy(&output.borrow()).to_string())
     }
 
+    fn network_manager(&mut self) -> impl NetworkManager {
+        self
+    }
+
     fn warm_reset(&mut self) {
         self.cpu.warm_reset();
         self.step();
@@ -833,6 +842,22 @@ impl SocManager for &mut ModelEmulated {
     const SOC_MBOX_ADDR: u32 = 0x3002_0000;
 
     const MAX_WAIT_CYCLES: u32 = 20_000_000;
+}
+
+impl NetworkManager for &mut ModelEmulated {
+    fn mbox(
+        &mut self,
+    ) -> &mut dyn caliptra_mcu_emulator_registers_generated::network_mbox::NetworkMboxPeripheral
+    {
+        self.cpu
+            .bus
+            .bus
+            .network_mbox_periph
+            .as_mut()
+            .expect("network mailbox is not initialized; check has_network_cpu() first")
+            .periph
+            .as_mut()
+    }
 }
 
 impl Drop for ModelEmulated {

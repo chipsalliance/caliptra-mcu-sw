@@ -962,6 +962,7 @@ impl Emulator {
             Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
             Some(Box::new(secondary_flash_controller)),
+            None,
             Some(Box::new(mci)),
             Some(Box::new(doe_mbox)),
             None,
@@ -1051,6 +1052,7 @@ impl Emulator {
                 tap_device: None,
                 pic: network_pic.clone(),
                 clock: clock.clone(),
+                network_mbox: None,
             };
             let network_root_bus = NetworkRootBus::new(network_bus_args).unwrap();
 

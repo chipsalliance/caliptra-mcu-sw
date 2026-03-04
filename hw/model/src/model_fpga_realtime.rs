@@ -2,7 +2,7 @@
 
 #![allow(clippy::mut_from_ref)]
 
-use crate::{InitParams, McuHwModel, McuManager};
+use crate::{InitParams, McuHwModel, McuManager, NetworkManager};
 use anyhow::{bail, Result};
 use caliptra_api::SocManager;
 use caliptra_emu_bus::{Bus, BusError, BusMmio, Event};
@@ -13,6 +13,7 @@ use caliptra_hw_model::{
     CaliptraHwVersion, DeviceLifecycle, HwModel, InitParams as CaliptraInitParams,
     ModelFpgaSubsystem, Output, SecurityState, SubsystemInitParams, XI3CWrapper,
 };
+use caliptra_mcu_emulator_registers_generated::network_mbox::NetworkMboxPeripheral;
 use caliptra_mcu_romtime::LifecycleControllerState;
 use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_testing_common::i3c::{
@@ -862,6 +863,16 @@ impl McuHwModel for ModelFpgaRealtime {
 
     fn mci_flow_status(&mut self) -> u32 {
         self.base.mci_flow_status()
+    }
+
+    fn network_manager(&mut self) -> impl NetworkManager {
+        struct FpgaNetworkManager;
+        impl NetworkManager for FpgaNetworkManager {
+            fn mbox(&mut self) -> &mut dyn NetworkMboxPeripheral {
+                unimplemented!("Network mailbox not available on FPGA")
+            }
+        }
+        FpgaNetworkManager
     }
 
     fn warm_reset(&mut self) {

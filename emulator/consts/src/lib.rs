@@ -39,6 +39,7 @@ pub const MCU_MAILBOX1_SRAM_SIZE: u32 = 2 * 1024 * 1024;
 pub const DOT_FLASH_SIZE: u32 = 4 * 1024; // DOT flash
 
 // Network Coprocessor constants (re-exported from network-config for convenience)
+pub const NETWORK_MAILBOX_SRAM_SIZE: u32 = DEFAULT_NETWORK_MEMORY_MAP.network_mbox_sram_size;
 pub const NETWORK_ROM_ORG: u32 = DEFAULT_NETWORK_MEMORY_MAP.rom_offset;
 pub const NETWORK_ROM_SIZE: u32 = DEFAULT_NETWORK_MEMORY_MAP.rom_size;
 

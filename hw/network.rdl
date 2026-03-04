@@ -1,5 +1,7 @@
 `include "ethernet.rdl"
+`include "network_mbox_csr.rdl"
 
 addrmap network {
     ethernet ethernet @ 0x1000_3000;
+    network_mbox_csr network_mbox_csr @ 0x2000_9000;
 };

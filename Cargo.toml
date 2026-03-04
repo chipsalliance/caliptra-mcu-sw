@@ -305,7 +305,7 @@ caliptra-mcu-platforms-common = { path = "platforms/common" }
 caliptra-mcu-rom-common = { path = "rom" }
 caliptra-mcu-usb-emulator = { path = "platforms/emulator/rom/usb" }
 caliptra-mcu-test-harness = {path = "platforms/test_harness"}
-caliptra-mcu-lwip-rs = { path = "network/net/lwip-rs" }
+caliptra-mcu-lwip-rs = { path = "network/net/lwip-rs", default-features = false }
 caliptra-mcu-ocp = { path = "common/ocp" }
 caliptra-mcu-network-app-rom-test = { path = "network/app/test" }
 caliptra-mcu-network-config = { path = "network/config" }
