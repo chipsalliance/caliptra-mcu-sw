@@ -83,6 +83,11 @@ pub struct LdArgs {
     /// usage.  If not specified the default tockOS app layout file will be used.
     #[arg(long)]
     pub app_ld_base: Option<PathBuf>,
+
+    /// The base bare metal linker layout. If not specified the default bare metal layout file will
+    /// be used.
+    #[arg(long)]
+    pub bare_metal_ld_base: Option<PathBuf>,
 }
 
 /// Arguments required for commands which execute the build step of the bundle process.

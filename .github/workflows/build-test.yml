@@ -269,6 +269,7 @@ jobs:
           cargo --config "$EXTRA_CARGO_CONFIG" nextest archive \
             --workspace \
             --features ocp-lock \
+            --exclude bare-metal-runtime \
             --exclude mcu-rom-emulator \
             --exclude mcu-rom-fpga \
             --exclude mcu-runtime-emulator \

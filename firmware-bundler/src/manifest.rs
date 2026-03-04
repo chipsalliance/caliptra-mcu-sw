@@ -18,14 +18,61 @@ pub struct Manifest {
     /// sole access to the ROM memory, and assumed to have full access to the RAM memory.
     pub rom: Option<Binary>,
 
-    /// The tock kernel application.  This will be placed at the beginning of ITCM.
-    pub kernel: Binary,
+    /// The primary runtime binary. This can either be a Tock kernel or a bare metal binary.
+    #[serde(flatten)]
+    pub runtime: Runtime,
 
     /// The set of userspace apps which should be deployed to the given platform.  The ordering of
     /// binaries indicates the order applications should be allocated memory from the space
     /// remaining after the kernel allocation.
-    #[serde(rename = "app")]
+    #[serde(rename = "app", default)]
     pub apps: Vec<App>,
+}
+
+/// The primary runtime binary.
+pub type Runtime = RuntimeVariant<Binary>;
+
+/// A generic wrapper for a runtime binary, supporting both Tock kernel and bare metal variants.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum RuntimeVariant<T> {
+    /// A Tock kernel binary.
+    #[serde(rename = "kernel")]
+    Kernel(T),
+
+    /// A bare metal runtime binary.
+    #[serde(rename = "bare_metal")]
+    BareMetal(T),
+}
+
+impl<T> RuntimeVariant<T> {
+    /// Retrieve a reference to the inner value.
+    pub fn inner(&self) -> &T {
+        match self {
+            Self::Kernel(t) => t,
+            Self::BareMetal(t) => t,
+        }
+    }
+
+    /// Retrieve a mutable reference to the inner value.
+    pub fn inner_mut(&mut self) -> &mut T {
+        match self {
+            Self::Kernel(t) => t,
+            Self::BareMetal(t) => t,
+        }
+    }
+
+    /// Return true if this is a bare metal runtime.
+    pub fn is_bare_metal(&self) -> bool {
+        matches!(self, Self::BareMetal(_))
+    }
+
+    /// Map the inner value.
+    pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> RuntimeVariant<U> {
+        match self {
+            Self::Kernel(t) => RuntimeVariant::Kernel(f(t)),
+            Self::BareMetal(t) => RuntimeVariant::BareMetal(f(t)),
+        }
+    }
 }
 
 impl Manifest {
@@ -64,9 +111,16 @@ impl Manifest {
             }
         }
 
-        self.kernel.validate(dynamic_sizing)?;
-        for app in &self.apps {
-            app.binary.validate(dynamic_sizing)?;
+        self.runtime.inner().validate(dynamic_sizing)?;
+
+        if self.runtime.is_bare_metal() {
+            if !self.apps.is_empty() {
+                bail!("Apps are not supported with bare_metal runtime");
+            }
+        } else {
+            for app in &self.apps {
+                app.binary.validate(dynamic_sizing)?;
+            }
         }
 
         Ok(())
@@ -383,7 +437,10 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::{AllocationRequest, Binary, Memory};
+    use super::{
+        AllocationRequest, App, Binary, Manifest, Memory, Platform, Runtime, RuntimeMemory,
+        RuntimeVariant,
+    };
 
     #[test]
     fn memory_consume_with_room() {
@@ -539,5 +596,112 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("no stack specified"));
+    }
+
+    // ==================== Manifest::validate() Tests ====================
+
+    #[test]
+    fn manifest_validate_kernel_no_apps() {
+        // A manifest with only a kernel is valid.
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x1000, 0x1000, 0x1000, 0x1000),
+            None,
+            RuntimeVariant::Kernel(test_binary("kernel", 0x100, 0x100)),
+            vec![],
+        );
+        assert!(manifest.validate().is_ok());
+    }
+
+    #[test]
+    fn manifest_validate_bare_metal_no_apps() {
+        // A manifest with only a bare_metal runtime is valid.
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x1000, 0x1000, 0x1000, 0x1000),
+            None,
+            RuntimeVariant::BareMetal(test_binary("bare_metal", 0x100, 0x100)),
+            vec![],
+        );
+        assert!(manifest.validate().is_ok());
+    }
+
+    #[test]
+    fn manifest_validate_bare_metal_with_apps() {
+        // A manifest with a bare_metal runtime cannot also specify Tock applications.
+        let manifest = test_manifest(
+            test_platform(0x1000, 0x1000, 0x1000, 0x1000, 0x1000),
+            None,
+            RuntimeVariant::BareMetal(test_binary("bare_metal", 0x100, 0x100)),
+            vec![test_app("app1", 0x100, 0x100)],
+        );
+        let result = manifest.validate();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Apps are not supported with bare_metal"));
+    }
+
+    fn test_platform(
+        rom_size: u64,
+        itcm_size: u64,
+        ram_size: u64,
+        dccm_size: u64,
+        handoff_size: u64,
+    ) -> Platform {
+        Platform {
+            name: "test".to_string(),
+            tuple: "riscv32imc-unknown-none-elf".to_string(),
+            dynamic_sizing: Some(false),
+            default_alignment: Some(8),
+            page_size: Some(256),
+            rom: Memory {
+                offset: 0x0,
+                size: rom_size,
+            },
+            runtime_memory: RuntimeMemory::Tcm {
+                itcm: Memory {
+                    offset: 0x10000,
+                    size: itcm_size,
+                },
+                dtcm: Memory {
+                    offset: 0x20000,
+                    size: ram_size,
+                },
+            },
+            dccm: Some(Memory {
+                offset: 0x30000,
+                size: dccm_size,
+            }),
+            handoff: Some(Memory {
+                offset: 0x40000,
+                size: handoff_size,
+            }),
+            flash: None,
+        }
+    }
+
+    fn test_binary(name: &str, exec_size: u64, ram_size: u64) -> Binary {
+        Binary::new_for_test(name, exec_size, ram_size, None, 0)
+    }
+
+    fn test_app(name: &str, exec_size: u64, ram_size: u64) -> App {
+        App {
+            binary: test_binary(name, exec_size, ram_size),
+            grant_space: None,
+        }
+    }
+
+    fn test_manifest(
+        platform: Platform,
+        rom: Option<Binary>,
+        runtime: Runtime,
+        apps: Vec<App>,
+    ) -> Manifest {
+        Manifest {
+            platform,
+            rom,
+            runtime,
+            apps,
+        }
     }
 }

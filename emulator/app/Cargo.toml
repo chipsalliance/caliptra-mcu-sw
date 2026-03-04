@@ -71,6 +71,7 @@ path = "src/lib.rs"
 [features]
 default = ["ocp-lock"]
 ocp-lock = []
+test-bare-metal = []
 test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []

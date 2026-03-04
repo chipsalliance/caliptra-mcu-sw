@@ -9,6 +9,7 @@ mod network;
 mod rom;
 #[cfg(test)]
 mod runtime;
+mod test_bare_metal;
 mod test_dot;
 mod test_exception_handler;
 mod test_fips_zeroization;
@@ -187,6 +188,12 @@ mod test {
             None,
         )
         .expect("Runtime failed to compile");
+        assert!(output.exists());
+        output
+    }
+
+    pub fn compile_bare_metal_runtime() -> PathBuf {
+        let output = mcu_builder::bare_metal_build().expect("Bare-metal runtime failed to compile");
         assert!(output.exists());
         output
     }

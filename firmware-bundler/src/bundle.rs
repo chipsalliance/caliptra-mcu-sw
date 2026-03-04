@@ -13,7 +13,7 @@ use mcu_image_header::McuImageHeader;
 use crate::{
     args::{BundleArgs, Common},
     build::BuildOutput,
-    manifest::Manifest,
+    manifest::{Manifest, RuntimeVariant},
     tbf::generate_tbf_header,
 };
 
@@ -50,34 +50,42 @@ pub fn bundle(
         );
     }
     let header_len: u64 = runtime.len().try_into()?;
-    runtime.append(&mut std::fs::read(&output.kernel.0.binary)?);
 
-    let base_addr = output.kernel.1.offset;
-    for app in output.apps.clone().into_iter() {
-        // Find the location the the binary should occupy in the blob.  There could be padding
-        // between the end of one application and the beginning of the next.
-        let app_start: usize =
-            (app.instruction_block.offset - base_addr + header_len).try_into()?;
-        match runtime.len().cmp(&app_start) {
-            Ordering::Less => runtime.resize(app_start, 0),
-            Ordering::Greater => bail!(
-                "Error in bundling, binary already exceeds app {} start offset",
-                &app.binary.name
-            ),
-            Ordering::Equal => { /* no op */ }
-        };
+    match &output.runtime {
+        RuntimeVariant::Kernel((kernel, instructions)) => {
+            runtime.append(&mut std::fs::read(&kernel.binary)?);
 
-        let elf = app.binary.binary.with_extension("");
-        let header_bytes = generate_tbf_header(
-            app.header,
-            app.instruction_block,
-            elf,
-            app.binary.binary.clone(),
-        )?;
-        runtime.extend(header_bytes.into_iter());
+            let base_addr = instructions.offset;
+            for app in output.apps.clone().into_iter() {
+                // Find the location the the binary should occupy in the blob.  There could be padding
+                // between the end of one application and the beginning of the next.
+                let app_start: usize =
+                    (app.instruction_block.offset - base_addr + header_len).try_into()?;
+                match runtime.len().cmp(&app_start) {
+                    Ordering::Less => runtime.resize(app_start, 0),
+                    Ordering::Greater => bail!(
+                        "Error in bundling, binary already exceeds app {} start offset",
+                        &app.binary.name
+                    ),
+                    Ordering::Equal => { /* no op */ }
+                };
 
-        let app = std::fs::read(&app.binary.binary)?;
-        runtime.extend(app.into_iter());
+                let elf = app.binary.binary.with_extension("");
+                let header_bytes = generate_tbf_header(
+                    app.header,
+                    app.instruction_block,
+                    elf,
+                    app.binary.binary.clone(),
+                )?;
+                runtime.extend(header_bytes.into_iter());
+
+                let app_bin = std::fs::read(&app.binary.binary)?;
+                runtime.extend(app_bin.into_iter());
+            }
+        }
+        RuntimeVariant::BareMetal((bare_metal, _)) => {
+            runtime.append(&mut std::fs::read(&bare_metal.binary)?);
+        }
     }
 
     // Firmware validated by Caliptra is required to be 256 byte aligned.
