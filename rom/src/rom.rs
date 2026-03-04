@@ -17,6 +17,7 @@ Abstract:
 use crate::fatal_error;
 use crate::flash::flash_partition::FlashPartition;
 use crate::hil::FlashStorage;
+
 use crate::ColdBoot;
 use crate::FwBoot;
 use crate::FwHitlessUpdate;
@@ -27,16 +28,11 @@ use caliptra_api::mailbox::CmStableKeyType;
 use core::fmt::Write;
 use core::marker::PhantomData;
 use mcu_error::McuError;
+use registers_generated::fuses;
 use registers_generated::mci;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use registers_generated::soc;
-use romtime::otp::{
-    Otp, PROD_DEBUG_UNLOCK_PK_SIZE, SVN_RUNTIME_SVN_OFFSET, SVN_SOC_MANIFEST_MAX_SVN_OFFSET,
-    SVN_SOC_MANIFEST_SVN_OFFSET, SW_MANUF_IDEVID_CERT_ATTR_OFFSET,
-    SW_MANUF_IDEVID_MANUF_HSM_ID_OFFSET, SW_MANUF_PROD_DEBUG_UNLOCK_PKS_OFFSET,
-    VENDOR_HASHES_MANUF_PQC_KEY_TYPE_0_OFFSET, VENDOR_REVOCATIONS_ECC_REVOCATION_0_OFFSET,
-    VENDOR_REVOCATIONS_LMS_REVOCATION_0_OFFSET, VENDOR_REVOCATIONS_MLDSA_REVOCATION_0_OFFSET,
-};
+use romtime::otp::{Otp, PROD_DEBUG_UNLOCK_PK_ENTRIES};
 use romtime::LifecycleControllerState;
 use romtime::LifecycleHashedTokens;
 use romtime::LifecycleToken;
@@ -170,7 +166,7 @@ impl Soc {
         // secret fuses are populated by a hardware state machine, so we can skip those
 
         // UDS partition base address. (FE offset is calculated automatically by Caliptra ROM.)
-        let offset = registers_generated::fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET;
+        let offset = fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET;
         romtime::println!(
             "[mcu-fuse-write] Setting UDS/FE base address to {:x}",
             offset
@@ -188,10 +184,7 @@ impl Soc {
 
         // PQC Key Type.
         let pqc_word = otp
-            .read_u32_at(
-                registers_generated::fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET
-                    + VENDOR_HASHES_MANUF_PQC_KEY_TYPE_0_OFFSET,
-            )
+            .read_u32_at(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_0.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         let pqc_type = match (pqc_word as u8) & 1 {
             MLDSA_FUSE_VALUE => MLDSA_CALIPTRA_VALUE,
@@ -203,7 +196,7 @@ impl Soc {
 
         // FMC Key Manifest SVN.
         let svn = otp
-            .read_u32_at(registers_generated::fuses::SVN_PARTITION_BYTE_OFFSET)
+            .read_u32_at(fuses::OTP_CPTRA_CORE_FMC_KEY_MANIFEST_SVN.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_fmc_key_manifest_svn.set(svn);
 
@@ -211,9 +204,7 @@ impl Soc {
         romtime::print!("[mcu-fuse-write] Writing fuse key vendor PK hash: ");
         for i in 0..self.registers.fuse_vendor_pk_hash.len() {
             let word = otp
-                .read_u32_at(
-                    registers_generated::fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + i * 4,
-                )
+                .read_u32_at(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_offset + i * 4)
                 .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
             romtime::print!("{}", HexWord(word));
             self.registers.fuse_vendor_pk_hash[i].set(word);
@@ -223,11 +214,7 @@ impl Soc {
         // Runtime SVN.
         for i in 0..self.registers.fuse_runtime_svn.len() {
             let word = otp
-                .read_u32_at(
-                    registers_generated::fuses::SVN_PARTITION_BYTE_OFFSET
-                        + SVN_RUNTIME_SVN_OFFSET
-                        + i * 4,
-                )
+                .read_u32_at(fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_offset + i * 4)
                 .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
             self.registers.fuse_runtime_svn[i].set(word);
         }
@@ -235,30 +222,21 @@ impl Soc {
         // SoC Manifest SVN.
         for i in 0..self.registers.fuse_soc_manifest_svn.len() {
             let word = otp
-                .read_u32_at(
-                    registers_generated::fuses::SVN_PARTITION_BYTE_OFFSET
-                        + SVN_SOC_MANIFEST_SVN_OFFSET
-                        + i * 4,
-                )
+                .read_u32_at(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_offset + i * 4)
                 .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
             self.registers.fuse_soc_manifest_svn[i].set(word);
         }
 
         // SoC Manifest Max SVN.
         let word = otp
-            .read_u32_at(
-                registers_generated::fuses::SVN_PARTITION_BYTE_OFFSET
-                    + SVN_SOC_MANIFEST_MAX_SVN_OFFSET,
-            )
+            .read_u32_at(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_soc_manifest_max_svn.set(word);
 
         // Manuf Debug Unlock Token.
         for i in 0..self.registers.fuse_manuf_dbg_unlock_token.len() {
             let word = otp
-                .read_u32_at(
-                    registers_generated::fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET + i * 4,
-                )
+                .read_u32_at(fuses::OTP_CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN.byte_offset + i * 4)
                 .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
             self.registers.fuse_manuf_dbg_unlock_token[i].set(word);
         }
@@ -267,28 +245,19 @@ impl Soc {
         // Load Owner ECC/LMS/MLDSA revocation CSRs.
         // ECC Revocation.
         let word = otp
-            .read_u32_at(
-                registers_generated::fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET
-                    + VENDOR_REVOCATIONS_ECC_REVOCATION_0_OFFSET,
-            )
+            .read_u32_at(fuses::OTP_CPTRA_CORE_ECC_REVOCATION_0.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_ecc_revocation.set(word);
 
         // LMS Revocation.
         let word = otp
-            .read_u32_at(
-                registers_generated::fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET
-                    + VENDOR_REVOCATIONS_LMS_REVOCATION_0_OFFSET,
-            )
+            .read_u32_at(fuses::OTP_CPTRA_CORE_LMS_REVOCATION_0.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_lms_revocation.set(word);
 
         // MLDSA Revocation.
         let word = otp
-            .read_u32_at(
-                registers_generated::fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET
-                    + VENDOR_REVOCATIONS_MLDSA_REVOCATION_0_OFFSET,
-            )
+            .read_u32_at(fuses::OTP_CPTRA_CORE_MLDSA_REVOCATION_0.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_mldsa_revocation.set(word);
 
@@ -298,7 +267,7 @@ impl Soc {
         // TODO: load HEK Seed CSRs.
         // SoC Stepping ID (only 16-bits are relevant).
         let word = otp
-            .read_u32_at(registers_generated::fuses::SW_MANUF_PARTITION_BYTE_OFFSET + 120)
+            .read_u32_at(fuses::OTP_CPTRA_CORE_SOC_STEPPING_ID.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         let soc_stepping_id = word & 0xFFFF;
         self.registers
@@ -307,7 +276,7 @@ impl Soc {
 
         // Anti Rollback Disable. - read single word
         let word = otp
-            .read_u32_at(registers_generated::fuses::SW_MANUF_PARTITION_BYTE_OFFSET)
+            .read_u32_at(fuses::OTP_CPTRA_CORE_ANTI_ROLLBACK_DISABLE.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers
             .fuse_anti_rollback_disable
@@ -316,11 +285,7 @@ impl Soc {
         // IDevID Cert Attr.
         for i in 0..self.registers.fuse_idevid_cert_attr.len() {
             let word = otp
-                .read_u32_at(
-                    registers_generated::fuses::SW_MANUF_PARTITION_BYTE_OFFSET
-                        + SW_MANUF_IDEVID_CERT_ATTR_OFFSET
-                        + i * 4,
-                )
+                .read_u32_at(fuses::OTP_CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR.byte_offset + i * 4)
                 .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
             self.registers.fuse_idevid_cert_attr[i].set(word);
         }
@@ -328,11 +293,7 @@ impl Soc {
         // IDevID Manuf HSM ID.
         for i in 0..self.registers.fuse_idevid_manuf_hsm_id.len() {
             let word = otp
-                .read_u32_at(
-                    registers_generated::fuses::SW_MANUF_PARTITION_BYTE_OFFSET
-                        + SW_MANUF_IDEVID_MANUF_HSM_ID_OFFSET
-                        + i * 4,
-                )
+                .read_u32_at(fuses::OTP_CPTRA_CORE_IDEVID_MANUF_HSM_IDENTIFIER.byte_offset + i * 4)
                 .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
             self.registers.fuse_idevid_manuf_hsm_id[i].set(word);
         }
@@ -340,9 +301,10 @@ impl Soc {
         // Prod Debug Unlock Public Key Hashes - read 96 words (384 bytes = 8 x 48 bytes) directly into MCI
         // Each of the 8 hashes is 48 bytes (12 words)
         for hash_idx in 0..8 {
-            let hash_base_offset = registers_generated::fuses::SW_MANUF_PARTITION_BYTE_OFFSET
-                + SW_MANUF_PROD_DEBUG_UNLOCK_PKS_OFFSET
-                + hash_idx * PROD_DEBUG_UNLOCK_PK_SIZE;
+            let entry = PROD_DEBUG_UNLOCK_PK_ENTRIES
+                .get(hash_idx)
+                .unwrap_or_else(|| fatal_error(McuError::ROM_OTP_READ_ERROR));
+            let hash_base_offset = entry.byte_offset;
             for word_idx in 0..12 {
                 let word = otp
                     .read_u32_at(hash_base_offset + word_idx * 4)
@@ -676,8 +638,10 @@ pub fn verify_prod_debug_unlock_pk_hash(mci: &romtime::Mci, otp: &Otp) -> Result
     // Each of the 8 hashes is 48 bytes (12 words)
     let mut mismatch = false;
     for hash_idx in 0..8 {
-        let hash_base_offset =
-            registers_generated::fuses::SW_MANUF_PARTITION_BYTE_OFFSET + 124 + hash_idx * 48;
+        let entry = PROD_DEBUG_UNLOCK_PK_ENTRIES
+            .get(hash_idx)
+            .ok_or(McuError::ROM_SOC_PK_HASH_VERIFY_FAILED)?;
+        let hash_base_offset = entry.byte_offset;
         for word_idx in 0..12 {
             let reg_idx = hash_idx * 12 + word_idx;
             let expected = otp
