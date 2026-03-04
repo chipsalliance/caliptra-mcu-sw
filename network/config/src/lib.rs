@@ -101,6 +101,15 @@ pub struct NetworkMemoryMap {
     pub eth_size: u32,
     /// Ethernet peripheral memory properties
     pub eth_properties: MemoryRegionType,
+
+    /// Network Mailbox peripheral base address (for MCU <-> Network communication)
+    pub network_mbox_offset: u32,
+    /// Network Mailbox peripheral size (SRAM + CSRs)
+    pub network_mbox_size: u32,
+    /// Network Mailbox SRAM size in bytes
+    pub network_mbox_sram_size: u32,
+    /// Network Mailbox peripheral memory properties
+    pub network_mbox_properties: MemoryRegionType,
 }
 
 impl Default for NetworkMemoryMap {
@@ -142,6 +151,12 @@ impl Default for NetworkMemoryMap {
             eth_offset: 0x1000_3000,
             eth_size: 0x1000,
             eth_properties: MemoryRegionType::MMIO,
+
+            // Network Mailbox for MCU <-> Network communication
+            network_mbox_offset: 0x2000_9000,
+            network_mbox_size: 0x20_0028,
+            network_mbox_sram_size: 2 * 1024 * 1024,
+            network_mbox_properties: MemoryRegionType::MMIO,
         }
     }
 }
@@ -222,6 +237,11 @@ impl NetworkMemoryMap {
         process_region(self.ctrl_offset, self.ctrl_size, self.ctrl_properties);
         process_region(self.pic_offset, self.pic_size, self.pic_properties);
         process_region(self.eth_offset, self.eth_size, self.eth_properties);
+        process_region(
+            self.network_mbox_offset,
+            self.network_mbox_size,
+            self.network_mbox_properties,
+        );
 
         // Build the 32-bit MRAC value
         let mut mrac_value = 0u32;
@@ -285,6 +305,16 @@ impl NetworkMemoryMap {
         map.insert("ETH_OFFSET".to_string(), format!("0x{:x}", self.eth_offset));
         map.insert("ETH_SIZE".to_string(), format!("0x{:x}", self.eth_size));
 
+        // Network Mailbox configuration
+        map.insert(
+            "NETWORK_MBOX_OFFSET".to_string(),
+            format!("0x{:x}", self.network_mbox_offset),
+        );
+        map.insert(
+            "NETWORK_MBOX_SIZE".to_string(),
+            format!("0x{:x}", self.network_mbox_size),
+        );
+
         // The computed MRAC value
         map.insert(
             "MRAC_VALUE".to_string(),
@@ -326,6 +356,11 @@ pub const DEFAULT_NETWORK_MEMORY_MAP: NetworkMemoryMap = NetworkMemoryMap {
     eth_offset: 0x1000_3000,
     eth_size: 0x1000,
     eth_properties: MemoryRegionType::MMIO,
+
+    network_mbox_offset: 0x2000_9000,
+    network_mbox_size: 0x20_0028,
+    network_mbox_sram_size: 2 * 1024 * 1024,
+    network_mbox_properties: MemoryRegionType::MMIO,
 };
 
 #[cfg(test)]

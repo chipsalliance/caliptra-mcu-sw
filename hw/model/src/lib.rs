@@ -20,6 +20,7 @@ pub use caliptra_mcu_romtime::{LifecycleControllerState, LifecycleRawTokens, Lif
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
 pub use mcu_mgr::McuManager;
 pub use model_emulated::ModelEmulated;
+pub use network_mgr::NetworkManager;
 use rand::{rngs::StdRng, SeedableRng};
 use sha2::Digest;
 use std::io::Write;
@@ -52,6 +53,7 @@ mod mcu_mgr;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
 mod model_fpga_realtime;
+mod network_mgr;
 pub mod otp_provision;
 pub mod usb_ctrl;
 mod vmem;
@@ -784,6 +786,8 @@ pub trait McuHwModel {
             .device_reset()
             .write(|w| w.reset_ctrl(reset_ctrl));
     }
+
+    fn network_manager(&mut self) -> impl NetworkManager;
 
     fn warm_reset(&mut self);
 

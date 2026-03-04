@@ -324,8 +324,16 @@ unsafe extern "C" fn baremetal_netif_init(netif: *mut ffi::netif) -> ffi::err_t 
     let callbacks = instance.callbacks.as_ref().unwrap();
     let mac = (callbacks.mac_addr)();
 
-    (*netif).name[0] = b'e' as i8;
-    (*netif).name[1] = b'n' as i8;
+    #[cfg(target_arch = "riscv32")]
+    {
+        (*netif).name[0] = b'e';
+        (*netif).name[1] = b'n';
+    }
+    #[cfg(not(target_arch = "riscv32"))]
+    {
+        (*netif).name[0] = b'e' as i8;
+        (*netif).name[1] = b'n' as i8;
+    }
     (*netif).output = Some(ffi::etharp_output);
     #[cfg(feature = "baremetal-ipv6")]
     {

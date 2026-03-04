@@ -2688,6 +2688,7 @@ dependencies = [
  "sha2",
  "simple_logger",
  "tempfile",
+ "tock-registers",
  "uio",
  "uuid",
  "x509-parser",
