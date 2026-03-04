@@ -141,15 +141,13 @@ pub fn validate_fuse_values(otp: &OtpMmap, values: &HashMap<String, FuseValue>) 
     Ok(())
 }
 
-pub fn generate_phf_fuse_value_lib(
+pub fn generate_fuse_value_list(
     otp: &OtpMmap,
     values: &HashMap<String, FuseValue>,
 ) -> Result<String> {
     let mut output = HEADER_PREFIX.to_string();
     output.push_str(HEADER_SUFFIX);
-    output.push_str(
-        "\npub static FUSE_VALUES: phf::Map<&'static str, &'static [u8]> = phf::phf_map! {\n",
-    );
+    output.push_str("\npub static FUSE_VALUES: &[(&FuseEntryInfo, &[u8])] = &[\n");
 
     // Sort keys for deterministic output
     let mut keys: Vec<&String> = values.keys().collect();
@@ -170,15 +168,15 @@ pub fn generate_phf_fuse_value_lib(
             }
         }
 
-        write!(&mut output, "    \"{}\" => &[", name)?;
+        write!(&mut output, "    (OTP_{}, &[", name.to_ascii_uppercase())?;
         for i in 0..expected_size {
             let byte = bytes.get(i).cloned().unwrap_or(0);
             write!(&mut output, "0x{:02x}, ", byte)?;
         }
-        output.push_str("],\n");
+        output.push_str("]),\n");
     }
 
-    output.push_str("};\n");
+    output.push_str("];\n");
 
     Ok(output)
 }
@@ -193,7 +191,7 @@ pub fn generate_fuse_values_file(
     let otp_values = parse_fuse_values_hjson(otp_values_path)?;
     validate_fuse_values(&otp_mmap, &otp_values)?;
 
-    let lib_content = generate_phf_fuse_value_lib(&otp_mmap, &otp_values)?;
+    let lib_content = generate_fuse_value_list(&otp_mmap, &otp_values)?;
     std::fs::write(out_lib_path, lib_content)?;
     Ok(())
 }
@@ -304,7 +302,7 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_phf_library() {
+    fn test_generate_fuse_value_list() {
         let otp = OtpMmap {
             partitions: vec![OtpPartition {
                 name: "P1".to_string(),
@@ -323,9 +321,9 @@ mod tests {
         let mut values_map = HashMap::new();
         values_map.insert("F1".to_string(), FuseValue::ByteVec(vec![0xAA, 0xBB]));
 
-        let lib = generate_phf_fuse_value_lib(&otp, &values_map).unwrap();
+        let lib = generate_fuse_value_list(&otp, &values_map).unwrap();
         assert!(lib.contains("pub static FUSE_VALUES"));
-        assert!(lib.contains("phf::phf_map!"));
-        assert!(lib.contains("\"F1\" => &[0xaa, 0xbb, 0x00, 0x00, ]"));
+        assert!(lib.contains("&[(&FuseEntryInfo, &[u8])]"));
+        assert!(lib.contains("(OTP_F1, &[0xaa, 0xbb, 0x00, 0x00, ])"));
     }
 }
