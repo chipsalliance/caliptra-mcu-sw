@@ -44,6 +44,8 @@ pub enum OcpError {
     HwStatusVendorStatusTooLong = 18,
     /// DEVICE_ID: vendor-specific string exceeds maximum length of 231 bytes.
     DeviceIdVendorStringTooLong = 19,
+    /// A CMS region buffer is empty or its length is not a multiple of 4.
+    InvalidCmsBufferSize = 20,
 }
 
 /// Errors returned by CMS region operations.

@@ -10,6 +10,10 @@
 //!
 //! This module defines one trait for each model. Integrators provide concrete implementations
 //! (e.g. backed by RAM slices, flash, registers) and pass them to the `RecoveryStateMachine`.
+//!
+//! Slice-backed reference implementations are provided in submodules.
+
+pub mod slice_indirect;
 
 use crate::error::CmsError;
 use crate::protocol::indirect_fifo_status::IndirectFifoStatus;
