@@ -13,6 +13,7 @@
 //!
 //! Slice-backed reference implementations are provided in submodules.
 
+pub mod slice_fifo;
 pub mod slice_indirect;
 
 use crate::error::CmsError;

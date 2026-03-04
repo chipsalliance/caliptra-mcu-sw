@@ -115,6 +115,18 @@ impl IndirectFifoStatus {
         self.region_type
     }
 
+    pub fn fifo_size(&self) -> u32 {
+        // Note: Since the fifo size is u32 but is unaligned in the packed memory map, copy it to
+        // an aligned position for use by consumers.
+        self.fifo_size
+    }
+
+    pub fn max_transfer_size(&self) -> u32 {
+        // Note: Since the max transfer size is u32 but is unaligned in the packed memory map, copy
+        // it to an aligned position for use by consumers.
+        self.max_transfer_size
+    }
+
     /// Serialize into the wire representation.
     ///
     /// Reserved bytes 2-3 are written as zero.
