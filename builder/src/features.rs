@@ -28,6 +28,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-log-flash-circular",
     "test-log-flash-usermode",
     "test-mctp-ctrl-cmds",
+    "test-mctp-user-loopback",
     "test-mctp-vdm-cmds",
     "test-pldm-discovery",
     "test-pldm-fw-update",

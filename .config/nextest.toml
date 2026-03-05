@@ -27,7 +27,6 @@ store-failure-output = true
 
 [profile.nightly-ci]
 inherits = "nightly"
-# Modify test(test_uds) as we onboard crates to the FPGA test suite.
 default-filter = """
 (package(caliptra-mcu-hw-model)
     - test(model_emulated::test::test_new_unbooted)) |
@@ -39,6 +38,7 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_uds)) |
 (package(caliptra-mcu-tests-integration) and test(test_imaginary_flash_controller)) |
 (package(caliptra-mcu-tests-integration) and test(test_fw_update_e2e)) |
+(package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
 (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |
 (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_cmds)) |
@@ -60,8 +60,6 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check))
 """
-# disabled for now due to flakiness of recovery boot
-# (package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback)) |
 # disabled for now due to flakiness of firmware update
 # (package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)) |
 #
