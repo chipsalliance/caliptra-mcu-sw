@@ -205,6 +205,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                     RecoveryCommand::ProtCap => state.handle_prot_cap_read(buf),
                     RecoveryCommand::DeviceId => state.handle_device_id_read(buf),
                     RecoveryCommand::DeviceStatus => state.handle_device_status_read(buf),
+                    RecoveryCommand::RecoveryStatus => state.handle_recovery_status_read(buf),
                     _ => {
                         state.set_protocol_error(ProtocolError::UnsupportedCommand);
                         Ok(0)
@@ -325,6 +326,11 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
         self.protocol_error = ProtocolError::NoError;
         Ok(len)
     }
+
+    /// Handle a RECOVERY_STATUS (cmd=0x27) read: serialize stored recovery status.
+    fn handle_recovery_status_read(&self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        self.recovery_status.to_message(buf)
+    }
 }
 
 #[cfg(test)]
@@ -342,6 +348,7 @@ mod tests {
     use crate::protocol::indirect_fifo_status::FifoCmsRegionType;
     use crate::protocol::indirect_status::CmsRegionType;
     use crate::protocol::prot_cap::{self, RESPONSE_LEN};
+    use crate::protocol::recovery_status;
     use crate::protocol::RecoveryCommand;
     use crate::usb::driver::{RecoveryRequest, UsbDriverError};
     use crate::vendor::VendorCapabilities;
@@ -1070,6 +1077,52 @@ mod tests {
     fn device_status_write_sets_unsupported_command_error() {
         let mut transport = MockUsbDeviceDriver::new();
         transport.enqueue_write(RecoveryCommand::DeviceStatus, Vec::new());
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
+    }
+
+    // -- RECOVERY_STATUS handler tests --
+
+    #[test]
+    fn recovery_status_read_returns_default() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(
+            RecoveryCommand::RecoveryStatus,
+            recovery_status::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg.len(), 2);
+        let byte0 = recovery_status::RecoveryStatusByte0(msg[0]);
+        assert_eq!(byte0.status(), DeviceRecoveryStatus::NotInRecovery as u8);
+        assert_eq!(byte0.image_index(), 0);
+        assert_eq!(msg[1], 0);
+    }
+
+    #[test]
+    fn recovery_status_write_sets_unsupported_command_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryStatus, Vec::new());
         let mut sm = RecoveryStateMachine::new(
             test_config(),
             &mut transport,
