@@ -483,13 +483,15 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         test_roms.push((bin_path, filename));
     }
 
-    if separate_runtimes && (runtime_features.is_none() || runtime_features.unwrap().is_empty()) {
-        bail!("Must specify runtime features when building separate runtimes");
-    }
-
     let runtime_features = match runtime_features {
         Some(r) if !r.is_empty() => r.split(",").collect::<Vec<&str>>(),
-        _ => vec![],
+        _ => {
+            if separate_runtimes {
+                crate::features::RUNTIME_TEST_FEATURES.to_vec()
+            } else {
+                vec![]
+            }
+        }
     };
 
     let mut base_runtime_features = vec![];
@@ -830,7 +832,7 @@ pub fn emulator_build(args: EmulatorBuildArgs) -> Result<()> {
 
     let features = match features {
         Some(f) if !f.is_empty() => f.split(",").collect::<Vec<&str>>(),
-        _ => bail!("Must specify features to build emulators for"),
+        _ => crate::features::EMULATOR_TEST_FEATURES.to_vec(),
     };
 
     let mut emulators: Vec<(String, PathBuf)> = vec![];

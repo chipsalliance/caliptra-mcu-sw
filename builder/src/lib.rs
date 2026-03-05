@@ -2,6 +2,7 @@
 
 mod all;
 mod caliptra;
+pub mod features;
 pub mod firmware;
 pub mod flash_image;
 mod rom;
