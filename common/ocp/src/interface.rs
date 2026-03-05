@@ -209,6 +209,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                         state.handle_indirect_fifo_status_read(buf)
                     }
                     RecoveryCommand::DeviceReset => state.handle_device_reset_read(buf),
+                    RecoveryCommand::IndirectCtrl => state.handle_indirect_ctrl_read(buf),
                     _ => {
                         state.set_protocol_error(ProtocolError::UnsupportedCommand);
                         Ok(0)
@@ -217,6 +218,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
             }
             RecoveryRequest::Write { data } => match cmd {
                 RecoveryCommand::DeviceReset => self.state.handle_device_reset_write(data),
+                RecoveryCommand::IndirectCtrl => self.state.handle_indirect_ctrl_write(data),
                 _ => self
                     .state
                     .set_protocol_error(ProtocolError::UnsupportedCommand),
@@ -426,6 +428,42 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
         self.device_reset = parsed;
         self.vendor.execute_reset(&self.device_reset);
     }
+
+    fn handle_indirect_ctrl_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        let cms = self.indirect_ctrl.cms;
+        let imo = match self.lookup_indirect_region(cms) {
+            Some(region) => region.imo(),
+            None => 0,
+        };
+        IndirectCtrl::new(cms, imo)?.to_message(buf)
+    }
+
+    fn handle_indirect_ctrl_write(&mut self, data: &[u8]) {
+        let parsed = match IndirectCtrl::from_message(data) {
+            Ok(p) => p,
+            Err(OcpError::MessageTooShort | OcpError::MessageTooLong) => {
+                self.set_protocol_error(ProtocolError::LengthWriteError);
+                return;
+            }
+            Err(_) => {
+                self.set_protocol_error(ProtocolError::UnsupportedParameter);
+                return;
+            }
+        };
+
+        let cms_changed = parsed.cms != self.indirect_ctrl.cms;
+        self.indirect_ctrl = parsed;
+
+        if let Some(region) = self.lookup_indirect_region(parsed.cms) {
+            // According to the spec changing the CMS resets the IMO. As such do not set
+            // the imo value inside the write command if the CMS has changed.
+            if cms_changed {
+                region.reset();
+            } else {
+                region.set_imo(parsed.imo());
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -440,6 +478,7 @@ mod tests {
     use crate::protocol::device_reset::{self, DeviceReset};
     use crate::protocol::device_status;
     use crate::protocol::hw_status::{self, CompositeTemperature, HwStatus, HwStatusFlags};
+    use crate::protocol::indirect_ctrl;
     use crate::protocol::indirect_fifo_status::{self, FifoCmsRegionType};
     use crate::protocol::indirect_status::{self, CmsRegionType, IndirectStatus, StatusFlags};
     use crate::protocol::prot_cap::{self, RESPONSE_LEN};
@@ -1796,5 +1835,164 @@ mod tests {
         assert_eq!(action, RecoveryAction::None);
         let msg = &sm.transport.sent[0];
         assert_eq!(msg.as_slice(), &[0x01, 0x0F, 0x01]);
+    }
+
+    // -- INDIRECT_CTRL handler tests --
+
+    #[test]
+    fn indirect_ctrl_write_selects_cms_and_sets_imo() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x00, 0x00, 0x10, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(
+            RecoveryCommand::IndirectCtrl,
+            indirect_ctrl::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.indirect_ctrl.cms, 0);
+        assert_eq!(sm.state.indirect_ctrl.imo(), 0x10);
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0], 0);
+        assert_eq!(u32::from_le_bytes([msg[2], msg[3], msg[4], msg[5]]), 0x10);
+    }
+
+    #[test]
+    fn indirect_ctrl_write_cms_change_resets_region() {
+        let mut buf0 = [0u8; 64];
+        let mut buf1 = [0u8; 64];
+        let mut r0 = SliceIndirectRegion::new(&mut buf0, CmsRegionType::CodeSpace).unwrap();
+        let mut r1 = SliceIndirectRegion::new(&mut buf1, CmsRegionType::Log).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 2] = [(0, &mut r0), (3, &mut r1)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x00, 0x00, 0x20, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x03, 0x00, 0x04, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(
+            RecoveryCommand::IndirectCtrl,
+            indirect_ctrl::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.indirect_ctrl.cms, 0);
+
+        sm.state
+            .lookup_indirect_region(0)
+            .unwrap()
+            .write(&[0xAA; 64])
+            .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.indirect_ctrl.cms, 3);
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0], 3);
+        // According to spec IMO is reset on CMS change, not set to the CMS value.
+        assert_eq!(u32::from_le_bytes([msg[2], msg[3], msg[4], msg[5]]), 0);
+    }
+
+    #[test]
+    fn indirect_ctrl_read_returns_live_imo() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(
+            RecoveryCommand::IndirectCtrl,
+            indirect_ctrl::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+
+        sm.state
+            .lookup_indirect_region(0)
+            .unwrap()
+            .write(&[0xBB; 4])
+            .unwrap();
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(u32::from_le_bytes([msg[2], msg[3], msg[4], msg[5]]), 4);
+    }
+
+    #[test]
+    fn indirect_ctrl_write_wrong_length_sets_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::IndirectCtrl, vec![0x00, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::LengthWriteError);
+    }
+
+    #[test]
+    fn indirect_ctrl_write_misaligned_imo_sets_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectCtrl,
+            vec![0x00, 0x00, 0x01, 0x00, 0x00, 0x00],
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedParameter);
     }
 }
