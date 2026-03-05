@@ -18,6 +18,9 @@ use crate::protocol::device_status::{
 };
 use crate::protocol::indirect_ctrl::IndirectCtrl;
 use crate::protocol::indirect_fifo_ctrl::IndirectFifoCtrl;
+use crate::protocol::indirect_fifo_status::{
+    FifoCmsRegionType, FifoStatusFlags, IndirectFifoStatus,
+};
 use crate::protocol::indirect_status::{CmsRegionType, IndirectStatus, StatusFlags};
 use crate::protocol::prot_cap::{ProtCap, RecoveryProtocolCapabilities};
 use crate::protocol::recovery_ctrl::{ActivateRecoveryImage, ImageSelection, RecoveryCtrl};
@@ -208,6 +211,9 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                     RecoveryCommand::RecoveryStatus => state.handle_recovery_status_read(buf),
                     RecoveryCommand::HwStatus => state.handle_hw_status_read(buf),
                     RecoveryCommand::IndirectStatus => state.handle_indirect_status_read(buf),
+                    RecoveryCommand::IndirectFifoStatus => {
+                        state.handle_indirect_fifo_status_read(buf)
+                    }
                     _ => {
                         state.set_protocol_error(ProtocolError::UnsupportedCommand);
                         Ok(0)
@@ -236,7 +242,6 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
     }
 
     /// Look up a FIFO CMS region by index.
-    #[allow(dead_code)] // TODO: Remove when utilized as part of command processing.
     fn lookup_fifo_region(&mut self, cms: u8) -> Option<&mut dyn FifoCmsRegion> {
         for (idx, region) in self.fifo_regions.iter_mut() {
             if *idx == cms {
@@ -356,6 +361,28 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
                 .to_message(buf),
         }
     }
+
+    /// Handle an INDIRECT_FIFO_STATUS (cmd=0x2E) read.
+    ///
+    /// Looks up the FIFO CMS region selected by `indirect_fifo_ctrl.cms`.
+    /// If found, returns its status metadata. If the index doesn't match any
+    /// FIFO region (including indirect-only indices), returns
+    /// `FifoCmsRegionType::Unsupported`.
+    fn handle_indirect_fifo_status_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        let cms = self.indirect_fifo_ctrl.cms;
+        match self.lookup_fifo_region(cms) {
+            Some(region) => region.status().to_message(buf),
+            None => IndirectFifoStatus::new(
+                FifoStatusFlags(0),
+                FifoCmsRegionType::Unsupported,
+                0,
+                0,
+                0,
+                0,
+            )
+            .to_message(buf),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -370,7 +397,7 @@ mod tests {
     use crate::protocol::device_reset::DeviceReset;
     use crate::protocol::device_status;
     use crate::protocol::hw_status::{self, CompositeTemperature, HwStatus, HwStatusFlags};
-    use crate::protocol::indirect_fifo_status::FifoCmsRegionType;
+    use crate::protocol::indirect_fifo_status::{self, FifoCmsRegionType};
     use crate::protocol::indirect_status::{self, CmsRegionType, IndirectStatus, StatusFlags};
     use crate::protocol::prot_cap::{self, RESPONSE_LEN};
     use crate::protocol::recovery_status;
@@ -1357,6 +1384,144 @@ mod tests {
     fn indirect_status_write_sets_unsupported_command_error() {
         let mut transport = MockUsbDeviceDriver::new();
         transport.enqueue_write(RecoveryCommand::IndirectStatus, Vec::new());
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
+    }
+
+    // -- INDIRECT_FIFO_STATUS handler tests --
+
+    #[test]
+    fn indirect_fifo_status_read_returns_fifo_metadata() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(
+            RecoveryCommand::IndirectFifoStatus,
+            indirect_fifo_status::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        let msg = &sm.transport.sent[0];
+        assert!(msg[0] & 0x01 != 0, "FIFO should start empty");
+        assert_eq!(msg[1], FifoCmsRegionType::CodeSpace as u8);
+        let fifo_size = u32::from_le_bytes([msg[12], msg[13], msg[14], msg[15]]);
+        assert!(fifo_size > 0);
+        let max_xfer = u32::from_le_bytes([msg[16], msg[17], msg[18], msg[19]]);
+        assert_eq!(max_xfer, 16);
+    }
+
+    #[test]
+    fn indirect_fifo_status_read_unsupported_for_invalid_index() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(
+            RecoveryCommand::IndirectFifoStatus,
+            indirect_fifo_status::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.state.indirect_fifo_ctrl.cms = 99;
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[1], FifoCmsRegionType::Unsupported as u8);
+    }
+
+    #[test]
+    fn indirect_fifo_status_read_unsupported_for_indirect_index() {
+        let mut ibuf = [0u8; 64];
+        let mut fbuf = [0u8; 64];
+        let mut ir = SliceIndirectRegion::new(&mut ibuf, CmsRegionType::CodeSpace).unwrap();
+        let mut fr = SliceFifoRegion::new(&mut fbuf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+        let mut indirect: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut ir)];
+        let mut fifo: [(u8, &mut dyn FifoCmsRegion); 1] = [(1, &mut fr)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(
+            RecoveryCommand::IndirectFifoStatus,
+            indirect_fifo_status::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut indirect,
+            &mut fifo,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.state.indirect_fifo_ctrl.cms = 0;
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[1], FifoCmsRegionType::Unsupported as u8);
+    }
+
+    #[test]
+    fn indirect_fifo_status_read_empty_and_full_flags() {
+        let mut buf = [0u8; 8];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::CodeSpace, 4).unwrap();
+
+        region.push(&[0xAA; 4]).unwrap();
+
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(
+            RecoveryCommand::IndirectFifoStatus,
+            indirect_fifo_status::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0] & 0x01, 0x00, "should not be empty after push");
+        assert_eq!(msg[0] & 0x02, 0x02, "should be full");
+    }
+
+    #[test]
+    fn indirect_fifo_status_write_sets_unsupported_command_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::IndirectFifoStatus, Vec::new());
         let mut sm = RecoveryStateMachine::new(
             test_config(),
             &mut transport,
