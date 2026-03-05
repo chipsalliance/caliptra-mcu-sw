@@ -214,6 +214,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                     RecoveryCommand::IndirectCtrl => state.handle_indirect_ctrl_read(buf),
                     RecoveryCommand::IndirectFifoCtrl => state.handle_indirect_fifo_ctrl_read(buf),
                     RecoveryCommand::IndirectData => state.handle_indirect_data_read(buf),
+                    RecoveryCommand::Vendor => state.handle_vendor_read(buf),
                     RecoveryCommand::IndirectFifoData => state.handle_indirect_fifo_data_read(buf),
                     _ => {
                         state.set_protocol_error(ProtocolError::UnsupportedCommand);
@@ -228,6 +229,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                     self.state.handle_indirect_fifo_ctrl_write(data)
                 }
                 RecoveryCommand::IndirectData => self.state.handle_indirect_data_write(data),
+                RecoveryCommand::Vendor => self.state.handle_vendor_write(data),
                 RecoveryCommand::IndirectFifoData => {
                     self.state.handle_indirect_fifo_data_write(data);
                 }
@@ -566,6 +568,38 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
         }
     }
 
+    /// Handle a VENDOR (cmd=0x2C) read: delegate to VendorHandler.
+    ///
+    /// If the vendor_command capability is not advertised, sets
+    /// `UnsupportedCommand` and returns 0 bytes.
+    fn handle_vendor_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        if !self.vendor.capabilities().vendor_command() {
+            self.set_protocol_error(ProtocolError::UnsupportedCommand);
+            return Ok(0);
+        }
+        match self.vendor.handle_vendor_read(buf) {
+            Ok(n) => Ok(n),
+            Err(_) => {
+                self.set_protocol_error(ProtocolError::GeneralProtocolError);
+                Ok(0)
+            }
+        }
+    }
+
+    /// Handle a VENDOR (cmd=0x2C) write: delegate to VendorHandler.
+    ///
+    /// If the vendor_command capability is not advertised, sets
+    /// `UnsupportedCommand`.
+    fn handle_vendor_write(&mut self, data: &[u8]) {
+        if !self.vendor.capabilities().vendor_command() {
+            self.set_protocol_error(ProtocolError::UnsupportedCommand);
+            return;
+        }
+        if self.vendor.handle_vendor_write(data).is_err() {
+            self.set_protocol_error(ProtocolError::GeneralProtocolError);
+        }
+    }
+
     /// Handle an INDIRECT_FIFO_DATA (cmd=0x2F) read: pop data from the
     /// currently selected FIFO CMS region.
     ///
@@ -650,6 +684,8 @@ mod tests {
         hw_composite_temp: CompositeTemperature,
         hw_vendor_specific: Vec<u8>,
         last_reset: Option<DeviceReset>,
+        last_vendor_write: Option<Vec<u8>>,
+        vendor_read_data: Vec<u8>,
     }
 
     impl MockVendorHandler {
@@ -663,6 +699,8 @@ mod tests {
                 hw_composite_temp: CompositeTemperature::NoData,
                 hw_vendor_specific: Vec::new(),
                 last_reset: None,
+                last_vendor_write: None,
+                vendor_read_data: Vec::new(),
             }
         }
 
@@ -683,12 +721,15 @@ mod tests {
             self.last_reset = Some(*reset);
         }
 
-        fn handle_vendor_write(&mut self, _data: &[u8]) -> Result<(), OcpError> {
+        fn handle_vendor_write(&mut self, data: &[u8]) -> Result<(), OcpError> {
+            self.last_vendor_write = Some(data.to_vec());
             Ok(())
         }
 
-        fn handle_vendor_read(&self, _buf: &mut [u8]) -> Result<usize, OcpError> {
-            Ok(0)
+        fn handle_vendor_read(&self, buf: &mut [u8]) -> Result<usize, OcpError> {
+            let len = self.vendor_read_data.len().min(buf.len());
+            buf[..len].copy_from_slice(&self.vendor_read_data[..len]);
+            Ok(len)
         }
 
         fn vendor_device_status(&self, buf: &mut [u8]) -> usize {
@@ -2671,5 +2712,81 @@ mod tests {
 
         sm.process_command().unwrap();
         assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+    }
+
+    // -- VENDOR command handler tests --
+
+    #[test]
+    fn vendor_write_forwards_data_to_handler() {
+        let mut transport = MockUsbDeviceDriver::new();
+        let mut vendor = MockVendorHandler::with_all_caps();
+        vendor.vendor_read_data = vec![0xDE, 0xAD, 0xBE, 0xEF];
+        transport.enqueue_write(RecoveryCommand::Vendor, vec![0x01, 0x02, 0x03]);
+
+        let mut sm =
+            RecoveryStateMachine::new(test_config(), &mut transport, &mut [], &mut [], vendor)
+                .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+        assert_eq!(
+            sm.state.vendor.last_vendor_write.as_deref(),
+            Some([0x01, 0x02, 0x03].as_slice())
+        );
+    }
+
+    #[test]
+    fn vendor_read_returns_handler_data() {
+        let mut transport = MockUsbDeviceDriver::new();
+        let mut vendor = MockVendorHandler::with_all_caps();
+        vendor.vendor_read_data = vec![0xDE, 0xAD, 0xBE, 0xEF];
+        transport.enqueue_read(RecoveryCommand::Vendor, 8);
+
+        let mut sm =
+            RecoveryStateMachine::new(test_config(), &mut transport, &mut [], &mut [], vendor)
+                .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+        let msg = &sm.transport.sent[0];
+        assert_eq!(&msg[..4], &[0xDE, 0xAD, 0xBE, 0xEF]);
+    }
+
+    #[test]
+    fn vendor_write_unsupported_when_capability_not_set() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::Vendor, vec![0x01, 0x02]);
+
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
+        assert!(sm.state.vendor.last_vendor_write.is_none());
+    }
+
+    #[test]
+    fn vendor_read_unsupported_when_capability_not_set() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(RecoveryCommand::Vendor, 8);
+
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
+        assert!(sm.transport.sent[0].iter().all(|&b| b == 0));
     }
 }
