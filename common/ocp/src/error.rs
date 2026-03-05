@@ -56,6 +56,12 @@ pub enum OcpError {
     InvalidDescriptorType = 23,
     /// A transport-level error occurred (e.g. USB hardware failure).
     TransportError = 24,
+    /// The number of CMS regions provided exceeds the number supported by the OCP Protocol.
+    InvalidCmdBufferCount = 25,
+    /// When indirect regions are provided, CMS index 0 must be a CodeSpace region.
+    IndirectCms0NotCodeSpace = 26,
+    /// Two or more CMS regions share the same index.
+    DuplicateCmsIndex = 27,
 }
 
 impl From<UsbDriverError> for OcpError {
