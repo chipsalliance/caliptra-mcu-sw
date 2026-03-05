@@ -206,6 +206,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                     RecoveryCommand::DeviceId => state.handle_device_id_read(buf),
                     RecoveryCommand::DeviceStatus => state.handle_device_status_read(buf),
                     RecoveryCommand::RecoveryStatus => state.handle_recovery_status_read(buf),
+                    RecoveryCommand::HwStatus => state.handle_hw_status_read(buf),
                     _ => {
                         state.set_protocol_error(ProtocolError::UnsupportedCommand);
                         Ok(0)
@@ -331,6 +332,12 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
     fn handle_recovery_status_read(&self, buf: &mut [u8]) -> Result<usize, OcpError> {
         self.recovery_status.to_message(buf)
     }
+
+    /// Handle a HW_STATUS (cmd=0x28) read: delegate to vendor and serialize.
+    fn handle_hw_status_read(&self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        let hw = self.vendor.hw_status()?;
+        hw.to_message(buf)
+    }
 }
 
 #[cfg(test)]
@@ -344,7 +351,7 @@ mod tests {
     use crate::protocol::device_id::{self, DeviceDescriptor, PciVendorDescriptor};
     use crate::protocol::device_reset::DeviceReset;
     use crate::protocol::device_status;
-    use crate::protocol::hw_status::{CompositeTemperature, HwStatus, HwStatusFlags};
+    use crate::protocol::hw_status::{self, CompositeTemperature, HwStatus, HwStatusFlags};
     use crate::protocol::indirect_fifo_status::FifoCmsRegionType;
     use crate::protocol::indirect_status::CmsRegionType;
     use crate::protocol::prot_cap::{self, RESPONSE_LEN};
@@ -357,6 +364,10 @@ mod tests {
         caps: VendorCapabilities,
         heartbeat_val: u16,
         vendor_status_data: Vec<u8>,
+        hw_flags: HwStatusFlags,
+        hw_vendor_status_byte: u8,
+        hw_composite_temp: CompositeTemperature,
+        hw_vendor_specific: Vec<u8>,
     }
 
     impl MockVendorHandler {
@@ -365,14 +376,17 @@ mod tests {
                 caps: VendorCapabilities(0),
                 heartbeat_val: 0,
                 vendor_status_data: Vec::new(),
+                hw_flags: HwStatusFlags(0),
+                hw_vendor_status_byte: 0,
+                hw_composite_temp: CompositeTemperature::NoData,
+                hw_vendor_specific: Vec::new(),
             }
         }
 
         fn with_all_caps() -> Self {
             Self {
                 caps: VendorCapabilities(0b0011_1111),
-                heartbeat_val: 0,
-                vendor_status_data: Vec::new(),
+                ..Self::new()
             }
         }
     }
@@ -403,7 +417,12 @@ mod tests {
         }
 
         fn hw_status(&self) -> Result<HwStatus<'_>, OcpError> {
-            HwStatus::new(HwStatusFlags(0), 0, CompositeTemperature::NoData, &[])
+            HwStatus::new(
+                self.hw_flags,
+                self.hw_vendor_status_byte,
+                self.hw_composite_temp,
+                &self.hw_vendor_specific,
+            )
         }
     }
 
@@ -1123,6 +1142,53 @@ mod tests {
     fn recovery_status_write_sets_unsupported_command_error() {
         let mut transport = MockUsbDeviceDriver::new();
         transport.enqueue_write(RecoveryCommand::RecoveryStatus, Vec::new());
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
+    }
+
+    // -- HW_STATUS handler tests --
+
+    #[test]
+    fn hw_status_read_returns_vendor_hw_status() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(RecoveryCommand::HwStatus, hw_status::MAX_MESSAGE_LEN as u16);
+        let mut vendor = MockVendorHandler::new();
+        let mut flags = HwStatusFlags(0);
+        flags.set_temp_critical(true);
+        vendor.hw_flags = flags;
+        vendor.hw_vendor_status_byte = 0xAB;
+        vendor.hw_composite_temp = CompositeTemperature::Celsius(42);
+        vendor.hw_vendor_specific = vec![0x01, 0x02, 0x03];
+
+        let mut sm =
+            RecoveryStateMachine::new(test_config(), &mut transport, &mut [], &mut [], vendor)
+                .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg.len(), 7);
+        assert_eq!(msg[0], 0x01);
+        assert_eq!(msg[1], 0xAB);
+        assert_eq!(msg[2], 42);
+        assert_eq!(msg[3], 3);
+        assert_eq!(&msg[4..7], &[0x01, 0x02, 0x03]);
+    }
+
+    #[test]
+    fn hw_status_write_sets_unsupported_command_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::HwStatus, Vec::new());
         let mut sm = RecoveryStateMachine::new(
             test_config(),
             &mut transport,
