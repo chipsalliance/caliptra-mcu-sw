@@ -6,15 +6,54 @@
 //! into the recovery state machine. `NoopVendorHandler` is a zero-cost default
 //! for integrators that do not need vendor extensions.
 
+use bitfield::bitfield;
+
 use crate::error::OcpError;
-use crate::protocol::hw_status::{CompositeTemperature, HwStatus, HwStatusFlags};
+use crate::protocol::device_reset::DeviceReset;
+use crate::protocol::hw_status::HwStatus;
+
+bitfield! {
+    /// Device capabilities that depend on the vendor/integrator's hardware and
+    /// firmware support. Returned by [`VendorHandler::capabilities`] and used
+    /// by the state machine to populate PROT_CAP bits 1-3, 8-10.
+    ///
+    /// Stored as a single `u8` to minimize footprint.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub struct VendorCapabilities(u8);
+    impl Debug;
+
+    /// PROT_CAP bit 1: device supports forced recovery mode.
+    pub forced_recovery, set_forced_recovery: 0;
+    /// PROT_CAP bit 2: device supports management-only reset.
+    pub mgmt_reset, set_mgmt_reset: 1;
+    /// PROT_CAP bit 3: device supports full device reset.
+    pub device_reset, set_device_reset: 2;
+    /// PROT_CAP bit 8: device supports interface isolation.
+    pub interface_isolation, set_interface_isolation: 3;
+    /// PROT_CAP bit 9: device supports HW_STATUS reporting.
+    pub hardware_status, set_hardware_status: 4;
+    /// PROT_CAP bit 10: device supports VENDOR command.
+    pub vendor_command, set_vendor_command: 5;
+}
 
 /// Integrator-provided callbacks for vendor-specific behavior.
 ///
 /// The state machine delegates vendor command handling, heartbeat reporting,
-/// and hardware status queries to this trait. Integrators implement it to
-/// provide device-specific behavior.
+/// hardware status queries, capability reporting, and reset execution to
+/// this trait. Integrators implement it to provide device-specific behavior.
 pub trait VendorHandler {
+    /// Report which optional protocol capabilities the device supports.
+    ///
+    /// The returned values populate PROT_CAP bits 1-3 and 8-10.
+    fn capabilities(&self) -> VendorCapabilities;
+
+    /// Execute a device reset.
+    ///
+    /// Called when the state machine processes a DEVICE_RESET write with
+    /// a non-zero reset control. The integrator performs the actual
+    /// hardware reset and returns when complete.
+    fn execute_reset(&mut self, reset: &DeviceReset);
+
     /// Handle a VENDOR command (cmd=0x2C) write.
     ///
     /// `data` is the raw payload from the write command.
@@ -46,17 +85,29 @@ pub trait VendorHandler {
     fn hw_status(&self) -> Result<HwStatus<'_>, OcpError>;
 }
 
-/// A no-op `VendorHandler` for integrators that do not need vendor extensions
-/// or hardware status reporting. All methods return zero/empty defaults.
+/// A no-op `VendorHandler` that advertises no optional capabilities.
+///
+/// `capabilities()` returns all-zero (nothing supported). Methods that are
+/// only reachable when their corresponding capability bit is set are
+/// `unimplemented!()` — the state machine will never call them because
+/// `capabilities()` reports them as unsupported.
 pub struct NoopVendorHandler;
 
 impl VendorHandler for NoopVendorHandler {
+    fn capabilities(&self) -> VendorCapabilities {
+        VendorCapabilities(0)
+    }
+
+    fn execute_reset(&mut self, _reset: &DeviceReset) {
+        unimplemented!("NoopVendorHandler: device_reset capability is not advertised")
+    }
+
     fn handle_vendor_write(&mut self, _data: &[u8]) -> Result<(), OcpError> {
-        Ok(())
+        unimplemented!("NoopVendorHandler: vendor_command capability is not advertised")
     }
 
     fn handle_vendor_read(&self, _buf: &mut [u8]) -> Result<usize, OcpError> {
-        Ok(0)
+        unimplemented!("NoopVendorHandler: vendor_command capability is not advertised")
     }
 
     fn vendor_device_status(&self, _buf: &mut [u8]) -> usize {
@@ -68,7 +119,7 @@ impl VendorHandler for NoopVendorHandler {
     }
 
     fn hw_status(&self) -> Result<HwStatus<'_>, OcpError> {
-        HwStatus::new(HwStatusFlags(0), 0, CompositeTemperature::NoData, &[])
+        unimplemented!("NoopVendorHandler: hardware_status capability is not advertised")
     }
 }
 
@@ -77,12 +128,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn noop_vendor_handler_defaults() {
-        let mut handler = NoopVendorHandler;
-        assert_eq!(handler.handle_vendor_write(&[0x01]), Ok(()));
-        assert_eq!(handler.handle_vendor_read(&mut [0u8; 16]), Ok(0));
+    fn noop_capabilities_all_zero() {
+        let handler = NoopVendorHandler;
+        let caps = handler.capabilities();
+        assert!(!caps.forced_recovery());
+        assert!(!caps.mgmt_reset());
+        assert!(!caps.device_reset());
+        assert!(!caps.interface_isolation());
+        assert!(!caps.hardware_status());
+        assert!(!caps.vendor_command());
+    }
+
+    #[test]
+    fn noop_passive_methods_return_defaults() {
+        let handler = NoopVendorHandler;
         assert_eq!(handler.vendor_device_status(&mut [0u8; 248]), 0);
         assert_eq!(handler.heartbeat(), 0);
-        let _ = handler.hw_status().unwrap();
     }
 }
