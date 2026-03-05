@@ -265,20 +265,8 @@ jobs:
 
       - name: Build test archive
         run: |
-          cargo --config "$EXTRA_CARGO_CONFIG" nextest archive \
-            --workspace \
-            --exclude bare-metal-runtime \
-            --exclude mcu-rom-emulator \
-            --exclude mcu-rom-fpga \
-            --exclude mcu-runtime-emulator \
-            --exclude mcu-runtime-fpga \
-            --exclude emulator \
-            --exclude test-hello \
-            --exclude user-app \
-            --exclude example-app \
-            --exclude libtock_unittest \
-            --exclude syscalls_tests \
-            --archive-file /tmp/nextest-archive.tar.zst
+          cargo --config "$EXTRA_CARGO_CONFIG" xtask test \
+            --archive /tmp/nextest-archive.tar.zst
           sccache --show-stats
 
       - name: Upload test archive
@@ -339,9 +327,7 @@ jobs:
         run: |
           export CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip"
           export CPTRA_EMULATOR_BUNDLE="${PWD}/target/emulators.zip"
-          cargo --config "$EXTRA_CARGO_CONFIG" nextest run \
-            --archive-file /tmp/nextest-archive.tar.zst \
+          cargo --config "$EXTRA_CARGO_CONFIG" xtask test \
+            --archive /tmp/nextest-archive.tar.zst \
             --workspace-remap . \
-            --test-threads=1 \
-            --profile=nightly-emulator \
-            --partition hash:${{ matrix.shard }}/4
+            --shard hash:${{ matrix.shard }}/4

@@ -6,46 +6,97 @@ use std::process::Command;
 
 use crate::emulator_cbinding;
 
-pub(crate) fn test() -> Result<()> {
-    cargo_test()
+pub(crate) struct TestArgs<'a> {
+    pub archive: Option<&'a str>,
+    pub shard: Option<&'a str>,
+    pub workspace_remap: Option<&'a str>,
 }
 
-fn cargo_test() -> Result<()> {
+const EXCLUDED_PACKAGES: &[&str] = &[
+    "bare-metal-runtime",
+    "mcu-rom-emulator",
+    "mcu-rom-fpga",
+    "mcu-runtime-emulator",
+    "mcu-runtime-fpga",
+    "emulator",
+    "test-hello",
+    "user-app",
+    "example-app",
+    "libtock_unittest",
+    "syscalls_tests",
+];
+
+pub(crate) fn test(args: TestArgs) -> Result<()> {
+    if let Some(archive_file) = args.archive {
+        cargo_test_archive(archive_file)
+    } else {
+        cargo_test(args.shard, args.workspace_remap)
+    }
+}
+
+fn cargo_test(shard: Option<&str>, workspace_remap: Option<&str>) -> Result<()> {
     // Run all tests with nextest for proper sequencing, excluding ROM packages that don't have tests
     println!("Running: cargo nextest run");
+    let mut args = vec![
+        "nextest",
+        "run",
+        "--workspace",
+        "--test-threads=1",
+        "--profile=nightly-emulator",
+    ];
+
+    for exclude in EXCLUDED_PACKAGES {
+        args.push("--exclude");
+        args.push(exclude);
+    }
+
+    if let Some(shard) = shard {
+        args.push("--partition");
+        args.push(shard);
+    }
+
+    if let Some(remap) = workspace_remap {
+        args.push("--workspace-remap");
+        args.push(remap);
+    }
+
     let nextest_status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .args([
-            "nextest",
-            "run",
-            "--workspace",
-            "--exclude",
-            "mcu-rom-emulator",
-            "--exclude",
-            "mcu-rom-fpga",
-            "--exclude",
-            "mcu-runtime-emulator",
-            "--exclude",
-            "mcu-runtime-fpga",
-            "--exclude",
-            "emulator",
-            "--exclude",
-            "test-hello",
-            "--exclude",
-            "user-app",
-            "--exclude",
-            "example-app",
-            "--exclude",
-            "libtock_unittest",
-            "--exclude",
-            "syscalls_tests",
-            "--test-threads=1",
-            "--profile=nightly-emulator",
-        ])
+        .args(&args)
         .status()?;
 
     if !nextest_status.success() {
         bail!("Tests with nextest failed");
+    }
+
+    Ok(())
+}
+
+fn cargo_test_archive(archive_file: &str) -> Result<()> {
+    println!(
+        "Running: cargo nextest archive --archive-file {}",
+        archive_file
+    );
+    let mut args = vec![
+        "nextest",
+        "archive",
+        "--workspace",
+        "--archive-file",
+        archive_file,
+    ];
+
+    for exclude in EXCLUDED_PACKAGES {
+        args.push("--exclude");
+        args.push(exclude);
+    }
+
+    let status = Command::new("cargo")
+        .current_dir(&*PROJECT_ROOT)
+        .args(&args)
+        .status()?;
+
+    if !status.success() {
+        bail!("cargo nextest archive failed");
     }
 
     Ok(())
