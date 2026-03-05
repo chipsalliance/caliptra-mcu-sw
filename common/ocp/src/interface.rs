@@ -77,7 +77,8 @@ pub struct RecoveryState<'a, V: VendorHandler> {
     pub(crate) recovery_ctrl: RecoveryCtrl,
     pub(crate) device_reset: DeviceReset,
     pub(crate) indirect_ctrl: IndirectCtrl,
-    pub(crate) indirect_fifo_ctrl: IndirectFifoCtrl,
+    pub(crate) indirect_fifo_ctrl_cms: u8,
+    pub(crate) indirect_fifo_ctrl_image_size: u32,
 
     // DEVICE_STATUS fields stored individually. DeviceStatus<'a> cannot be
     // stored because its vendor_status slice comes from VendorHandler at
@@ -174,7 +175,8 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                     InterfaceControl::DisableMastering,
                 ),
                 indirect_ctrl: IndirectCtrl::new(0, 0)?,
-                indirect_fifo_ctrl: IndirectFifoCtrl::new(0, false, 0),
+                indirect_fifo_ctrl_cms: 0,
+                indirect_fifo_ctrl_image_size: 0,
                 cms_count,
                 device_status_value: DeviceStatusValue::StatusPending,
                 protocol_error: ProtocolError::NoError,
@@ -210,6 +212,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                     }
                     RecoveryCommand::DeviceReset => state.handle_device_reset_read(buf),
                     RecoveryCommand::IndirectCtrl => state.handle_indirect_ctrl_read(buf),
+                    RecoveryCommand::IndirectFifoCtrl => state.handle_indirect_fifo_ctrl_read(buf),
                     _ => {
                         state.set_protocol_error(ProtocolError::UnsupportedCommand);
                         Ok(0)
@@ -219,6 +222,9 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
             RecoveryRequest::Write { data } => match cmd {
                 RecoveryCommand::DeviceReset => self.state.handle_device_reset_write(data),
                 RecoveryCommand::IndirectCtrl => self.state.handle_indirect_ctrl_write(data),
+                RecoveryCommand::IndirectFifoCtrl => {
+                    self.state.handle_indirect_fifo_ctrl_write(data)
+                }
                 _ => self
                     .state
                     .set_protocol_error(ProtocolError::UnsupportedCommand),
@@ -363,12 +369,12 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
 
     /// Handle an INDIRECT_FIFO_STATUS (cmd=0x2E) read.
     ///
-    /// Looks up the FIFO CMS region selected by `indirect_fifo_ctrl.cms`.
+    /// Looks up the FIFO CMS region selected by `indirect_fifo_ctrl_cms`.
     /// If found, returns its status metadata. If the index doesn't match any
     /// FIFO region (including indirect-only indices), returns
     /// `FifoCmsRegionType::Unsupported`.
     fn handle_indirect_fifo_status_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
-        let cms = self.indirect_fifo_ctrl.cms;
+        let cms = self.indirect_fifo_ctrl_cms;
         match self.lookup_fifo_region(cms) {
             Some(region) => region.status().to_message(buf),
             None => IndirectFifoStatus::new(
@@ -464,6 +470,46 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
             }
         }
     }
+
+    /// Handle an INDIRECT_FIFO_CTRL (cmd=0x2D) read: serialize stored state
+    /// with the reset byte read from the region ("Write 1, Device Clears").
+    fn handle_indirect_fifo_ctrl_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        let reset = match self.lookup_fifo_region(self.indirect_fifo_ctrl_cms) {
+            Some(region) => region.is_reset_pending(),
+            None => false,
+        };
+        IndirectFifoCtrl::new(
+            self.indirect_fifo_ctrl_cms,
+            reset,
+            self.indirect_fifo_ctrl_image_size,
+        )
+        .to_message(buf)
+    }
+
+    /// Handle an INDIRECT_FIFO_CTRL (cmd=0x2D) write: parse, optionally
+    /// reset FIFO, and store.
+    fn handle_indirect_fifo_ctrl_write(&mut self, data: &[u8]) {
+        let parsed = match IndirectFifoCtrl::from_message(data) {
+            Ok(p) => p,
+            Err(OcpError::MessageTooShort | OcpError::MessageTooLong) => {
+                self.set_protocol_error(ProtocolError::LengthWriteError);
+                return;
+            }
+            Err(_) => {
+                self.set_protocol_error(ProtocolError::UnsupportedParameter);
+                return;
+            }
+        };
+
+        if parsed.reset {
+            if let Some(region) = self.lookup_fifo_region(parsed.cms) {
+                region.request_reset();
+            }
+        }
+
+        self.indirect_fifo_ctrl_cms = parsed.cms;
+        self.indirect_fifo_ctrl_image_size = parsed.image_size;
+    }
 }
 
 #[cfg(test)]
@@ -479,6 +525,7 @@ mod tests {
     use crate::protocol::device_status;
     use crate::protocol::hw_status::{self, CompositeTemperature, HwStatus, HwStatusFlags};
     use crate::protocol::indirect_ctrl;
+    use crate::protocol::indirect_fifo_ctrl;
     use crate::protocol::indirect_fifo_status::{self, FifoCmsRegionType};
     use crate::protocol::indirect_status::{self, CmsRegionType, IndirectStatus, StatusFlags};
     use crate::protocol::prot_cap::{self, RESPONSE_LEN};
@@ -679,9 +726,8 @@ mod tests {
         assert_eq!(sm.state.indirect_ctrl.cms, 0);
         assert_eq!(sm.state.indirect_ctrl.imo(), 0);
 
-        assert_eq!(sm.state.indirect_fifo_ctrl.cms, 0);
-        assert!(!sm.state.indirect_fifo_ctrl.reset);
-        assert_eq!(sm.state.indirect_fifo_ctrl.image_size(), 0);
+        assert_eq!(sm.state.indirect_fifo_ctrl_cms, 0);
+        assert_eq!(sm.state.indirect_fifo_ctrl_image_size, 0);
 
         assert_eq!(sm.state.cms_count, 0);
     }
@@ -1537,7 +1583,7 @@ mod tests {
         )
         .unwrap();
 
-        sm.state.indirect_fifo_ctrl.cms = 99;
+        sm.state.indirect_fifo_ctrl_cms = 99;
         let action = sm.process_command().unwrap();
         assert_eq!(action, RecoveryAction::None);
         let msg = &sm.transport.sent[0];
@@ -1567,7 +1613,6 @@ mod tests {
         )
         .unwrap();
 
-        sm.state.indirect_fifo_ctrl.cms = 0;
         let action = sm.process_command().unwrap();
         assert_eq!(action, RecoveryAction::None);
         let msg = &sm.transport.sent[0];
@@ -1982,6 +2027,150 @@ mod tests {
         transport.enqueue_write(
             RecoveryCommand::IndirectCtrl,
             vec![0x00, 0x00, 0x01, 0x00, 0x00, 0x00],
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedParameter);
+    }
+
+    // -- INDIRECT_FIFO_CTRL handler tests --
+
+    #[test]
+    fn indirect_fifo_ctrl_write_selects_cms_and_image_size() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(2, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x02, 0x00, 0x00, 0x01, 0x00, 0x00],
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.indirect_fifo_ctrl_cms, 2);
+        assert_eq!(sm.state.indirect_fifo_ctrl_image_size, 0x100);
+        assert_eq!(sm.state.protocol_error, ProtocolError::NoError);
+    }
+
+    #[test]
+    fn indirect_fifo_ctrl_write_reset_triggers_fifo_reset() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+
+        region.push(&[0xAA; 4]).unwrap();
+        assert!(!region.is_empty());
+
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x00, 0x01, 0x00, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(
+            RecoveryCommand::IndirectFifoStatus,
+            indirect_fifo_status::MESSAGE_LEN as u16,
+        );
+        transport.enqueue_read(
+            RecoveryCommand::IndirectFifoCtrl,
+            indirect_fifo_ctrl::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+
+        sm.process_command().unwrap();
+        let status_msg = &sm.transport.sent[0];
+        assert_eq!(
+            status_msg[0] & 0x01,
+            0x01,
+            "FIFO should be empty after reset"
+        );
+
+        sm.process_command().unwrap();
+        let ctrl_msg = &sm.transport.sent[1];
+        assert_eq!(ctrl_msg[1], 0x00, "reset byte should be cleared by device");
+    }
+
+    #[test]
+    fn indirect_fifo_ctrl_read_returns_current_state() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceFifoRegion::new(&mut buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+        let mut regions: [(u8, &mut dyn FifoCmsRegion); 1] = [(5, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x05, 0x00, 0x10, 0x00, 0x00, 0x00],
+        );
+        transport.enqueue_read(
+            RecoveryCommand::IndirectFifoCtrl,
+            indirect_fifo_ctrl::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut regions,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0], 5);
+        assert_eq!(msg[1], 0x00);
+        assert_eq!(u32::from_le_bytes([msg[2], msg[3], msg[4], msg[5]]), 0x10);
+    }
+
+    #[test]
+    fn indirect_fifo_ctrl_write_wrong_length_sets_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::IndirectFifoCtrl, vec![0x00, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(sm.state.protocol_error, ProtocolError::LengthWriteError);
+    }
+
+    #[test]
+    fn indirect_fifo_ctrl_write_invalid_reset_sets_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(
+            RecoveryCommand::IndirectFifoCtrl,
+            vec![0x00, 0x02, 0x00, 0x00, 0x00, 0x00],
         );
         let mut sm = RecoveryStateMachine::new(
             test_config(),
