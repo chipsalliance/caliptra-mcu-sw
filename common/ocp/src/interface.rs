@@ -200,6 +200,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                 let state = &mut self.state;
                 self.transport.send(&mut |buf| match cmd {
                     RecoveryCommand::ProtCap => state.handle_prot_cap_read(buf),
+                    RecoveryCommand::DeviceId => state.handle_device_id_read(buf),
                     _ => {
                         state.set_protocol_error(ProtocolError::UnsupportedCommand);
                         Ok(0)
@@ -293,6 +294,11 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
         );
         prot_cap.to_message(buf)
     }
+
+    /// Handle a DEVICE_ID (cmd=0x23) read: serialize the device identity.
+    fn handle_device_id_read(&self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        self.config.device_id.to_message(buf)
+    }
 }
 
 #[cfg(test)]
@@ -303,7 +309,7 @@ mod tests {
     use super::*;
     use crate::cms::slice_fifo::SliceFifoRegion;
     use crate::cms::slice_indirect::SliceIndirectRegion;
-    use crate::protocol::device_id::{DeviceDescriptor, PciVendorDescriptor};
+    use crate::protocol::device_id::{self, DeviceDescriptor, PciVendorDescriptor};
     use crate::protocol::device_reset::DeviceReset;
     use crate::protocol::hw_status::{CompositeTemperature, HwStatus, HwStatusFlags};
     use crate::protocol::indirect_fifo_status::FifoCmsRegionType;
@@ -884,5 +890,49 @@ mod tests {
         );
 
         assert!(matches!(result, Err(OcpError::DuplicateCmsIndex)));
+    }
+
+    // -- DEVICE_ID handler tests --
+
+    #[test]
+    fn device_id_read_returns_serialized_id() {
+        let config = test_config();
+        let mut expected_buf = [0u8; device_id::MAX_MESSAGE_LEN];
+        let expected_len = config.device_id.to_message(&mut expected_buf).unwrap();
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(RecoveryCommand::DeviceId, device_id::MAX_MESSAGE_LEN as u16);
+        let mut sm = RecoveryStateMachine::new(
+            config,
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg.len(), expected_len);
+        assert_eq!(msg.as_slice(), &expected_buf[..expected_len]);
+    }
+
+    #[test]
+    fn device_id_write_sets_unsupported_command_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::DeviceId, Vec::new());
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
     }
 }
