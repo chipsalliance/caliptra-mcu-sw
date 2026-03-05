@@ -104,8 +104,18 @@ pub trait FifoCmsRegion {
     /// Returns [`CmsError::WriteOnly`] if the region is write-only.
     fn pop(&mut self, buf: &mut [u8]) -> Result<usize, CmsError>;
 
-    /// Reset the FIFO: write and read indices return to initial values, FIFO becomes empty.
+    /// Request a FIFO reset (INDIRECT_FIFO_CTRL byte 1 = 0x01, "Write 1, Device Clears").
     ///
-    /// Called when `INDIRECT_FIFO_CTRL` byte 1 is set to 0x01.
-    fn reset(&mut self);
+    /// The implementation performs the reset and manages the reset-pending state
+    /// internally. The implementation is responsible for managing the lifecycle
+    /// of the reset, and ensuring `is_reset_pending` returns true between the
+    /// reset request and completion.
+    fn request_reset(&mut self);
+
+    /// Returns `true` if a previously requested reset has not yet completed.
+    ///
+    /// The state machine reads this when serializing INDIRECT_FIFO_CTRL to
+    /// populate the reset byte. Once the device finishes the reset it clears
+    /// this flag, implementing the "Write 1, Device Clears" spec behavior.
+    fn is_reset_pending(&self) -> bool;
 }

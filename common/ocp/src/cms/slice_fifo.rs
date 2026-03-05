@@ -156,9 +156,13 @@ impl FifoCmsRegion for SliceFifoRegion<'_> {
         self.pop_data(buf)
     }
 
-    fn reset(&mut self) {
+    fn request_reset(&mut self) {
         self.write_idx = 0;
         self.read_idx = 0;
+    }
+
+    fn is_reset_pending(&self) -> bool {
+        false
     }
 }
 
@@ -282,7 +286,7 @@ mod tests {
         fifo.push_data(&[0x05, 0x06, 0x07, 0x08]).unwrap();
         assert!(!fifo.is_empty());
 
-        fifo.reset();
+        fifo.request_reset();
         assert!(fifo.is_empty());
         assert_eq!(fifo.write_idx, 0);
         assert_eq!(fifo.read_idx, 0);
