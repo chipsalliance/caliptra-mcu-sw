@@ -66,12 +66,6 @@ pub enum RecoveryAction {
     /// After performing activation, the integrator calls
     /// `complete_activation()` to report the result.
     ActivateRecoveryImage,
-
-    /// The integrator should perform a device reset.
-    DeviceReset,
-
-    /// The integrator should perform a management-only reset.
-    ManagementReset,
 }
 
 /// Protocol state and configuration, separated from the transport to allow
@@ -214,16 +208,19 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                     RecoveryCommand::IndirectFifoStatus => {
                         state.handle_indirect_fifo_status_read(buf)
                     }
+                    RecoveryCommand::DeviceReset => state.handle_device_reset_read(buf),
                     _ => {
                         state.set_protocol_error(ProtocolError::UnsupportedCommand);
                         Ok(0)
                     }
                 })?;
             }
-            RecoveryRequest::Write { .. } => {
-                self.state
-                    .set_protocol_error(ProtocolError::UnsupportedCommand);
-            }
+            RecoveryRequest::Write { data } => match cmd {
+                RecoveryCommand::DeviceReset => self.state.handle_device_reset_write(data),
+                _ => self
+                    .state
+                    .set_protocol_error(ProtocolError::UnsupportedCommand),
+            },
         }
 
         Ok(RecoveryAction::None)
@@ -383,6 +380,52 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
             .to_message(buf),
         }
     }
+
+    /// Handle a DEVICE_RESET (cmd=0x25) read: serialize stored reset state.
+    fn handle_device_reset_read(&self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        self.device_reset.to_message(buf)
+    }
+
+    /// Handle a DEVICE_RESET (cmd=0x25) write: parse, validate, store, and
+    /// return action.
+    ///
+    /// Before accepting the command, verifies that the vendor advertises the
+    /// capabilities required by the requested operations (device_reset,
+    /// mgmt_reset, forced_recovery). On success the parsed `DeviceReset` is
+    /// stored and `vendor.execute_reset()` is called. Length errors map to
+    /// `LengthWriteError`, reserved or unsupported values map to
+    /// `UnsupportedParameter`.
+    fn handle_device_reset_write(&mut self, data: &[u8]) {
+        let parsed = match DeviceReset::from_message(data) {
+            Ok(p) => p,
+            Err(OcpError::MessageTooShort | OcpError::MessageTooLong) => {
+                self.set_protocol_error(ProtocolError::LengthWriteError);
+                return;
+            }
+            Err(_) => {
+                self.set_protocol_error(ProtocolError::UnsupportedParameter);
+                return;
+            }
+        };
+
+        let caps = self.vendor.capabilities();
+
+        if parsed.reset_control == ResetControl::ResetDevice && !caps.device_reset() {
+            self.set_protocol_error(ProtocolError::UnsupportedParameter);
+            return;
+        }
+        if parsed.reset_control == ResetControl::ResetManagement && !caps.mgmt_reset() {
+            self.set_protocol_error(ProtocolError::UnsupportedParameter);
+            return;
+        }
+        if parsed.forced_recovery != ForcedRecoveryMode::None && !caps.forced_recovery() {
+            self.set_protocol_error(ProtocolError::UnsupportedParameter);
+            return;
+        }
+
+        self.device_reset = parsed;
+        self.vendor.execute_reset(&self.device_reset);
+    }
 }
 
 #[cfg(test)]
@@ -394,7 +437,7 @@ mod tests {
     use crate::cms::slice_fifo::SliceFifoRegion;
     use crate::cms::slice_indirect::SliceIndirectRegion;
     use crate::protocol::device_id::{self, DeviceDescriptor, PciVendorDescriptor};
-    use crate::protocol::device_reset::DeviceReset;
+    use crate::protocol::device_reset::{self, DeviceReset};
     use crate::protocol::device_status;
     use crate::protocol::hw_status::{self, CompositeTemperature, HwStatus, HwStatusFlags};
     use crate::protocol::indirect_fifo_status::{self, FifoCmsRegionType};
@@ -413,6 +456,7 @@ mod tests {
         hw_vendor_status_byte: u8,
         hw_composite_temp: CompositeTemperature,
         hw_vendor_specific: Vec<u8>,
+        last_reset: Option<DeviceReset>,
     }
 
     impl MockVendorHandler {
@@ -425,6 +469,7 @@ mod tests {
                 hw_vendor_status_byte: 0,
                 hw_composite_temp: CompositeTemperature::NoData,
                 hw_vendor_specific: Vec::new(),
+                last_reset: None,
             }
         }
 
@@ -441,7 +486,9 @@ mod tests {
             self.caps
         }
 
-        fn execute_reset(&mut self, _reset: &DeviceReset) {}
+        fn execute_reset(&mut self, reset: &DeviceReset) {
+            self.last_reset = Some(*reset);
+        }
 
         fn handle_vendor_write(&mut self, _data: &[u8]) -> Result<(), OcpError> {
             Ok(())
@@ -1534,5 +1581,220 @@ mod tests {
         let action = sm.process_command().unwrap();
         assert_eq!(action, RecoveryAction::None);
         assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
+    }
+
+    // -- DEVICE_RESET handler tests --
+
+    #[test]
+    fn device_reset_write_device_reset_stores_and_invokes_vendor() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::DeviceReset, vec![0x01, 0x00, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::with_all_caps(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(
+            sm.state.device_reset.reset_control,
+            ResetControl::ResetDevice
+        );
+        assert!(sm.state.vendor.last_reset.is_some());
+    }
+
+    #[test]
+    fn device_reset_write_management_reset_stores_and_invokes_vendor() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::DeviceReset, vec![0x02, 0x00, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::with_all_caps(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(
+            sm.state.device_reset.reset_control,
+            ResetControl::ResetManagement
+        );
+        assert!(sm.state.vendor.last_reset.is_some());
+    }
+
+    #[test]
+    fn device_reset_write_no_reset_stores_and_invokes_vendor() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::DeviceReset, vec![0x00, 0x0F, 0x01]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::with_all_caps(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(
+            sm.state.device_reset.forced_recovery,
+            ForcedRecoveryMode::EnterRecovery
+        );
+        assert_eq!(
+            sm.state.device_reset.interface_control,
+            InterfaceControl::EnableMastering
+        );
+        let last = sm.state.vendor.last_reset.unwrap();
+        assert_eq!(last.reset_control, ResetControl::NoReset);
+        assert_eq!(last.forced_recovery, ForcedRecoveryMode::EnterRecovery);
+    }
+
+    #[test]
+    fn device_reset_write_records_forced_recovery() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::DeviceReset, vec![0x01, 0x0E, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::with_all_caps(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        assert_eq!(
+            sm.state.device_reset.forced_recovery,
+            ForcedRecoveryMode::FlashlessBoot
+        );
+    }
+
+    #[test]
+    fn device_reset_write_invalid_parameter_sets_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::DeviceReset, vec![0x03, 0x00, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::with_all_caps(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedParameter);
+    }
+
+    #[test]
+    fn device_reset_write_wrong_length_sets_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::DeviceReset, vec![0x00]);
+        transport.enqueue_write(RecoveryCommand::DeviceReset, vec![0x00, 0x00, 0x00, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::with_all_caps(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::LengthWriteError);
+
+        sm.state.protocol_error = ProtocolError::NoError;
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::LengthWriteError);
+    }
+
+    #[test]
+    fn device_reset_write_unsupported_device_reset_cap() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::DeviceReset, vec![0x01, 0x00, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedParameter);
+        assert!(sm.state.vendor.last_reset.is_none());
+    }
+
+    #[test]
+    fn device_reset_write_unsupported_mgmt_reset_cap() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::DeviceReset, vec![0x02, 0x00, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedParameter);
+    }
+
+    #[test]
+    fn device_reset_write_unsupported_forced_recovery_cap() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::DeviceReset, vec![0x00, 0x0F, 0x00]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedParameter);
+    }
+
+    #[test]
+    fn device_reset_read_returns_current_state() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::DeviceReset, vec![0x01, 0x0F, 0x01]);
+        transport.enqueue_read(
+            RecoveryCommand::DeviceReset,
+            device_reset::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::with_all_caps(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg.as_slice(), &[0x01, 0x0F, 0x01]);
     }
 }
