@@ -54,7 +54,8 @@ default-filter = """
 (package(tests-integration) and test(test_mcu_mbox_fips_periodic)) |
 (package(tests-integration) and test(test_i3c_constant_writes)) |
 (package(tests-integration) and test(test_i3c_simple)) |
-(package(tests-integration) and test(test_mctp_vdm_cmds))
+(package(tests-integration) and test(test_mctp_vdm_cmds)) |
+(package(tests-integration) and test(test_sw_digest_lock))
 """
 # disabled for now due to flakiness of recovery boot
 # (package(tests-integration) and test(test_mctp_capsule_loopback)) |

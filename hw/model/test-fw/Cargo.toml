@@ -65,3 +65,8 @@ required-features = ["riscv"]
 name = "usb_ocp_recovery"
 path = "usb_ocp_recovery.rs"
 required-features = ["riscv"]
+
+[[bin]]
+name = "sw_digest_lock"
+path = "sw_digest_lock.rs"
+required-features = ["riscv"]
