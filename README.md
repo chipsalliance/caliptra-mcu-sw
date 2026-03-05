@@ -34,6 +34,16 @@ cargo xtask runtime
 
 This uses the full [active, or subsystem, mode boot flow](https://chipsalliance.github.io/caliptra-mcu-sw/rom.html#cold-boot-flow).
 
+## Testing
+
+The primary way to run integration tests with the emulator is using the `test` xtask:
+
+```shell
+cargo xtask test
+```
+
+For more details on how to run tests locally, how CI works, and how to add new tests, see the [Testing chapter](https://chipsalliance.github.io/caliptra-mcu-sw/testing.html) in the documentation.
+
 ## Hardware revisions
 
 Currently, two hardware revisions are supported: 2.0 and 2.1.
