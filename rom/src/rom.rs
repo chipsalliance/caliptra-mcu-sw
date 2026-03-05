@@ -632,8 +632,7 @@ pub struct RomParameters<'a> {
     /// Valid AXI users for MCI mailbox 1. 0 values are ignored.
     pub mci_mbox1_axi_users: [u32; 5],
     /// OTP digest IV and finalization constant (platform-specific RTL constants).
-    /// Required to use `Otp::compute_sw_digest`.
-    /// TODO: pass them to compute_sw_digest
+    /// Required to use `Otp::compute_sw_digest` and `Otp::write_sw_digest_and_lock`.
     pub otp_digest_iv: Option<u64>,
     pub otp_digest_const: Option<u128>,
 }

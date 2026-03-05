@@ -69,6 +69,7 @@ pub struct ModelEmulated {
     ready_for_fw: Rc<Cell<bool>>,
     cpu_enabled: Rc<Cell<bool>>,
     trace_path: Option<PathBuf>,
+    mcu_uart_output: Rc<RefCell<Vec<u8>>>,
 
     // Keep this even when not including the coverage feature to keep the
     // interface consistent
@@ -120,11 +121,14 @@ impl McuHwModel for ModelEmulated {
             ..Default::default()
         };
 
+        let mcu_uart_output = Rc::new(RefCell::new(Vec::new()));
+
         let bus_args = McuRootBusArgs {
             rom: params.mcu_rom.into(),
             pic: pic.clone(),
             clock: clock.clone(),
             offsets,
+            uart_output: Some(mcu_uart_output.clone()),
             ..Default::default()
         };
         let mcu_root_bus = McuRootBus::new(bus_args).unwrap();
@@ -278,10 +282,11 @@ impl McuHwModel for ModelEmulated {
 
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
         // Set flash boot wire (bit 29 of generic_input_wires[1]) if flash boot is requested
+        // Bit 0 of word[0] is the "go" signal for test ROMs that gate on it.
         let mci_generic_input_wires = if params.flash_boot {
-            [0, 1 << 29]
+            [1, 1 << 29]
         } else {
-            [0, 0]
+            [1, 0]
         };
         let mci = Mci::new(
             &clock.clone(),
@@ -378,6 +383,7 @@ impl McuHwModel for ModelEmulated {
             ready_for_fw,
             cpu_enabled,
             trace_path: trace_path_or_env(params.trace_path),
+            mcu_uart_output,
             _rom_image_tag: image_tag,
             iccm_image_tag: None,
             events_to_caliptra,
@@ -444,6 +450,17 @@ impl McuHwModel for ModelEmulated {
                 .step(self.caliptra_trace_fn.as_deref_mut());
             if let Some(ref mut bmc) = self.bmc {
                 bmc.step();
+            }
+        }
+        // Forward MCU UART output to the Output sink so that exit-status
+        // bytes (0xFF = pass, 0x01 = fail) and text are captured.
+        {
+            let mut buf = self.mcu_uart_output.borrow_mut();
+            if !buf.is_empty() {
+                for &b in buf.iter() {
+                    self.output.sink().push_uart_char(b);
+                }
+                buf.clear();
             }
         }
         let events = self.events_from_caliptra.try_iter().collect::<Vec<_>>();

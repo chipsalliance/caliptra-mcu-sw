@@ -47,3 +47,8 @@ required-features = ["riscv"]
 name = "exception_handler"
 path = "exception_handler.rs"
 required-features = ["riscv"]
+
+[[bin]]
+name = "sw_digest_lock"
+path = "sw_digest_lock.rs"
+required-features = ["riscv"]

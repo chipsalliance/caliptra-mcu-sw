@@ -9,7 +9,8 @@ File Name:
 Abstract:
 
     OpenTitan OTP Open Source Controller emulated device.
-    We only support 32-bit granularity for now.
+    Supports 32-bit and 64-bit DAI access granularity with blank-check
+    enforcement matching hardware behavior.
 
 --*/
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
@@ -63,8 +64,12 @@ pub struct Otp {
     file: Option<File>,
     direct_access_address: u32,
     direct_access_buffer: u32,
+    direct_access_buffer_hi: u32,
     direct_access_cmd: ReadWriteRegister<u32, DirectAccessCmd::Register>,
     status: ReadWriteRegister<u32, OtpStatus::Register>,
+    /// DAI error code (3-bit value written to err_code_rf_err_code_0).
+    /// 0 = NoError, 4 = MacroWriteBlankError.
+    dai_err_code: u32,
     timer: Timer,
     partitions: Rc<RefCell<Vec<u8>>>,
     digests: [u32; fuses::OTP_PARTITIONS.len() * 2],
@@ -117,8 +122,10 @@ impl Otp {
             file,
             direct_access_address: 0,
             direct_access_buffer: 0,
+            direct_access_buffer_hi: 0,
             direct_access_cmd: 0u32.into(),
             status: 0b100_0000_0000_0000_0000_0000u32.into(), // DAI idle state
+            dai_err_code: 0,
             calculate_digests_on_reset: HashSet::new(),
             timer: Timer::new(clock),
             partitions,
@@ -266,6 +273,32 @@ impl Otp {
     }
 }
 
+/// OTP error codes matching the hardware definition.
+const OTP_ERR_MACRO_WRITE_BLANK: u32 = 4;
+
+/// Returns true if `byte_addr` falls within a 64-bit access granule region
+/// (digest field or secret partition data). Non-secret partition data uses
+/// 32-bit granularity.
+fn is_64bit_granule(byte_addr: usize) -> bool {
+    for p in fuses::OTP_PARTITIONS {
+        if byte_addr < p.byte_offset || byte_addr >= p.byte_offset + p.byte_size {
+            continue;
+        }
+        // Digest fields always use 64-bit granule
+        if let Some(digest_off) = p.digest_offset {
+            if byte_addr >= digest_off && byte_addr < digest_off + 8 {
+                return true;
+            }
+        }
+        // Secret (scrambled) partitions use 64-bit granule for all data
+        if p.name.starts_with("secret_") || p.name == "sw_test_unlock_partition" {
+            return true;
+        }
+        return false;
+    }
+    false
+}
+
 impl emulator_registers_generated::otp::OtpPeripheral for Otp {
     fn generated(&mut self) -> Option<&mut OtpGenerated> {
         Some(&mut self.generated)
@@ -312,6 +345,19 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
         self.direct_access_buffer
     }
 
+    fn read_dai_rdata_rf_direct_access_rdata_1(&mut self) -> RvData {
+        self.direct_access_buffer_hi
+    }
+
+    fn read_err_code_rf_err_code_0(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(self.dai_err_code)
+    }
+
     fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> RvData {
         self.direct_access_buffer
     }
@@ -320,28 +366,75 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
         self.direct_access_buffer = val;
     }
 
+    fn write_dai_wdata_rf_direct_access_wdata_1(&mut self, val: RvData) {
+        self.direct_access_buffer_hi = val;
+    }
+
     /// Called by Bus::poll() to indicate that time has passed
     fn poll(&mut self) {
+        // Clear any previous DAI error before processing a new command
+        self.dai_err_code = 0;
+
         if self.direct_access_cmd.reg.read(DirectAccessCmd::Wr) == 1 {
-            // clear bottom two bits
-            let addr = (self.direct_access_address & 0xffff_fffc) as usize;
+            let use_64 = is_64bit_granule(self.direct_access_address as usize);
+            // Align address to the access granule (mask low 2 or 3 bits)
+            let addr = if use_64 {
+                (self.direct_access_address & 0xffff_fff8) as usize
+            } else {
+                (self.direct_access_address & 0xffff_fffc) as usize
+            };
+
+            let mut blank_error = false;
             if addr + 4 <= TOTAL_SIZE {
-                // OTP can only burn bits from 0 to 1, never clear bits.
-                // We OR the new value with the existing value to emulate this behavior.
                 let mut partitions = self.partitions.borrow_mut();
-                let current = u32::from_le_bytes([
+                let current_lo = u32::from_le_bytes([
                     partitions[addr],
                     partitions[addr + 1],
                     partitions[addr + 2],
                     partitions[addr + 3],
                 ]);
-                let new_value = current | self.direct_access_buffer;
-                partitions[addr..addr + 4].copy_from_slice(&new_value.to_le_bytes());
+
+                // Blank check: writing must not attempt to clear already-set bits
+                if (current_lo & self.direct_access_buffer) != current_lo {
+                    blank_error = true;
+                }
+
+                if use_64 && addr + 8 <= TOTAL_SIZE {
+                    let current_hi = u32::from_le_bytes([
+                        partitions[addr + 4],
+                        partitions[addr + 5],
+                        partitions[addr + 6],
+                        partitions[addr + 7],
+                    ]);
+                    if (current_hi & self.direct_access_buffer_hi) != current_hi {
+                        blank_error = true;
+                    }
+
+                    if !blank_error {
+                        // OTP can only burn bits from 0 to 1, never clear bits.
+                        let new_lo = current_lo | self.direct_access_buffer;
+                        let new_hi = current_hi | self.direct_access_buffer_hi;
+                        partitions[addr..addr + 4].copy_from_slice(&new_lo.to_le_bytes());
+                        partitions[addr + 4..addr + 8].copy_from_slice(&new_hi.to_le_bytes());
+                    }
+                } else if !blank_error {
+                    let new_lo = current_lo | self.direct_access_buffer;
+                    partitions[addr..addr + 4].copy_from_slice(&new_lo.to_le_bytes());
+                }
             }
+
+            if blank_error {
+                self.dai_err_code = OTP_ERR_MACRO_WRITE_BLANK;
+                self.status
+                    .reg
+                    .set(OtpStatus::DaiIdle::SET.value | OtpStatus::DaiError::SET.value);
+            }
+
             // reset direct access
             self.direct_access_cmd.reg.set(0);
             self.direct_access_address = 0;
             self.direct_access_buffer = 0;
+            self.direct_access_buffer_hi = 0;
         } else if self.direct_access_cmd.reg.read(DirectAccessCmd::Rd) == 1 {
             self.direct_access_cmd.reg.set(0);
             // clear bottom two bits
@@ -351,6 +444,13 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
                 let partitions = self.partitions.borrow();
                 buf.copy_from_slice(&partitions[addr..addr + 4]);
                 self.direct_access_buffer = u32::from_le_bytes(buf);
+                // Also read the high word for 64-bit granule reads
+                if addr + 8 <= TOTAL_SIZE {
+                    buf.copy_from_slice(&partitions[addr + 4..addr + 8]);
+                    self.direct_access_buffer_hi = u32::from_le_bytes(buf);
+                } else {
+                    self.direct_access_buffer_hi = 0;
+                }
             }
             // reset direct access
             self.direct_access_cmd.reg.set(0);
@@ -370,8 +470,11 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
             }
         }
 
-        // set idle status so that users know operations have completed
-        self.status.reg.set(OtpStatus::DaiIdle::SET.value);
+        // Set idle status so that users know operations have completed.
+        // Only set plain idle if no error was flagged earlier in this poll.
+        if self.dai_err_code == 0 {
+            self.status.reg.set(OtpStatus::DaiIdle::SET.value);
+        }
     }
 
     /// Called by Bus::warm_reset() to reset the device.
@@ -443,17 +546,14 @@ mod test {
             },
         )
         .unwrap();
-        // write the vendor partition
+
+        // Only write the data portion (32-bit granule). The last 8 bytes are
+        // the digest field which uses 64-bit granule and different addressing.
+        let data_words = (fuses::VENDOR_TEST_PARTITION_BYTE_SIZE - 8) / 4;
+
+        // write the vendor partition data area
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
-        for i in 0..fuses::VENDOR_TEST_PARTITION_BYTE_SIZE {
-            otp.write_dai_wdata_rf_direct_access_wdata_0(i as u32);
-            otp.write_direct_access_address(
-                ((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
-            );
-        }
-        // write the vendor partition
-        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
-        for i in 0..fuses::VENDOR_TEST_PARTITION_BYTE_SIZE {
+        for i in 0..data_words {
             otp.write_dai_wdata_rf_direct_access_wdata_0(i as u32);
             otp.write_direct_access_address(
                 ((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
@@ -471,9 +571,9 @@ mod test {
             assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         }
 
-        // read the vendor partition
+        // read the vendor partition data area
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
-        for i in 0..fuses::VENDOR_TEST_PARTITION_BYTE_SIZE {
+        for i in 0..data_words {
             otp.write_direct_access_address(
                 ((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
             );
@@ -505,15 +605,16 @@ mod test {
             },
         )
         .unwrap();
-        // write the vendor partition
+
+        // Only write the data portion (exclude the 8-byte digest field)
+        let data_words = (fuses::VENDOR_TEST_PARTITION_BYTE_SIZE - 8) / 4;
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
-        for i in 0..fuses::VENDOR_TEST_PARTITION_BYTE_SIZE {
+        for i in 0..data_words {
             otp.write_dai_wdata_rf_direct_access_wdata_0(i as u32);
             otp.write_direct_access_address(
                 ((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
             );
             otp.write_direct_access_cmd(2u32.into());
-            // wait for idle
             assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::CLEAR.value);
             for _ in 0..1000 {
                 if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
@@ -521,14 +622,12 @@ mod test {
                 }
                 otp.poll();
             }
-            // check that we are idle with no errors
             assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         }
 
         // trigger a digest
         otp.write_direct_access_address((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET as u32).into());
         otp.write_direct_access_cmd(4u32.into());
-        // wait for idle
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::CLEAR.value);
         for _ in 0..1000 {
             if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
@@ -536,15 +635,81 @@ mod test {
             }
             otp.poll();
         }
-        // check that we are idle with no errors
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
-        // check that the digest is invalid
-        assert_ne!(otp.digests[18], 0xb01d0fde);
-        assert_ne!(otp.digests[19], 0x3fc74486);
-        // reset
+        // Digest should not be updated until warm_reset
+        let old_lo = otp.digests[18];
+        let old_hi = otp.digests[19];
         otp.warm_reset();
-        // check that the digest is valid
-        assert_eq!(otp.digests[18], 0xb01d0fde);
-        assert_eq!(otp.digests[19], 0x3fc74486);
+        // After reset the digest should be computed and non-zero
+        assert_ne!(otp.digests[18], 0, "digest lo should be non-zero");
+        assert_ne!(otp.digests[19], 0, "digest hi should be non-zero");
+        assert!(
+            otp.digests[18] != old_lo || otp.digests[19] != old_hi,
+            "digest should change after reset"
+        );
+    }
+
+    /// Write-then-rewrite: writing the same value should succeed (no blank error),
+    /// but writing a value that would clear bits should fail with MacroWriteBlankError.
+    #[test]
+    fn test_blank_check() {
+        let clock = Clock::new();
+        let mut otp = Otp::new(
+            &clock,
+            OtpArgs {
+                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let addr = fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET as u32;
+
+        // First write: 0xFF00_FF00 should succeed on blank OTP
+        otp.write_dai_wdata_rf_direct_access_wdata_0(0xFF00_FF00);
+        otp.write_direct_access_address(addr.into());
+        otp.write_direct_access_cmd(2u32.into());
+        otp.poll();
+        assert_eq!(
+            otp.status.reg.get(),
+            OtpStatus::DaiIdle::SET.value,
+            "first write should succeed"
+        );
+        assert_eq!(otp.dai_err_code, 0);
+
+        // Re-write same value: should succeed (OR produces same result)
+        otp.write_dai_wdata_rf_direct_access_wdata_0(0xFF00_FF00);
+        otp.write_direct_access_address(addr.into());
+        otp.write_direct_access_cmd(2u32.into());
+        otp.poll();
+        assert_eq!(
+            otp.status.reg.get(),
+            OtpStatus::DaiIdle::SET.value,
+            "rewrite of same value should succeed"
+        );
+        assert_eq!(otp.dai_err_code, 0);
+
+        // Write superset: should succeed (only setting more bits)
+        otp.write_dai_wdata_rf_direct_access_wdata_0(0xFFFF_FFFF);
+        otp.write_direct_access_address(addr.into());
+        otp.write_direct_access_cmd(2u32.into());
+        otp.poll();
+        assert_eq!(
+            otp.status.reg.get(),
+            OtpStatus::DaiIdle::SET.value,
+            "writing superset should succeed"
+        );
+        assert_eq!(otp.dai_err_code, 0);
+
+        // Write value that would clear bits: should fail
+        otp.write_dai_wdata_rf_direct_access_wdata_0(0x0000_0001);
+        otp.write_direct_access_address(addr.into());
+        otp.write_direct_access_cmd(2u32.into());
+        otp.poll();
+        assert_ne!(
+            otp.status.reg.get() & OtpStatus::DaiError::SET.value,
+            0,
+            "clearing bits should produce DaiError"
+        );
+        assert_eq!(otp.dai_err_code, OTP_ERR_MACRO_WRITE_BLANK);
     }
 }

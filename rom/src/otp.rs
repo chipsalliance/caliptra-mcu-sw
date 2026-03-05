@@ -177,6 +177,35 @@ impl Otp {
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
     }
 
+    /// Reads a dword (64-bit) from the OTP controller.
+    /// dword_addr is in dwords (8-byte units).
+    pub fn read_dword(&self, dword_addr: usize) -> McuResult<u64> {
+        while !self
+            .registers
+            .otp_status
+            .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
+        {}
+
+        self.registers
+            .direct_access_address
+            .set((dword_addr * 8) as u32);
+        self.registers.direct_access_cmd.set(1);
+
+        while !self
+            .registers
+            .otp_status
+            .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
+        {}
+
+        if let Some(err) = self.check_error() {
+            romtime::println!("Error reading fuses: {}", HexWord(err));
+            return Err(McuError::ROM_OTP_READ_ERROR);
+        }
+        let lo = self.registers.dai_rdata_rf_direct_access_rdata_0.get() as u64;
+        let hi = self.registers.dai_rdata_rf_direct_access_rdata_1.get() as u64;
+        Ok(lo | (hi << 32))
+    }
+
     /// Write a dword to the OTP controller.
     /// word_addr is in words
     pub fn write_dword(&self, dword_addr: usize, data: u64) -> McuResult<u32> {
@@ -188,11 +217,9 @@ impl Otp {
         {}
 
         // load the data
-        romtime::println!("Write dword 0: {}", HexWord(data as u32));
         self.registers
             .dai_wdata_rf_direct_access_wdata_0
             .set((data) as u32);
-        romtime::println!("Write dword 1: {}", HexWord((data >> 32) as u32));
         self.registers
             .dai_wdata_rf_direct_access_wdata_1
             .set((data >> 32) as u32);
@@ -747,6 +774,57 @@ impl Otp {
 
         let digest = otp_digest::otp_digest_iter(blocks, iv, cnst);
         err?;
+        Ok(digest)
+    }
+
+    /// Compute and write the software digest for an OTP partition, locking it.
+    ///
+    /// Per the OTP spec, writing a non-zero value to the partition's digest
+    /// entry via DAI locks write access to the partition after the next reset.
+    ///
+    /// This method:
+    /// 1. Computes the 64-bit PRESENT-based digest over partition data
+    /// 2. Writes it to the digest offset via DAI (64-bit write)
+    /// 3. Reads it back and verifies
+    ///
+    /// Returns the computed digest on success.
+    pub fn write_sw_digest_and_lock(
+        &self,
+        partition: &OtpPartitionInfo,
+        iv: u64,
+        cnst: u128,
+    ) -> McuResult<u64> {
+        let digest_offset = partition
+            .digest_offset
+            .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+
+        let digest = self.compute_sw_digest(partition, iv, cnst)?;
+        romtime::println!(
+            "[mcu-rom-otp] Writing SW digest {:#x} for partition '{}' at offset {:#x}",
+            digest,
+            partition.name,
+            digest_offset
+        );
+
+        // The digest field always uses a 64-bit access granule in the DAI,
+        // even for non-secret partitions whose data uses 32-bit granularity.
+        self.write_dword(digest_offset / 8, digest)?;
+
+        // Read back the digest using 64-bit granule (matching the write)
+        let readback = self.read_dword(digest_offset / 8)?;
+        if readback != digest {
+            romtime::println!(
+                "[mcu-rom-otp] Digest verify failed: wrote {:#x}, read {:#x}",
+                digest,
+                readback
+            );
+            return Err(McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
+        }
+
+        romtime::println!(
+            "[mcu-rom-otp] SW digest written and verified for '{}' - partition will lock on next reset",
+            partition.name
+        );
         Ok(digest)
     }
 

@@ -25,12 +25,18 @@ pub mod hw_model_tests {
         bin_name: "exception_handler",
         ..BASE_FWID
     };
+
+    pub const SW_DIGEST_LOCK: FwId = FwId {
+        bin_name: "sw_digest_lock",
+        ..BASE_FWID
+    };
 }
 
 pub const REGISTERED_FW: &[&FwId] = &[
     &hw_model_tests::MAILBOX_RESPONDER,
     &hw_model_tests::HITLESS_UPDATE_FLOW,
     &hw_model_tests::EXCEPTION_HANDLER,
+    &hw_model_tests::SW_DIGEST_LOCK,
 ];
 
 pub const CPTRA_REGISTERED_FW: &[&FwId] =

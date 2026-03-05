@@ -253,6 +253,11 @@ impl McuError {
             "OTP pending check exceeded maximum iterations"
         ),
         (
+            ROM_OTP_DIGEST_VERIFY_ERROR,
+            0x3_000c,
+            "OTP SW digest readback verification failed"
+        ),
+        (
             ROM_I3C_CONFIG_RING_HEADER_ERROR,
             0x4_0000,
             "I3C config ring header error"
