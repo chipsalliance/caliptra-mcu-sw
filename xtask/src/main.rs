@@ -212,6 +212,14 @@ enum Commands {
         /// Remap workspace path for archived tests
         #[arg(long)]
         workspace_remap: Option<PathBuf>,
+
+        /// Path to the firmware bundle ZIP
+        #[arg(long)]
+        firmware_bundle: Option<PathBuf>,
+
+        /// Path to the emulator bundle ZIP
+        #[arg(long)]
+        emulator_bundle: Option<PathBuf>,
     },
     /// Autogenerate register files and emulator bus from RDL
     RegistersAutogen {
@@ -522,10 +530,14 @@ fn main() {
             archive,
             shard,
             workspace_remap,
+            firmware_bundle,
+            emulator_bundle,
         } => test::test(test::TestArgs {
             archive: archive.as_deref(),
             shard: shard.as_deref(),
             workspace_remap: workspace_remap.as_deref().and_then(|p| p.to_str()),
+            firmware_bundle: firmware_bundle.as_deref().and_then(|p| p.to_str()),
+            emulator_bundle: emulator_bundle.as_deref().and_then(|p| p.to_str()),
         }),
         Commands::RegistersAutogen {
             check,

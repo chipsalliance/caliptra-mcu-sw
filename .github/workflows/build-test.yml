@@ -291,12 +291,12 @@ jobs:
       #   cargo xtask all-build --platform emulator --separate-runtimes
       #   cargo xtask emulator-build
       # Then run the tests with:
-      #   CPTRA_FIRMWARE_BUNDLE=target/all-fw.zip CPTRA_EMULATOR_BUNDLE=target/emulators.zip cargo xtask test
+      #   cargo xtask test --firmware-bundle target/all-fw.zip --emulator-bundle target/emulators.zip
       - name: Run tests (shard ${{ matrix.shard }}/4)
         run: |
-          export CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip"
-          export CPTRA_EMULATOR_BUNDLE="${PWD}/target/emulators.zip"
           cargo --config "$EXTRA_CARGO_CONFIG" xtask test \
             --archive /tmp/nextest-archive.tar.zst \
             --workspace-remap . \
-            --shard hash:${{ matrix.shard }}/4
+            --shard hash:${{ matrix.shard }}/4 \
+            --firmware-bundle "${PWD}/target/all-fw.zip" \
+            --emulator-bundle "${PWD}/target/emulators.zip"

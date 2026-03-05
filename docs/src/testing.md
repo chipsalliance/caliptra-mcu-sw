@@ -14,16 +14,18 @@ This command runs all integration tests using `cargo nextest`. It automatically 
 
 ### Test Environment Variables
 
-Integration tests often require pre-built firmware and emulator binary bundles. These are provided via environment variables:
+Integration tests often require pre-built firmware and emulator binary bundles. These can be provided via command-line arguments:
 
-*   `CPTRA_FIRMWARE_BUNDLE`: Path to a ZIP file containing Caliptra Core ROM, Core firmware, MCU ROM, and MCU runtime binaries. This is built with `cargo xtask all-build`.
-*   `CPTRA_EMULATOR_BUNDLE`: Path to a ZIP file containing pre-built emulator binaries with different test features. This is built with `cargo xtask emulator-build`.
+*   `--firmware-bundle <PATH>`: Path to a ZIP file containing Caliptra Core ROM, Core firmware, MCU ROM, and MCU runtime binaries. This is built with `cargo xtask all-build`.
+*   `--emulator-bundle <PATH>`: Path to a ZIP file containing pre-built emulator binaries with different test features. This is built with `cargo xtask emulator-build`.
 
 Example of running tests with pre-built bundles:
 
 ```shell
-CPTRA_FIRMWARE_BUNDLE=target/all-fw.zip CPTRA_EMULATOR_BUNDLE=target/emulators.zip cargo xtask test
+cargo xtask test --firmware-bundle target/all-fw.zip --emulator-bundle target/emulators.zip
 ```
+
+(Note: These can also be provided via `CPTRA_FIRMWARE_BUNDLE` and `CPTRA_EMULATOR_BUNDLE` environment variables.)
 
 ### Advanced Test Options
 

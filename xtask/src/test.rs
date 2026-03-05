@@ -10,6 +10,8 @@ pub(crate) struct TestArgs<'a> {
     pub archive: Option<&'a str>,
     pub shard: Option<&'a str>,
     pub workspace_remap: Option<&'a str>,
+    pub firmware_bundle: Option<&'a str>,
+    pub emulator_bundle: Option<&'a str>,
 }
 
 const EXCLUDED_PACKAGES: &[&str] = &[
@@ -27,6 +29,13 @@ const EXCLUDED_PACKAGES: &[&str] = &[
 ];
 
 pub(crate) fn test(args: TestArgs) -> Result<()> {
+    if let Some(firmware_bundle) = args.firmware_bundle {
+        std::env::set_var("CPTRA_FIRMWARE_BUNDLE", firmware_bundle);
+    }
+    if let Some(emulator_bundle) = args.emulator_bundle {
+        std::env::set_var("CPTRA_EMULATOR_BUNDLE", emulator_bundle);
+    }
+
     if let Some(archive_file) = args.archive {
         cargo_test_archive(archive_file)
     } else {
