@@ -18,7 +18,7 @@ use crate::protocol::device_status::{
 };
 use crate::protocol::indirect_ctrl::IndirectCtrl;
 use crate::protocol::indirect_fifo_ctrl::IndirectFifoCtrl;
-use crate::protocol::indirect_status::CmsRegionType;
+use crate::protocol::indirect_status::{CmsRegionType, IndirectStatus, StatusFlags};
 use crate::protocol::prot_cap::{ProtCap, RecoveryProtocolCapabilities};
 use crate::protocol::recovery_ctrl::{ActivateRecoveryImage, ImageSelection, RecoveryCtrl};
 use crate::protocol::recovery_status::{DeviceRecoveryStatus, RecoveryStatus};
@@ -207,6 +207,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                     RecoveryCommand::DeviceStatus => state.handle_device_status_read(buf),
                     RecoveryCommand::RecoveryStatus => state.handle_recovery_status_read(buf),
                     RecoveryCommand::HwStatus => state.handle_hw_status_read(buf),
+                    RecoveryCommand::IndirectStatus => state.handle_indirect_status_read(buf),
                     _ => {
                         state.set_protocol_error(ProtocolError::UnsupportedCommand);
                         Ok(0)
@@ -225,7 +226,6 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
 
 impl<V: VendorHandler> RecoveryState<'_, V> {
     /// Look up a memory-window CMS region by index.
-    #[allow(dead_code)] // TODO: Remove when utilized as part of command processing.
     fn lookup_indirect_region(&mut self, cms: u8) -> Option<&mut dyn IndirectCmsRegion> {
         for (idx, region) in self.indirect_regions.iter_mut() {
             if *idx == cms {
@@ -247,7 +247,6 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
     }
 
     /// Record a protocol error for the next DEVICE_STATUS read.
-    #[allow(dead_code)] // TODO: Remove when utilized as part of command processing.
     fn set_protocol_error(&mut self, err: ProtocolError) {
         self.protocol_error = err;
     }
@@ -338,6 +337,25 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
         let hw = self.vendor.hw_status()?;
         hw.to_message(buf)
     }
+
+    /// Handle an INDIRECT_STATUS (cmd=0x2A) read.
+    ///
+    /// Looks up the memory-window CMS region selected by `indirect_ctrl.cms`.
+    /// If found, returns its status and clears accumulated flags (clear-on-read).
+    /// If the index doesn't match any indirect region (including FIFO-only
+    /// indices), returns `CmsRegionType::Unsupported`.
+    fn handle_indirect_status_read(&mut self, buf: &mut [u8]) -> Result<usize, OcpError> {
+        let cms = self.indirect_ctrl.cms;
+        match self.lookup_indirect_region(cms) {
+            Some(region) => {
+                let status = region.status();
+                region.clear_status();
+                status.to_message(buf)
+            }
+            None => IndirectStatus::new(StatusFlags(0), CmsRegionType::Unsupported, false, 0)
+                .to_message(buf),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -353,7 +371,7 @@ mod tests {
     use crate::protocol::device_status;
     use crate::protocol::hw_status::{self, CompositeTemperature, HwStatus, HwStatusFlags};
     use crate::protocol::indirect_fifo_status::FifoCmsRegionType;
-    use crate::protocol::indirect_status::CmsRegionType;
+    use crate::protocol::indirect_status::{self, CmsRegionType, IndirectStatus, StatusFlags};
     use crate::protocol::prot_cap::{self, RESPONSE_LEN};
     use crate::protocol::recovery_status;
     use crate::protocol::RecoveryCommand;
@@ -1189,6 +1207,156 @@ mod tests {
     fn hw_status_write_sets_unsupported_command_error() {
         let mut transport = MockUsbDeviceDriver::new();
         transport.enqueue_write(RecoveryCommand::HwStatus, Vec::new());
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        assert_eq!(sm.state.protocol_error, ProtocolError::UnsupportedCommand);
+    }
+
+    // -- INDIRECT_STATUS handler tests --
+
+    #[test]
+    fn indirect_status_read_returns_region_type_and_size() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(
+            RecoveryCommand::IndirectStatus,
+            indirect_status::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        let msg = &sm.transport.sent[0];
+        let mut expected = [0u8; indirect_status::MESSAGE_LEN];
+        IndirectStatus::new(StatusFlags(0), CmsRegionType::CodeSpace, false, 64)
+            .to_message(&mut expected)
+            .unwrap();
+        assert_eq!(msg.as_slice(), &expected);
+    }
+
+    #[test]
+    fn indirect_status_read_unsupported_for_invalid_index() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(
+            RecoveryCommand::IndirectStatus,
+            indirect_status::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.state.indirect_ctrl.cms = 99;
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        let msg = &sm.transport.sent[0];
+        let mut expected = [0u8; indirect_status::MESSAGE_LEN];
+        IndirectStatus::new(StatusFlags(0), CmsRegionType::Unsupported, false, 0)
+            .to_message(&mut expected)
+            .unwrap();
+        assert_eq!(msg.as_slice(), &expected);
+    }
+
+    #[test]
+    fn indirect_status_read_unsupported_for_fifo_index() {
+        let mut ibuf = [0u8; 64];
+        let mut fbuf = [0u8; 64];
+        let mut ir = SliceIndirectRegion::new(&mut ibuf, CmsRegionType::CodeSpace).unwrap();
+        let mut fr = SliceFifoRegion::new(&mut fbuf, FifoCmsRegionType::CodeSpace, 16).unwrap();
+        let mut indirect: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut ir)];
+        let mut fifo: [(u8, &mut dyn FifoCmsRegion); 1] = [(1, &mut fr)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(
+            RecoveryCommand::IndirectStatus,
+            indirect_status::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut indirect,
+            &mut fifo,
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.state.indirect_ctrl.cms = 1;
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::None);
+        let msg = &sm.transport.sent[0];
+        let mut expected = [0u8; indirect_status::MESSAGE_LEN];
+        IndirectStatus::new(StatusFlags(0), CmsRegionType::Unsupported, false, 0)
+            .to_message(&mut expected)
+            .unwrap();
+        assert_eq!(msg.as_slice(), &expected);
+    }
+
+    #[test]
+    fn indirect_status_read_overflow_reported_and_cleared() {
+        let mut buf = [0u8; 4];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        region.write(&[0xAA; 4]).unwrap();
+
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(
+            RecoveryCommand::IndirectStatus,
+            indirect_status::MESSAGE_LEN as u16,
+        );
+        transport.enqueue_read(
+            RecoveryCommand::IndirectStatus,
+            indirect_status::MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0] & 0x01, 0x01, "overflow flag should be set");
+
+        sm.process_command().unwrap();
+        let msg2 = &sm.transport.sent[1];
+        assert_eq!(msg2[0] & 0x01, 0x00, "overflow flag should be cleared");
+    }
+
+    #[test]
+    fn indirect_status_write_sets_unsupported_command_error() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::IndirectStatus, Vec::new());
         let mut sm = RecoveryStateMachine::new(
             test_config(),
             &mut transport,
