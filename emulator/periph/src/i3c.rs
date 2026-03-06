@@ -23,7 +23,7 @@ use registers_generated::i3c::bits::{
 use semver::Version;
 use std::collections::VecDeque;
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::FromBytes;
 
@@ -31,10 +31,13 @@ const I3C_REC_INT_BYPASS_I3C_CORE: u32 = 0x0;
 const I3C_REC_INT_BYPASS_AXI_DIRECT: u32 = 0x1;
 struct PollScheduler {
     timer: Timer,
+    // Held while scheduling to prevent the clock from advancing mid-operation.
+    step_lock: Arc<Mutex<()>>,
 }
 
 impl I3cIncomingCommandClient for PollScheduler {
     fn incoming(&self) {
+        let _guard = self.step_lock.lock().unwrap();
         // trigger interrupt check next tick
         self.timer.schedule_poll_in(1);
     }
@@ -100,6 +103,7 @@ impl I3c {
         controller: &mut I3cController,
         irq: Irq,
         hw_revision: Version,
+        step_lock: Arc<Mutex<()>>,
     ) -> Self {
         let mut i3c_target = I3cTarget::default();
 
@@ -108,6 +112,7 @@ impl I3c {
         timer.schedule_poll_in(Self::HCI_TICKS);
         let poll_scheduler = PollScheduler {
             timer: timer.clone(),
+            step_lock,
         };
         i3c_target.set_incoming_command_client(Arc::new(poll_scheduler));
 
@@ -1072,11 +1077,13 @@ mod tests {
         let pic = Pic::new();
         let irq = pic.register_irq(2);
         let mut i3c_controller = I3cController::default();
+        let step_lock = Arc::new(Mutex::new(()));
         let mut i3c = Box::new(I3c::new(
             &clock,
             &mut i3c_controller,
             irq,
             Version::new(2, 0, 0),
+            step_lock,
         ));
 
         assert_eq!(i3c.read_i3c_base_hci_version(), I3c::HCI_VERSION);

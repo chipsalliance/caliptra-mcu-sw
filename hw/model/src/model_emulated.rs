@@ -55,6 +55,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 const BOOT_CYCLES: u64 = 100_000_000;
@@ -87,6 +88,9 @@ pub struct ModelEmulated {
     dot_flash: Rc<RefCell<Ram>>,
     otp_partitions: Rc<RefCell<Vec<u8>>>,
     check_booted_to_runtime: bool,
+    // Synchronises cross-thread timer scheduling (I3C controller thread)
+    // with the CPU step that advances the clock.
+    step_lock: Arc<Mutex<()>>,
 }
 
 fn hash_slice(slice: &[u8]) -> u64 {
@@ -154,7 +158,15 @@ impl McuHwModel for ModelEmulated {
             Version::new(2, 0, 0)
         };
 
-        let i3c = I3c::new(&clock.clone(), &mut i3c_controller, i3c_irq, hw_version);
+        let step_lock = Arc::new(Mutex::new(()));
+
+        let i3c = I3c::new(
+            &clock.clone(),
+            &mut i3c_controller,
+            i3c_irq,
+            hw_version,
+            step_lock.clone(),
+        );
 
         let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
 
@@ -397,6 +409,7 @@ impl McuHwModel for ModelEmulated {
             dot_flash,
             otp_partitions,
             check_booted_to_runtime: params.check_booted_to_runtime,
+            step_lock,
         };
         // Turn tracing on if the trace path was set
         m.tracing_hint(true);
@@ -445,9 +458,15 @@ impl McuHwModel for ModelEmulated {
 
     fn step(&mut self) {
         if self.cpu_enabled.get() {
-            self.cpu.step(self.caliptra_trace_fn.as_deref_mut());
-            self.caliptra_cpu
-                .step(self.caliptra_trace_fn.as_deref_mut());
+            {
+                // Hold the step lock while advancing the clock so that
+                // cross-thread callers (e.g. I3C PollScheduler::incoming)
+                // cannot observe a mid-step clock value.
+                let _guard = self.step_lock.lock().unwrap();
+                self.cpu.step(self.caliptra_trace_fn.as_deref_mut());
+                self.caliptra_cpu
+                    .step(self.caliptra_trace_fn.as_deref_mut());
+            }
             if let Some(ref mut bmc) = self.bmc {
                 bmc.step();
             }
