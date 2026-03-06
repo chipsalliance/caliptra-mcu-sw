@@ -19,6 +19,7 @@
         - [IDE Key Management](./ide_km.md)
         - [TDISP](./tdisp.md)
         - [In-field Provisioning and Management of SPDM Certificate Slots](./cert_slot_mgmt.md)
+        - [MCU RT Identity Attestation](./mcu_rt_identity_attestation.md)
     - [PLDM](./pldm.md)
     - [Firmware Update](./firmware_update.md)
     - [Common Caliptra Commands](./caliptra_common_commands.md)
