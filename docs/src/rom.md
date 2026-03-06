@@ -241,10 +241,8 @@ The `PROD_DEBUG_UNLOCK_PK_HASH_REG` registers in MCI store the public key hashes
 
 The verification process:
 1. MCU ROM writes PK hash values from fuses to `PROD_DEBUG_UNLOCK_PK_HASH_REG` registers
-1. [2.1] MCU ROM writes the [FC_FIPS_ZEROZATION](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.FC_FIPS_ZEROZATION) register
 1. MCU ROM sets `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` to lock the registers
 1. MCU ROM reads back the PK hash register values and compares them against the original fuse values
-1. [2.1] MCU ROM reads back the FC_FIPS_ZEROIZATION register and verifies its value.
 1. If any mismatch is detected, MCU ROM reports a fatal error (`ROM_SOC_PK_HASH_VERIFY_FAILED`)
 
 ### MCU Mailbox AXI User Verification
