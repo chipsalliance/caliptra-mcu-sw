@@ -14,8 +14,8 @@ use ocp_eat::ocp_profile::{
     IntegrityRegisterEntry, IntegrityRegisterIdChoice, TaggedConciseEvidence,
 };
 use ocp_eat::{
-    ClassMap, ConciseEvidence, ConciseEvidenceMap, DigestEntry, EnvironmentMap, EvTriplesMap,
-    EvidenceTripleRecord, MeasurementMap, MeasurementValue,
+    ClassIdTypeChoice, ClassMap, ConciseEvidence, ConciseEvidenceMap, DigestEntry, EnvironmentMap,
+    EvTriplesMap, EvidenceTripleRecord, MeasurementMap, MeasurementValue, TaggedBytes,
 };
 use spdm_lib::measurements::{MeasurementsError, MeasurementsResult};
 use zerocopy::IntoBytes;
@@ -52,7 +52,7 @@ const DEFAULT_MEAS_VALUE: MeasurementValue = MeasurementValue {
 
 const DEFAULT_ENV_MAP: EnvironmentMap = EnvironmentMap {
     class: ClassMap {
-        class_id: "",
+        class_id: ClassIdTypeChoice::TaggedBytes(TaggedBytes::new(b"")),
         vendor: None,
         model: None,
     },
@@ -84,12 +84,12 @@ fn build_environment_maps() -> [EnvironmentMap<'static>; TOTAL_TARGET_ENV] {
     let mut arr = [DEFAULT_ENV_MAP; TOTAL_TARGET_ENV];
 
     for (i, id) in DEFAULT_FW_IDS.iter().enumerate() {
-        arr[i].class.class_id = id;
+        arr[i].class.class_id = ClassIdTypeChoice::TaggedBytes(TaggedBytes::new(id.as_bytes()));
     }
 
     for (i, id) in SOC_FW_ID_STRS.iter().enumerate() {
         let idx = NUM_DEFAULT_FW_COMPONENTS + i;
-        arr[idx].class.class_id = id;
+        arr[idx].class.class_id = ClassIdTypeChoice::TaggedBytes(TaggedBytes::new(id.as_bytes()));
         arr[idx].class.vendor = Some(SOC_VENDOR);
         arr[idx].class.model = Some(SOC_MODEL);
     }
