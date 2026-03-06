@@ -150,7 +150,6 @@ num-derive = "0.4.2"
 num-traits = "0.2"
 openssl = { version = "0.10", features = ["vendored"] }
 pkcs8 = "0.10.2"
-phf = { version = "0.11", default-features = false }
 portable-atomic = "1.7.0"
 p384 = "0.13.0"
 prettyplease = "0.2.37"

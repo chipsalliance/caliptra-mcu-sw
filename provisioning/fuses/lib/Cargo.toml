@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-phf = { workspace = true,  features = ["macros"] }
+registers-generated = { workspace = true }
 
 [build-dependencies]
 fusegen.workspace = true
