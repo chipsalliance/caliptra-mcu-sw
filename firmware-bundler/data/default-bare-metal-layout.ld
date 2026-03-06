@@ -17,6 +17,7 @@ SECTIONS
         *(.text.init )
         *(.text*)
         *(.rodata*)
+        . = ALIGN(4);
         _imem_end = .;
     } > RAM
 

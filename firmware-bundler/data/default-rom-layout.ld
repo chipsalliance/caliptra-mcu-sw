@@ -16,6 +16,7 @@ SECTIONS
         *(.text.init )
         *(.text*)
         *(.rodata*)
+        . = ALIGN(4);
     } > ROM
 
     ROM_DATA = .;
