@@ -193,4 +193,87 @@ mod test {
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
+
+    /// Integration test: MCU sends a request via network mailbox, Network CoP
+    /// echoes back with incremented data.
+    ///
+    /// The MCU ROM (with feature `test-network-mbox-comm`) writes command 0x0001
+    /// and test data [0x1000, 0x2000, 0x3000, 0x4000] to the network mailbox,
+    /// then sets execute.
+    ///
+    /// The Network CoP ROM (with feature `test-network-mbox-comm`) polls for the
+    /// execute bit, reads the command/data, increments each dword by 1, writes
+    /// the response, and sets target_status to CmdComplete + Done.
+    ///
+    /// The MCU ROM polls for Done, verifies the response, and prints PASSED.
+    #[test]
+    #[cfg_attr(feature = "fpga_realtime", ignore)]
+    fn test_network_mbox_mcu_to_network_comm() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            include_network_rom: true,
+            rom_only: true,
+            rom_feature: Some("test-network-mbox-comm"),
+            network_rom_feature: Some("test-network-mbox-comm"),
+            ..Default::default()
+        });
+
+        assert!(hw.has_network_cpu(), "Network CPU should be present");
+
+        // Run until the Network CoP prints PASSED or we hit the cycle limit.
+        // Note: MCU UART output goes to stderr (not captured by hw.output()),
+        // so we check the Network CoP UART and verify mailbox state directly.
+        const MAX_CYCLES: u64 = 50_000_000;
+        let mut net_passed = false;
+
+        hw.step_until(|m| {
+            if m.cycle_count() >= MAX_CYCLES {
+                return true;
+            }
+
+            // Check Network CoP output for PASSED.
+            if !net_passed {
+                if let Some(net_output) = m.network_uart_output() {
+                    if net_output.contains("test PASSED!") {
+                        net_passed = true;
+                    }
+                }
+            }
+
+            net_passed
+        });
+
+        // Print outputs for debugging.
+        if let Some(net_output) = hw.network_uart_output() {
+            println!("Network CPU UART output:\n{}", net_output);
+        }
+
+        // Check mailbox state directly for diagnostic purposes.
+        {
+            let mut mgr = hw.network_manager();
+            let mbox = mgr.mbox();
+            let execute = mbox.read_network_mbox_execute();
+            let target_status = mbox.read_network_mbox_target_status();
+            let lock_val = mbox.read_network_mbox_lock();
+            let cmd = mbox.read_network_mbox_cmd();
+            let dlen = mbox.read_network_mbox_dlen();
+            println!(
+                "Mailbox state: execute={:#x}, target_status={:#x}, lock={:#x}, cmd={:#x}, dlen={:#x}",
+                execute.reg.get(),
+                target_status.reg.get(),
+                lock_val.reg.get(),
+                cmd,
+                dlen
+            );
+        }
+
+        assert!(
+            net_passed,
+            "Network CoP should report network mbox test PASSED"
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }

@@ -16,6 +16,9 @@ Abstract:
 
 pub mod dhcp_test;
 
+#[cfg(feature = "test-network-mbox-comm")]
+pub mod network_mbox_test;
+
 #[cfg(feature = "lwip-dhcp")]
 pub mod lwip_dhcp_test;
 

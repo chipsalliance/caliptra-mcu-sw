@@ -2242,6 +2242,8 @@ dependencies = [
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-error",
  "caliptra-mcu-image-header",
+ "caliptra-mcu-network-drivers",
+ "caliptra-mcu-network-hil",
  "caliptra-mcu-ocp",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
