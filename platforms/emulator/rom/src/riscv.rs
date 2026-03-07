@@ -604,6 +604,9 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         });
+    } else if cfg!(feature = "test-network-mbox-comm") {
+        #[cfg(feature = "test-network-mbox-comm")]
+        crate::network_mbox_test::run();
     } else if cfg!(all(
         feature = "flash-boot",
         not(feature = "test-dot-recovery-reset-flow")

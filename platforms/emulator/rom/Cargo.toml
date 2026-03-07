@@ -18,6 +18,8 @@ caliptra-mcu-error.workspace = true
 caliptra-mcu-usb-emulator.workspace = true
 caliptra-mcu-ocp.workspace = true
 caliptra-mcu-image-header.workspace = true
+caliptra-mcu-network-drivers = { workspace = true, optional = true }
+caliptra-mcu-network-hil = { workspace = true, optional = true }
 caliptra-mcu-rom-common.workspace = true
 caliptra-mcu-registers-generated.workspace = true
 caliptra-mcu-romtime.workspace = true
@@ -62,3 +64,4 @@ test-i3c-services = ["caliptra-mcu-rom-common/test-i3c-services"]
 test-dot-recovery-reset-flow = ["caliptra-mcu-rom-common/test-dot-recovery-reset-flow"]
 test-rom-hooks = []
 test-usb-ocp-recovery = ["hw-2-1"]
+test-network-mbox-comm = ["caliptra-mcu-network-drivers", "caliptra-mcu-network-hil"]

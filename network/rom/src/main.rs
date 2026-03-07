@@ -70,6 +70,11 @@ pub extern "C" fn main() -> ! {
         caliptra_mcu_network_app_rom_test::lwip_tftpv6_test::run(eth);
     }
 
+    #[cfg(feature = "test-network-mbox-comm")]
+    {
+        caliptra_mcu_network_app_rom_test::network_mbox_test::run();
+    }
+
     exit_emulator(0x00);
 }
 
