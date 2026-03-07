@@ -10,8 +10,10 @@ use spdm_lib::measurements::{
     MeasurementValueInfo, MeasurementsError, MeasurementsResult, SpdmMeasurementValue,
 };
 
+#[allow(dead_code)]
 pub const NUM_PCR_QUOTE_MEASUREMENTS: usize = 1;
 
+#[allow(dead_code)]
 pub fn create_manifest_with_pcr_quote() -> (
     PcrQuoteManifest,
     [MeasurementValueInfo; NUM_PCR_QUOTE_MEASUREMENTS],
@@ -29,6 +31,7 @@ pub fn create_manifest_with_pcr_quote() -> (
 pub struct PcrQuoteManifest;
 
 impl PcrQuoteManifest {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         PcrQuoteManifest {}
     }
