@@ -53,15 +53,17 @@ regfile interface_regs {
     } control;
 
     reg {
-        field { sw=r; hw=rw; desc = "RSVD in SS"; } cptra_error_fatal = 1'b0;
-        field { sw=r; hw=rw; desc = "RSVD in SS"; } cptra_error_non_fatal = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } cptra_error_fatal[0:0] = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } cptra_error_non_fatal[1:1] = 1'b0;
 
-        field { sw=r; hw=rw; desc = "RSVD in SS"; } ready_for_fuses = 1'b0;
-        field { sw=r; hw=rw; desc = "RSVD in SS"; } ready_for_mb_processing = 1'b0;
-        field { sw=r; hw=rw; desc = "RSVD in SS"; } ready_for_runtime = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } ready_for_fuses[2:2] = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } ready_for_mb_processing[3:3] = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } ready_for_runtime[4:4] = 1'b0;
 
-        field { sw=r; hw=rw; desc = "RSVD in SS"; } mailbox_data_avail = 1'b0;
-        field { sw=r; hw=rw; desc = "RSVD in SS"; } mailbox_flow_done = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } mailbox_data_avail[5:5] = 1'b0;
+        field { sw=r; hw=rw; desc = "RSVD in SS"; } mailbox_flow_done[6:6] = 1'b0;
+
+        field { sw=r; hw=rw; desc = "RSVD in core"; } cptra_ss_mcu_halt_status_o[7:7] = 1'b0;
     } status;
 
     reg {

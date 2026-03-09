@@ -44,6 +44,10 @@ package caliptra_fpga_realtime_regs_pkg;
     } interface_regs__status__mailbox_flow_done__in_t;
 
     typedef struct {
+        logic next;
+    } interface_regs__status__cptra_ss_mcu_halt_status_o__in_t;
+
+    typedef struct {
         interface_regs__status__cptra_error_fatal__in_t cptra_error_fatal;
         interface_regs__status__cptra_error_non_fatal__in_t cptra_error_non_fatal;
         interface_regs__status__ready_for_fuses__in_t ready_for_fuses;
@@ -51,6 +55,7 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__status__ready_for_runtime__in_t ready_for_runtime;
         interface_regs__status__mailbox_data_avail__in_t mailbox_data_avail;
         interface_regs__status__mailbox_flow_done__in_t mailbox_flow_done;
+        interface_regs__status__cptra_ss_mcu_halt_status_o__in_t cptra_ss_mcu_halt_status_o;
     } interface_regs__status__in_t;
 
     typedef struct {
@@ -359,6 +364,10 @@ package caliptra_fpga_realtime_regs_pkg;
     } interface_regs__status__mailbox_flow_done__out_t;
 
     typedef struct {
+        logic value;
+    } interface_regs__status__cptra_ss_mcu_halt_status_o__out_t;
+
+    typedef struct {
         interface_regs__status__cptra_error_fatal__out_t cptra_error_fatal;
         interface_regs__status__cptra_error_non_fatal__out_t cptra_error_non_fatal;
         interface_regs__status__ready_for_fuses__out_t ready_for_fuses;
@@ -366,6 +375,7 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__status__ready_for_runtime__out_t ready_for_runtime;
         interface_regs__status__mailbox_data_avail__out_t mailbox_data_avail;
         interface_regs__status__mailbox_flow_done__out_t mailbox_flow_done;
+        interface_regs__status__cptra_ss_mcu_halt_status_o__out_t cptra_ss_mcu_halt_status_o;
     } interface_regs__status__out_t;
 
     typedef struct {

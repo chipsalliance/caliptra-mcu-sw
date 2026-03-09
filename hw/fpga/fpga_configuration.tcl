@@ -487,9 +487,13 @@ if {$BUILD} {
     }
     # Copy the PDI containing runtime info to a more convenient location.
     file copy $outputDir/caliptra_fpga_project.runs/impl_1/caliptra_fpga_project_bd_wrapper_pld.pdi $outputDir/runtime_$VERSION.pdi
+
+    set xsa_name xsa_ss2p1_$VERSION_segmented.xsa
+  } else {
+    set xsa_name xsa_ss2p1_$VERSION.xsa
   }
 
-  write_hw_platform -fixed -include_bit -force -file $outputDir/caliptra_fpga.xsa
+  write_hw_platform -fixed -include_bit -force -file $outputDir/$xsa_name
   set time_finish_hw_platform [clock clicks -millisec]
 
   puts stderr "FPGA Synthesis      took [expr {($time_finish_synth-$time_start_synth)/60000.}] minutes"
