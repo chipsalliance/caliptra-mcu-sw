@@ -25,6 +25,8 @@ pub struct RomEnv {
     pub otp: Otp,
     pub i3c: crate::i3c::I3c,
     pub i3c_base: StaticRef<i3c::regs::I3c>,
+    pub i3c1: crate::i3c::I3c,
+    pub i3c1_base: StaticRef<i3c::regs::I3c>,
     pub soc_manager: CaliptraSoC,
     pub straps: StaticRef<mcu_config::McuStraps>,
 }
@@ -44,6 +46,8 @@ impl RomEnv {
                 StaticRef::new(crate::MCU_MEMORY_MAP.otp_offset as *const otp_ctrl::regs::OtpCtrl);
             let i3c_base: StaticRef<i3c::regs::I3c> =
                 StaticRef::new(crate::MCU_MEMORY_MAP.i3c_offset as *const i3c::regs::I3c);
+            let i3c1_base: StaticRef<i3c::regs::I3c> =
+                StaticRef::new(crate::MCU_MEMORY_MAP.i3c1_offset as *const i3c::regs::I3c);
             let soc_base: StaticRef<soc::regs::Soc> =
                 StaticRef::new(crate::MCU_MEMORY_MAP.soc_offset as *const soc::regs::Soc);
             let mci_base: StaticRef<mci::regs::Mci> =
@@ -62,6 +66,7 @@ impl RomEnv {
             let lc = Lifecycle::new(lc_base);
             let otp = Otp::new(otp_base);
             let i3c = crate::i3c::I3c::new(i3c_base);
+            let i3c1 = crate::i3c::I3c::new(i3c1_base);
 
             Self {
                 mci,
@@ -70,6 +75,8 @@ impl RomEnv {
                 otp,
                 i3c,
                 i3c_base,
+                i3c1,
+                i3c1_base,
                 soc_manager,
                 straps,
             }

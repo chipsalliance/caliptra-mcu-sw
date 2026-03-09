@@ -220,6 +220,7 @@ impl BootFlow for ColdBoot {
         let lc = &env.lc;
         let otp = &mut env.otp;
         let i3c = &mut env.i3c;
+        let i3c1 = &mut env.i3c1;
         let i3c_base = env.i3c_base;
         let straps = env.straps.deref();
 
@@ -340,6 +341,8 @@ impl BootFlow for ColdBoot {
 
         romtime::println!("[mcu-rom] Initializing I3C");
         i3c.configure(straps.i3c_static_addr, true);
+        romtime::println!("[mcu-rom] Initializing I3C1");
+        i3c1.configure(straps.i3c1_static_addr, true);
         mci.set_flow_checkpoint(McuRomBootStatus::I3cInitialized.into());
 
         romtime::println!(
@@ -625,9 +628,11 @@ impl BootFlow for ColdBoot {
         if params.recovery_status_open {
             romtime::println!("[mcu-rom] Leaving recovery interface open");
             env.i3c.set_recovery_status_open();
+            env.i3c1.set_recovery_status_open();
         } else {
             romtime::println!("[mcu-rom] Disabling recovery interface");
             env.i3c.disable_recovery();
+            env.i3c1.disable_recovery();
         }
 
         // Reset so FirmwareBootReset can jump to firmware

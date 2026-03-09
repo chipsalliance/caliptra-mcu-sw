@@ -7,7 +7,7 @@
 //
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
-pub trait I3cPeripheral {
+pub trait I3c1Peripheral {
     fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
     fn set_dma_rom_sram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
     fn register_event_channels(
@@ -21,13 +21,13 @@ pub trait I3cPeripheral {
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}
-    fn generated(&mut self) -> Option<&mut I3cGenerated> {
+    fn generated(&mut self) -> Option<&mut I3c1Generated> {
         None
     }
     fn read_dat(&mut self, index: usize) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::dat[{}]",
+                "[EMU] Non-functional register stub: read i3c1::dat[{}]",
                 index
             );
         }
@@ -39,7 +39,7 @@ pub trait I3cPeripheral {
     fn write_dat(&mut self, val: caliptra_emu_types::RvData, index: usize) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: write i3c::dat[{}] = 0x{:08x}",
+                "[EMU] Non-functional register stub: write i3c1::dat[{}] = 0x{:08x}",
                 index, val
             );
         }
@@ -50,7 +50,7 @@ pub trait I3cPeripheral {
     fn read_dct(&mut self, index: usize) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::dct[{}]",
+                "[EMU] Non-functional register stub: read i3c1::dct[{}]",
                 index
             );
         }
@@ -62,7 +62,7 @@ pub trait I3cPeripheral {
     fn write_dct(&mut self, val: caliptra_emu_types::RvData, index: usize) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: write i3c::dct[{}] = 0x{:08x}",
+                "[EMU] Non-functional register stub: write i3c1::dct[{}] = 0x{:08x}",
                 index, val
             );
         }
@@ -72,7 +72,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_hci_version(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_hci_version");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_hci_version");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_hci_version();
@@ -84,7 +84,7 @@ pub trait I3cPeripheral {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HcControl::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_hc_control");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_hc_control");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_hc_control();
@@ -100,7 +100,7 @@ pub trait I3cPeripheral {
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: write i3c::i3c_base_hc_control = 0x{:08x}",
+                "[EMU] Non-functional register stub: write i3c1::i3c_base_hc_control = 0x{:08x}",
                 val.reg.get()
             );
         }
@@ -116,7 +116,7 @@ pub trait I3cPeripheral {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_base_controller_device_addr"
+                "[EMU] Non-functional register stub: read i3c1::i3c_base_controller_device_addr"
             );
         }
         if let Some(generated) = self.generated() {
@@ -132,7 +132,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_base_controller_device_addr = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_base_controller_device_addr = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_base_controller_device_addr(val);
@@ -145,7 +145,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::HcCapabilities::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_hc_capabilities");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_hc_capabilities");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_hc_capabilities();
@@ -159,7 +159,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::ResetControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_reset_control");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_reset_control");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_reset_control();
@@ -175,7 +175,7 @@ pub trait I3cPeripheral {
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: write i3c::i3c_base_reset_control = 0x{:08x}",
+                "[EMU] Non-functional register stub: write i3c1::i3c_base_reset_control = 0x{:08x}",
                 val.reg.get()
             );
         }
@@ -190,7 +190,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::PresentState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_present_state");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_present_state");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_present_state();
@@ -204,7 +204,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::IntrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_intr_status");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_intr_status");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_intr_status();
@@ -220,7 +220,7 @@ pub trait I3cPeripheral {
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: write i3c::i3c_base_intr_status = 0x{:08x}",
+                "[EMU] Non-functional register stub: write i3c1::i3c_base_intr_status = 0x{:08x}",
                 val.reg.get()
             );
         }
@@ -235,7 +235,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::IntrStatusEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_intr_status_enable");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_intr_status_enable");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_intr_status_enable();
@@ -250,7 +250,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_base_intr_status_enable = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_base_intr_status_enable = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_base_intr_status_enable(val);
@@ -263,7 +263,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::IntrSignalEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_intr_signal_enable");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_intr_signal_enable");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_intr_signal_enable();
@@ -278,7 +278,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_base_intr_signal_enable = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_base_intr_signal_enable = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_base_intr_signal_enable(val);
@@ -293,7 +293,7 @@ pub trait I3cPeripheral {
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: write i3c::i3c_base_intr_force = 0x{:08x}",
+                "[EMU] Non-functional register stub: write i3c1::i3c_base_intr_force = 0x{:08x}",
                 val.reg.get()
             );
         }
@@ -308,7 +308,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::DatSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_dat_section_offset");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_dat_section_offset");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_dat_section_offset();
@@ -322,7 +322,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::DctSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_dct_section_offset");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_dct_section_offset");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_dct_section_offset();
@@ -337,7 +337,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_base_dct_section_offset = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_base_dct_section_offset = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_base_dct_section_offset(val);
@@ -350,7 +350,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::RingHeadersSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_base_ring_headers_section_offset");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_base_ring_headers_section_offset");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_ring_headers_section_offset();
@@ -364,7 +364,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::PioSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_pio_section_offset");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_pio_section_offset");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_pio_section_offset();
@@ -379,7 +379,7 @@ pub trait I3cPeripheral {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_base_ext_caps_section_offset"
+                "[EMU] Non-functional register stub: read i3c1::i3c_base_ext_caps_section_offset"
             );
         }
         if let Some(generated) = self.generated() {
@@ -394,7 +394,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::IntCtrlCmdsEn::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_int_ctrl_cmds_en");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_int_ctrl_cmds_en");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_int_ctrl_cmds_en();
@@ -408,7 +408,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::IbiNotifyCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_ibi_notify_ctrl");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_ibi_notify_ctrl");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_ibi_notify_ctrl();
@@ -423,7 +423,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_base_ibi_notify_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_base_ibi_notify_ctrl = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_base_ibi_notify_ctrl(val);
@@ -436,7 +436,9 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_ibi_data_abort_ctrl");
+            eprintln!(
+                "[EMU] Non-functional register stub: read i3c1::i3c_base_ibi_data_abort_ctrl"
+            );
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_ibi_data_abort_ctrl();
@@ -451,7 +453,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_base_ibi_data_abort_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_base_ibi_data_abort_ctrl = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_base_ibi_data_abort_ctrl(val);
@@ -464,7 +466,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::DevCtxBaseLo::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_dev_ctx_base_lo");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_dev_ctx_base_lo");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_dev_ctx_base_lo();
@@ -479,7 +481,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_base_dev_ctx_base_lo = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_base_dev_ctx_base_lo = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_base_dev_ctx_base_lo(val);
@@ -492,7 +494,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::DevCtxBaseHi::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_dev_ctx_base_hi");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_dev_ctx_base_hi");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_dev_ctx_base_hi();
@@ -507,7 +509,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_base_dev_ctx_base_hi = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_base_dev_ctx_base_hi = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_base_dev_ctx_base_hi(val);
@@ -518,7 +520,7 @@ pub trait I3cPeripheral {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DevCtxSg::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_dev_ctx_sg");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_dev_ctx_sg");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_dev_ctx_sg();
@@ -527,10 +529,7 @@ pub trait I3cPeripheral {
     }
     fn write_piocontrol_command_port(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Non-functional register stub: write i3c::piocontrol_command_port = 0x{:08x}",
-                val
-            );
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::piocontrol_command_port = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_piocontrol_command_port(val);
@@ -538,7 +537,7 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_response_port(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::piocontrol_response_port");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::piocontrol_response_port");
         }
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_response_port();
@@ -547,10 +546,7 @@ pub trait I3cPeripheral {
     }
     fn write_piocontrol_tx_data_port(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Non-functional register stub: write i3c::piocontrol_tx_data_port = 0x{:08x}",
-                val
-            );
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::piocontrol_tx_data_port = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_piocontrol_tx_data_port(val);
@@ -558,7 +554,7 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_rx_data_port(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::piocontrol_rx_data_port");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::piocontrol_rx_data_port");
         }
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_rx_data_port();
@@ -567,7 +563,7 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_ibi_port(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::piocontrol_ibi_port");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::piocontrol_ibi_port");
         }
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_ibi_port();
@@ -581,7 +577,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::QueueThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::piocontrol_queue_thld_ctrl");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::piocontrol_queue_thld_ctrl");
         }
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_queue_thld_ctrl();
@@ -596,7 +592,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::piocontrol_queue_thld_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::piocontrol_queue_thld_ctrl = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_piocontrol_queue_thld_ctrl(val);
@@ -610,7 +606,7 @@ pub trait I3cPeripheral {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::piocontrol_data_buffer_thld_ctrl"
+                "[EMU] Non-functional register stub: read i3c1::piocontrol_data_buffer_thld_ctrl"
             );
         }
         if let Some(generated) = self.generated() {
@@ -626,7 +622,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::piocontrol_data_buffer_thld_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::piocontrol_data_buffer_thld_ctrl = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_piocontrol_data_buffer_thld_ctrl(val);
@@ -637,7 +633,7 @@ pub trait I3cPeripheral {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::QueueSize::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::piocontrol_queue_size");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::piocontrol_queue_size");
         }
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_queue_size();
@@ -651,7 +647,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::AltQueueSize::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::piocontrol_alt_queue_size");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::piocontrol_alt_queue_size");
         }
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_alt_queue_size();
@@ -665,7 +661,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::PioIntrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::piocontrol_pio_intr_status");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::piocontrol_pio_intr_status");
         }
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_pio_intr_status();
@@ -680,7 +676,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::piocontrol_pio_intr_status = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::piocontrol_pio_intr_status = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_piocontrol_pio_intr_status(val);
@@ -694,7 +690,7 @@ pub trait I3cPeripheral {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::piocontrol_pio_intr_status_enable"
+                "[EMU] Non-functional register stub: read i3c1::piocontrol_pio_intr_status_enable"
             );
         }
         if let Some(generated) = self.generated() {
@@ -710,7 +706,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::piocontrol_pio_intr_status_enable = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::piocontrol_pio_intr_status_enable = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_piocontrol_pio_intr_status_enable(val);
@@ -724,7 +720,7 @@ pub trait I3cPeripheral {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::piocontrol_pio_intr_signal_enable"
+                "[EMU] Non-functional register stub: read i3c1::piocontrol_pio_intr_signal_enable"
             );
         }
         if let Some(generated) = self.generated() {
@@ -740,7 +736,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::piocontrol_pio_intr_signal_enable = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::piocontrol_pio_intr_signal_enable = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_piocontrol_pio_intr_signal_enable(val);
@@ -754,7 +750,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::piocontrol_pio_intr_force = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::piocontrol_pio_intr_force = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_piocontrol_pio_intr_force(val);
@@ -767,7 +763,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::PioControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::piocontrol_pio_control");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::piocontrol_pio_control");
         }
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_pio_control();
@@ -783,7 +779,7 @@ pub trait I3cPeripheral {
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: write i3c::piocontrol_pio_control = 0x{:08x}",
+                "[EMU] Non-functional register stub: write i3c1::piocontrol_pio_control = 0x{:08x}",
                 val.reg.get()
             );
         }
@@ -798,7 +794,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_extcap_header");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_extcap_header");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_extcap_header();
@@ -807,7 +803,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_0(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_0");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_0");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_prot_cap_0();
@@ -816,7 +812,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_1(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_1");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_1");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_prot_cap_1();
@@ -828,7 +824,7 @@ pub trait I3cPeripheral {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap2::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_2");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_2");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_prot_cap_2();
@@ -843,7 +839,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_prot_cap_2 = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_2 = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_prot_cap_2(val);
@@ -854,7 +850,7 @@ pub trait I3cPeripheral {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap3::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_3");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_3");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_prot_cap_3();
@@ -869,7 +865,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_prot_cap_3 = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_3 = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_prot_cap_3(val);
@@ -880,7 +876,7 @@ pub trait I3cPeripheral {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DeviceId0::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_0");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_0");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_id_0();
@@ -895,7 +891,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_id_0 = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_device_id_0 = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_device_id_0(val);
@@ -903,7 +899,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_1(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_1");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_1");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_id_1();
@@ -912,7 +908,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_id_1(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_id_1 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_device_id_1 = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_device_id_1(val);
@@ -920,7 +916,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_2(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_2");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_2");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_id_2();
@@ -929,7 +925,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_id_2(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_id_2 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_device_id_2 = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_device_id_2(val);
@@ -937,7 +933,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_3(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_3");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_3");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_id_3();
@@ -946,7 +942,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_id_3(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_id_3 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_device_id_3 = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_device_id_3(val);
@@ -954,7 +950,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_4(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_4");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_4");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_id_4();
@@ -963,7 +959,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_id_4(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_id_4 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_device_id_4 = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_device_id_4(val);
@@ -971,7 +967,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_5(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_5");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_5");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_id_5();
@@ -980,7 +976,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_id_5(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_id_5 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_device_id_5 = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_device_id_5(val);
@@ -988,7 +984,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_reserved(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_reserved");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_reserved");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_id_reserved();
@@ -1002,7 +998,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::DeviceStatus0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_status_0");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_status_0");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_status_0();
@@ -1017,7 +1013,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_status_0 = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_device_status_0 = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_device_status_0(val);
@@ -1030,7 +1026,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::DeviceStatus1::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_status_1");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_status_1");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_status_1();
@@ -1045,7 +1041,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_status_1 = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_device_status_1 = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_device_status_1(val);
@@ -1058,7 +1054,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::DeviceReset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_reset");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_reset");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_reset();
@@ -1073,7 +1069,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_reset = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_device_reset = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_device_reset(val);
@@ -1086,7 +1082,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::RecoveryCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_recovery_ctrl");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_recovery_ctrl");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_recovery_ctrl();
@@ -1101,7 +1097,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_recovery_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_recovery_ctrl = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_recovery_ctrl(val);
@@ -1114,7 +1110,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::RecoveryStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_recovery_status");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_recovery_status");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_recovery_status();
@@ -1129,7 +1125,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_recovery_status = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_recovery_status = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_recovery_status(val);
@@ -1140,9 +1136,7 @@ pub trait I3cPeripheral {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HwStatus::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_hw_status"
-            );
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_hw_status");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_hw_status();
@@ -1157,7 +1151,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_hw_status = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_hw_status = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_hw_status(val);
@@ -1170,7 +1164,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0();
@@ -1185,7 +1179,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0 = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0 = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(val);
@@ -1195,7 +1189,7 @@ pub trait I3cPeripheral {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1();
@@ -1207,7 +1201,7 @@ pub trait I3cPeripheral {
         val: caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1 = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(val);
@@ -1220,7 +1214,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::IndirectFifoStatus0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0();
@@ -1231,7 +1225,7 @@ pub trait I3cPeripheral {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1();
@@ -1242,7 +1236,7 @@ pub trait I3cPeripheral {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2();
@@ -1253,7 +1247,7 @@ pub trait I3cPeripheral {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3();
@@ -1264,7 +1258,7 @@ pub trait I3cPeripheral {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4();
@@ -1275,7 +1269,7 @@ pub trait I3cPeripheral {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved();
@@ -1284,7 +1278,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_data");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_data");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data();
@@ -1298,7 +1292,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_extcap_header");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_extcap_header");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_extcap_header();
@@ -1312,7 +1306,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::StbyCrControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_control");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_control");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_control();
@@ -1327,7 +1321,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_control = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_control = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_control(val);
@@ -1340,7 +1334,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_addr");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_addr");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr();
@@ -1355,7 +1349,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_addr = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_addr = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(val);
@@ -1368,7 +1362,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::StbyCrCapabilities::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_capabilities");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_capabilities");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities();
@@ -1382,7 +1376,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char();
@@ -1397,7 +1391,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char(val);
@@ -1410,7 +1404,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::StbyCrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_status");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_status");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_status();
@@ -1425,7 +1419,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_status = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_status = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_status(val);
@@ -1438,7 +1432,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::StbyCrDeviceChar::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_char");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_char");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_device_char();
@@ -1453,7 +1447,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_char = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_char = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(val);
@@ -1461,7 +1455,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo();
@@ -1473,7 +1467,7 @@ pub trait I3cPeripheral {
         val: caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(val);
@@ -1486,7 +1480,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::StbyCrIntrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_status");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_status");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status();
@@ -1501,7 +1495,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_status = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_status = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(val);
@@ -1511,7 +1505,7 @@ pub trait I3cPeripheral {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo();
@@ -1523,7 +1517,7 @@ pub trait I3cPeripheral {
         val: caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo(val);
@@ -1536,7 +1530,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable();
@@ -1551,7 +1545,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(val);
@@ -1564,7 +1558,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::StbyCrIntrForce::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_force");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_force");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force();
@@ -1579,7 +1573,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_force = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_force = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(val);
@@ -1592,7 +1586,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps();
@@ -1607,7 +1601,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(val);
@@ -1620,7 +1614,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params();
@@ -1635,7 +1629,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(val);
@@ -1648,7 +1642,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr();
@@ -1663,7 +1657,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr(val);
@@ -1672,7 +1666,7 @@ pub trait I3cPeripheral {
     fn read_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_rsvd_3"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_rsvd_3"
             );
         }
         if let Some(generated) = self.generated() {
@@ -1682,7 +1676,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_rsvd_3 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_stdby_ctrl_mode_rsvd_3 = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_stdby_ctrl_mode_rsvd_3(val);
@@ -1695,7 +1689,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_extcap_header");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_extcap_header");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_extcap_header();
@@ -1709,7 +1703,7 @@ pub trait I3cPeripheral {
         registers_generated::sha512_acc::bits::Control::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_control");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_control");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_control();
@@ -1725,7 +1719,7 @@ pub trait I3cPeripheral {
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: write i3c::i3c_ec_tti_control = 0x{:08x}",
+                "[EMU] Non-functional register stub: write i3c1::i3c_ec_tti_control = 0x{:08x}",
                 val.reg.get()
             );
         }
@@ -1740,7 +1734,7 @@ pub trait I3cPeripheral {
         registers_generated::lc_ctrl::bits::Status::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_status");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_status");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_status();
@@ -1754,7 +1748,9 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::TtiResetControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_tti_reset_control");
+            eprintln!(
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_tti_reset_control"
+            );
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_tti_reset_control();
@@ -1769,7 +1765,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_tti_tti_reset_control = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_tti_tti_reset_control = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_tti_tti_reset_control(val);
@@ -1782,7 +1778,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::InterruptStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_interrupt_status");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_interrupt_status");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_interrupt_status();
@@ -1797,7 +1793,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_tti_interrupt_status = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_tti_interrupt_status = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_tti_interrupt_status(val);
@@ -1810,7 +1806,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::InterruptEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_interrupt_enable");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_interrupt_enable");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_interrupt_enable();
@@ -1825,7 +1821,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_tti_interrupt_enable = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_tti_interrupt_enable = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_tti_interrupt_enable(val);
@@ -1838,7 +1834,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::InterruptForce::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_interrupt_force");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_interrupt_force");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_interrupt_force();
@@ -1853,7 +1849,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_tti_interrupt_force = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_tti_interrupt_force = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_tti_interrupt_force(val);
@@ -1862,7 +1858,7 @@ pub trait I3cPeripheral {
     fn read_i3c_ec_tti_rx_desc_queue_port(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_tti_rx_desc_queue_port"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_rx_desc_queue_port"
             );
         }
         if let Some(generated) = self.generated() {
@@ -1872,7 +1868,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_rx_data_port(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_rx_data_port");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_rx_data_port");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_rx_data_port();
@@ -1881,7 +1877,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_tti_tx_desc_queue_port(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_tti_tx_desc_queue_port = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_tti_tx_desc_queue_port = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_tti_tx_desc_queue_port(val);
@@ -1889,10 +1885,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_tti_tx_data_port(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Non-functional register stub: write i3c::i3c_ec_tti_tx_data_port = 0x{:08x}",
-                val
-            );
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_tti_tx_data_port = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_tti_tx_data_port(val);
@@ -1900,10 +1893,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_tti_tti_ibi_port(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Non-functional register stub: write i3c::i3c_ec_tti_tti_ibi_port = 0x{:08x}",
-                val
-            );
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_tti_tti_ibi_port = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_tti_tti_ibi_port(val);
@@ -1916,7 +1906,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::TtiQueueSize::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_tti_queue_size");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_tti_queue_size");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_tti_queue_size();
@@ -1931,7 +1921,7 @@ pub trait I3cPeripheral {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_tti_ibi_tti_queue_size"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_ibi_tti_queue_size"
             );
         }
         if let Some(generated) = self.generated() {
@@ -1947,7 +1937,7 @@ pub trait I3cPeripheral {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_tti_tti_queue_thld_ctrl"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_tti_queue_thld_ctrl"
             );
         }
         if let Some(generated) = self.generated() {
@@ -1963,7 +1953,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_tti_tti_queue_thld_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_tti_tti_queue_thld_ctrl = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_tti_tti_queue_thld_ctrl(val);
@@ -1976,7 +1966,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_tti_data_buffer_thld_ctrl");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_tti_data_buffer_thld_ctrl");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_tti_data_buffer_thld_ctrl();
@@ -1991,7 +1981,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_tti_tti_data_buffer_thld_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_tti_tti_data_buffer_thld_ctrl = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_tti_tti_data_buffer_thld_ctrl(val);
@@ -2005,7 +1995,7 @@ pub trait I3cPeripheral {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_extcap_header"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_extcap_header"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2015,9 +2005,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_control"
-            );
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_control");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_soc_mgmt_control();
@@ -2026,7 +2014,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_control = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_control = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_soc_mgmt_control(val);
@@ -2035,7 +2023,7 @@ pub trait I3cPeripheral {
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_status"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_status"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2045,7 +2033,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_status = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_status = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_soc_mgmt_status(val);
@@ -2059,7 +2047,7 @@ pub trait I3cPeripheral {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_rec_intf_cfg"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_rec_intf_cfg"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2075,7 +2063,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_rec_intf_cfg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_rec_intf_cfg = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_rec_intf_cfg(val);
@@ -2088,7 +2076,7 @@ pub trait I3cPeripheral {
         registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access();
@@ -2103,7 +2091,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(val);
@@ -2112,7 +2100,7 @@ pub trait I3cPeripheral {
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2122,7 +2110,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2 = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(val);
@@ -2131,7 +2119,7 @@ pub trait I3cPeripheral {
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2141,7 +2129,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3 = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(val);
@@ -2155,7 +2143,7 @@ pub trait I3cPeripheral {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_pad_conf"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_soc_pad_conf"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2171,7 +2159,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_pad_conf = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_soc_pad_conf = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_soc_pad_conf(val);
@@ -2185,7 +2173,7 @@ pub trait I3cPeripheral {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_pad_attr"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_soc_pad_attr"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2201,7 +2189,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_pad_attr = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_soc_pad_attr = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_soc_pad_attr(val);
@@ -2209,7 +2197,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_2");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_feature_2");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2();
@@ -2218,7 +2206,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_2 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_feature_2 = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(val);
@@ -2226,7 +2214,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_3");
+            eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_feature_3");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3();
@@ -2235,7 +2223,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_3 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_feature_3 = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(val);
@@ -2246,7 +2234,7 @@ pub trait I3cPeripheral {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TRReg::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_r_reg");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_r_reg");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_t_r_reg();
@@ -2261,7 +2249,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_r_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_t_r_reg = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_t_r_reg(val);
@@ -2272,7 +2260,7 @@ pub trait I3cPeripheral {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TFReg::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_f_reg");
+            eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_f_reg");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_t_f_reg();
@@ -2287,7 +2275,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_f_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_t_f_reg = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_t_f_reg(val);
@@ -2299,7 +2287,7 @@ pub trait I3cPeripheral {
     {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_su_dat_reg"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_su_dat_reg"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2315,7 +2303,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_su_dat_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_t_su_dat_reg = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_t_su_dat_reg(val);
@@ -2327,7 +2315,7 @@ pub trait I3cPeripheral {
     {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_hd_dat_reg"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_hd_dat_reg"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2343,7 +2331,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_hd_dat_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_t_hd_dat_reg = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_t_hd_dat_reg(val);
@@ -2355,7 +2343,7 @@ pub trait I3cPeripheral {
     {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_high_reg"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_high_reg"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2371,7 +2359,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_high_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_t_high_reg = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_t_high_reg(val);
@@ -2382,7 +2370,9 @@ pub trait I3cPeripheral {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TLowReg::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_low_reg");
+            eprintln!(
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_low_reg"
+            );
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_t_low_reg();
@@ -2397,7 +2387,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_low_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_t_low_reg = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_t_low_reg(val);
@@ -2409,7 +2399,7 @@ pub trait I3cPeripheral {
     {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_hd_sta_reg"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_hd_sta_reg"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2425,7 +2415,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_hd_sta_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_t_hd_sta_reg = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_t_hd_sta_reg(val);
@@ -2437,7 +2427,7 @@ pub trait I3cPeripheral {
     {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_su_sta_reg"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_su_sta_reg"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2453,7 +2443,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_su_sta_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_t_su_sta_reg = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_t_su_sta_reg(val);
@@ -2465,7 +2455,7 @@ pub trait I3cPeripheral {
     {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_su_sto_reg"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_su_sto_reg"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2481,7 +2471,7 @@ pub trait I3cPeripheral {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_su_sto_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_t_su_sto_reg = 0x{:08x}" , val . reg . get ());
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_t_su_sto_reg(val);
@@ -2490,7 +2480,7 @@ pub trait I3cPeripheral {
     fn read_i3c_ec_soc_mgmt_if_t_free_reg(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_free_reg"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_free_reg"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2500,7 +2490,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_soc_mgmt_if_t_free_reg(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_free_reg = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_t_free_reg = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_t_free_reg(val);
@@ -2509,7 +2499,7 @@ pub trait I3cPeripheral {
     fn read_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_aval_reg"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_aval_reg"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2519,7 +2509,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_aval_reg = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_t_aval_reg = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_t_aval_reg(val);
@@ -2528,7 +2518,7 @@ pub trait I3cPeripheral {
     fn read_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_idle_reg"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_idle_reg"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2538,7 +2528,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_idle_reg = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Non-functional register stub: write i3c1::i3c_ec_soc_mgmt_if_t_idle_reg = 0x{:08x}" , val);
         }
         if let Some(generated) = self.generated() {
             generated.write_i3c_ec_soc_mgmt_if_t_idle_reg(val);
@@ -2552,7 +2542,7 @@ pub trait I3cPeripheral {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_ctrl_cfg_extcap_header"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_ctrl_cfg_extcap_header"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2568,7 +2558,7 @@ pub trait I3cPeripheral {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Non-functional register stub: read i3c::i3c_ec_ctrl_cfg_controller_config"
+                "[EMU] Non-functional register stub: read i3c1::i3c_ec_ctrl_cfg_controller_config"
             );
         }
         if let Some(generated) = self.generated() {
@@ -2578,7 +2568,7 @@ pub trait I3cPeripheral {
     }
 }
 #[derive(Clone, Debug)]
-pub struct I3cGenerated {
+pub struct I3c1Generated {
     dat: Vec<caliptra_emu_types::RvData>,
     dct: Vec<caliptra_emu_types::RvData>,
     i3c_base_hci_version: caliptra_emu_types::RvData,
@@ -2701,7 +2691,7 @@ pub struct I3cGenerated {
     i3c_ec_ctrl_cfg_extcap_header: caliptra_emu_types::RvData,
     i3c_ec_ctrl_cfg_controller_config: caliptra_emu_types::RvData,
 }
-impl Default for I3cGenerated {
+impl Default for I3c1Generated {
     fn default() -> Self {
         Self {
             dat: vec![0 as caliptra_emu_types::RvData; 256],
@@ -2830,7 +2820,7 @@ impl Default for I3cGenerated {
         }
     }
 }
-impl I3cGenerated {
+impl I3c1Generated {
     pub fn new() -> Self {
         Self::default()
     }
@@ -2838,8 +2828,8 @@ impl I3cGenerated {
         *self = Self::default();
     }
 }
-impl I3cPeripheral for I3cGenerated {
-    fn generated(&mut self) -> Option<&mut I3cGenerated> {
+impl I3c1Peripheral for I3c1Generated {
+    fn generated(&mut self) -> Option<&mut I3c1Generated> {
         Some(self)
     }
     fn warm_reset(&mut self) {
@@ -2851,7 +2841,7 @@ impl I3cPeripheral for I3cGenerated {
     fn read_dat(&mut self, index: usize) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::dat[{}]",
+                "[EMU] Generated default register handler: read i3c1::dat[{}]",
                 index
             );
         }
@@ -2860,7 +2850,7 @@ impl I3cPeripheral for I3cGenerated {
     fn write_dat(&mut self, val: caliptra_emu_types::RvData, index: usize) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: write i3c::dat[{}] = 0x{:08x}",
+                "[EMU] Generated default register handler: write i3c1::dat[{}] = 0x{:08x}",
                 index, val
             );
         }
@@ -2874,7 +2864,7 @@ impl I3cPeripheral for I3cGenerated {
     fn read_dct(&mut self, index: usize) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::dct[{}]",
+                "[EMU] Generated default register handler: read i3c1::dct[{}]",
                 index
             );
         }
@@ -2883,7 +2873,7 @@ impl I3cPeripheral for I3cGenerated {
     fn write_dct(&mut self, val: caliptra_emu_types::RvData, index: usize) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: write i3c::dct[{}] = 0x{:08x}",
+                "[EMU] Generated default register handler: write i3c1::dct[{}] = 0x{:08x}",
                 index, val
             );
         }
@@ -2896,7 +2886,7 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_base_hci_version(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Generated default register handler: read i3c::i3c_base_hci_version");
+            eprintln!("[EMU] Generated default register handler: read i3c1::i3c_base_hci_version");
         }
         self.i3c_base_hci_version
     }
@@ -2905,7 +2895,7 @@ impl I3cPeripheral for I3cGenerated {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HcControl::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Generated default register handler: read i3c::i3c_base_hc_control");
+            eprintln!("[EMU] Generated default register handler: read i3c1::i3c_base_hc_control");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_hc_control)
     }
@@ -2917,7 +2907,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_hc_control = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_base_hc_control = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_base_hc_control;
@@ -2945,7 +2935,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::ControllerDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_base_controller_device_addr");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_base_controller_device_addr");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_controller_device_addr)
     }
@@ -2957,7 +2947,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_controller_device_addr = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_base_controller_device_addr = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_base_controller_device_addr;
@@ -2976,7 +2966,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_base_hc_capabilities"
+                "[EMU] Generated default register handler: read i3c1::i3c_base_hc_capabilities"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_hc_capabilities)
@@ -2988,7 +2978,9 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::ResetControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Generated default register handler: read i3c::i3c_base_reset_control");
+            eprintln!(
+                "[EMU] Generated default register handler: read i3c1::i3c_base_reset_control"
+            );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_reset_control)
     }
@@ -3000,7 +2992,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_reset_control = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_base_reset_control = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_base_reset_control;
@@ -3026,7 +3018,9 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::PresentState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Generated default register handler: read i3c::i3c_base_present_state");
+            eprintln!(
+                "[EMU] Generated default register handler: read i3c1::i3c_base_present_state"
+            );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_present_state)
     }
@@ -3037,7 +3031,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::IntrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Generated default register handler: read i3c::i3c_base_intr_status");
+            eprintln!("[EMU] Generated default register handler: read i3c1::i3c_base_intr_status");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_intr_status)
     }
@@ -3049,7 +3043,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_intr_status = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_base_intr_status = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_base_intr_status;
@@ -3074,7 +3068,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_base_intr_status_enable"
+                "[EMU] Generated default register handler: read i3c1::i3c_base_intr_status_enable"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_intr_status_enable)
@@ -3087,7 +3081,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_intr_status_enable = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_base_intr_status_enable = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_base_intr_status_enable;
@@ -3112,7 +3106,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_base_intr_signal_enable"
+                "[EMU] Generated default register handler: read i3c1::i3c_base_intr_signal_enable"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_intr_signal_enable)
@@ -3125,7 +3119,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_intr_signal_enable = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_base_intr_signal_enable = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_base_intr_signal_enable;
@@ -3150,7 +3144,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_intr_force = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_base_intr_force = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_base_intr_force;
@@ -3175,7 +3169,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_base_dat_section_offset"
+                "[EMU] Generated default register handler: read i3c1::i3c_base_dat_section_offset"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_dat_section_offset)
@@ -3188,7 +3182,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_base_dct_section_offset"
+                "[EMU] Generated default register handler: read i3c1::i3c_base_dct_section_offset"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_dct_section_offset)
@@ -3201,7 +3195,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_dct_section_offset = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_base_dct_section_offset = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_base_dct_section_offset;
@@ -3217,7 +3211,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::RingHeadersSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_base_ring_headers_section_offset");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_base_ring_headers_section_offset");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_ring_headers_section_offset)
     }
@@ -3229,7 +3223,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_base_pio_section_offset"
+                "[EMU] Generated default register handler: read i3c1::i3c_base_pio_section_offset"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_pio_section_offset)
@@ -3241,7 +3235,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::ExtCapsSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_base_ext_caps_section_offset");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_base_ext_caps_section_offset");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_ext_caps_section_offset)
     }
@@ -3253,7 +3247,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_base_int_ctrl_cmds_en"
+                "[EMU] Generated default register handler: read i3c1::i3c_base_int_ctrl_cmds_en"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_int_ctrl_cmds_en)
@@ -3266,7 +3260,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_base_ibi_notify_ctrl"
+                "[EMU] Generated default register handler: read i3c1::i3c_base_ibi_notify_ctrl"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_ibi_notify_ctrl)
@@ -3279,7 +3273,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_ibi_notify_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_base_ibi_notify_ctrl = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_base_ibi_notify_ctrl;
@@ -3300,7 +3294,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_base_ibi_data_abort_ctrl"
+                "[EMU] Generated default register handler: read i3c1::i3c_base_ibi_data_abort_ctrl"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_ibi_data_abort_ctrl)
@@ -3313,7 +3307,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_ibi_data_abort_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_base_ibi_data_abort_ctrl = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_base_ibi_data_abort_ctrl;
@@ -3336,7 +3330,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_base_dev_ctx_base_lo"
+                "[EMU] Generated default register handler: read i3c1::i3c_base_dev_ctx_base_lo"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_dev_ctx_base_lo)
@@ -3349,7 +3343,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_dev_ctx_base_lo = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_base_dev_ctx_base_lo = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_base_dev_ctx_base_lo;
@@ -3366,7 +3360,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_base_dev_ctx_base_hi"
+                "[EMU] Generated default register handler: read i3c1::i3c_base_dev_ctx_base_hi"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_dev_ctx_base_hi)
@@ -3379,7 +3373,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_dev_ctx_base_hi = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_base_dev_ctx_base_hi = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_base_dev_ctx_base_hi;
@@ -3393,13 +3387,13 @@ impl I3cPeripheral for I3cGenerated {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DevCtxSg::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Generated default register handler: read i3c::i3c_base_dev_ctx_sg");
+            eprintln!("[EMU] Generated default register handler: read i3c1::i3c_base_dev_ctx_sg");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_dev_ctx_sg)
     }
     fn write_piocontrol_command_port(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_command_port = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::piocontrol_command_port = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.piocontrol_command_port;
@@ -3411,14 +3405,14 @@ impl I3cPeripheral for I3cGenerated {
     fn read_piocontrol_response_port(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::piocontrol_response_port"
+                "[EMU] Generated default register handler: read i3c1::piocontrol_response_port"
             );
         }
         self.piocontrol_response_port
     }
     fn write_piocontrol_tx_data_port(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_tx_data_port = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::piocontrol_tx_data_port = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.piocontrol_tx_data_port;
@@ -3430,14 +3424,14 @@ impl I3cPeripheral for I3cGenerated {
     fn read_piocontrol_rx_data_port(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::piocontrol_rx_data_port"
+                "[EMU] Generated default register handler: read i3c1::piocontrol_rx_data_port"
             );
         }
         self.piocontrol_rx_data_port
     }
     fn read_piocontrol_ibi_port(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Generated default register handler: read i3c::piocontrol_ibi_port");
+            eprintln!("[EMU] Generated default register handler: read i3c1::piocontrol_ibi_port");
         }
         self.piocontrol_ibi_port
     }
@@ -3449,7 +3443,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::piocontrol_queue_thld_ctrl"
+                "[EMU] Generated default register handler: read i3c1::piocontrol_queue_thld_ctrl"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_queue_thld_ctrl)
@@ -3462,7 +3456,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_queue_thld_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::piocontrol_queue_thld_ctrl = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.piocontrol_queue_thld_ctrl;
@@ -3484,7 +3478,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::DataBufferThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::piocontrol_data_buffer_thld_ctrl");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::piocontrol_data_buffer_thld_ctrl");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_data_buffer_thld_ctrl)
     }
@@ -3496,7 +3490,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_data_buffer_thld_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::piocontrol_data_buffer_thld_ctrl = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.piocontrol_data_buffer_thld_ctrl;
@@ -3516,7 +3510,7 @@ impl I3cPeripheral for I3cGenerated {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::QueueSize::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Generated default register handler: read i3c::piocontrol_queue_size");
+            eprintln!("[EMU] Generated default register handler: read i3c1::piocontrol_queue_size");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_queue_size)
     }
@@ -3528,7 +3522,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::piocontrol_alt_queue_size"
+                "[EMU] Generated default register handler: read i3c1::piocontrol_alt_queue_size"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_alt_queue_size)
@@ -3541,7 +3535,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::piocontrol_pio_intr_status"
+                "[EMU] Generated default register handler: read i3c1::piocontrol_pio_intr_status"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_pio_intr_status)
@@ -3554,7 +3548,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_pio_intr_status = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::piocontrol_pio_intr_status = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.piocontrol_pio_intr_status;
@@ -3572,7 +3566,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::PioIntrStatusEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::piocontrol_pio_intr_status_enable");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::piocontrol_pio_intr_status_enable");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_pio_intr_status_enable)
     }
@@ -3584,7 +3578,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_pio_intr_status_enable = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::piocontrol_pio_intr_status_enable = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.piocontrol_pio_intr_status_enable;
@@ -3612,7 +3606,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::PioIntrSignalEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::piocontrol_pio_intr_signal_enable");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::piocontrol_pio_intr_signal_enable");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_pio_intr_signal_enable)
     }
@@ -3624,7 +3618,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_pio_intr_signal_enable = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::piocontrol_pio_intr_signal_enable = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.piocontrol_pio_intr_signal_enable;
@@ -3653,7 +3647,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_pio_intr_force = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::piocontrol_pio_intr_force = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.piocontrol_pio_intr_force;
@@ -3681,7 +3675,9 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::PioControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Generated default register handler: read i3c::piocontrol_pio_control");
+            eprintln!(
+                "[EMU] Generated default register handler: read i3c1::piocontrol_pio_control"
+            );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_pio_control)
     }
@@ -3693,7 +3689,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_pio_control = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::piocontrol_pio_control = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.piocontrol_pio_control;
@@ -3713,19 +3709,19 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_extcap_header");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_extcap_header");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_extcap_header)
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_0(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_0");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_0");
         }
         self.i3c_ec_sec_fw_recovery_if_prot_cap_0
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_1(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_1");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_1");
         }
         self.i3c_ec_sec_fw_recovery_if_prot_cap_1
     }
@@ -3734,7 +3730,7 @@ impl I3cPeripheral for I3cGenerated {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap2::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_2");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_2");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_prot_cap_2)
     }
@@ -3746,7 +3742,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_prot_cap_2 = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_2 = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_prot_cap_2;
@@ -3762,7 +3758,7 @@ impl I3cPeripheral for I3cGenerated {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap3::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_3");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_3");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_prot_cap_3)
     }
@@ -3774,7 +3770,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_prot_cap_3 = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_3 = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_prot_cap_3;
@@ -3792,7 +3788,7 @@ impl I3cPeripheral for I3cGenerated {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DeviceId0::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_0");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_0");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_device_id_0)
     }
@@ -3804,7 +3800,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_id_0 = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_device_id_0 = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_id_0;
@@ -3819,13 +3815,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_1(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_1");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_1");
         }
         self.i3c_ec_sec_fw_recovery_if_device_id_1
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_id_1(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_id_1 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_device_id_1 = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_id_1;
@@ -3836,13 +3832,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_2(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_2");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_2");
         }
         self.i3c_ec_sec_fw_recovery_if_device_id_2
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_id_2(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_id_2 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_device_id_2 = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_id_2;
@@ -3853,13 +3849,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_3(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_3");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_3");
         }
         self.i3c_ec_sec_fw_recovery_if_device_id_3
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_id_3(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_id_3 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_device_id_3 = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_id_3;
@@ -3870,13 +3866,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_4(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_4");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_4");
         }
         self.i3c_ec_sec_fw_recovery_if_device_id_4
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_id_4(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_id_4 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_device_id_4 = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_id_4;
@@ -3887,13 +3883,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_5(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_5");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_5");
         }
         self.i3c_ec_sec_fw_recovery_if_device_id_5
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_id_5(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_id_5 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_device_id_5 = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_id_5;
@@ -3904,7 +3900,7 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_reserved(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_reserved");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_reserved");
         }
         self.i3c_ec_sec_fw_recovery_if_device_id_reserved
     }
@@ -3915,7 +3911,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::DeviceStatus0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_status_0");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_status_0");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_device_status_0)
     }
@@ -3927,7 +3923,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_status_0 = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_device_status_0 = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_status_0;
@@ -3947,7 +3943,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::DeviceStatus1::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_status_1");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_status_1");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_device_status_1)
     }
@@ -3959,7 +3955,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_status_1 = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_device_status_1 = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_status_1;
@@ -3979,7 +3975,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::DeviceReset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_reset");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_reset");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_device_reset)
     }
@@ -3991,7 +3987,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_reset = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_device_reset = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_reset;
@@ -4011,7 +4007,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::RecoveryCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_recovery_ctrl");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_recovery_ctrl");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_recovery_ctrl)
     }
@@ -4023,7 +4019,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_recovery_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_recovery_ctrl = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_recovery_ctrl;
@@ -4043,7 +4039,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::RecoveryStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_recovery_status");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_recovery_status");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_recovery_status)
     }
@@ -4055,7 +4051,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_recovery_status = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_recovery_status = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_recovery_status;
@@ -4073,7 +4069,7 @@ impl I3cPeripheral for I3cGenerated {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HwStatus::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_hw_status");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_hw_status");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_hw_status)
     }
@@ -4085,7 +4081,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_hw_status = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_hw_status = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_hw_status;
@@ -4113,7 +4109,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0");
         }
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0,
@@ -4127,7 +4123,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0 = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0 = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0;
@@ -4142,7 +4138,7 @@ impl I3cPeripheral for I3cGenerated {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1");
         }
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1
     }
@@ -4151,7 +4147,7 @@ impl I3cPeripheral for I3cGenerated {
         val: caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1 = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1;
@@ -4167,7 +4163,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::IndirectFifoStatus0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0");
         }
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0,
@@ -4177,7 +4173,7 @@ impl I3cPeripheral for I3cGenerated {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1");
         }
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
     }
@@ -4185,7 +4181,7 @@ impl I3cPeripheral for I3cGenerated {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2");
         }
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2
     }
@@ -4193,7 +4189,7 @@ impl I3cPeripheral for I3cGenerated {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3");
         }
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3
     }
@@ -4201,7 +4197,7 @@ impl I3cPeripheral for I3cGenerated {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4");
         }
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4
     }
@@ -4209,13 +4205,13 @@ impl I3cPeripheral for I3cGenerated {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved");
         }
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_data");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_data");
         }
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_data
     }
@@ -4226,7 +4222,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_extcap_header");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_extcap_header");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_extcap_header)
     }
@@ -4237,7 +4233,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::StbyCrControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_control");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_control");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_control)
     }
@@ -4249,7 +4245,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_control = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_control = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_control;
@@ -4289,7 +4285,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_addr");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_addr");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_device_addr)
     }
@@ -4301,7 +4297,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_addr = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_addr = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_device_addr;
@@ -4323,7 +4319,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::StbyCrCapabilities::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_capabilities");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_capabilities");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_capabilities)
     }
@@ -4334,7 +4330,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char");
         }
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char,
@@ -4348,7 +4344,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char;
@@ -4370,7 +4366,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::StbyCrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_status");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_status");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_status)
     }
@@ -4382,7 +4378,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_status = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_status = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_status;
@@ -4402,7 +4398,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::StbyCrDeviceChar::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_char");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_char");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_device_char)
     }
@@ -4414,7 +4410,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_char = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_char = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_device_char;
@@ -4431,7 +4427,7 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo");
         }
         self.i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo
     }
@@ -4440,7 +4436,7 @@ impl I3cPeripheral for I3cGenerated {
         val: caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo;
@@ -4456,7 +4452,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::StbyCrIntrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_status");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_status");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_status)
     }
@@ -4468,7 +4464,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_status = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_status = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_status;
@@ -4505,7 +4501,7 @@ impl I3cPeripheral for I3cGenerated {
         &mut self,
     ) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo");
         }
         self.i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo
     }
@@ -4514,7 +4510,7 @@ impl I3cPeripheral for I3cGenerated {
         val: caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo;
@@ -4530,7 +4526,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable");
         }
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable,
@@ -4544,7 +4540,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable;
@@ -4584,7 +4580,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::StbyCrIntrForce::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_force");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_force");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_force)
     }
@@ -4596,7 +4592,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_force = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_force = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_force;
@@ -4628,7 +4624,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps");
         }
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps,
@@ -4642,7 +4638,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps;
@@ -4660,7 +4656,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params");
         }
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params,
@@ -4674,7 +4670,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params;
@@ -4694,7 +4690,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr");
         }
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr,
@@ -4708,7 +4704,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr;
@@ -4725,15 +4721,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_rsvd_3"
-            );
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_rsvd_3");
         }
         self.i3c_ec_stdby_ctrl_mode_rsvd_3
     }
     fn write_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_rsvd_3 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_stdby_ctrl_mode_rsvd_3 = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_rsvd_3;
@@ -4750,7 +4744,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_tti_extcap_header"
+                "[EMU] Generated default register handler: read i3c1::i3c_ec_tti_extcap_header"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_extcap_header)
@@ -4762,7 +4756,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::sha512_acc::bits::Control::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Generated default register handler: read i3c::i3c_ec_tti_control");
+            eprintln!("[EMU] Generated default register handler: read i3c1::i3c_ec_tti_control");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_control)
     }
@@ -4774,7 +4768,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_control = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_tti_control = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_control;
@@ -4796,7 +4790,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::lc_ctrl::bits::Status::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!("[EMU] Generated default register handler: read i3c::i3c_ec_tti_status");
+            eprintln!("[EMU] Generated default register handler: read i3c1::i3c_ec_tti_status");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_status)
     }
@@ -4808,7 +4802,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_tti_tti_reset_control"
+                "[EMU] Generated default register handler: read i3c1::i3c_ec_tti_tti_reset_control"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_tti_reset_control)
@@ -4821,7 +4815,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_tti_reset_control = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_tti_tti_reset_control = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_tti_reset_control;
@@ -4848,7 +4842,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_tti_interrupt_status"
+                "[EMU] Generated default register handler: read i3c1::i3c_ec_tti_interrupt_status"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_interrupt_status)
@@ -4861,7 +4855,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_interrupt_status = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_tti_interrupt_status = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_interrupt_status;
@@ -4904,7 +4898,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_tti_interrupt_enable"
+                "[EMU] Generated default register handler: read i3c1::i3c_ec_tti_interrupt_enable"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_interrupt_enable)
@@ -4917,7 +4911,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_interrupt_enable = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_tti_interrupt_enable = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_interrupt_enable;
@@ -4958,7 +4952,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_tti_interrupt_force"
+                "[EMU] Generated default register handler: read i3c1::i3c_ec_tti_interrupt_force"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_interrupt_force)
@@ -4971,7 +4965,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_interrupt_force = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_tti_interrupt_force = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_interrupt_force;
@@ -5006,23 +5000,21 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_tti_rx_desc_queue_port(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_tti_rx_desc_queue_port"
-            );
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_tti_rx_desc_queue_port");
         }
         self.i3c_ec_tti_rx_desc_queue_port
     }
     fn read_i3c_ec_tti_rx_data_port(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_tti_rx_data_port"
+                "[EMU] Generated default register handler: read i3c1::i3c_ec_tti_rx_data_port"
             );
         }
         self.i3c_ec_tti_rx_data_port
     }
     fn write_i3c_ec_tti_tx_desc_queue_port(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_tx_desc_queue_port = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_tti_tx_desc_queue_port = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_tx_desc_queue_port;
@@ -5033,7 +5025,7 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn write_i3c_ec_tti_tx_data_port(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_tx_data_port = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_tti_tx_data_port = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_tx_data_port;
@@ -5044,7 +5036,7 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn write_i3c_ec_tti_tti_ibi_port(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_tti_ibi_port = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_tti_tti_ibi_port = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_tti_ibi_port;
@@ -5061,7 +5053,7 @@ impl I3cPeripheral for I3cGenerated {
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_tti_tti_queue_size"
+                "[EMU] Generated default register handler: read i3c1::i3c_ec_tti_tti_queue_size"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_tti_queue_size)
@@ -5073,9 +5065,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::IbiTtiQueueSize::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_tti_ibi_tti_queue_size"
-            );
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_tti_ibi_tti_queue_size");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_ibi_tti_queue_size)
     }
@@ -5086,7 +5076,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_tti_tti_queue_thld_ctrl");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_tti_tti_queue_thld_ctrl");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_tti_queue_thld_ctrl)
     }
@@ -5098,7 +5088,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_tti_queue_thld_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_tti_tti_queue_thld_ctrl = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_tti_queue_thld_ctrl;
@@ -5118,7 +5108,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_tti_tti_data_buffer_thld_ctrl");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_tti_tti_data_buffer_thld_ctrl");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_tti_data_buffer_thld_ctrl)
     }
@@ -5130,7 +5120,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_tti_data_buffer_thld_ctrl = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_tti_tti_data_buffer_thld_ctrl = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_tti_data_buffer_thld_ctrl;
@@ -5152,19 +5142,19 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_extcap_header");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_extcap_header");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_extcap_header)
     }
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_control");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_control");
         }
         self.i3c_ec_soc_mgmt_if_soc_mgmt_control
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_control = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_control = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_mgmt_control;
@@ -5175,13 +5165,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_status");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_status");
         }
         self.i3c_ec_soc_mgmt_if_soc_mgmt_status
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_status = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_status = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_mgmt_status;
@@ -5197,7 +5187,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::RecIntfCfg::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_rec_intf_cfg");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_rec_intf_cfg");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_rec_intf_cfg)
     }
@@ -5209,7 +5199,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_rec_intf_cfg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_rec_intf_cfg = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_rec_intf_cfg;
@@ -5227,7 +5217,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access)
     }
@@ -5239,7 +5229,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access;
@@ -5254,13 +5244,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2");
         }
         self.i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2 = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2;
@@ -5271,13 +5261,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3");
         }
         self.i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3 = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3;
@@ -5293,7 +5283,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::SocPadConf::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_pad_conf");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_soc_pad_conf");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_soc_pad_conf)
     }
@@ -5305,7 +5295,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_pad_conf = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_soc_pad_conf = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_pad_conf;
@@ -5337,7 +5327,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::SocPadAttr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_pad_attr");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_soc_pad_attr");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_soc_pad_attr)
     }
@@ -5349,7 +5339,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_pad_attr = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_soc_pad_attr = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_pad_attr;
@@ -5362,13 +5352,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_2");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_feature_2");
         }
         self.i3c_ec_soc_mgmt_if_soc_mgmt_feature_2
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_2 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_feature_2 = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_mgmt_feature_2;
@@ -5379,13 +5369,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_3");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_feature_3");
         }
         self.i3c_ec_soc_mgmt_if_soc_mgmt_feature_3
     }
     fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_3 = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_soc_mgmt_feature_3 = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_mgmt_feature_3;
@@ -5400,7 +5390,7 @@ impl I3cPeripheral for I3cGenerated {
     {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_r_reg"
+                "[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_r_reg"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_r_reg)
@@ -5413,7 +5403,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_r_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_t_r_reg = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_r_reg;
@@ -5428,7 +5418,7 @@ impl I3cPeripheral for I3cGenerated {
     {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_f_reg"
+                "[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_f_reg"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_f_reg)
@@ -5441,7 +5431,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_f_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_t_f_reg = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_f_reg;
@@ -5455,7 +5445,7 @@ impl I3cPeripheral for I3cGenerated {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuDatReg::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_su_dat_reg");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_su_dat_reg");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_su_dat_reg)
     }
@@ -5467,7 +5457,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_su_dat_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_t_su_dat_reg = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_su_dat_reg;
@@ -5481,7 +5471,7 @@ impl I3cPeripheral for I3cGenerated {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdDatReg::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_hd_dat_reg");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_hd_dat_reg");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_hd_dat_reg)
     }
@@ -5493,7 +5483,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_hd_dat_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_t_hd_dat_reg = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_hd_dat_reg;
@@ -5507,9 +5497,7 @@ impl I3cPeripheral for I3cGenerated {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THighReg::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_high_reg"
-            );
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_high_reg");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_high_reg)
     }
@@ -5521,7 +5509,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_high_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_t_high_reg = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_high_reg;
@@ -5536,7 +5524,7 @@ impl I3cPeripheral for I3cGenerated {
     {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_low_reg"
+                "[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_low_reg"
             );
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_low_reg)
@@ -5549,7 +5537,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_low_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_t_low_reg = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_low_reg;
@@ -5563,7 +5551,7 @@ impl I3cPeripheral for I3cGenerated {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdStaReg::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_hd_sta_reg");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_hd_sta_reg");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_hd_sta_reg)
     }
@@ -5575,7 +5563,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_hd_sta_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_t_hd_sta_reg = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_hd_sta_reg;
@@ -5589,7 +5577,7 @@ impl I3cPeripheral for I3cGenerated {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStaReg::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_su_sta_reg");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_su_sta_reg");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_su_sta_reg)
     }
@@ -5601,7 +5589,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_su_sta_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_t_su_sta_reg = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_su_sta_reg;
@@ -5615,7 +5603,7 @@ impl I3cPeripheral for I3cGenerated {
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStoReg::Register>
     {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_su_sto_reg");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_su_sto_reg");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_su_sto_reg)
     }
@@ -5627,7 +5615,7 @@ impl I3cPeripheral for I3cGenerated {
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_su_sto_reg = 0x{:08x}" , val . reg . get ());
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_t_su_sto_reg = 0x{:08x}" , val . reg . get ());
         }
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_su_sto_reg;
@@ -5638,15 +5626,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_soc_mgmt_if_t_free_reg(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_free_reg"
-            );
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_free_reg");
         }
         self.i3c_ec_soc_mgmt_if_t_free_reg
     }
     fn write_i3c_ec_soc_mgmt_if_t_free_reg(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_free_reg = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_t_free_reg = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_free_reg;
@@ -5657,15 +5643,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_aval_reg"
-            );
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_aval_reg");
         }
         self.i3c_ec_soc_mgmt_if_t_aval_reg
     }
     fn write_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_aval_reg = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_t_aval_reg = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_aval_reg;
@@ -5676,15 +5660,13 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self) -> caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_idle_reg"
-            );
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_idle_reg");
         }
         self.i3c_ec_soc_mgmt_if_t_idle_reg
     }
     fn write_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self, val: caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_idle_reg = 0x{:08x}" , val);
+            eprintln ! ("[EMU] Generated default register handler: write i3c1::i3c_ec_soc_mgmt_if_t_idle_reg = 0x{:08x}" , val);
         }
         let write_val = (val) as caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_idle_reg;
@@ -5700,9 +5682,7 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln!(
-                "[EMU] Generated default register handler: read i3c::i3c_ec_ctrl_cfg_extcap_header"
-            );
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_ctrl_cfg_extcap_header");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_ctrl_cfg_extcap_header)
     }
@@ -5713,15 +5693,15 @@ impl I3cPeripheral for I3cGenerated {
         registers_generated::i3c::bits::ControllerConfig::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
-            eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_ctrl_cfg_controller_config");
+            eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_ctrl_cfg_controller_config");
         }
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_ctrl_cfg_controller_config)
     }
 }
-pub struct I3cBus {
-    pub periph: Box<dyn I3cPeripheral>,
+pub struct I3c1Bus {
+    pub periph: Box<dyn I3c1Peripheral>,
 }
-impl caliptra_emu_bus::Bus for I3cBus {
+impl caliptra_emu_bus::Bus for I3c1Bus {
     fn read(
         &mut self,
         size: caliptra_emu_types::RvSize,

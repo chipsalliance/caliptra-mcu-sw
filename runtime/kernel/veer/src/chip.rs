@@ -33,7 +33,8 @@ pub static mut TIMERS: InternalTimers<'static> = InternalTimers::new();
 // TODO: these should be part of the memory map
 pub const MCI_IRQ: u8 = 0x1;
 pub const I3C_IRQ: u8 = 0x2;
-pub const LSB_IRG: u8 = 0x3;
+pub const I3C1_IRQ: u8 = 0x3;
+pub const LSB_IRG: u8 = 0x4;
 
 pub struct VeeR<'a, I: InterruptService + 'a> {
     userspace_kernel_boundary: SysCall,
@@ -45,6 +46,7 @@ pub struct VeeR<'a, I: InterruptService + 'a> {
 
 pub struct VeeRDefaultPeripherals<'a> {
     pub i3c: i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
+    pub i3c1: i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
     pub mci: romtime::Mci,
     pub mcu_mbox0: mcu_mbox_driver::McuMailbox<'a, InternalTimers<'a>>,
     pub additional_interrupt_handler: &'static dyn InterruptService,
@@ -63,6 +65,10 @@ impl<'a> VeeRDefaultPeripherals<'a> {
                 unsafe { StaticRef::new(memory_map.i3c_offset as *const I3c) },
                 alarm,
             ),
+            i3c1: i3c_driver::core::I3CCore::new(
+                unsafe { StaticRef::new(memory_map.i3c1_offset as *const I3c) },
+                alarm,
+            ),
             mci: mci_driver,
             mcu_mbox0: mcu_mbox_driver::McuMailbox::new(
                 mci_regs,
@@ -75,6 +81,7 @@ impl<'a> VeeRDefaultPeripherals<'a> {
 
     pub fn init(&'static self) {
         self.i3c.init();
+        self.i3c1.init();
         self.mcu_mbox0.init();
     }
 }
@@ -88,6 +95,9 @@ impl<'a> InterruptService for VeeRDefaultPeripherals<'a> {
             return true;
         } else if interrupt == I3C_IRQ as u32 {
             self.i3c.handle_interrupt();
+            return true;
+        } else if interrupt == I3C1_IRQ as u32 {
+            self.i3c1.handle_interrupt();
             return true;
         } else if interrupt == MCI_IRQ as u32 {
             self.mci.handle_interrupt();
