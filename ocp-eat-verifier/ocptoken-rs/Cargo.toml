@@ -6,11 +6,16 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Caliptra Contributors"]
 
+[features]
+default = ["openssl"]
+openssl = ["dep:openssl"]
+
 [dependencies]
 coset.workspace = true
 hex.workspace = true
 thiserror.workspace = true
-openssl.workspace = true
 clap.workspace = true
+openssl = { workspace = true, optional = true }
 
-
+[dev-dependencies]
+openssl.workspace = true

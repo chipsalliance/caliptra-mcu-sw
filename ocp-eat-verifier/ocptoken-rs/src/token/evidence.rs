@@ -1,262 +1,190 @@
 // Licensed under the Apache-2.0 license
 
+use crate::cose_verify::{CoseSign1Verifier, CryptoBackend, DecodedCoseSign1};
 use crate::error::{OcpEatError, OcpEatResult};
-use coset::{
-    cbor::value::Value, iana::Algorithm, CborSerializable, CoseSign1, Header,
-    TaggedCborSerializable,
-};
-use openssl::{
-    bn::{BigNum, BigNumContext},
-    ec::{EcGroup, EcKey, EcPoint},
-    nid::Nid,
-    pkey::PKey,
-    x509::X509,
-};
+use crate::ta_store::TrustAnchorStore;
+use coset::cbor::value::Value;
+use coset::iana::Algorithm;
+use coset::{Header, Label};
 
 pub const OCP_EAT_CLAIMS_KEY_ID: &str = "";
 pub const CBOR_TAG_CBOR: u64 = 55799;
 pub const CBOR_TAG_CWT: u64 = 61;
 pub const CBOR_TAG_COSE_SIGN1: u64 = 18;
 
-/// COSE header parameter: x5chain (label 33)
-const COSE_HDR_PARAM_X5CHAIN: i64 = 33;
+/// OCP EAT profile: CBOR self-describe (55799) -> CWT (61) -> COSE_Sign1 (18)
+pub const OCP_EAT_TAGS: &[u64] = &[CBOR_TAG_CBOR, CBOR_TAG_CWT, CBOR_TAG_COSE_SIGN1];
 
-/// Parsed and verified EAT evidence
-pub struct Evidence {
-    pub signed_eat: Option<CoseSign1>,
+/// Parsed and verified EAT evidence.
+///
+/// Wraps a `DecodedCoseSign1` from the common verification module,
+/// adding OCP EAT-specific header validation and certificate chain
+/// authentication via a [`TrustAnchorStore`].
+pub struct Evidence<'a> {
+    decoded: DecodedCoseSign1,
+    ta_store: &'a dyn TrustAnchorStore,
 }
 
-impl Default for Evidence {
-    fn default() -> Self {
-        Evidence { signed_eat: None }
-    }
-}
+impl<'a> Evidence<'a> {
+    /// Decode and structurally validate a COSE_Sign1 with OCP EAT
+    /// tag wrapping (55799 -> 61 -> 18).
+    pub fn decode(slice: &[u8], ta_store: &'a dyn TrustAnchorStore) -> OcpEatResult<Self> {
+        let decoded = DecodedCoseSign1::decode(slice, OCP_EAT_TAGS)?;
 
-impl Evidence {
-    pub fn new(signed_eat: CoseSign1) -> Self {
-        Evidence {
-            signed_eat: Some(signed_eat),
-        }
+        verify_eat_protected_header(decoded.protected_header())?;
+
+        Ok(Evidence { decoded, ta_store })
     }
 
-    /// Decode and structurally validate a COSE_Sign1
-    /// (Steps 1–3)
-    pub fn decode(slice: &[u8]) -> OcpEatResult<Self> {
-        /* ==========================================================
-         *  Verify tags & decode COSE_Sign1
-         * ========================================================== */
-        let cose = parse_tagged_evidence(slice)?;
+    /// Authenticate the signing key against the Trust Anchor Store.
+    ///
+    /// `cert_chain_blob` is a concatenated DER certificate chain from
+    /// the device (e.g. from SPDM GET_CERTIFICATE), ordered root-first:
+    /// `[root | intermediate(s) | device_leaf]`.
+    ///
+    /// The device leaf (last cert in the blob) is dropped and replaced
+    /// with the leaf certificate(s) from the x5chain in the evidence
+    /// unprotected header. The resulting chain is passed to the Trust
+    /// Anchor Store in leaf-first order for validation.
+    ///
+    /// Pass an empty slice if the x5chain already contains the full chain.
+    ///
+    /// Returns the DER-encoded authenticated leaf certificate on success.
+    pub fn authenticate(&self, cert_chain_blob: &[u8]) -> OcpEatResult<Vec<u8>> {
+        let x5chain = extract_x5chain(self.decoded.unprotected_header())?;
 
-        /* ==========================================================
-         *  Verify protected header
-         * ========================================================== */
-        verify_protected_header(&cose.protected.header)?;
+        let full_chain = if cert_chain_blob.is_empty() {
+            // No external chain — use x5chain as the full chain
+            x5chain
+        } else {
+            // Split the blob into individual certs (root-to-leaf order)
+            let mut chain_certs = split_der_certs(cert_chain_blob)?;
+            // Drop the device leaf (last cert)
+            if !chain_certs.is_empty() {
+                chain_certs.pop();
+            }
+            // Reverse to leaf-to-root order, then prepend x5chain
+            chain_certs.reverse();
+            let mut full = x5chain;
+            full.extend(chain_certs);
+            full
+        };
 
-        Ok(Evidence {
-            signed_eat: Some(cose),
-        })
+        let authenticated_leaf = self.ta_store.authenticate_chain(&full_chain)?;
+        Ok(authenticated_leaf)
     }
 
-    /// Cryptographically verify the decoded COSE_Sign1
-
-    pub fn verify(&self) -> OcpEatResult<()> {
-        let cose = self
-            .signed_eat
-            .as_ref()
-            .ok_or_else(|| OcpEatError::InvalidToken("Missing COSE_Sign1"))?;
-
-        /* ----------------------------------------------------------
-         *  Extract leaf cert from unprotected header
-         * ---------------------------------------------------------- */
-        let cert_der = extract_leaf_cert_der(&cose.unprotected)?;
-        let (pubkey_x, pubkey_y) = extract_pubkey_xy(&cert_der)?;
-
-        /* ----------------------------------------------------------
-         *  Verify ES384 signature
-         * ---------------------------------------------------------- */
-        cose.verify_signature(&[], |signature, to_be_signed| {
-            verify_signature_es384(signature, pubkey_x, pubkey_y, to_be_signed)
-        })?;
-
+    /// Authenticate the signing key and cryptographically verify
+    /// the COSE_Sign1 signature.
+    ///
+    /// Equivalent to calling [`authenticate`](Self::authenticate)
+    /// followed by signature verification with the returned leaf cert.
+    pub fn verify(
+        &self,
+        cert_chain_blob: &[u8],
+        verifier: &CoseSign1Verifier<impl CryptoBackend>,
+    ) -> OcpEatResult<()> {
+        let authenticated_leaf = self.authenticate(cert_chain_blob)?;
+        verifier.verify_ref(&self.decoded, &authenticated_leaf)?;
         Ok(())
     }
 }
 
-/* -------------------------------------------------------------------------- */
-/*                               Helper functions                              */
-/* -------------------------------------------------------------------------- */
+/// COSE header parameter label for x5chain (RFC 9360, label 33).
+const COSE_HDR_PARAM_X5CHAIN: i64 = 33;
 
-fn parse_tagged_evidence(slice: &[u8]) -> OcpEatResult<CoseSign1> {
-    let mut value = Value::from_slice(slice).map_err(OcpEatError::CoseSign1)?;
-
-    // Expected tag order
-    let mut expected_tags = [CBOR_TAG_CBOR, CBOR_TAG_CWT, CBOR_TAG_COSE_SIGN1].into_iter();
-
-    loop {
-        match value {
-            Value::Tag(tag, boxed) => {
-                let expected = expected_tags
-                    .next()
-                    .ok_or(OcpEatError::InvalidToken("Unexpected extra CBOR tag"))?;
-
-                if tag != expected {
-                    return Err(OcpEatError::InvalidToken(
-                        "CBOR tags are not in required order (55799 → 61 → 18)",
-                    ));
-                }
-
-                value = *boxed;
-            }
-
-            // Tagged COSE_Sign1
-            Value::Bytes(bytes) => {
-                return CoseSign1::from_tagged_slice(&bytes).map_err(OcpEatError::CoseSign1);
-            }
-
-            // Bare COSE_Sign1 array
-            Value::Array(_) => {
-                let bytes = value.to_vec().map_err(OcpEatError::CoseSign1)?;
-
-                return CoseSign1::from_slice(&bytes).map_err(OcpEatError::CoseSign1);
-            }
-
-            _ => {
-                return Err(OcpEatError::InvalidToken(
-                    "Invalid tagged COSE_Sign1 structure",
-                ));
-            }
-        }
-    }
-}
-
-/// Extract leaf certificate DER from x5chain (label 33)
-fn extract_leaf_cert_der(unprotected: &Header) -> OcpEatResult<Vec<u8>> {
-    let value = unprotected
+/// Extract x5chain certificate chain from a COSE header (label 33).
+/// Returns DER-encoded certificates ordered leaf-first.
+fn extract_x5chain(header: &Header) -> OcpEatResult<Vec<Vec<u8>>> {
+    let value = header
         .rest
         .iter()
-        .find_map(|(label, value)| {
-            if *label == coset::Label::Int(COSE_HDR_PARAM_X5CHAIN) {
-                Some(value)
+        .find_map(|(l, v)| {
+            if *l == Label::Int(COSE_HDR_PARAM_X5CHAIN) {
+                Some(v)
             } else {
                 None
             }
         })
         .ok_or(OcpEatError::InvalidToken(
-            "Missing x5chain in COSE protected header",
+            "Missing x5chain (label 33) in unprotected header",
         ))?;
 
     match value {
-        Value::Array(arr) => arr.first(),
-        Value::Bytes(_) => Some(value),
-        _ => None,
-    }
-    .and_then(|v| match v {
-        Value::Bytes(bytes) => Some(bytes.clone()),
-        _ => None,
-    })
-    .ok_or(OcpEatError::InvalidToken(
-        "Missing or invalid x5chain: expected DER-encoded certificate bytes",
-    ))
-}
-
-/// Extract raw P-384 public key coordinates (x, y) from DER X.509 cert
-fn extract_pubkey_xy(cert_der: &[u8]) -> OcpEatResult<([u8; 48], [u8; 48])> {
-    // Parse X.509 certificate using OpenSSL
-    let cert = X509::from_der(cert_der)
-        .map_err(|e| OcpEatError::Certificate(format!("OpenSSL X509 parse failed: {}", e)))?;
-
-    // Extract public key
-    let pubkey: PKey<openssl::pkey::Public> = cert
-        .public_key()
-        .map_err(|e| OcpEatError::Certificate(format!("Failed to extract public key: {}", e)))?;
-
-    // Ensure EC key
-    let ec_key = pubkey
-        .ec_key()
-        .map_err(|_| OcpEatError::Certificate("Public key is not an EC key".into()))?;
-
-    let group = ec_key.group();
-    let point = ec_key.public_key();
-
-    let mut ctx = BigNumContext::new().map_err(|e| OcpEatError::Crypto(e.to_string()))?;
-
-    let mut ctx_x = BigNum::new().map_err(|e| OcpEatError::Crypto(e.to_string()))?;
-    let mut ctx_y = BigNum::new().map_err(|e| OcpEatError::Crypto(e.to_string()))?;
-
-    point
-        .affine_coordinates_gfp(group, &mut ctx_x, &mut ctx_y, &mut ctx)
-        .map_err(|e| OcpEatError::Crypto(e.to_string()))?;
-
-    let x_bytes = ctx_x
-        .to_vec_padded(48)
-        .map_err(|_| OcpEatError::Certificate("Failed to pad X coordinate".into()))?;
-
-    let y_bytes = ctx_y
-        .to_vec_padded(48)
-        .map_err(|_| OcpEatError::Certificate("Failed to pad Y coordinate".into()))?;
-
-    let mut x = [0u8; 48];
-    let mut y = [0u8; 48];
-
-    x.copy_from_slice(&x_bytes);
-    y.copy_from_slice(&y_bytes);
-
-    Ok((x, y))
-}
-
-/// Verify ES384 COSE signature using raw EC public key
-fn verify_signature_es384(
-    signature: &[u8],
-    pubkey_x: [u8; 48],
-    pubkey_y: [u8; 48],
-    message: &[u8],
-) -> OcpEatResult<()> {
-    if signature.len() != 96 {
-        return Err(OcpEatError::SignatureVerification);
-    }
-
-    let r = BigNum::from_slice(&signature[..48]).map_err(|_| OcpEatError::SignatureVerification)?;
-    let s = BigNum::from_slice(&signature[48..]).map_err(|_| OcpEatError::SignatureVerification)?;
-
-    let sig = openssl::ecdsa::EcdsaSig::from_private_components(r, s)
-        .map_err(|_| OcpEatError::SignatureVerification)?;
-
-    let group =
-        EcGroup::from_curve_name(Nid::SECP384R1).map_err(|e| OcpEatError::Crypto(e.to_string()))?;
-
-    let mut ctx = BigNumContext::new().map_err(|e| OcpEatError::Crypto(e.to_string()))?;
-
-    let px = BigNum::from_slice(&pubkey_x).unwrap();
-    let py = BigNum::from_slice(&pubkey_y).unwrap();
-
-    let mut point = EcPoint::new(&group).map_err(|e| OcpEatError::Crypto(e.to_string()))?;
-
-    point
-        .set_affine_coordinates_gfp(&group, &px, &py, &mut ctx)
-        .map_err(|e| OcpEatError::Crypto(e.to_string()))?;
-
-    let ec_key =
-        EcKey::from_public_key(&group, &point).map_err(|e| OcpEatError::Crypto(e.to_string()))?;
-
-    let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha384(), message)
-        .map_err(|e| OcpEatError::Crypto(e.to_string()))?;
-
-    let verified = sig
-        .verify(&digest, &ec_key)
-        .map_err(|e| OcpEatError::Crypto(e.to_string()))?;
-
-    if verified {
-        Ok(())
-    } else {
-        Err(OcpEatError::SignatureVerification)
+        // x5chain can be a single bstr (one cert) or an array of bstr
+        Value::Bytes(bytes) => Ok(vec![bytes.clone()]),
+        Value::Array(arr) => {
+            let certs: Vec<Vec<u8>> = arr
+                .iter()
+                .filter_map(|v| match v {
+                    Value::Bytes(b) => Some(b.clone()),
+                    _ => None,
+                })
+                .collect();
+            if certs.is_empty() {
+                Err(OcpEatError::InvalidToken("x5chain array contains no certificates"))
+            } else {
+                Ok(certs)
+            }
+        }
+        _ => Err(OcpEatError::InvalidToken(
+            "x5chain (label 33) has unexpected CBOR type",
+        )),
     }
 }
 
-fn verify_protected_header(protected: &Header) -> OcpEatResult<()> {
-    /* ----------------------------------------------------------
-     *  * Algorithm must be ES384 or ESP384
-     * ---------------------------------------------------------- */
+/// Split a concatenated DER blob into individual DER-encoded certificates.
+fn split_der_certs(blob: &[u8]) -> OcpEatResult<Vec<Vec<u8>>> {
+    let mut certs = Vec::new();
+    let mut offset = 0;
 
+    while offset < blob.len() {
+        if blob[offset] != 0x30 {
+            return Err(OcpEatError::Certificate(format!(
+                "Expected SEQUENCE tag (0x30) at offset {}, found 0x{:02x}",
+                offset, blob[offset]
+            )));
+        }
+        let (content_len, header_len) = parse_der_length(&blob[offset + 1..])?;
+        let total_len = 1 + header_len + content_len;
+        if offset + total_len > blob.len() {
+            return Err(OcpEatError::Certificate(format!(
+                "DER certificate at offset {} extends beyond input",
+                offset
+            )));
+        }
+        certs.push(blob[offset..offset + total_len].to_vec());
+        offset += total_len;
+    }
+
+    Ok(certs)
+}
+
+/// Parse a DER length field. Returns (content_length, header_bytes_consumed).
+fn parse_der_length(data: &[u8]) -> OcpEatResult<(usize, usize)> {
+    if data.is_empty() {
+        return Err(OcpEatError::Certificate(
+            "Truncated DER length".into(),
+        ));
+    }
+    if data[0] < 0x80 {
+        return Ok((data[0] as usize, 1));
+    }
+    let num_bytes = (data[0] & 0x7f) as usize;
+    if num_bytes == 0 || num_bytes > 4 || data.len() < 1 + num_bytes {
+        return Err(OcpEatError::Certificate(
+            "Invalid DER length encoding".into(),
+        ));
+    }
+    let mut len = 0usize;
+    for i in 0..num_bytes {
+        len = (len << 8) | (data[1 + i] as usize);
+    }
+    Ok((len, 1 + num_bytes))
+}
+
+/// EAT-specific protected header checks (algorithm + content-type).
+fn verify_eat_protected_header(protected: &coset::Header) -> OcpEatResult<()> {
     let alg_ok = matches!(
         protected.alg,
         Some(coset::RegisteredLabelWithPrivate::Assigned(
@@ -271,22 +199,15 @@ fn verify_protected_header(protected: &Header) -> OcpEatResult<()> {
         ));
     }
 
-    /* ----------------------------------------------------------
-     * Content-Type
-     * ---------------------------------------------------------- */
     match &protected.content_type {
-        Some(coset::RegisteredLabel::Assigned(coset::iana::CoapContentFormat::EatCwt)) => {
-            // Accept EAT CWT
-        }
-        None => {
-            // Accept missing content-type
-        }
-
+        Some(coset::RegisteredLabel::Assigned(coset::iana::CoapContentFormat::EatCwt)) => {}
+        None => {}
         _other => {
             return Err(OcpEatError::InvalidToken(
                 "Content format mismatch in protected header",
             ));
         }
     }
+
     Ok(())
 }
