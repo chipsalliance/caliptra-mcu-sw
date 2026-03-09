@@ -1,7 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use crate::tests::spdm_responder_validator::common::{
-    execute_spdm_responder_validator, SpdmValidatorRunner, SERVER_LISTENING,
+    execute_spdm_attestation, execute_spdm_responder_validator, SpdmValidatorRunner,
+    SERVER_LISTENING,
 };
 use crate::tests::spdm_responder_validator::transport::{
     Transport, MAX_CMD_TIMEOUT_SECONDS, SOCKET_TRANSPORT_TYPE_MCTP,
@@ -194,4 +195,53 @@ pub fn run_mctp_spdm_conformance_test(
     });
 
     execute_spdm_responder_validator("MCTP");
+}
+
+pub fn run_mctp_spdm_attestation_test(
+    port: u16,
+    target_addr: DynamicI3cAddress,
+    _test_type: SpdmTestType,
+    test_timeout_seconds: Duration,
+) {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let stream = TcpStream::connect(addr).unwrap();
+    let transport = MctpTransport::new(BufferedStream::new(stream), target_addr.into(), 1);
+
+    thread::spawn(move || {
+        thread::sleep(test_timeout_seconds);
+        println!(
+            "[{}] TIMED OUT AFTER {:?} SECONDS",
+            TEST_NAME,
+            test_timeout_seconds.as_secs()
+        );
+        exit(-1);
+    });
+
+    thread::spawn(move || {
+        wait_for_runtime_start();
+
+        if !MCU_RUNNING.load(Ordering::Relaxed) {
+            exit(-1);
+        }
+        let listener =
+            TcpListener::bind("127.0.0.1:2323").expect("Could not bind to the SPDM listerner port");
+        println!("[{}]: Spdm Server Listening on port 2323", TEST_NAME);
+        SERVER_LISTENING.store(true, Ordering::Relaxed);
+
+        if let Some(spdm_stream) = listener.incoming().next() {
+            let mut spdm_stream = spdm_stream.expect("Failed to accept connection");
+
+            let mut test = SpdmValidatorRunner::new(Box::new(transport), TEST_NAME);
+            test.run_test(&mut spdm_stream);
+            if !test.is_passed() {
+                println!("[{}]: Spdm Attestation Test Failed", TEST_NAME);
+                exit(-1);
+            } else {
+                println!("[{}]: Spdm Attestation Test Passed", TEST_NAME);
+                exit(0);
+            }
+        }
+    });
+
+    execute_spdm_attestation("MCTP");
 }

@@ -65,10 +65,38 @@ jobs:
           go install github.com/veraison/cocli@v1.0.0-alpha0
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
+      # ── Attestation via spdm_requester_emu ────────────────────────
+      - name: Install cmake 3.x
+        run: |
+          wget https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz &&
+          mkdir -p /opt/cmake &&
+          tar xvzf cmake-3.31.6-linux-x86_64.tar.gz -C /opt/cmake --strip-components=1 &&
+          echo "/opt/cmake/bin" >> $GITHUB_PATH
+
+      - name: Checkout spdm-emu repository
+        uses: actions/checkout@v4
+        with:
+          repository: parvathib/spdm-emu
+          ref: pbhogaraju/spdm_emu_main_custom
+          path: spdm-emu
+          submodules: recursive
+
+      - name: Build spdm-emu
+        run: |
+          pushd spdm-emu
+          git submodule update --init --recursive
+          mkdir build
+          pushd build
+          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=openssl ..
+          make copy_sample_key
+          make
+          popd
+          popd
+
       # ── Build firmware with test features ──────────────────────────────
       - name: Build firmware with test SPDM responder features
         run: |
-          cargo xtask all-build --runtime-features test-mctp-spdm-responder-conformance
+          cargo xtask all-build --runtime-features test-mctp-spdm-attestation
 
       # ── Generate CoRIM reference values ────────────────────────────────
       - name: Generate reference-value CoRIM
@@ -91,3 +119,32 @@ jobs:
           name: attestation-artifacts
           path: |
             attestation-artifacts/
+
+      - name: Generate SPDM nonce
+        run: |
+          echo "SPDM_NONCE=$(openssl rand -hex 32)" >> $GITHUB_ENV
+
+      - name: Run SPDM attestation test on MCTP transport
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+        run: |
+          cargo t -p tests-integration -- --test test_mctp_spdm_attestation --nocapture  --include-ignored
+
+      - name: Upload attestation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+        with:
+          name: spdm-mctp-attestation-test-results
+          path: |
+            ${{ env.SPDM_VALIDATOR_DIR }}/spdm_requester_emu_output.txt
+            ${{ env.SPDM_VALIDATOR_DIR }}/caliptra-evidence.pcap
+            ${{ env.SPDM_VALIDATOR_DIR }}/measurement_block_fd.bin
+            ${{ env.SPDM_VALIDATOR_DIR }}/certificate_chain_slot_00.der
+
+      - name: Display SPDM attestation test results
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+        run: |
+          cat $SPDM_VALIDATOR_DIR/spdm_requester_emu_output.txt
