@@ -444,6 +444,7 @@ impl BootFlow for ColdBoot {
                 romtime::println!("[mcu-rom] Caliptra reported a fatal error");
                 fatal_error(McuError::ROM_COLD_BOOT_CALIPTRA_FATAL_ERROR_BEFORE_MB_READY);
             }
+            soc.check_hw_errors();
         }
 
         romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
@@ -630,7 +631,9 @@ impl BootFlow for ColdBoot {
         romtime::println!(
             "[mcu-rom] Waiting for Caliptra RT to be ready for runtime mailbox commands"
         );
-        while !soc.ready_for_runtime() {}
+        while !soc.ready_for_runtime() {
+            soc.check_hw_errors();
+        }
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
 
         romtime::println!("[mcu-rom] Finished common initialization");

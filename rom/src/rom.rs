@@ -98,6 +98,18 @@ impl Soc {
         self.registers.cptra_fw_error_fatal.get() != 0
     }
 
+    pub fn check_hw_errors(&self) {
+        let hw_error = self.registers.cptra_hw_error_fatal.extract();
+        if hw_error.is_set(soc::bits::CptraHwErrorFatal::IccmEccUnc) {
+            romtime::println!("[mcu-rom] Caliptra reported an ICCM ECC uncorrectable error");
+            fatal_error(McuError::ROM_SOC_ICCM_ECC_UNC);
+        }
+        if hw_error.is_set(soc::bits::CptraHwErrorFatal::DccmEccUnc) {
+            romtime::println!("[mcu-rom] Caliptra reported a DCCM ECC uncorrectable error");
+            fatal_error(McuError::ROM_SOC_DCCM_ECC_UNC);
+        }
+    }
+
     pub fn set_cptra_wdt_cfg(&self, index: usize, value: u32) {
         self.registers.cptra_wdt_cfg[index].set(value);
     }
@@ -378,6 +390,7 @@ impl Soc {
                 romtime::println!("[mcu-rom] Caliptra reported a fatal error");
                 fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
             }
+            self.check_hw_errors();
         }
         // Clear the reset request interrupt
         notif0.modify(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
