@@ -280,6 +280,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                     .recovery_status
                     .set_status(DeviceRecoveryStatus::Success);
                 self.state.device_status_value = DeviceStatusValue::RunningRecoveryImage;
+                self.state.recovery_reason = RecoveryReasonCode::NoBootFailure;
             }
             ActivationResult::StageSuccess => {
                 self.state.recovery_status = RecoveryStatus::new(
@@ -294,17 +295,49 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                     .recovery_status
                     .set_status(DeviceRecoveryStatus::AuthenticationError);
                 self.state.device_status_value = DeviceStatusValue::BootFailure;
+                self.state.recovery_reason = RecoveryReasonCode::AuthFailureRecoveryFirmware;
             }
             ActivationResult::Failed => {
                 self.state
                     .recovery_status
                     .set_status(DeviceRecoveryStatus::Failed);
                 self.state.device_status_value = DeviceStatusValue::BootFailure;
+                self.state.recovery_reason = RecoveryReasonCode::MissingCorruptRecoveryFirmware;
             }
         }
 
         self.state.recovery_ctrl.activate = ActivateRecoveryImage::DoNotActivate;
         Ok(())
+    }
+
+    /// Transition the device status to `DeviceHealthy`.
+    ///
+    /// Called when the device has successfully booted.
+    pub fn set_device_healthy(&mut self) {
+        self.state.device_status_value = DeviceStatusValue::DeviceHealthy;
+        self.state.recovery_reason = RecoveryReasonCode::NoBootFailure;
+    }
+
+    /// Transition the device into recovery mode with the given reason code.
+    ///
+    /// Sets `device_status_value` to `RecoveryMode`, stores the reason in
+    /// `recovery_reason` (reported via DEVICE_STATUS bytes 2-3), and sets
+    /// `recovery_status` to `AwaitingImage` with image index 0.
+    pub fn enter_recovery(&mut self, reason: RecoveryReasonCode) {
+        self.state.device_status_value = DeviceStatusValue::RecoveryMode;
+        self.state.recovery_reason = reason;
+        self.state
+            .recovery_status
+            .set_status(DeviceRecoveryStatus::AwaitingImage);
+    }
+
+    /// Transition the device status to `BootFailure` with the given reason.
+    ///
+    /// Sets `device_status_value` to `BootFailure` and stores the reason in
+    /// `recovery_reason` (reported via DEVICE_STATUS bytes 2-3).
+    pub fn set_boot_failure(&mut self, reason: RecoveryReasonCode) {
+        self.state.device_status_value = DeviceStatusValue::BootFailure;
+        self.state.recovery_reason = reason;
     }
 }
 
@@ -2372,6 +2405,7 @@ mod tests {
             sm.state.device_status_value,
             DeviceStatusValue::RunningRecoveryImage
         );
+        assert_eq!(sm.state.recovery_reason, RecoveryReasonCode::NoBootFailure);
         assert_eq!(
             sm.state.recovery_ctrl.activate,
             ActivateRecoveryImage::DoNotActivate
@@ -2405,9 +2439,10 @@ mod tests {
             DeviceRecoveryStatus::Failed
         );
         assert_eq!(sm.state.recovery_status.image_index(), 0);
+        assert_eq!(sm.state.device_status_value, DeviceStatusValue::BootFailure);
         assert_eq!(
-            sm.state.device_status_value,
-            DeviceStatusValue::RecoveryMode
+            sm.state.recovery_reason,
+            RecoveryReasonCode::MissingCorruptRecoveryFirmware
         );
         assert_eq!(
             sm.state.recovery_ctrl.activate,
@@ -2444,6 +2479,10 @@ mod tests {
         );
         assert_eq!(sm.state.recovery_status.image_index(), 0);
         assert_eq!(sm.state.device_status_value, DeviceStatusValue::BootFailure);
+        assert_eq!(
+            sm.state.recovery_reason,
+            RecoveryReasonCode::AuthFailureRecoveryFirmware
+        );
         assert_eq!(
             sm.state.recovery_ctrl.activate,
             ActivateRecoveryImage::DoNotActivate
@@ -2500,6 +2539,7 @@ mod tests {
             sm.state.device_status_value,
             DeviceStatusValue::RunningRecoveryImage
         );
+        assert_eq!(sm.state.recovery_reason, RecoveryReasonCode::NoBootFailure);
     }
 
     #[test]
@@ -2535,9 +2575,10 @@ mod tests {
             DeviceRecoveryStatus::Failed
         );
         assert_eq!(sm.state.recovery_status.image_index(), 1);
+        assert_eq!(sm.state.device_status_value, DeviceStatusValue::BootFailure);
         assert_eq!(
-            sm.state.device_status_value,
-            DeviceStatusValue::RecoveryMode
+            sm.state.recovery_reason,
+            RecoveryReasonCode::MissingCorruptRecoveryFirmware
         );
     }
 
@@ -2574,6 +2615,232 @@ mod tests {
         sm.process_command().unwrap();
         let msg = &sm.transport.sent[0];
         assert_eq!(msg[2], 0x00);
+    }
+
+    // -- DEVICE STATUS STATE TRANSITION tests (Phase 8.3) --
+
+    #[test]
+    fn set_device_healthy_transitions_from_pending() {
+        let mut transport = MockUsbDeviceDriver::new();
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::StatusPending
+        );
+
+        sm.set_device_healthy();
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::DeviceHealthy
+        );
+        assert_eq!(sm.state.recovery_reason, RecoveryReasonCode::NoBootFailure);
+    }
+
+    #[test]
+    fn enter_recovery_sets_mode_and_reason() {
+        let mut transport = MockUsbDeviceDriver::new();
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.set_device_healthy();
+        sm.enter_recovery(RecoveryReasonCode::CorruptedMissingCriticalData);
+
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RecoveryMode
+        );
+        assert_eq!(
+            sm.state.recovery_reason,
+            RecoveryReasonCode::CorruptedMissingCriticalData
+        );
+        assert_eq!(
+            sm.state.recovery_status.status().unwrap(),
+            DeviceRecoveryStatus::AwaitingImage
+        );
+        assert_eq!(sm.state.recovery_status.image_index(), 0);
+    }
+
+    #[test]
+    fn enter_recovery_reason_visible_in_device_status() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(
+            RecoveryCommand::DeviceStatus,
+            device_status::MAX_MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.enter_recovery(RecoveryReasonCode::ForcedRecovery);
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0], DeviceStatusValue::RecoveryMode as u8);
+        assert_eq!(
+            u16::from_le_bytes([msg[2], msg[3]]),
+            0x11 // ForcedRecovery
+        );
+    }
+
+    #[test]
+    fn full_recovery_flow_pending_to_successful() {
+        let mut buf = [0u8; 64];
+        let mut region = SliceIndirectRegion::new(&mut buf, CmsRegionType::CodeSpace).unwrap();
+        let mut regions: [(u8, &mut dyn IndirectCmsRegion); 1] = [(0, &mut region)];
+
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::RecoveryCtrl, vec![0x00, 0x01, 0x0F]);
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut regions,
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        // StatusPending -> Healthy
+        sm.set_device_healthy();
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::DeviceHealthy
+        );
+
+        // Healthy -> RecoveryMode
+        sm.enter_recovery(RecoveryReasonCode::AuthFailureMainFirmware);
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RecoveryMode
+        );
+
+        // RecoveryMode -> RecoveryPending (via RECOVERY_CTRL activate)
+        let action = sm.process_command().unwrap();
+        assert_eq!(action, RecoveryAction::ActivateRecoveryImage);
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RecoveryPending
+        );
+
+        // RecoveryPending -> RecoverySuccessful
+        sm.complete_activation(ActivationResult::Complete).unwrap();
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RunningRecoveryImage
+        );
+        assert_eq!(
+            sm.state.recovery_status.status().unwrap(),
+            DeviceRecoveryStatus::Success
+        );
+        assert_eq!(sm.state.recovery_reason, RecoveryReasonCode::NoBootFailure);
+    }
+
+    #[test]
+    fn set_boot_failure_sets_status_and_reason() {
+        let mut transport = MockUsbDeviceDriver::new();
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.set_boot_failure(RecoveryReasonCode::MissingCorruptBootLoader);
+
+        assert_eq!(sm.state.device_status_value, DeviceStatusValue::BootFailure);
+        assert_eq!(
+            sm.state.recovery_reason,
+            RecoveryReasonCode::MissingCorruptBootLoader
+        );
+    }
+
+    #[test]
+    fn set_boot_failure_reason_visible_in_device_status() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_read(
+            RecoveryCommand::DeviceStatus,
+            device_status::MAX_MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::new(),
+        )
+        .unwrap();
+
+        sm.set_boot_failure(RecoveryReasonCode::SelfTestFailure);
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0], DeviceStatusValue::BootFailure as u8);
+        assert_eq!(
+            u16::from_le_bytes([msg[2], msg[3]]),
+            0x03 // SelfTestFailure
+        );
+    }
+
+    #[test]
+    fn forced_recovery_sets_reason_code() {
+        let mut transport = MockUsbDeviceDriver::new();
+        transport.enqueue_write(RecoveryCommand::DeviceReset, vec![0x00, 0x0F, 0x00]);
+        transport.enqueue_read(
+            RecoveryCommand::DeviceStatus,
+            device_status::MAX_MESSAGE_LEN as u16,
+        );
+        let mut sm = RecoveryStateMachine::new(
+            test_config(),
+            &mut transport,
+            &mut [],
+            &mut [],
+            MockVendorHandler::with_all_caps(),
+        )
+        .unwrap();
+
+        // Write DEVICE_RESET with forced recovery = EnterRecovery
+        sm.process_command().unwrap();
+        assert_eq!(
+            sm.state.device_reset.forced_recovery,
+            ForcedRecoveryMode::EnterRecovery
+        );
+
+        // Simulate the integrator acting on the forced recovery after reset:
+        sm.enter_recovery(RecoveryReasonCode::ForcedRecovery);
+
+        assert_eq!(
+            sm.state.device_status_value,
+            DeviceStatusValue::RecoveryMode
+        );
+        assert_eq!(sm.state.recovery_reason, RecoveryReasonCode::ForcedRecovery);
+
+        sm.process_command().unwrap();
+        let msg = &sm.transport.sent[0];
+        assert_eq!(msg[0], DeviceStatusValue::RecoveryMode as u8);
+        assert_eq!(
+            u16::from_le_bytes([msg[2], msg[3]]),
+            0x11 // ForcedRecovery
+        );
     }
 
     // -- INDIRECT_CTRL handler tests --
