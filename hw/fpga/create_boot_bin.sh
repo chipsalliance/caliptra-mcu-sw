@@ -5,11 +5,12 @@
 # When using an ubuntu image BOOT.BIN replaces boot1901.bin in the boot partition.
 
 if [[ -z $1 ]]; then
-    echo "create_boot_bin.sh [/path/to/caliptra_fpga_project_bd_wrapper.xsa]"
+    echo "create_boot_bin.sh [/path/to/caliptra_fpga_project_bd_wrapper.xsa] [project_path]"
     exit
 fi
 
 xsa_location=$(realpath $1)
+project_path=${2:-petalinux_project}
 
 set -e
 trap '{
@@ -23,10 +24,10 @@ trap '{
 }' EXIT
 
 echo Deleting old project
-rm -rf petalinux_project
+rm -rf "$project_path"
 echo Creating project
-petalinux-create -t project --template versal --name petalinux_project
-cd petalinux_project
+petalinux-create -t project --template versal --name "$project_path"
+cd "$project_path"
 echo Adding xsa
 petalinux-config --get-hw-description $xsa_location --silentconfig
 

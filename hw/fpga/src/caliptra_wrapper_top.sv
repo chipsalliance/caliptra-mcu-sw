@@ -611,7 +611,7 @@ module caliptra_wrapper_top (
     );
 
     assign ARM_USER = hwif_out.interface_regs.arm_user.arm_user.value;
-    assign xilinx_i3c_aresetn = hwif_out.interface_regs.control.cptra_ss_rst_b.value;
+    assign xilinx_i3c_aresetn = axi_reset;
 
     // When sw sets trigger_axi_reset, assert the reset for 0xF cycles (requirement is 4 cycles).
     (* syn_keep = "true", mark_debug = "true" *) reg [3:0] axi_reset_counter;
@@ -670,7 +670,7 @@ module caliptra_wrapper_top (
         .DW(`CALIPTRA_AXI_DATA_WIDTH),
         .IW(`CALIPTRA_AXI_ID_WIDTH),
         .UW(`CALIPTRA_AXI_USER_WIDTH)
-    ) cptra_core_s_axi (.clk(core_clk), .rst_n(hwif_out.interface_regs.control.cptra_ss_rst_b.value));
+    ) cptra_core_s_axi (.clk(core_clk), .rst_n(axi_reset));
 
     // AW
     assign cptra_core_s_axi.awaddr   = S_AXI_CALIPTRA_AWADDR;
@@ -716,7 +716,7 @@ module caliptra_wrapper_top (
         .DW(`CALIPTRA_AXI_DATA_WIDTH),
         .IW(`CALIPTRA_AXI_ID_WIDTH),
         .UW(`CALIPTRA_AXI_USER_WIDTH)
-    ) cptra_core_m_axi (.clk(core_clk), .rst_n(hwif_out.interface_regs.control.cptra_ss_rst_b.value));
+    ) cptra_core_m_axi (.clk(core_clk), .rst_n(axi_reset));
 
     // AW
     assign M_AXI_CALIPTRA_AWADDR =  cptra_core_m_axi.awaddr;
@@ -1173,7 +1173,7 @@ axi_if #(
     .DW(`CALIPTRA_AXI_DATA_WIDTH),
     .IW(`CALIPTRA_AXI_ID_WIDTH),
     .UW(`CALIPTRA_AXI_USER_WIDTH)
-) cptra_ss_mci_s_axi (.clk(core_clk), .rst_n(hwif_out.interface_regs.control.cptra_ss_rst_b.value));
+) cptra_ss_mci_s_axi (.clk(core_clk), .rst_n(axi_reset));
 
 // AW
 assign cptra_ss_mci_s_axi.awaddr   = S_AXI_MCI_AWADDR;
@@ -1220,7 +1220,7 @@ axi_if #(
     .DW(64),
     .IW(8),
     .UW(`CALIPTRA_AXI_USER_WIDTH)
-) cptra_ss_mcu_rom_s_axi_if (.clk(core_clk), .rst_n(hwif_out.interface_regs.control.cptra_ss_rst_b.value));
+) cptra_ss_mcu_rom_s_axi_if (.clk(core_clk), .rst_n(axi_reset));
 
 // AW
 assign cptra_ss_mcu_rom_s_axi_if.awaddr   = S_AXI_MCU_ROM_AWADDR;
@@ -1267,7 +1267,7 @@ axi_mem_if #(
    .DATA_WIDTH(64)
 ) mcu_rom_mem_export_if (
    .clk(core_clk),
-   .rst_b(hwif_out.interface_regs.control.cptra_ss_rst_b.value)
+   .rst_b(axi_reset)
 );
 
 // Dual port memory for MCU ROM. A is to SS, B is backdoor
@@ -1545,7 +1545,7 @@ mcu_rom (
         .DW(64),
         .IW(`CALIPTRA_AXI_ID_WIDTH),
         .UW(`CALIPTRA_AXI_USER_WIDTH)
-    ) cptra_ss_mcu_lsu_m_axi_if (.clk(core_clk), .rst_n(hwif_out.interface_regs.control.cptra_ss_rst_b.value));
+    ) cptra_ss_mcu_lsu_m_axi_if (.clk(core_clk), .rst_n(axi_reset));
 
     // AW
     assign M_AXI_MCU_LSU_AWADDR =  cptra_ss_mcu_lsu_m_axi_if.awaddr;
@@ -1592,7 +1592,7 @@ mcu_rom (
         .DW(64),
         .IW(`CALIPTRA_AXI_ID_WIDTH),
         .UW(`CALIPTRA_AXI_USER_WIDTH)
-    ) cptra_ss_mcu_ifu_m_axi_if (.clk(core_clk), .rst_n(hwif_out.interface_regs.control.cptra_ss_rst_b.value));
+    ) cptra_ss_mcu_ifu_m_axi_if (.clk(core_clk), .rst_n(axi_reset));
 
     // AW
     assign M_AXI_MCU_IFU_AWADDR =  cptra_ss_mcu_ifu_m_axi_if.awaddr;
@@ -1639,7 +1639,7 @@ mcu_rom (
         .DW(64),
         .IW(`CALIPTRA_AXI_ID_WIDTH),
         .UW(`CALIPTRA_AXI_USER_WIDTH)
-    ) cptra_ss_mcu_sb_m_axi_if (.clk(core_clk), .rst_n(hwif_out.interface_regs.control.cptra_ss_rst_b.value));
+    ) cptra_ss_mcu_sb_m_axi_if (.clk(core_clk), .rst_n(axi_reset));
 
     // AW
     assign M_AXI_MCU_SB_AWADDR =  cptra_ss_mcu_sb_m_axi_if.awaddr;
@@ -1686,7 +1686,7 @@ mcu_rom (
         .DW(`CALIPTRA_AXI_DATA_WIDTH),
         .IW(`CALIPTRA_AXI_ID_WIDTH),
         .UW(`CALIPTRA_AXI_USER_WIDTH)
-    ) cptra_ss_i3c_s_axi_if (.clk(i3c_clk), .rst_n(hwif_out.interface_regs.control.cptra_ss_rst_b.value));
+    ) cptra_ss_i3c_s_axi_if (.clk(i3c_clk), .rst_n(axi_reset));
 
     // AW
     assign cptra_ss_i3c_s_axi_if.awaddr   = S_AXI_I3C_AWADDR;
@@ -2087,6 +2087,7 @@ logic cptra_ss_mcu_rst_b;
 logic cptra_ss_cptra_generic_fw_exec_ctrl_2_mcu;
 // Looping back MCU Halt Ack Interface
 logic cptra_ss_mcu_halt_status;
+assign hwif_in.interface_regs.status.cptra_ss_mcu_halt_status_o.next = cptra_ss_mcu_halt_status;
 logic cptra_ss_mcu_halt_ack;
 // Looping back I3C signals
 logic i3c_recovery_payload_available;

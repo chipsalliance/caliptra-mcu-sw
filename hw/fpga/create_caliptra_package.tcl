@@ -44,7 +44,7 @@ source adams-bridge-files.tcl
 
 # Add Caliptra headers and packages
 add_files [ glob $caliptrartlDir/src/*/rtl/*.svh ]
-add_files [ glob $caliptrartlDir/src/*/rtl/*/*.svh ]
+add_files [ glob $caliptrartlDir/src/integration/rtl/caliptra_reg_ss/*.svh ]
 add_files [ glob $caliptrartlDir/src/*/rtl/*_pkg.sv ]
 # Add Caliptra sources
 add_files [ glob $caliptrartlDir/src/*/rtl/*.sv ]
@@ -117,7 +117,7 @@ add_files $outputDir/ahb_lite_address_decoder.sv
 
 # Change soc_ifc to assign generic_input_wires[1] to CALIPTRA_FUSE_GRANULARITY
 file copy [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_top.sv ] $outputDir/soc_ifc_top.sv
-exec sed -i {/`ifdef CALIPTRA_FUSE_GRANULARITY_32/,/`endif/calways_comb soc_ifc_reg_hwif_in.CPTRA_HW_CONFIG.Fuse_Granularity.next = generic_input_wires[0][1];} caliptra_build/soc_ifc_top.sv
+exec sed -i {/`ifdef CALIPTRA_FUSE_GRANULARITY_32/,/`endif/calways_comb soc_ifc_reg_hwif_in.CPTRA_HW_CONFIG.Fuse_Granularity.next = generic_input_wires[0][1];} $outputDir/soc_ifc_top.sv
 remove_files [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_top.sv ]
 add_files $outputDir/soc_ifc_top.sv
 

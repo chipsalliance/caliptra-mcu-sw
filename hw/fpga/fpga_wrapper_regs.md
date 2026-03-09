@@ -242,15 +242,16 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 - Base Offset: 0xC
 - Size: 0x4
 
-|Bits|       Identifier      |Access|Reset|Name|
-|----|-----------------------|------|-----|----|
-|  0 |   cptra_error_fatal   |   r  | 0x0 |  — |
-|  1 | cptra_error_non_fatal |   r  | 0x0 |  — |
-|  2 |    ready_for_fuses    |   r  | 0x0 |  — |
-|  3 |ready_for_mb_processing|   r  | 0x0 |  — |
-|  4 |   ready_for_runtime   |   r  | 0x0 |  — |
-|  5 |   mailbox_data_avail  |   r  | 0x0 |  — |
-|  6 |   mailbox_flow_done   |   r  | 0x0 |  — |
+|Bits|        Identifier        |Access|Reset|Name|
+|----|--------------------------|------|-----|----|
+|  0 |     cptra_error_fatal    |   r  | 0x0 |  — |
+|  1 |   cptra_error_non_fatal  |   r  | 0x0 |  — |
+|  2 |      ready_for_fuses     |   r  | 0x0 |  — |
+|  3 |  ready_for_mb_processing |   r  | 0x0 |  — |
+|  4 |     ready_for_runtime    |   r  | 0x0 |  — |
+|  5 |    mailbox_data_avail    |   r  | 0x0 |  — |
+|  6 |     mailbox_flow_done    |   r  | 0x0 |  — |
+|  7 |cptra_ss_mcu_halt_status_o|   r  | 0x0 |  — |
 
 #### cptra_error_fatal field
 
@@ -277,6 +278,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 <p>RSVD in SS</p>
 
 #### mailbox_flow_done field
+
+<p>RSVD in SS</p>
+
+#### cptra_ss_mcu_halt_status_o field
 
 <p>RSVD in SS</p>
 
