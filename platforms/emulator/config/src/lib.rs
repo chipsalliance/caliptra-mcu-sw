@@ -27,6 +27,10 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     i3c_size: 0x1000,
     i3c_properties: MemoryRegionType::MMIO,
 
+    i3c1_offset: 0x2000_5000,
+    i3c1_size: 0x1000,
+    i3c1_properties: MemoryRegionType::MMIO,
+
     mci_offset: 0x2100_0000,
     mci_size: 0xe0_0000,
     mci_properties: MemoryRegionType::MMIO,
