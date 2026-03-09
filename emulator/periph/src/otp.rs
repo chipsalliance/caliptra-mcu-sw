@@ -23,8 +23,8 @@ use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::Seek;
-use std::path::PathBuf;
+use std::io::{Read, Seek};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 #[allow(unused_imports)] // Rust compiler doesn't like these
 use tock_registers::interfaces::{Readable, Writeable};
@@ -55,6 +55,9 @@ pub struct OtpArgs {
     pub soc_manifest_max_svn: Option<u8>,
     pub vendor_hashes_prod_partition: Option<Vec<u8>>,
     pub vendor_test_partition: Option<Vec<u8>>,
+    /// Raw lifecycle partition data (LIFECYCLE_MEM_SIZE bytes) to provision.
+    /// If set, written to the LIFE_CYCLE partition in OTP.
+    pub lifecycle_state: Option<Vec<u8>>,
 }
 
 //#[derive(Bus)]
@@ -170,6 +173,17 @@ impl Otp {
                 partitions[dst_start..dst_start + copy_len]
                     .copy_from_slice(&vendor_test_partition[..copy_len]);
             }
+
+            // Provision lifecycle fuses if provided and current fuses are blank.
+            if let Some(lc_data) = args.lifecycle_state {
+                let lc_start = fuses::LIFE_CYCLE_BYTE_OFFSET;
+                let lc_end = lc_start + fuses::LIFE_CYCLE_BYTE_SIZE;
+                let current_lc = &partitions[lc_start..lc_end];
+                if current_lc.iter().all(|&b| b == 0) {
+                    let copy_len = lc_data.len().min(fuses::LIFE_CYCLE_BYTE_SIZE);
+                    partitions[lc_start..lc_start + copy_len].copy_from_slice(&lc_data[..copy_len]);
+                }
+            }
         }
 
         // if there were digests that were pending a reset, then calculate them now
@@ -186,6 +200,36 @@ impl Otp {
     /// This allows the model to hold a reference to the OTP memory.
     pub fn partitions_ref(&self) -> Rc<RefCell<Vec<u8>>> {
         self.partitions.clone()
+    }
+
+    /// Extract the raw lifecycle partition bytes from OTP partition data.
+    /// Returns None if the lifecycle region is all zeros (unprovisioned).
+    pub fn lifecycle_bytes_from_partitions(partitions: &[u8]) -> Option<Vec<u8>> {
+        let lc_start = fuses::LIFE_CYCLE_BYTE_OFFSET;
+        let lc_end = lc_start + fuses::LIFE_CYCLE_BYTE_SIZE;
+        if partitions.len() < lc_end {
+            return None;
+        }
+        let lc_data = &partitions[lc_start..lc_end];
+        if lc_data.iter().all(|&b| b == 0) {
+            None
+        } else {
+            Some(lc_data.to_vec())
+        }
+    }
+
+    /// Read the lifecycle partition bytes from a saved OTP file.
+    /// Returns None if file doesn't exist, is empty, or lifecycle is unprovisioned.
+    pub fn read_lifecycle_from_file(path: &Path) -> Option<Vec<u8>> {
+        let mut file = File::open(path).ok()?;
+        let len = file.metadata().ok()?.len();
+        if len == 0 {
+            return None;
+        }
+        let mut contents = Vec::new();
+        file.read_to_end(&mut contents).ok()?;
+        let state: OtpState = serde_json::from_slice(&contents).ok()?;
+        Self::lifecycle_bytes_from_partitions(&state.partitions)
     }
 
     fn calculate_digests(&mut self) -> Result<(), std::io::Error> {
