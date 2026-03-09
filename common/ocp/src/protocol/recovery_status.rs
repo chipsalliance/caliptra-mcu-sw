@@ -100,6 +100,11 @@ impl RecoveryStatus {
         })
     }
 
+    /// Set the status of the recovery control block.
+    pub fn set_status(&mut self, status: DeviceRecoveryStatus) {
+        self.byte0.set_status(status as u8);
+    }
+
     /// Byte 0, bits 0-3: Device recovery status.
     pub fn status(&self) -> Result<DeviceRecoveryStatus, OcpError> {
         DeviceRecoveryStatus::try_from(self.byte0.status())
