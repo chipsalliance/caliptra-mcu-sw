@@ -31,8 +31,6 @@ global_asm!(include_str!("start.s"));
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub extern "C" fn main() -> ! {
-    use caliptra_mcu_network_drivers::EthernetDriver;
-
     println!();
     println!("=====================================");
     println!("  Network Coprocessor ROM Started!  ");
@@ -42,6 +40,8 @@ pub extern "C" fn main() -> ! {
     // Run the appropriate test based on feature flags
     #[cfg(feature = "test-network-rom-dhcp-discover")]
     {
+        use caliptra_mcu_network_drivers::EthernetDriver;
+
         // Create Ethernet driver
         let eth = EthernetDriver::new();
         caliptra_mcu_network_app_rom_test::dhcp_test::run(eth);

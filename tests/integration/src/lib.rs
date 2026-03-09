@@ -39,7 +39,6 @@ pub fn platform() -> &'static str {
 
 #[cfg(test)]
 mod test {
-    use caliptra_image_types::FwVerificationPqcKeyType;
     use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
     use caliptra_mcu_builder::{
         CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET,
@@ -92,6 +91,7 @@ mod test {
         /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
         pub firmware_prefix: Option<Vec<u8>>,
         pub fw_manifest_dot_hitless: bool,
+        #[allow(dead_code)]
         pub active_i3c1: bool,
         pub lifecycle_controller_state: Option<caliptra_mcu_romtime::LifecycleControllerState>,
         pub vendor_pqc_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
@@ -575,6 +575,7 @@ mod test {
             i3c_port: params.i3c_port,
             enable_mcu_uart_log: true,
             dot_flash_initial_contents: params.dot_flash_initial_contents,
+            lifecycle_controller_state: params.lifecycle_controller_state,
             check_booted_to_runtime: !params.rom_only,
             otp_memory: otp_memory.as_deref(),
             primary_flash_initial_contents: flash_image,

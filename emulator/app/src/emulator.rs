@@ -317,6 +317,9 @@ pub struct Emulator {
     pub doe_mbox_fsm: doe_mbox_fsm::DoeMboxFsm,
     pub i3c_address: Option<u8>,
     pub i3c_controller_join_handle: Option<JoinHandle<()>>,
+    // Synchronizes cross-thread timer scheduling (I3C / DOE controller
+    // threads) with the CPU step that advances the clock.
+    pub step_lock: Arc<Mutex<()>>,
     #[allow(dead_code)]
     pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
 }
@@ -592,11 +595,14 @@ impl Emulator {
         } else {
             I3cController::default()
         };
+        let step_lock = Arc::new(Mutex::new(()));
+
         let i3c = I3c::new(
             &clock.clone(),
             &mut i3c_controller,
             i3c_irq,
             cli.hw_revision.clone(),
+            step_lock.clone(),
         );
         let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
 
@@ -605,7 +611,12 @@ impl Emulator {
 
         let mut doe_mbox_fsm = doe_mbox_fsm::DoeMboxFsm::new(doe_mbox_periph.clone());
 
-        let doe_mbox = DummyDoeMbox::new(&clock.clone(), doe_event_irq, doe_mbox_periph);
+        let doe_mbox = DummyDoeMbox::new(
+            &clock.clone(),
+            doe_event_irq,
+            doe_mbox_periph,
+            step_lock.clone(),
+        );
 
         println!("Starting DOE mailbox transport thread");
 
@@ -1159,6 +1170,7 @@ impl Emulator {
             doe_mbox_fsm,
             Some(i3c_dynamic_address.into()),
             i3c_controller_join_handle,
+            step_lock,
             usb_host_controller,
         ))
     }
@@ -1179,6 +1191,7 @@ impl Emulator {
         doe_mbox_fsm: doe_mbox_fsm::DoeMboxFsm,
         i3c_address: Option<u8>,
         i3c_controller_join_handle: Option<JoinHandle<()>>,
+        step_lock: Arc<Mutex<()>>,
         usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
     ) -> Self {
         // read from the console in a separate thread to prevent blocking
@@ -1204,6 +1217,7 @@ impl Emulator {
             doe_mbox_fsm,
             i3c_address,
             i3c_controller_join_handle,
+            step_lock,
             usb_host_controller,
         }
     }
@@ -1234,6 +1248,11 @@ impl Emulator {
                 self.timer.schedule_poll_in(1);
             }
         }
+
+        // Hold the step lock while advancing clocks so that cross-thread
+        // callers (I3C / DOE PollScheduler::incoming) cannot observe a
+        // mid-step clock value.
+        let _step_guard = self.step_lock.lock().unwrap();
 
         let action = if let Some(ref mut trace_file) = self.trace_file {
             let trace_fn: &mut dyn FnMut(u32, RvInstr) = &mut |pc, instr| match instr {

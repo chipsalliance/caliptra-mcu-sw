@@ -1763,8 +1763,10 @@ mod test {
         let secret_key = p384::SecretKey::random(&mut rand::thread_rng());
         let pub_point = secret_key.public_key().to_encoded_point(false);
 
-        let x_bytes: [u8; 48] = pub_point.x().unwrap().as_slice().try_into().unwrap();
-        let y_bytes: [u8; 48] = pub_point.y().unwrap().as_slice().try_into().unwrap();
+        let mut x_bytes = [0u8; 48];
+        x_bytes.copy_from_slice(pub_point.x().unwrap());
+        let mut y_bytes = [0u8; 48];
+        y_bytes.copy_from_slice(pub_point.y().unwrap());
         let priv_bytes: [u8; 48] = secret_key.to_bytes().into();
         (x_bytes, y_bytes, priv_bytes)
     }

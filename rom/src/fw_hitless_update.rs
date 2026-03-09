@@ -19,7 +19,9 @@ use crate::device_ownership_transfer;
 #[cfg(target_arch = "riscv32")]
 use crate::MCU_MEMORY_MAP;
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters};
+#[cfg(not(feature = "test-force-hitless-update"))]
 use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
+#[cfg(not(feature = "test-force-hitless-update"))]
 use caliptra_mcu_error::McuError;
 use caliptra_mcu_romtime::HexWord;
 use core::fmt::Write;
