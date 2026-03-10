@@ -491,7 +491,13 @@ pub(crate) async fn generate_measurements_response<'a>(
     rsp_ctx: MeasurementsResponse,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    let rsp_len = rsp_ctx.response_size(&mut ctx.measurements).await?;
+    let rsp_len = match rsp_ctx.response_size(&mut ctx.measurements).await {
+        Ok(len) => len,
+        Err((_, CommandError::Measurement(MeasurementsError::InvalidIndex))) => {
+            Err(ctx.generate_error_response(rsp, ErrorCode::InvalidRequest, 0, None))?
+        }
+        Err(e) => Err(e)?,
+    };
 
     if rsp_len > ctx.min_data_transfer_size() {
         // If the response is larger than the minimum data transfer size, use chunked response

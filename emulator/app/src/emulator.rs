@@ -663,6 +663,18 @@ impl Emulator {
                 SpdmTestType::SpdmResponderConformance,
                 std::time::Duration::from_secs(9000), // timeout in seconds
             );
+        } else if cfg!(feature = "test-mctp-spdm-attestation") {
+            if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
+                println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
+                exit(0);
+            }
+            i3c_controller_join_handle = Some(i3c_controller.start());
+            crate::tests::spdm_responder_validator::mctp::run_mctp_spdm_attestation_test(
+                cli.i3c_port.unwrap(),
+                i3c.get_dynamic_address().unwrap(),
+                SpdmTestType::SpdmAttestation,
+                std::time::Duration::from_secs(9000), // timeout in seconds
+            );
         } else if cfg!(feature = "test-doe-spdm-responder-conformance") {
             if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
                 println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");

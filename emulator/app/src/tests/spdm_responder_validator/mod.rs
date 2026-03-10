@@ -8,4 +8,5 @@ mod transport;
 pub enum SpdmTestType {
     SpdmResponderConformance,
     SpdmTeeIoValidator,
+    SpdmAttestation,
 }

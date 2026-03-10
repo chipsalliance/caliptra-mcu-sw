@@ -2,8 +2,8 @@
 
 use crate::tests::doe_util::common::DoeUtil;
 use crate::tests::spdm_responder_validator::common::{
-    execute_spdm_responder_validator, execute_spdm_tee_io_validator, SpdmValidatorRunner,
-    SERVER_LISTENING,
+    execute_spdm_attestation, execute_spdm_responder_validator, execute_spdm_tee_io_validator,
+    SpdmValidatorRunner, SERVER_LISTENING,
 };
 use crate::tests::spdm_responder_validator::transport::{Transport, SOCKET_TRANSPORT_TYPE_PCI_DOE};
 use crate::tests::spdm_responder_validator::SpdmTestType;
@@ -158,5 +158,6 @@ pub fn run_doe_spdm_conformance_test(
     match test_type {
         SpdmTestType::SpdmResponderConformance => execute_spdm_responder_validator("PCI_DOE"),
         SpdmTestType::SpdmTeeIoValidator => execute_spdm_tee_io_validator("PCI_DOE"),
+        SpdmTestType::SpdmAttestation => execute_spdm_attestation("PCI_DOE"),
     }
 }
