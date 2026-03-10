@@ -438,6 +438,9 @@ impl BootFlow for ColdBoot {
             while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 31) == 0 {}
         }
 
+        romtime::println!("[mcu-rom] Waiting for Caliptra Core boot FSM to be DONE");
+        soc.wait_for_bootfsm_done(10_000_000);
+
         romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for mbox",);
         while !soc.ready_for_mbox() {
             if soc.cptra_fw_fatal_error() {

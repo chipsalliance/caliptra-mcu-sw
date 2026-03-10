@@ -363,6 +363,11 @@ impl McuError {
             "DCCM uncorrectable ECC error"
         ),
         (
+            ROM_BOOTFSM_TIMEOUT,
+            0x5_0011,
+            "Caliptra Core boot FSM timed out"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"
