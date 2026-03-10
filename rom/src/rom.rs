@@ -41,6 +41,7 @@ use romtime::otp::{
 use romtime::LifecycleControllerState;
 use romtime::LifecycleHashedTokens;
 use romtime::LifecycleToken;
+use romtime::HEK_OFFSETS;
 use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
@@ -53,6 +54,9 @@ const MLDSA_CALIPTRA_VALUE: u8 = 1;
 const LMS_CALIPTRA_VALUE: u8 = 3;
 const OTP_DAI_IDLE_BIT_OFFSET: u32 = 30;
 const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x80;
+
+// OCP LOCK v1.0rc2 hard codes this to 64 bytes.
+const OCP_LOCK_KEY_MEK_SIZE: u32 = 64;
 
 /// Trait for different boot flows (cold boot, warm reset, firmware update)
 pub trait BootFlow {
@@ -350,17 +354,38 @@ impl Soc {
 
         // OCP LOCK Fuses.
         romtime::println!("[mcu-fuse-write] Attempting to write OCP LOCK fuses");
-        for i in 0..self.registers.fuse_hek_seed.len() {
-            let word = otp
-                .read_u32_at(
-                    registers_generated::fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET + i * 4,
-                )
-                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-            self.registers.fuse_hek_seed[i].set(word);
+
+        if otp
+            .is_hek_perma_set()
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
+        {
+            romtime::println!("[mcu-fuse-write] HEK perma bit set, using sanitized HEK");
+            for i in 0..self.registers.fuse_hek_seed.len() {
+                self.registers.fuse_hek_seed[i].set(0xFFFF_FFFF);
+            }
+        } else {
+            let hek_slot = HEK_OFFSETS.iter().find(|&&offset| {
+                !otp.is_hek_zeroized(offset)
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
+            });
+            if let Some(hek_slot) = hek_slot {
+                romtime::println!(
+                    "[mcu-fuse-write] Using HEK ratchet seed from offset {:x}",
+                    hek_slot
+                );
+                for i in 0..self.registers.fuse_hek_seed.len() {
+                    let word = otp
+                        .read_u32_at(hek_slot + i * 4)
+                        .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+                    self.registers.fuse_hek_seed[i].set(word);
+                }
+            }
         }
 
         // Key release is always 64 bytes currently
-        self.registers.ss_key_release_size.set(64);
+        self.registers
+            .ss_key_release_size
+            .set(OCP_LOCK_KEY_MEK_SIZE);
 
         // TODO(clundin): We should pass this from OTP or similar so we can configure in
         // caliptra-sw tests.

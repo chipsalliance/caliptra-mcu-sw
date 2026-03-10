@@ -12,6 +12,7 @@ mod test_exception_handler;
 mod test_fips_zeroization;
 mod test_firmware_update;
 mod test_fpga_flash_ctrl;
+mod test_hek;
 mod test_i3c_constant_writes;
 mod test_i3c_simple;
 mod test_mctp_capsule_loopback;
