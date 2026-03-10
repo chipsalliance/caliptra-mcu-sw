@@ -18,6 +18,27 @@ const OTP_CONSISTENCY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_INTEGRITY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_CHECK_TIMEOUT: u32 = 0x10_0000;
 const OTP_PENDING_CHECK_MAX_ITERATIONS: u32 = 1_000_000;
+pub const HEK_ZEROIZATION_VALID_BOUND: u32 = 64 - 6;
+
+// HEK partition metadata offsets
+pub const HEK_ZER_MARKER_OFFSET: usize = 40;
+pub const HEK_ZER_MARKER_SIZE: usize = 8;
+pub const HEK_SEED_SIZE: usize = 32;
+
+// VENDOR_NON_SECRET_PROD_PARTITION offsets
+pub const HEK_PERMA_ADDR: usize = fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + (15 * 32);
+pub const HEK_PERMA_BIT_MASK: u32 = 1;
+
+pub const HEK_OFFSETS: [usize; 8] = [
+    fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET,
+    fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_OFFSET,
+    fuses::CPTRA_SS_LOCK_HEK_PROD_2_BYTE_OFFSET,
+    fuses::CPTRA_SS_LOCK_HEK_PROD_3_BYTE_OFFSET,
+    fuses::CPTRA_SS_LOCK_HEK_PROD_4_BYTE_OFFSET,
+    fuses::CPTRA_SS_LOCK_HEK_PROD_5_BYTE_OFFSET,
+    fuses::CPTRA_SS_LOCK_HEK_PROD_6_BYTE_OFFSET,
+    fuses::CPTRA_SS_LOCK_HEK_PROD_7_BYTE_OFFSET,
+];
 
 // -------------------------------------------------------------------------
 // Fuse field offsets within partitions
@@ -711,6 +732,34 @@ impl Otp {
             .ok_or(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT)?;
         let raw = crate::write_single_fuse_value(layout, value)?;
         self.write_word(entry.byte_offset / 4, raw)?;
+        Ok(())
+    }
+
+    /// Check if the HEK partition at the given offset is zeroized.
+    pub fn is_hek_zeroized(&self, partition_address: usize) -> McuResult<bool> {
+        // A partition is considered zeroized/sanitized if ALL bytes are 0xFF.
+        // HEK partitions are 48 bytes: 32 (Seed) + 8 (Digest) + 8 (ZER marker).
+        let mut partition_data = [0u8; fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE];
+        self.read_data(
+            partition_address,
+            fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE,
+            &mut partition_data,
+        )?;
+        Ok(partition_data.iter().all(|&b| b == 0xFF))
+    }
+
+    /// Check if the HEK perma bit is set in the last non-secret vendor fuse (Slot 15).
+    /// NOTE: Integrators should consider a dedicated fuse.
+    pub fn is_hek_perma_set(&self) -> McuResult<bool> {
+        let word = self.read_u32_at(HEK_PERMA_ADDR)?;
+        Ok((word & HEK_PERMA_BIT_MASK) != 0)
+    }
+
+    /// Sets the HEK perma bit.
+    pub fn set_hek_perma(&self) -> McuResult<()> {
+        let mut val = self.read_u32_at(HEK_PERMA_ADDR)?;
+        val |= HEK_PERMA_BIT_MASK;
+        self.write_word(HEK_PERMA_ADDR, val)?;
         Ok(())
     }
 
