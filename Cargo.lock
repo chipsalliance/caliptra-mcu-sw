@@ -5167,6 +5167,7 @@ dependencies = [
  "caliptra-image-fake-keys",
  "caliptra-image-gen",
  "caliptra-image-types",
+ "caliptra-registers",
  "chrono",
  "crc",
  "emulator-consts",

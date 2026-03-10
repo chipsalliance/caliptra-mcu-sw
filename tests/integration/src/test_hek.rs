@@ -2,9 +2,9 @@
 
 #[cfg(test)]
 mod test {
-    use crate::test::{get_rom_with_feature, TEST_LOCK};
+    use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_api::SocManager;
-    use mcu_hw_model::{InitParams, McuHwModel};
+    use mcu_hw_model::McuHwModel;
     use registers_generated::fuses;
     use zerocopy::IntoBytes;
 
@@ -55,14 +55,13 @@ mod test {
         set_hek_perma(&mut otp);
         setup_otp_hek(&mut otp, 0, false);
 
-        let mut hw = mcu_hw_model::new(InitParams {
-            mcu_rom: &std::fs::read(get_rom_with_feature("")).unwrap(),
-            otp_memory: Some(&otp),
-            check_booted_to_runtime: false,
-            enable_mcu_uart_log: true,
+        let mut hw = start_runtime_hw_model(TestParams {
+            otp_memory: Some(otp),
+            rom_only: true,
+            ocp_lock_en: true,
+            rom_feature: Some("ocp-lock"),
             ..Default::default()
-        })
-        .unwrap();
+        });
 
         hw.step_until(|m| {
             m.caliptra_soc_manager()
@@ -91,14 +90,13 @@ mod test {
         let active_slot = sanitized_slots.len();
         setup_otp_hek(&mut otp, active_slot, false);
 
-        let mut hw = mcu_hw_model::new(InitParams {
-            mcu_rom: &std::fs::read(get_rom_with_feature("")).unwrap(),
-            otp_memory: Some(&otp),
-            check_booted_to_runtime: false,
-            enable_mcu_uart_log: true,
+        let mut hw = start_runtime_hw_model(TestParams {
+            otp_memory: Some(otp),
+            rom_only: true,
+            ocp_lock_en: true,
+            rom_feature: Some("ocp-lock"),
             ..Default::default()
-        })
-        .unwrap();
+        });
 
         hw.step_until(|m| {
             m.caliptra_soc_manager()
@@ -112,5 +110,75 @@ mod test {
         for (idx, &byte) in hek_seed.as_bytes().iter().enumerate() {
             assert_eq!(byte, ((active_slot + 1) ^ idx) as u8);
         }
+    }
+
+    #[test]
+    fn test_hek_available_from_report() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        let mut otp = vec![0u8; 4096];
+        // Program a valid HEK in slot 0
+        setup_otp_hek(&mut otp, 0, false);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            otp_memory: Some(otp),
+            rom_only: false,
+            ocp_lock_en: true,
+            feature: Some("test-exit-immediately"),
+            rom_feature: Some("ocp-lock"),
+            ..Default::default()
+        });
+
+        assert_eq!(0, finish_runtime_hw_model(&mut hw));
+        assert!(hw
+            .output()
+            .peek()
+            .contains("[mcu-rom] Caliptra HEK available: true"));
+    }
+
+    #[test]
+    fn test_hek_available_from_perma_bit() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        let mut otp = vec![0u8; 4096];
+        set_hek_perma(&mut otp);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            otp_memory: Some(otp),
+            rom_only: false,
+            ocp_lock_en: true,
+            feature: Some("test-exit-immediately"),
+            rom_feature: Some("ocp-lock"),
+            ..Default::default()
+        });
+
+        assert_eq!(0, finish_runtime_hw_model(&mut hw));
+        assert!(hw
+            .output()
+            .peek()
+            .contains("[mcu-rom] Caliptra HEK available: true"));
+    }
+
+    #[test]
+    fn test_hek_unavailable() {
+        let _lock = TEST_LOCK.lock().unwrap();
+        let mut otp = vec![0u8; 4096];
+        // Sanitize all HEK slots
+        for slot in 0..8 {
+            setup_otp_hek(&mut otp, slot, true);
+        }
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            otp_memory: Some(otp),
+            rom_only: false,
+            ocp_lock_en: true,
+            feature: Some("test-exit-immediately"),
+            rom_feature: Some("ocp-lock"),
+            ..Default::default()
+        });
+
+        assert_eq!(0, finish_runtime_hw_model(&mut hw));
+        assert!(hw
+            .output()
+            .peek()
+            .contains("[mcu-rom] Caliptra HEK available: false"));
     }
 }

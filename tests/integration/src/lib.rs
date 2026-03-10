@@ -60,6 +60,7 @@ mod test {
     #[derive(Default)]
     pub struct TestParams<'a> {
         pub feature: Option<&'a str>,
+        pub rom_feature: Option<&'a str>,
         pub i3c_port: Option<u16>,
         pub dot_flash_initial_contents: Option<Vec<u8>>,
         pub rom_only: bool,
@@ -73,6 +74,7 @@ mod test {
         pub otp_memory: Option<Vec<u8>>,
         /// Enable FIPS zeroization PPD signal for cold boot testing.
         pub fips_zeroization: bool,
+        pub ocp_lock_en: bool,
     }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -191,10 +193,7 @@ mod test {
         network_rom: Vec<u8>,
     }
 
-    fn prebuilt_binaries(
-        feature: Option<&str>,
-        binaries: &'static FirmwareBinaries,
-    ) -> TestBinaries {
+    fn prebuilt_binaries(params: &TestParams, binaries: &'static FirmwareBinaries) -> TestBinaries {
         let mut test_binaries = TestBinaries {
             vendor_pk_hash_u8: binaries
                 .vendor_pk_hash()
@@ -209,7 +208,7 @@ mod test {
         };
 
         // check for prebuilt binaries for our test feature
-        if let Some(feature) = feature {
+        if let Some(feature) = params.feature {
             let err = format!(
                 "Failed to get MCU firmware and manifest for feature {}",
                 feature
@@ -218,11 +217,19 @@ mod test {
             test_binaries.mcu_runtime = binaries.test_runtime(feature).expect(&err).clone();
         }
 
+        if let Some(rom_feature) = params.rom_feature {
+            test_binaries.mcu_rom = binaries.test_feature_rom(rom_feature);
+        }
+
         test_binaries
     }
 
-    fn build_test_binaries(feature: Option<&str>) -> TestBinaries {
-        let mcu_runtime = compile_runtime(feature, false);
+    fn build_test_binaries(params: &TestParams) -> TestBinaries {
+        let mcu_runtime = if params.rom_only {
+            compile_runtime(None, false)
+        } else {
+            compile_runtime(params.feature, false)
+        };
         let mut builder = CaliptraBuilder::new(
             cfg!(feature = "fpga_realtime"),
             None,
@@ -250,7 +257,14 @@ mod test {
         )
         .unwrap();
 
-        let mcu_rom = std::fs::read(&*ROM).unwrap();
+        let mcu_rom_path = if let Some(f) = params.rom_feature {
+            compile_rom(f)
+        } else if params.rom_only && params.feature.is_some() {
+            compile_rom(params.feature.unwrap())
+        } else {
+            ROM.to_path_buf()
+        };
+        let mcu_rom = std::fs::read(mcu_rom_path).unwrap();
         let soc_manifest = std::fs::read(
             builder
                 .get_soc_manifest(None)
@@ -291,10 +305,10 @@ mod test {
             mcu_runtime,
             network_rom,
         } = match FirmwareBinaries::from_env() {
-            Ok(binaries) => prebuilt_binaries(params.feature, binaries),
+            Ok(binaries) => prebuilt_binaries(&params, binaries),
             _ => {
                 println!("Could not find prebuilt firmware binaries, building firmware...");
-                build_test_binaries(params.feature)
+                build_test_binaries(&params)
             }
         };
 
@@ -378,6 +392,7 @@ mod test {
             otp_memory: otp_memory.as_deref(),
             primary_flash_initial_contents: flash_image,
             flash_boot: params.flash_boot,
+            ocp_lock_en: params.ocp_lock_en,
             fips_zeroization: params.fips_zeroization,
             ..Default::default()
         })

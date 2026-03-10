@@ -164,6 +164,10 @@ pub struct EmulatorArgs {
     #[arg(long)]
     pub secondary_flash_image: Option<PathBuf>,
 
+    /// Enable OCP LOCK support (default false, or true if built with ocp-lock feature).
+    #[arg(long, default_value_t = cfg!(feature = "ocp-lock"))]
+    pub ocp_lock: bool,
+
     /// HW revision in semver format (e.g., "2.0.0")
     #[arg(long, value_parser = semver::Version::parse, default_value = "2.0.0")]
     pub hw_revision: semver::Version,
@@ -362,6 +366,7 @@ impl Emulator {
             req_idevid_csr,
             use_mcu_recovery_interface,
             extra_soc_bus: None,
+            ocp_lock_en: cli.ocp_lock,
         })
         .expect("Failed to start Caliptra CPU");
 

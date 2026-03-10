@@ -134,6 +134,11 @@ impl McuError {
             "Flash not configured"
         ),
         (
+            ROM_COLD_BOOT_HEK_REPORT_ERROR,
+            0x1_0016,
+            "Failed to report HEK state"
+        ),
+        (
             ROM_LC_TRANSITION_ERROR,
             0x2_0000,
             "Lifecycle transition error"

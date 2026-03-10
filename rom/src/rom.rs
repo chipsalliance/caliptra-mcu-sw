@@ -25,6 +25,7 @@ use crate::McuBootMilestones;
 use crate::RomEnv;
 use crate::WarmBoot;
 use caliptra_api::mailbox::CmStableKeyType;
+use caliptra_drivers::HekSeedState;
 use core::fmt::Write;
 use mcu_error::McuError;
 use registers_generated::mci;
@@ -70,6 +71,17 @@ extern "C" {
 
 pub struct Soc {
     registers: StaticRef<soc::regs::Soc>,
+}
+
+/// Reports the state of Fuses back to the caller
+pub struct FuseState {
+    pub hek_state: HekState,
+}
+
+pub struct HekState {
+    pub active_state: HekSeedState,
+    pub active_slot: usize,
+    pub total_slots: usize,
 }
 
 impl Soc {
@@ -150,7 +162,7 @@ impl Soc {
     }
 
     #[inline(never)]
-    pub fn populate_fuses(&self, otp: &Otp, mci: &romtime::Mci) {
+    pub fn populate_fuses(&self, otp: &Otp, mci: &romtime::Mci) -> FuseState {
         // secret fuses are populated by a hardware state machine, so we can skip those
 
         // UDS partition base address. (FE offset is calculated automatically by Caliptra ROM.)
@@ -351,52 +363,7 @@ impl Soc {
         mci.registers.mci_reg_soc_prod_debug_state[0].set(0x000000FF);
         mci.registers.mci_reg_soc_prod_debug_state[1].set(0x00000000);
 
-        // OCP LOCK Fuses.
-        romtime::println!("[mcu-fuse-write] Attempting to write OCP LOCK fuses");
-
-        if otp
-            .is_hek_perma_set()
-            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
-        {
-            romtime::println!("[mcu-fuse-write] HEK perma bit set, using sanitized HEK");
-            for i in 0..self.registers.fuse_hek_seed.len() {
-                self.registers.fuse_hek_seed[i].set(0xFFFF_FFFF);
-            }
-        } else {
-            let hek_slot = HEK_OFFSETS.iter().find(|&&offset| {
-                !otp.is_hek_zeroized(offset)
-                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
-            });
-            if let Some(hek_slot) = hek_slot {
-                romtime::println!(
-                    "[mcu-fuse-write] Using HEK ratchet seed from offset {:x}",
-                    hek_slot
-                );
-                for i in 0..self.registers.fuse_hek_seed.len() {
-                    let word = otp
-                        .read_u32_at(hek_slot + i * 4)
-                        .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-                    self.registers.fuse_hek_seed[i].set(word);
-                }
-            }
-        }
-
-        // Key release is always 64 bytes currently
-        self.registers
-            .ss_key_release_size
-            .set(OCP_LOCK_KEY_MEK_SIZE);
-
-        // TODO(clundin): We should pass this from OTP or similar so we can configure in
-        // caliptra-sw tests.
-        if cfg!(feature = "core_test") {
-            let key_release_addr: u64 = 0xA4010200;
-            self.registers
-                .ss_key_release_base_addr_h
-                .set((key_release_addr >> 32) as u32);
-            self.registers
-                .ss_key_release_base_addr_l
-                .set(key_release_addr as u32);
-        }
+        let hek_state = self.set_ocp_lock_fuses(otp);
 
         // We use non secret production fuses to have caliptra tests pass some initial fuse values
         if cfg!(feature = "core_test") {
@@ -426,8 +393,98 @@ impl Soc {
             }
         }
 
-        romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
         romtime::println!("");
+        FuseState { hek_state }
+    }
+
+    /// OCP LOCK Fuses.
+    pub fn set_ocp_lock_fuses(&self, otp: &Otp) -> HekState {
+        romtime::println!("[mcu-fuse-write] Attempting to write OCP LOCK fuses");
+        // Key release is always 64 bytes currently
+        self.registers
+            .ss_key_release_size
+            .set(OCP_LOCK_KEY_MEK_SIZE);
+
+        // TODO(clundin): We should pass this from OTP or similar so we can configure in
+        // caliptra-sw tests.
+        if cfg!(feature = "core_test") {
+            let key_release_addr: u64 = 0xA4010200;
+            self.registers
+                .ss_key_release_base_addr_h
+                .set((key_release_addr >> 32) as u32);
+            self.registers
+                .ss_key_release_base_addr_l
+                .set(key_release_addr as u32);
+        }
+
+        if otp
+            .is_hek_perma_set()
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
+        {
+            romtime::println!("[mcu-fuse-write] HEK perma bit set, using sanitized HEK");
+            for i in 0..self.registers.fuse_hek_seed.len() {
+                self.registers.fuse_hek_seed[i].set(0xFFFF_FFFF);
+            }
+            // TODO(clundin): Need to determine how to decide the active HEK.
+            // https://github.com/chipsalliance/caliptra-mcu-sw/issues/1071
+
+            return HekState {
+                active_slot: 0,
+                total_slots: HEK_OFFSETS.len(),
+                active_state: HekSeedState::Permanent,
+            };
+        }
+
+        if HEK_OFFSETS.iter().all(|&offset| {
+            otp.is_hek_unused(offset)
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
+        }) {
+            return HekState {
+                active_slot: 0,
+                total_slots: HEK_OFFSETS.len(),
+                active_state: HekSeedState::Unused,
+            };
+        }
+
+        // TODO(clundin): Need to determine how to decide the active HEK.
+        // https://github.com/chipsalliance/caliptra-mcu-sw/issues/1071
+        let hek_slot = HEK_OFFSETS.iter().enumerate().find(|(_slot, &offset)| {
+            !otp.is_hek_sanitized(offset)
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
+        });
+
+        let hek_state = if let Some((hek_slot, hek_offset)) = hek_slot {
+            romtime::println!(
+                "[mcu-fuse-write] Using HEK ratchet seed from offset {:x}",
+                hek_slot
+            );
+            for i in 0..self.registers.fuse_hek_seed.len() {
+                let word = otp
+                    .read_u32_at(hek_offset + i * 4)
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+                self.registers.fuse_hek_seed[i].set(word);
+            }
+            // TODO(clundin): Set a real active slot.
+            // https://github.com/chipsalliance/caliptra-mcu-sw/issues/1071
+            HekState {
+                active_slot: hek_slot,
+                total_slots: HEK_OFFSETS.len(),
+                active_state: HekSeedState::Programmed,
+            }
+        } else {
+            // TODO(clundin): Re-work the state selection.
+            // https://github.com/chipsalliance/caliptra-mcu-sw/issues/1071
+            // Didn't find any slots that weren't sanitized.
+            HekState {
+                active_slot: 0,
+                total_slots: HEK_OFFSETS.len(),
+                active_state: HekSeedState::Sanitized,
+            }
+        };
+
+        romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
+
+        hek_state
     }
 
     pub fn set_axi_users(&self, users: AxiUsers) {

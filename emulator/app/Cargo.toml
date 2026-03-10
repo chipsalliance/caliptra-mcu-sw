@@ -69,7 +69,8 @@ name = "emulator"
 path = "src/lib.rs"
 
 [features]
-default = []
+default = ["ocp-lock"]
+ocp-lock = []
 test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []

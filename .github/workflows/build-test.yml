@@ -179,7 +179,7 @@ jobs:
         # all spaces to produce a clean comma-separated feature list for cargo.
         env:
           EMULATOR_FEATURES: >-
-            test-caliptra-certs,test-caliptra-crypto,test-caliptra-mailbox,
+            ocp-lock,test-caliptra-certs,test-caliptra-crypto,test-caliptra-mailbox,
             test-dma,test-doe-transport-loopback,test-doe-user-loopback,test-doe-discovery,
             test-get-device-state,test-flash-based-boot,test-flash-ctrl-init,
             test-flash-ctrl-read-write-page,test-flash-ctrl-erase-page,

@@ -734,7 +734,7 @@ impl Otp {
     }
 
     /// Check if the HEK partition at the given offset is zeroized.
-    pub fn is_hek_zeroized(&self, partition_address: usize) -> McuResult<bool> {
+    pub fn is_hek_sanitized(&self, partition_address: usize) -> McuResult<bool> {
         // A partition is considered zeroized/sanitized if ALL bytes are 0xFF.
         // HEK partitions are 48 bytes: 32 (Seed) + 8 (Digest) + 8 (ZER marker).
         let mut partition_data = [0u8; fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE];
@@ -744,6 +744,18 @@ impl Otp {
             &mut partition_data,
         )?;
         Ok(partition_data.iter().all(|&b| b == 0xFF))
+    }
+
+    /// Check if the HEK partition at the given offset is unused.
+    pub fn is_hek_unused(&self, partition_address: usize) -> McuResult<bool> {
+        let mut partition_data = [0u8; fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE];
+        self.read_data(
+            partition_address,
+            fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE,
+            &mut partition_data,
+        )?;
+        let set_bit_count: u32 = partition_data.iter().map(|byte| byte.count_ones()).sum();
+        Ok(set_bit_count == 0)
     }
 
     /// Check if the HEK perma bit is set in the last non-secret vendor fuse (Slot 15).

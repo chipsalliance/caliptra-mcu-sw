@@ -15,6 +15,8 @@ Abstract:
 #![allow(clippy::empty_loop)]
 
 use crate::boot_status::McuRomBootStatus;
+#[cfg(feature = "ocp-lock")]
+use crate::HekState;
 use crate::{
     configure_mcu_mbox_axi_users, device_ownership_transfer, fatal_error,
     verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, AxiUsers, BootFlow, DotBlob,
@@ -23,6 +25,10 @@ use crate::{
 use caliptra_api::mailbox::{
     CmImportReq, CmImportResp, CmKeyUsage, CmStableKeyType, Cmk, CommandId, FeProgReq,
     MailboxReqHeader, MailboxRespHeader, CMK_SIZE_BYTES, MAX_CMB_DATA_SIZE,
+};
+#[cfg(feature = "ocp-lock")]
+use caliptra_api::mailbox::{
+    OcpLockReportHekMetadataReq, OcpLockReportHekMetadataResp, OcpLockReportHekMetadataRespFlags,
 };
 use caliptra_api::{calc_checksum, CaliptraApiError};
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
@@ -511,6 +517,55 @@ impl ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationComplete.into());
         loop {}
     }
+
+    /// Report HEK metadata to Caliptra ROM via the REPORT_HEK_METADATA mailbox command.
+    #[cfg(feature = "ocp-lock")]
+    fn report_hek_metadata(hek_state: HekState, soc_manager: &mut romtime::CaliptraSoC) {
+        if cfg!(feature = "core_test") {
+            return;
+        }
+
+        romtime::println!("[mcu-rom] Reporting HEK metadata");
+
+        let mut req = OcpLockReportHekMetadataReq {
+            total_slots: hek_state.total_slots as u16,
+            active_slots: hek_state.active_slot as u16,
+            seed_state: hek_state.active_state.into(),
+            ..Default::default()
+        };
+        let cmd: u32 = CommandId::OCP_LOCK_REPORT_HEK_METADATA.into();
+        let chksum = calc_checksum(
+            cmd,
+            &req.as_bytes()[core::mem::size_of::<MailboxReqHeader>()..],
+        );
+        req.hdr.chksum = chksum;
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] REPORT_HEK_METADATA start error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_HEK_REPORT_ERROR);
+        }
+
+        let mut resp_buf = [0u8; core::mem::size_of::<OcpLockReportHekMetadataResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+            romtime::println!(
+                "[mcu-rom] REPORT_HEK_METADATA finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_COLD_BOOT_HEK_REPORT_ERROR);
+        }
+
+        let resp: OcpLockReportHekMetadataResp = transmute!(resp_buf);
+        let caliptra_hek_available = resp
+            .flags
+            .contains(OcpLockReportHekMetadataRespFlags::HEK_AVAILABLE);
+        romtime::println!(
+            "[mcu-rom] Caliptra HEK available: {}",
+            caliptra_hek_available
+        );
+    }
 }
 
 impl BootFlow for ColdBoot {
@@ -679,7 +734,7 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         romtime::println!("[mcu-rom] Populating fuses");
-        soc.populate_fuses(otp, mci);
+        let _fuse_state = soc.populate_fuses(otp, mci);
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
         // Configure MCU mailbox AXI users before locking
@@ -750,6 +805,10 @@ impl BootFlow for ColdBoot {
         if fips_zeroization {
             ColdBoot::handle_fips_zeroization(mci, lc, &mut env.soc_manager);
         }
+
+        // Report HEK metadata to Caliptra ROM
+        #[cfg(feature = "ocp-lock")]
+        Self::report_hek_metadata(_fuse_state.hek_state, &mut env.soc_manager);
 
         // Load DOT fuses from vendor non-secret partition
         // TODO: read these from a place specified by ROM configuration

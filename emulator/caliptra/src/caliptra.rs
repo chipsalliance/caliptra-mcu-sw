@@ -66,6 +66,7 @@ pub struct StartCaliptraArgs {
     pub device_lifecycle: Option<String>,
     pub use_mcu_recovery_interface: bool,
     pub extra_soc_bus: Option<u32>,
+    pub ocp_lock_en: bool,
 }
 
 register_bitfields! [
@@ -164,6 +165,7 @@ pub fn start_caliptra(
         ),
         subsystem_mode: true,
         use_mcu_recovery_interface: args_use_mcu_recovery_interface,
+        ocp_lock_en: args.ocp_lock_en,
         ..Default::default()
     };
 
