@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-pub const RUNTIME_TEST_FEATURES: &[&str] = &[
+pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-i3c-simple",
     "test-i3c-constant-writes",
     "test-mctp-capsule-loopback",
@@ -78,4 +78,19 @@ pub const EMULATOR_TEST_FEATURES: &[&str] = &[
     "test-pldm-fw-update-e2e",
     "test-pldm-streaming-boot",
     "test-warm-reset",
+];
+
+pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
+    "test-i3c-simple",
+    "test-i3c-constant-writes",
+    "test-mctp-capsule-loopback",
+    "test-fpga-flash-ctrl",
+    "test-pldm-fw-update-e2e",
+    "test-firmware-update-streaming",
+    "test-mcu-mbox-usermode",
+    "test-mcu-mbox-cmds",
+    "test-mctp-vdm-cmds",
+    "test-mcu-mbox-fips-self-test",
+    "test-mcu-mbox-fips-periodic",
+    "test-exit-immediately",
 ];

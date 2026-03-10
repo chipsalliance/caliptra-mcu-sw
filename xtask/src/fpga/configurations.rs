@@ -196,7 +196,6 @@ impl<'a> ActionHandler<'a> for Subsystem {
         let args = AllBuildArgs {
             output: Some("all-fw.zip"),
             platform: Some("fpga"),
-            runtime_features: Some("test-mctp-capsule-loopback,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming"),
             mcu_cfgs: mcu_cfgs,
             separate_runtimes: true,
             ..Default::default()

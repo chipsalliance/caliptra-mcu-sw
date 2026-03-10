@@ -487,7 +487,11 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         Some(r) if !r.is_empty() => r.split(",").collect::<Vec<&str>>(),
         _ => {
             if separate_runtimes {
-                crate::features::RUNTIME_TEST_FEATURES.to_vec()
+                if platform == "fpga" {
+                    crate::features::FPGA_RUNTIME_TEST_FEATURES.to_vec()
+                } else {
+                    crate::features::EMULATOR_RUNTIME_TEST_FEATURES.to_vec()
+                }
             } else {
                 vec![]
             }
