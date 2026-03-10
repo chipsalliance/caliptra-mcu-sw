@@ -64,6 +64,8 @@ pub struct Soc {
 }
 
 impl Soc {
+    pub const BOOT_FSM_DONE: u32 = 4;
+
     pub const fn new(registers: StaticRef<soc::regs::Soc>) -> Self {
         Soc { registers }
     }
@@ -80,6 +82,30 @@ impl Soc {
 
     pub fn flow_status(&self) -> u32 {
         self.registers.cptra_flow_status.get()
+    }
+
+    pub fn boot_fsm_ps(&self) -> u32 {
+        self.registers
+            .cptra_flow_status
+            .read(soc::bits::CptraFlowStatus::BootFsmPs)
+    }
+
+    pub fn wait_for_bootfsm_done(&self, timeout_cycles: u64) {
+        let start = romtime::mcycle();
+        while self.boot_fsm_ps() != Self::BOOT_FSM_DONE {
+            if self.cptra_fw_fatal_error() {
+                romtime::println!(
+                    "[mcu-rom] Caliptra reported a fatal error during boot FSM transition"
+                );
+                fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
+            }
+            if romtime::mcycle() - start > timeout_cycles {
+                romtime::println!(
+                    "[mcu-rom] Caliptra Core boot FSM timed out waiting for BOOT_DONE"
+                );
+                fatal_error(McuError::ROM_BOOTFSM_TIMEOUT);
+            }
+        }
     }
 
     pub fn ready_for_mbox(&self) -> bool {
