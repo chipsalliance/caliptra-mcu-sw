@@ -232,7 +232,7 @@ fn generate_emulator_types(
     scopes: &[ParentScope],
     dest_dir: &Path,
     header: String,
-    register_types_to_crates: &HashMap<String, String>,
+    register_types_to_crates: &HashMap<String, Vec<String>>,
 ) -> Result<()> {
     let file_action = if check {
         file_check_contents
@@ -371,7 +371,7 @@ fn flatten_registers(
 /// Make a peripheral trait that the emulator code can implement.
 fn emu_make_peripheral_trait(
     block: RegisterBlock,
-    register_types_to_crates: &HashMap<String, String>,
+    register_types_to_crates: &HashMap<String, Vec<String>>,
 ) -> Result<TokenStream> {
     let base = camel_ident(block.name.as_str());
     let periph = format_ident!("{}Peripheral", base);
@@ -559,19 +559,21 @@ fn emu_make_peripheral_trait(
                 }
             }
         } else {
-            if register_types_to_crates
+            // Determine the crate name by searching through the Register associated crates to find
+            // one which is contained by the block's name.  Add a special case for flash to support
+            // its primary/secondary nature.
+            //
+            // NOTE: This to be replaced by the upcoming new parser implementation.
+            let crate_name = register_types_to_crates
                 .get(register.ty.name.as_ref().unwrap())
-                .is_none()
-            {
-                let mut i: Vec<_> = register_types_to_crates.keys().collect();
-                i.sort();
-            }
-            let rcrate = format_ident!(
-                "{}",
-                register_types_to_crates
-                    .get(register.ty.name.as_ref().unwrap())
-                    .unwrap()
-            );
+                .unwrap()
+                .iter()
+                .find(|s| {
+                    s.contains(&block.name) || (s.contains("flash") && block.name.contains("flash"))
+                })
+                .unwrap();
+
+            let rcrate = format_ident!("{crate_name}",);
             let tyn = camel_ident(register.ty.name.as_ref().unwrap());
             let read_val = quote! { registers_generated :: #rcrate :: bits :: #tyn :: Register };
             let prim = format_ident!("{}", register.ty.width.rust_primitive_name());
@@ -1238,7 +1240,7 @@ fn generate_fw_registers(
     scopes: &[ParentScope],
     header: String,
     dest_dir: &Path,
-    register_types_to_crates: &mut HashMap<String, String>,
+    register_types_to_crates: &mut HashMap<String, Vec<String>>,
 ) -> Result<()> {
     let file_action = if check {
         file_check_contents

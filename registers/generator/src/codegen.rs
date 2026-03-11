@@ -205,7 +205,7 @@ pub fn generate_code(
     crate_prefix: &str,
     block: &ValidatedRegisterBlock,
     is_root_module: bool,
-    register_types_to_crates: &mut HashMap<String, String>,
+    register_types_to_crates: &mut HashMap<String, Vec<String>>,
     addr_only: bool,
 ) -> String {
     let address_tokens = generate_address_tokens(block.block());
@@ -401,7 +401,7 @@ fn generate_reg_structs(crate_prefix: &str, block: &RegisterBlock) -> String {
 fn generate_bitfields(
     register_types: impl Iterator<Item = Rc<RegisterType>>,
     reg_crate: String,
-    register_types_to_crates: &mut HashMap<String, String>,
+    register_types_to_crates: &mut HashMap<String, Vec<String>>,
     defined_bits: &mut HashSet<String>,
 ) -> String {
     let mut tokens8 = String::new();
@@ -422,7 +422,10 @@ fn generate_bitfields(
             continue;
         }
         defined_bits.insert(raw_name.clone());
-        register_types_to_crates.insert(raw_name.clone(), reg_crate.clone());
+        register_types_to_crates
+            .entry(raw_name.clone())
+            .or_default()
+            .push(reg_crate.clone());
         let mut field_tokens = String::new();
         let name = camel_case(&raw_name);
         field_tokens += &format!("pub {name} [\n");
