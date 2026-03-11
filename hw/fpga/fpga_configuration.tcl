@@ -488,9 +488,9 @@ if {$BUILD} {
     # Copy the PDI containing runtime info to a more convenient location.
     file copy $outputDir/caliptra_fpga_project.runs/impl_1/caliptra_fpga_project_bd_wrapper_pld.pdi $outputDir/runtime_$VERSION.pdi
 
-    set xsa_name xsa_ss2p1_$VERSION_segmented.xsa
+    set xsa_name xsa_ss2p0_$VERSION_segmented.xsa
   } else {
-    set xsa_name xsa_ss2p1_$VERSION.xsa
+    set xsa_name xsa_ss2p0_$VERSION.xsa
   }
 
   write_hw_platform -fixed -include_bit -force -file $outputDir/$xsa_name
