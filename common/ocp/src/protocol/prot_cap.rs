@@ -7,14 +7,18 @@
 //! Device's recovery protocol version, capabilities, and timing parameters.
 
 use bitfield::bitfield;
+use zerocopy::{Immutable, IntoBytes};
 
 use crate::error::OcpError;
 
 /// Expected magic string in bytes 0-7: "OCP RECV" in ASCII.
-pub const MAGIC: [u8; 8] = [0x4F, 0x43, 0x50, 0x20, 0x52, 0x45, 0x43, 0x56];
+pub const MAGIC: &[u8; 8] = b"OCP RECV";
 
-/// Wire size of a PROT_CAP response in bytes.
+/// Wire size of a PROT_CAP response in bytes, according to the Spec.
 pub const RESPONSE_LEN: usize = 15;
+
+// Assure the spec size matches the size of the structure.
+const _: () = assert!(RESPONSE_LEN == size_of::<ProtCap>());
 
 bitfield! {
     /// Recovery protocol capabilities (bytes 10-11 of PROT_CAP response).
@@ -23,7 +27,7 @@ bitfield! {
     /// device_status (bit 4), and at least one of local_c_image_support (bit 6)
     /// or push_c_image_support (bit 7). If push_c_image_support is set,
     /// recovery_memory_access (bit 5) MUST also be set.
-    #[derive(Clone, Copy, PartialEq, Eq)]
+    #[derive(Clone, Copy, PartialEq, Eq, IntoBytes, Immutable)]
     pub struct RecoveryProtocolCapabilities(u16);
     impl Debug;
 
@@ -43,7 +47,8 @@ bitfield! {
 }
 
 /// PROT_CAP response (15 bytes on the wire).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoBytes, Immutable)]
+#[repr(C, packed)]
 pub struct ProtCap {
     /// Bytes 0-7: MUST be "OCP RECV" (see [`MAGIC`]).
     magic: [u8; 8],
@@ -71,7 +76,7 @@ impl ProtCap {
         heartbeat_period: u8,
     ) -> Self {
         Self {
-            magic: MAGIC,
+            magic: *MAGIC,
             major_version,
             minor_version,
             capabilities,
@@ -83,7 +88,7 @@ impl ProtCap {
 
     /// Validate mandatory capability invariants from Section 9.2.
     pub fn validate_capabilities(&self) -> Result<(), OcpError> {
-        let caps = &self.capabilities;
+        let caps = self.capabilities;
 
         if !caps.identification() {
             return Err(OcpError::ProtCapIdentificationRequired);
@@ -107,26 +112,9 @@ impl ProtCap {
     /// capability invariants from Section 9.2 are not satisfied.
     /// On success, returns the number of bytes written ([`RESPONSE_LEN`]).
     pub fn to_message(self, buf: &mut [u8]) -> Result<usize, OcpError> {
-        if buf.len() < RESPONSE_LEN {
-            return Err(OcpError::BufferTooSmall);
-        }
         self.validate_capabilities()?;
-        let caps = self.capabilities.0.to_le_bytes();
-        buf[0] = self.magic[0];
-        buf[1] = self.magic[1];
-        buf[2] = self.magic[2];
-        buf[3] = self.magic[3];
-        buf[4] = self.magic[4];
-        buf[5] = self.magic[5];
-        buf[6] = self.magic[6];
-        buf[7] = self.magic[7];
-        buf[8] = self.major_version;
-        buf[9] = self.minor_version;
-        buf[10] = caps[0];
-        buf[11] = caps[1];
-        buf[12] = self.cms_regions;
-        buf[13] = self.max_response_time;
-        buf[14] = self.heartbeat_period;
+        self.write_to_prefix(buf)
+            .map_err(|_| OcpError::BufferTooSmall)?;
         Ok(RESPONSE_LEN)
     }
 }
@@ -155,7 +143,7 @@ mod tests {
             .expect("valid capabilities should succeed");
 
         assert_eq!(len, RESPONSE_LEN);
-        assert_eq!(&buf[0..8], &MAGIC);
+        assert_eq!(&buf[0..8], MAGIC);
         assert_eq!(buf[8], 0x01);
         assert_eq!(buf[9], 0x01);
         assert_eq!(buf[10..12], caps.0.to_le_bytes());
