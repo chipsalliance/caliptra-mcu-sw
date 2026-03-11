@@ -309,7 +309,7 @@ impl MciMailboxImpl {
 
     pub fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
     {
         // If the lock is not held, we can grant it to the current requester
         if self.lock.reg.get() == 0 {
@@ -323,12 +323,12 @@ impl MciMailboxImpl {
             // Return 0 to indicate lock is now held
             caliptra_emu_bus::ReadWriteRegister::<
                 u32,
-                registers_generated::mbox::bits::MboxLock::Register,
+                registers_generated::mci::bits::MboxLock::Register,
             >::new(0)
         } else {
             caliptra_emu_bus::ReadWriteRegister::<
                 u32,
-                registers_generated::mbox::bits::MboxLock::Register,
+                registers_generated::mci::bits::MboxLock::Register,
             >::new(self.lock.reg.get())
         }
     }
@@ -398,7 +398,7 @@ impl MciMailboxImpl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxExecute::Register,
+        registers_generated::mci::bits::MboxExecute::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.execute.reg.get())
     }
@@ -406,7 +406,7 @@ impl MciMailboxImpl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxExecute::Register,
+            registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         if !self.is_locked() {
