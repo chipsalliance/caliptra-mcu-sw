@@ -57,6 +57,7 @@ include = [
     "emulator_get_pc",
     "emulator_start_i3c_controller",
     "emulator_trigger_exit",
+    "emulator_gdb_is_idle",
     "example_external_read_callback",
     "example_external_write_callback",
     "CExternalReadCallback",
