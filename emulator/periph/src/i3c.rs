@@ -18,7 +18,8 @@ use mcu_testing_common::i3c::{
 };
 use registers_generated::i3c::bits::{
     DeviceStatus0, ExtcapHeader, IndirectFifoCtrl0, IndirectFifoStatus0, InterruptEnable,
-    InterruptStatus, RecIntfCfg, RecoveryCtrl, StbyCrCapabilities, StbyCrDeviceAddr, TtiQueueSize,
+    InterruptStatus, RecIntfCfg, RecoveryCtrl, Status, StbyCrCapabilities, StbyCrDeviceAddr,
+    TtiQueueSize,
 };
 use semver::Version;
 use std::collections::VecDeque;
@@ -85,7 +86,7 @@ pub struct I3c {
 
     interrupt_status: ReadWriteRegister<u32, InterruptStatus::Register>,
     interrupt_enable: ReadWriteRegister<u32, InterruptEnable::Register>,
-    ibi_status: Option<u32>,
+    ibi_status: Option<ReadWriteRegister<u32, Status::Register>>,
     generated: I3cGenerated,
 
     events_to_caliptra: Option<mpsc::Sender<Event>>,
@@ -244,7 +245,7 @@ impl I3c {
 
             // TODO: support sending more bytes of IBI to target
             self.i3c_target.send_ibi((desc.0 >> 24) as u8);
-            self.ibi_status = Some(0);
+            self.ibi_status = Some(ReadWriteRegister::new(0));
             self.tti_ibi_buffer.drain(0..(len + 4).next_multiple_of(4));
         }
     }
@@ -531,14 +532,11 @@ impl I3cPeripheral for I3c {
 
     fn read_i3c_ec_tti_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
-    > {
-        // TODO: the type of this status register is not correct
-        // so we manually shift the IBI status to the correct position
-        // This clears the interrupt.
-        caliptra_emu_bus::ReadWriteRegister::new(self.ibi_status.take().unwrap_or(0) << 14)
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Status::Register>
+    {
+        self.ibi_status
+            .take()
+            .unwrap_or_else(|| ReadWriteRegister::new(0))
     }
 
     fn read_i3c_ec_tti_interrupt_enable(
