@@ -46,9 +46,11 @@ pub struct Mci {
     #[allow(dead_code)]
     generic_input_wires: [u32; 2],
     reset_requested: bool,
+    fips_zeroization: bool,
 }
 
 impl Mci {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         clock: &Clock,
         ext_mci_regs: caliptra_emu_periph::mci::Mci,
@@ -57,6 +59,7 @@ impl Mci {
         mcu_mailbox1: Option<McuMailbox0Internal>,
         soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
         generic_input_wires: [u32; 2],
+        fips_zeroization: bool,
     ) -> Self {
         // Clear the reset status, MCU and Caiptra are out of reset
         ext_mci_regs.regs.borrow_mut().reset_status = 0;
@@ -85,6 +88,7 @@ impl Mci {
             mcu_mailbox0,
             generic_input_wires,
             reset_requested: false,
+            fips_zeroization,
 
             // --- init mtimecmp ---
             mtimecmp: default_mtimecmp,
@@ -956,6 +960,15 @@ impl MciPeripheral for Mci {
             .read_mcu_mbox0_csr_mbox_hw_status()
     }
 
+    fn read_mci_reg_fc_fips_zerozation_sts(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::FcFipsZerozationSts::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(if self.fips_zeroization { 1 } else { 0 })
+    }
+
     fn read_mci_reg_hw_rev_id(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwRevId::Register>
@@ -1178,6 +1191,7 @@ mod tests {
             None,
             None,
             [0, 0],
+            false,
         );
         let mut mci_bus = MciBus {
             periph: Box::new(mci_reg),
@@ -1273,6 +1287,7 @@ mod tests {
             None,
             None,
             [0, 0],
+            false,
         );
         let mut mcu_mailbox = mci_reg.mcu_mailbox0.clone().unwrap();
         let mut mci_bus = MciBus {
@@ -1312,6 +1327,7 @@ mod tests {
             None,
             None,
             [0, 0],
+            false,
         );
 
         let hi: u32 = 0x0022_3344;
@@ -1342,6 +1358,7 @@ mod tests {
             None,
             None,
             [0, 0],
+            false,
         );
 
         let lo: u32 = 0x0000_FFFF;
@@ -1372,6 +1389,7 @@ mod tests {
             None,
             None,
             [0, 0],
+            false,
         );
 
         // Seed a known value.
@@ -1400,6 +1418,7 @@ mod tests {
             None,
             None,
             [0, 0],
+            false,
         );
 
         // use a safe 48-bit range: 0x0000_DEAD_FFFF_FFFE
@@ -1431,6 +1450,7 @@ mod tests {
             None,
             None,
             [0, 0],
+            false,
         );
 
         // Initial time is 0
@@ -1458,6 +1478,7 @@ mod tests {
             None,
             None,
             [0, 0],
+            false,
         );
 
         // Move time to a known value.
@@ -1494,6 +1515,7 @@ mod tests {
             None,
             None,
             [0, 0],
+            false,
         );
 
         // Advance by 2^32 + 1 -> high = 1, low = 1, as clock start at 0

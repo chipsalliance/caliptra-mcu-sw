@@ -162,6 +162,21 @@ impl McuError {
             "Lifecycle OTP partition error"
         ),
         (
+            ROM_FIPS_ZEROIZATION_LC_TRANSITION_ERROR,
+            0x2_0008,
+            "FIPS zeroization lifecycle transition to SCRAP failed"
+        ),
+        (
+            ROM_FIPS_ZEROIZATION_UDS_FE_START_ERROR,
+            0x2_0009,
+            "FIPS zeroization failed to start ZEROIZE_UDS_FE command"
+        ),
+        (
+            ROM_FIPS_ZEROIZATION_UDS_FE_FINISH_ERROR,
+            0x2_000a,
+            "FIPS zeroization failed to finish ZEROIZE_UDS_FE command"
+        ),
+        (
             ROM_OTP_INIT_STATUS_ERROR,
             0x3_0000,
             "OTP controller status error during initialization"
@@ -346,6 +361,11 @@ impl McuError {
             ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR,
             0x1_0015,
             "Cold boot encrypted firmware activate finish error"
+        ),
+        (
+            ROM_SOC_WDT_CFG_OUT_OF_RANGE,
+            0x5_0013,
+            "Caliptra WDT config index out of range"
         ),
         (
             GENERIC_EXCEPTION,

@@ -105,7 +105,11 @@ impl Soc {
     }
 
     pub fn set_cptra_wdt_cfg(&self, index: usize, value: u32) {
-        self.registers.cptra_wdt_cfg[index].set(value);
+        if let Some(reg) = self.registers.cptra_wdt_cfg.get(index) {
+            reg.set(value);
+        } else {
+            fatal_error(McuError::ROM_SOC_WDT_CFG_OUT_OF_RANGE);
+        }
     }
 
     pub fn set_cptra_mbox_valid_axi_user(&self, index: usize, value: u32) {
@@ -325,7 +329,9 @@ impl Soc {
                     .read_u32_at(hash_base_offset + word_idx * 4)
                     .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
                 let reg_idx = hash_idx * 12 + word_idx;
-                mci.registers.mci_reg_prod_debug_unlock_pk_hash_reg[reg_idx].set(word);
+                if !mci.write_prod_debug_unlock_pk_hash(reg_idx, word) {
+                    fatal_error(McuError::ROM_SOC_PROD_DEBUG_UNLOCK_PKS_HASH_LEN_MISMATCH);
+                }
             }
         }
 

@@ -532,6 +532,7 @@ mod tests {
             None,
             None,
             [0, 0],
+            false,
         );
         AutoRootBus::new(
             vec![],

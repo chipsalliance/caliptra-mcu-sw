@@ -16,6 +16,7 @@ use bitflags::bitflags;
 
 const ROM_INITIALIZATION_BASE: u16 = 1;
 const LIFECYCLE_MANAGEMENT_BASE: u16 = 65;
+const FIPS_ZEROIZATION_BASE: u16 = 97;
 const OTP_FUSE_OPERATIONS_BASE: u16 = 129;
 const CALIPTRA_SETUP_BASE: u16 = 193;
 const FIRMWARE_LOADING_BASE: u16 = 257;
@@ -42,6 +43,20 @@ pub enum McuRomBootStatus {
     LifecycleTransitionComplete = LIFECYCLE_MANAGEMENT_BASE + 2,
     LifecycleTokenBurningStarted = LIFECYCLE_MANAGEMENT_BASE + 3,
     LifecycleTokenBurningComplete = LIFECYCLE_MANAGEMENT_BASE + 4,
+
+    // FIPS Zeroization Flow Statuses
+    /// FIPS zeroization PPD signal detected; MCU ROM is authorizing zeroization.
+    FipsZeroizationDetected = FIPS_ZEROIZATION_BASE,
+    /// Caliptra ZEROIZE_UDS_FE command sent to zeroize UDS and field entropy.
+    FipsZeroizationUdsFeStarted = FIPS_ZEROIZATION_BASE + 1,
+    /// Caliptra ZEROIZE_UDS_FE command completed.
+    FipsZeroizationUdsFeComplete = FIPS_ZEROIZATION_BASE + 2,
+    /// MCU ROM zeroization mask register set to 0xFFFF_FFFF.
+    FipsZeroizationMaskSet = FIPS_ZEROIZATION_BASE + 3,
+    /// LC transition to SCRAP state started (takes effect after cold reset).
+    FipsZeroizationScrapTransitionStarted = FIPS_ZEROIZATION_BASE + 4,
+    /// FIPS zeroization flow complete; MCU ROM is halted waiting for cold reset.
+    FipsZeroizationComplete = FIPS_ZEROIZATION_BASE + 5,
 
     // OTP and Fuse Operations
     OtpControllerInitialized = OTP_FUSE_OPERATIONS_BASE,

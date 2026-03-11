@@ -9,6 +9,7 @@ mod network;
 mod rom;
 mod test_dot;
 mod test_exception_handler;
+mod test_fips_zeroization;
 mod test_firmware_update;
 mod test_fpga_flash_ctrl;
 mod test_i3c_constant_writes;
@@ -69,6 +70,8 @@ mod test {
         pub custom_caliptra_fw: Option<CustomCaliptraFw>,
         /// Custom OTP memory contents. If provided, takes precedence over dot_enabled.
         pub otp_memory: Option<Vec<u8>>,
+        /// Enable FIPS zeroization PPD signal for cold boot testing.
+        pub fips_zeroization: bool,
     }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -374,6 +377,7 @@ mod test {
             otp_memory: otp_memory.as_deref(),
             primary_flash_initial_contents: flash_image,
             flash_boot: params.flash_boot,
+            fips_zeroization: params.fips_zeroization,
             ..Default::default()
         })
         .unwrap()

@@ -15,7 +15,7 @@ Abstract:
 use caliptra_emu_bus::ReadWriteRegister;
 use emulator_registers_generated::lc::LcGenerated;
 use registers_generated::lc_ctrl;
-use tock_registers::interfaces::Readable;
+use tock_registers::interfaces::{ReadWriteable, Readable};
 
 pub struct LcCtrl {
     status: ReadWriteRegister<u32, lc_ctrl::bits::Status::Register>,
@@ -44,5 +44,19 @@ impl emulator_registers_generated::lc::LcPeripheral for LcCtrl {
 
     fn read_status(&mut self) -> ReadWriteRegister<u32, lc_ctrl::bits::Status::Register> {
         ReadWriteRegister::new(self.status.reg.get())
+    }
+
+    fn write_transition_cmd(
+        &mut self,
+        val: ReadWriteRegister<u32, lc_ctrl::bits::TransitionCmd::Register>,
+    ) {
+        if let Some(generated) = self.generated() {
+            generated.write_transition_cmd(val);
+        }
+        // When firmware writes the transition command, immediately report success
+        // so the polling loop in lifecycle.rs completes.
+        self.status
+            .reg
+            .modify(lc_ctrl::bits::Status::TransitionSuccessful::SET);
     }
 }

@@ -298,6 +298,7 @@ impl McuHwModel for ModelEmulated {
             Some(mcu_mailbox1),
             None,
             mci_generic_input_wires,
+            params.fips_zeroization,
         );
 
         let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =

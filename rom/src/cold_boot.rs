@@ -29,7 +29,7 @@ use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use core::fmt::Write;
 use core::ops::Deref;
 use mcu_error::McuError;
-use romtime::{CaliptraSoC, HexWord};
+use romtime::{CaliptraSoC, HexWord, LifecycleControllerState, LifecycleToken};
 use tock_registers::interfaces::Readable;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -426,6 +426,91 @@ impl ColdBoot {
             _ => 0xdead_ffff,
         }
     }
+
+    /// Execute the FIPS zeroization flow.
+    ///
+    /// Per the Caliptra SS Hardware Specification, when the PPD signal is
+    /// asserted the MCU ROM must:
+    ///   1. Command Caliptra to zeroize UDS and field entropy via
+    ///      ZEROIZE_UDS_FE (secret fuses can only be zeroized by Caliptra).
+    ///   2. Write 0xFFFF_FFFF to FC_FIPS_ZEROZATION mask to authorize the
+    ///      fuse controller to zeroize non-secret fuses.
+    ///   3. Request an LC transition to SCRAP (no token required).
+    ///   4. Halt, waiting for the SoC to issue a cold reset.
+    ///
+    /// This function never returns.
+    fn handle_fips_zeroization(
+        mci: &romtime::Mci,
+        lc: &romtime::Lifecycle,
+        soc_manager: &mut CaliptraSoC,
+    ) -> ! {
+        romtime::println!("[mcu-rom] Executing FIPS zeroization flow");
+
+        // Step 1: Command Caliptra to zeroize UDS and all field entropy partitions.
+        romtime::println!("[mcu-rom] Sending ZEROIZE_UDS_FE to Caliptra");
+        mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationUdsFeStarted.into());
+
+        let flags = caliptra_api::mailbox::ZEROIZE_UDS_FLAG
+            | caliptra_api::mailbox::ZEROIZE_FE0_FLAG
+            | caliptra_api::mailbox::ZEROIZE_FE1_FLAG
+            | caliptra_api::mailbox::ZEROIZE_FE2_FLAG
+            | caliptra_api::mailbox::ZEROIZE_FE3_FLAG;
+
+        let mut req = caliptra_api::mailbox::ZeroizeUdsFeReq {
+            flags,
+            ..Default::default()
+        };
+        let chksum = calc_checksum(
+            CommandId::ZEROIZE_UDS_FE.into(),
+            &req.as_bytes()[core::mem::size_of::<MailboxReqHeader>()..],
+        );
+        req.hdr.chksum = chksum;
+
+        if let Err(err) =
+            soc_manager.start_mailbox_req_bytes(CommandId::ZEROIZE_UDS_FE.into(), req.as_bytes())
+        {
+            romtime::println!(
+                "[mcu-rom] FIPS zeroization: ZEROIZE_UDS_FE send failed: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::ROM_FIPS_ZEROIZATION_UDS_FE_START_ERROR);
+        }
+        {
+            let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
+            if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+                romtime::println!(
+                    "[mcu-rom] FIPS zeroization: ZEROIZE_UDS_FE finish failed: {}",
+                    HexWord(Self::err_code(&err))
+                );
+                fatal_error(McuError::ROM_FIPS_ZEROIZATION_UDS_FE_FINISH_ERROR);
+            }
+        }
+        romtime::println!("[mcu-rom] ZEROIZE_UDS_FE completed successfully");
+        mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationUdsFeComplete.into());
+
+        // Step 2: Authorize fuse controller zeroization of non-secret fuses.
+        mci.set_fips_zeroization_mask();
+        mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationMaskSet.into());
+
+        // Step 3: Request LC transition to SCRAP. The transition is recorded
+        // in OTP and takes effect permanently after the next cold reset.
+        romtime::println!("[mcu-rom] Requesting LC transition to SCRAP for FIPS zeroization");
+        mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationScrapTransitionStarted.into());
+        if let Err(err) = lc.transition(LifecycleControllerState::Scrap, &LifecycleToken([0u8; 16]))
+        {
+            romtime::println!(
+                "[mcu-rom] FIPS zeroization: LC SCRAP transition failed: {:?}",
+                err
+            );
+            fatal_error(McuError::ROM_FIPS_ZEROIZATION_LC_TRANSITION_ERROR);
+        }
+
+        // Step 4: Halt. The SoC must issue a cold reset for the SCRAP
+        // transition and fuse zeroization to take effect.
+        romtime::println!("[mcu-rom] FIPS zeroization complete; halting for cold reset");
+        mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationComplete.into());
+        loop {}
+    }
 }
 
 impl BootFlow for ColdBoot {
@@ -459,6 +544,18 @@ impl BootFlow for ColdBoot {
 
         lc.init().unwrap();
         mci.set_flow_checkpoint(McuRomBootStatus::LifecycleControllerInitialized.into());
+
+        // Check for FIPS zeroization PPD signal early. The full zeroization
+        // flow (including the Caliptra ZEROIZE_UDS_FE command) runs later,
+        // after Caliptra is ready for mailbox commands.
+        let fips_zeroization = mci.fips_zeroization_requested();
+        if fips_zeroization {
+            romtime::println!(
+                "[mcu-rom] FIPS zeroization PPD signal detected; \
+                 will execute zeroization after Caliptra boot"
+            );
+            mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationDetected.into());
+        }
 
         if let Some((state, token)) = params.lifecycle_transition {
             mci.set_flow_checkpoint(McuRomBootStatus::LifecycleTransitionStarted.into());
@@ -636,6 +733,12 @@ impl BootFlow for ColdBoot {
 
         romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraReadyForMailbox.into());
+
+        // Execute full FIPS zeroization flow now that Caliptra is ready for
+        // mailbox commands. This never returns (halts for cold reset).
+        if fips_zeroization {
+            ColdBoot::handle_fips_zeroization(mci, lc, &mut env.soc_manager);
+        }
 
         // Load DOT fuses from vendor non-secret partition
         // TODO: read these from a place specified by ROM configuration

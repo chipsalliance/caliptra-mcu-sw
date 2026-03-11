@@ -317,4 +317,40 @@ impl Mci {
             false
         }
     }
+
+    /// Check if FIPS zeroization has been requested via the PPD input pin.
+    ///
+    /// Returns true if `cptra_ss_FIPS_ZEROIZATION_PPD_i` is asserted (HIGH),
+    /// as reflected in the `FC_FIPS_ZEROZATION_STS` register.
+    pub fn fips_zeroization_requested(&self) -> bool {
+        self.registers
+            .mci_reg_fc_fips_zerozation_sts
+            .is_set(mci::bits::FcFipsZerozationSts::Status)
+    }
+
+    /// Set the MCU ROM zeroization mask to authorize fuse controller zeroization.
+    ///
+    /// Writes `0xFFFF_FFFF` to the `FC_FIPS_ZEROZATION` mask register. This
+    /// must be set by MCU ROM when `fips_zeroization_requested()` returns true;
+    /// if not set, the fuse controller will abort the zeroization request.
+    /// The register is locked once `SS_CONFIG_DONE` is set.
+    pub fn set_fips_zeroization_mask(&self) {
+        self.registers.mci_reg_fc_fips_zerozation.set(0xFFFF_FFFF);
+    }
+
+    /// Write a word to the production debug unlock PK hash register at the given index.
+    ///
+    /// Returns true if the write succeeded, false if the index is out of bounds.
+    pub fn write_prod_debug_unlock_pk_hash(&self, index: usize, value: u32) -> bool {
+        if let Some(reg) = self
+            .registers
+            .mci_reg_prod_debug_unlock_pk_hash_reg
+            .get(index)
+        {
+            reg.set(value);
+            true
+        } else {
+            false
+        }
+    }
 }
