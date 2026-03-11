@@ -28,3 +28,4 @@
 - [Caliptra Utility Host Library](./caliptra_util_host_library.md)
 - [Network Boot Recovery](./network_boot.md)
 - [Testing](./testing.md)
+    - [I3C Testing over TCP](./testing-i3c.md)
