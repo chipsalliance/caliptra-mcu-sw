@@ -812,6 +812,7 @@ impl Emulator {
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
             Some(auto_root_bus_offsets),
+            None,
             Some(Box::new(i3c)),
             Some(Box::new(primary_flash_controller)),
             Some(Box::new(secondary_flash_controller)),
