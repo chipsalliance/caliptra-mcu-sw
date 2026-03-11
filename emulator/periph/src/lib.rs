@@ -15,6 +15,7 @@ Abstract:
 mod axicdma;
 mod caliptra_to_ext_bus;
 mod doe_mbox;
+pub mod ecc_ram;
 mod emu_ctrl;
 mod flash_ctrl;
 mod i3c;
