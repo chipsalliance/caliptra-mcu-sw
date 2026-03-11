@@ -104,7 +104,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::AlertTest::Register,
+            registers_generated::otp_ctrl::bits::AlertTest::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1622,7 +1622,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::AlertTest::Register,
+            registers_generated::otp_ctrl::bits::AlertTest::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {

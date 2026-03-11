@@ -187,7 +187,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
+        registers_generated::sha512_acc::bits::Status::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read sha512_acc::status");
@@ -867,7 +867,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
+        registers_generated::sha512_acc::bits::Status::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read sha512_acc::status");

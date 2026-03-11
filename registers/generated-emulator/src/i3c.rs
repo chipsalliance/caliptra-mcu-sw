@@ -1701,10 +1701,8 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        registers_generated::sha512_acc::bits::Control::Register,
-    > {
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Control::Register>
+    {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_control");
         }
@@ -1717,7 +1715,7 @@ pub trait I3cPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::Control::Register,
+            registers_generated::i3c::bits::Control::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1732,10 +1730,8 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
-    > {
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Status::Register>
+    {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_status");
         }
@@ -4754,10 +4750,8 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_tti_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        registers_generated::sha512_acc::bits::Control::Register,
-    > {
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Control::Register>
+    {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c::i3c_ec_tti_control");
         }
@@ -4767,7 +4761,7 @@ impl I3cPeripheral for I3cGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::Control::Register,
+            registers_generated::i3c::bits::Control::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4788,10 +4782,8 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_tti_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
-    > {
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Status::Register>
+    {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c::i3c_ec_tti_status");
         }
