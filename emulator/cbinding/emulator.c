@@ -395,8 +395,6 @@ void print_usage(const char* program_name) {
     printf("      --rom-size <ROM_SIZE>            Override ROM size\n");
     printf("      --uart-offset <UART_OFFSET>      Override UART offset\n");
     printf("      --uart-size <UART_SIZE>          Override UART size\n");
-    printf("      --sram-offset <SRAM_OFFSET>      Override SRAM offset\n");
-    printf("      --sram-size <SRAM_SIZE>          Override SRAM size\n");
     printf("      --pic-offset <PIC_OFFSET>        Override PIC offset\n");
     printf("      --dccm-offset <DCCM_OFFSET>      Override DCCM offset\n");
     printf("      --dccm-size <DCCM_SIZE>          Override DCCM size\n");
@@ -418,8 +416,7 @@ void print_usage(const char* program_name) {
     printf("      --otp-size <OTP_SIZE>            Override OTP size\n");
     printf("      --lc-offset <LC_OFFSET>          Override LC offset\n");
     printf("      --lc-size <LC_SIZE>              Override LC size\n");
-    printf("      --mbox-offset <MBOX_OFFSET>      Override Caliptra mailbox offset\n");
-    printf("      --mbox-size <MBOX_SIZE>          Override Caliptra mailbox size\n");
+    printf("      --fuse-vendor-hashes-prod-partition <FUSE_VENDOR_HASHES_PROD_PARTITION>\n");
     printf("      --stub-warnings                  Enable warning prints for unoverridden register stubs\n");
 }
 
@@ -693,8 +690,7 @@ int main(int argc, char *argv[]) {
         .primary_flash_image_path = NULL,
         .secondary_flash_image_path = NULL,
         .hw_revision_major = 2,
-        .hw_revision_minor = 0,
-        .hw_revision_patch = 0,
+        .flash_based_boot = 0,
         // Initialize all memory layout overrides to -1 (use defaults)
         .rom_offset = -1,
         .rom_size = -1,
@@ -702,8 +698,6 @@ int main(int argc, char *argv[]) {
         .uart_size = -1,
         .ctrl_offset = -1,
         .ctrl_size = -1,
-        .sram_offset = -1,
-        .sram_size = -1,
         .pic_offset = -1,
         .external_test_sram_offset = -1,
         .external_test_sram_size = -1,
@@ -726,7 +720,7 @@ int main(int argc, char *argv[]) {
         .otp_offset = -1,
         .otp_size = -1,
         .lc_offset = -1,
-        .lc_size = -1,
+        .fuse_soc_manifest_max_svn = -1,
         .external_read_callback = NULL,
         .external_write_callback = NULL,
         .callback_context = NULL,
