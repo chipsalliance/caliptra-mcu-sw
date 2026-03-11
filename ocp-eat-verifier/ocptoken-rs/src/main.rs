@@ -1,20 +1,21 @@
 // Licensed under the Apache-2.0 license
 
 use clap::{Parser, Subcommand};
-use coset::cbor::value::Value;
-use coset::Label;
 use std::path::PathBuf;
 use std::{env, fs};
 
-use ocptoken::cose_verify::{CoseSign1Verifier, DecodedCoseSign1, OpenSslBackend};
+use ocptoken::corim;
+use ocptoken::cose_verify::{
+    extract_signer_key_cert, CoseSign1Verifier, DecodedCoseSign1, OpenSslBackend,
+};
 use ocptoken::ta_store::FsTrustAnchorStore;
 use ocptoken::token::evidence::{Evidence, OCP_EAT_TAGS};
 
 /// Environment variable for the trust anchor store path.
-const TA_STORE_PATH_ENV: &str = "OCP_TA_STORE_PATH";
+const TA_STORE_PATH: &str = "TA_STORE_PATH";
 
-/// COSE header label for x5chain (RFC 9360).
-const COSE_HDR_PARAM_X5CHAIN: i64 = 33;
+/// Environment variable for the signed CoRIM directory path.
+const SIGNED_CORIM_PATH: &str = "SIGNED_CORIM_PATH";
 
 #[derive(Parser, Debug)]
 #[command(
@@ -31,8 +32,13 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Cryptographically verify the COSE_Sign1 signature using the
-    /// x5chain leaf certificate from the evidence
+    /// Quick structural check: decode the COSE_Sign1 and verify its
+    /// signature using the x5chain leaf certificate from the evidence.
+    ///
+    /// NOTE: This does NOT authenticate the signing certificate against
+    /// a Trust Anchor Store, so it only confirms internal consistency
+    /// of the token. Use the `authenticate` subcommand for full
+    /// end-to-end verification.
     Verify(VerifyArgs),
 
     /// Authenticate the evidence with the Trust Anchor Store and verify the COSE_Sign1 signature
@@ -104,11 +110,11 @@ fn run_verify(args: &VerifyArgs) {
         }
     };
 
-    // 3. Extract the leaf certificate from x5chain (label 33)
-    let leaf_cert = match extract_x5chain_leaf(decoded.unprotected_header()) {
-        Ok(cert) => cert,
-        Err(msg) => {
-            eprintln!("Failed to extract x5chain leaf: {}", msg);
+    // 3. Extract the leaf certificate from x5chain
+    let leaf_cert = match extract_signer_key_cert(&decoded) {
+        Some(cert) => cert,
+        None => {
+            eprintln!("No x5chain found in COSE headers");
             std::process::exit(1);
         }
     };
@@ -130,14 +136,14 @@ fn run_verify(args: &VerifyArgs) {
 /// the certificate chain, and verify the COSE_Sign1 signature.
 fn run_authenticate(args: &AuthenticateArgs) {
     // 1. Load the Trust Anchor Store from OCP_TA_STORE_PATH
-    let ta_store_path = match env::var(TA_STORE_PATH_ENV) {
+    let ta_store_path = match env::var(TA_STORE_PATH) {
         Ok(p) => PathBuf::from(p),
         Err(_) => {
             eprintln!(
                 "Environment variable {} is not set. \
                  Set it to the path of the trust anchor store directory \
                  (containing roots/ and optionally signing-certs/).",
-                TA_STORE_PATH_ENV
+                TA_STORE_PATH
             );
             std::process::exit(1);
         }
@@ -221,6 +227,33 @@ fn run_authenticate(args: &AuthenticateArgs) {
             std::process::exit(1);
         }
     }
+
+    // 7. Authenticate and verify signed reference value CoRIM files (if SIGNED_CORIM_PATH is set)
+    if let Ok(corims_path) = env::var(SIGNED_CORIM_PATH) {
+        let corims_dir = PathBuf::from(corims_path);
+        println!(
+            "\nAuthenticating signed CoRIM file(s) from '{}'...",
+            corims_dir.display()
+        );
+        let corims = match corim::SignedCorim::decode_files(&corims_dir, &ta_store) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Signed CoRIM decode failed: {}", e);
+                std::process::exit(1);
+            }
+        };
+        for c in &corims {
+            if let Err(e) = c.verify(&verifier) {
+                eprintln!("Signed CoRIM verification failed: {}", e);
+                std::process::exit(1);
+            }
+            println!(
+                "  [OK]   {}: signature verified, signer authenticated",
+                c.file_name()
+            );
+        }
+        println!("All signed CoRIM files verified successfully.");
+    }
 }
 
 fn load_evidence(path: &PathBuf) -> Vec<u8> {
@@ -237,33 +270,5 @@ fn load_evidence(path: &PathBuf) -> Vec<u8> {
             eprintln!("Failed to read evidence file '{}': {}", path.display(), e);
             std::process::exit(1);
         }
-    }
-}
-
-/// Extract the leaf (first) certificate from x5chain (label 33) in
-/// a COSE unprotected header.
-fn extract_x5chain_leaf(header: &coset::Header) -> Result<Vec<u8>, &'static str> {
-    let value = header
-        .rest
-        .iter()
-        .find_map(|(l, v)| {
-            if *l == Label::Int(COSE_HDR_PARAM_X5CHAIN) {
-                Some(v)
-            } else {
-                None
-            }
-        })
-        .ok_or("Missing x5chain (label 33) in unprotected header")?;
-
-    match value {
-        Value::Bytes(bytes) => Ok(bytes.clone()),
-        Value::Array(arr) => arr
-            .first()
-            .and_then(|v| match v {
-                Value::Bytes(b) => Some(b.clone()),
-                _ => None,
-            })
-            .ok_or("x5chain array contains no valid certificate"),
-        _ => Err("x5chain (label 33) has unexpected CBOR type"),
     }
 }
