@@ -130,8 +130,7 @@ fn decode_and_verify_ecc_p384_cose_sign1() {
     let encoded = cose.to_vec().unwrap();
 
     // 6 Decode
-    let evidence =
-        Evidence::decode(&encoded, &ta_store).expect("Evidence::decode should succeed");
+    let evidence = Evidence::decode(&encoded, &ta_store).expect("Evidence::decode should succeed");
 
     // 7 Verify
     let verifier = CoseSign1Verifier::new(OpenSslBackend);

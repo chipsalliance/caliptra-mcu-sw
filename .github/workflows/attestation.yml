@@ -167,17 +167,25 @@ jobs:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
           CORIM_DIR: attestation-artifacts/refval-corim
         run: |
+          # Clean stale artifacts from any prior run
+          rm -rf attestation-artifacts/evidence \
+                 attestation-artifacts/signed_refval_corims \
+                 attestation-artifacts/ta_store
+
           # Copy evidence artifacts
           EVIDENCE_DIR="attestation-artifacts/evidence"
           mkdir -p "$EVIDENCE_DIR"
           cp $SPDM_VALIDATOR_DIR/measurement_block_fd.bin "$EVIDENCE_DIR/"
           cp $SPDM_VALIDATOR_DIR/certificate_chain_slot_00.der "$EVIDENCE_DIR/"
-          echo "Evidence artifacts:"
+          echo "### Evidence artifacts ###"
           ls -la "$EVIDENCE_DIR"
 
-          #  Signed Reference CoRIMs
-          echo "Reference CoRIM artifacts:"
-          ls -la "$CORIM_DIR"/signed-*.cbor | sort
+          # Copy signed Reference CoRIMs to dedicated folder
+          SIGNED_CORIM_DIR="attestation-artifacts/signed_refval_corims"
+          mkdir -p "$SIGNED_CORIM_DIR"
+          cp "$CORIM_DIR"/signed-*.cbor "$SIGNED_CORIM_DIR/"
+          echo "### Signed Reference CoRIM artifacts ###"
+          ls -la "$SIGNED_CORIM_DIR"
 
           # Build Trust Anchor Store
           TA_STORE_DIR="attestation-artifacts/ta_store"
@@ -188,18 +196,25 @@ jobs:
             "$TA_STORE_DIR/roots/slot0_ecc_test_root_ca.der"
 
           # Copy the CoRIM signing certificate into roots/ and signing-certs/
-          cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/roots/corim_signing_cert.der"
-          cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/signing-certs/corim_signing_cert.der"
+          cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/roots/refval_corim_signing_cert.der"
+          cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/signing-certs/refval_corim_signing_cert.der"
 
-          echo "Trust Anchor Store contents:"
+          echo "### Trust Anchor Store contents ###"
           find "$TA_STORE_DIR" -type f | sort
 
-      # ---- Authenticate and verify EAT evidence -------------------------------
-      - name: Authenticate and verify EAT evidence
+          echo "Root certificates:"
+          ls -la "$TA_STORE_DIR/roots/"
+
+          echo "Signing certificates:"
+          ls -la "$TA_STORE_DIR/signing-certs/"
+
+      # ---- Authenticate and cryptographically verify EAT evidence and Reference CoRIMs -------------------------------
+      - name: Authenticate and cryptographically verify EAT evidence and Reference CoRIMs
         working-directory: ocp-eat-verifier
         env:
           EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
-          OCP_TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
+          TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
+          SIGNED_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed_refval_corims
         run: |
           ./target/release/ocptoken authenticate \
             -e $EVIDENCE_DIR/measurement_block_fd.bin \
