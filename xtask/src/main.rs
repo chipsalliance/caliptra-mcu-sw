@@ -10,7 +10,6 @@ use std::path::PathBuf;
 mod auth_manifest;
 mod cargo_lock;
 mod clippy;
-mod corim;
 mod deps;
 mod docs;
 mod emulator_cbinding;
@@ -19,6 +18,7 @@ mod format;
 mod fpga;
 mod fuses;
 mod header;
+mod network;
 mod pldm_fw_pkg;
 mod precheckin;
 mod registers;
@@ -149,6 +149,10 @@ enum Commands {
         #[arg(long)]
         rom_features: Option<String>,
 
+        /// Comma-separated list of feature flags to build Network ROMs with
+        #[arg(long)]
+        network_rom_features: Option<String>,
+
         #[arg(long)]
         runtime_features: Option<String>,
 
@@ -175,11 +179,6 @@ enum Commands {
         #[arg(short, long, value_name = "MANIFEST", required = false)]
         pldm_manifest: Option<String>,
     },
-    /// Generate CoRIM (Concise Reference Integrity Manifest) from build artifacts
-    Corim {
-        #[command(subcommand)]
-        subcommand: CorimCommands,
-    },
     /// Commands related to flash images
     FlashImage {
         #[command(subcommand)]
@@ -200,27 +199,7 @@ enum Commands {
     /// Add Apache license header to files where it is missing
     HeaderFix,
     /// Run tests
-    Test {
-        /// Archive tests to a file
-        #[arg(long)]
-        archive: Option<String>,
-
-        /// Run tests in a shard (e.g., "hash:1/4")
-        #[arg(long)]
-        shard: Option<String>,
-
-        /// Remap workspace path for archived tests
-        #[arg(long)]
-        workspace_remap: Option<PathBuf>,
-
-        /// Path to the firmware bundle ZIP
-        #[arg(long)]
-        firmware_bundle: Option<PathBuf>,
-
-        /// Path to the emulator bundle ZIP
-        #[arg(long)]
-        emulator_bundle: Option<PathBuf>,
-    },
+    Test,
     /// Autogenerate register files and emulator bus from RDL
     RegistersAutogen {
         /// Check output only
@@ -311,6 +290,11 @@ enum Commands {
     FirmwareBundler {
         #[command(subcommand)]
         cmd: BundleCommands,
+    },
+    /// Network stack development tools (TAP, DHCP/TFTP server, lwip-rs)
+    Network {
+        #[command(subcommand)]
+        cmd: network::NetworkCommands,
     },
 }
 
@@ -403,55 +387,6 @@ enum EmulatorCbindingCommands {
     },
 }
 
-#[derive(Subcommand)]
-enum CorimCommands {
-    /// Generate a reference-value CoRIM from a firmware bundle
-    #[command(long_about = "\
-Generate a reference-value CoRIM from a firmware bundle.
-
-Reads the all-build ZIP bundle (from `cargo xtask all-build`) and produces
-CoMID/CoRIM CBOR files with reference value digests for each firmware component.
-
-Components are auto-discovered from the bundle:
-  mkey 0: FMC_INFO      - Caliptra FMC (from caliptra_fw.bin)
-  mkey 1: RT_INFO        - Caliptra Runtime (from caliptra_fw.bin)
-  mkey 2: SOC_MANIFEST   - Authorization Manifest (soc_manifest.bin)
-  mkey 3+: SoC firmware  - Auto-discovered from AuthManifest metadata
-
-CONFIG FILE (--config):
-  Optional JSON file controlling vendor/model, hash algorithm, output
-  directory, and signing. Run `cargo xtask corim sample-config` to see
-  a fully annotated sample. All fields are optional with defaults:
-
-    vendor      \"ChipsAlliance\"    Vendor string for SoC components
-    model       \"Caliptra-SS\"      Model string for SoC components
-    hash_algo   \"sha-384\"          Digest algorithm (sha-256 or sha-384)
-    output_dir  \"target/corim\"     Output directory
-    signing     (default test key)  Always signs; uses deterministic P-384 test key by default
-
-  Signing modes (mutually exclusive):
-    test_key    Seed string for deterministic P-384 test key generation (default if omitted)
-    key + cert  Paths to external JWK (RFC 7517) key and DER certificate
-
-EXAMPLES:
-  # Signed with default test key, all defaults:
-  cargo xtask corim gen-refval --bundle target/all-fw.zip
-
-  # With custom config (signing, vendor, etc.):
-  cargo xtask corim gen-refval --bundle target/all-fw.zip --config config.json")]
-    GenRefval {
-        /// Path to the firmware bundle ZIP (from `cargo xtask all-build`)
-        #[arg(long, value_name = "BUNDLE", required = true)]
-        bundle: String,
-
-        /// Path to JSON config file (vendor, model, hash_algo, signing, etc.)
-        #[arg(long, value_name = "CONFIG")]
-        config: Option<String>,
-    },
-    /// Print a sample JSON config file with all fields documented
-    SampleConfig,
-}
-
 fn main() {
     let cli = Xtask::parse();
     let result = match &cli.xtask {
@@ -459,6 +394,7 @@ fn main() {
             output,
             platform,
             rom_features,
+            network_rom_features,
             runtime_features,
             separate_runtimes,
             soc_images,
@@ -468,6 +404,7 @@ fn main() {
             output: output.as_deref(),
             platform: platform.as_deref(),
             rom_features: rom_features.as_deref(),
+            network_rom_features: network_rom_features.as_deref(),
             runtime_features: runtime_features.as_deref(),
             separate_runtimes: *separate_runtimes,
             soc_images: soc_images.clone(),
@@ -526,19 +463,7 @@ fn main() {
         Commands::CargoLock => cargo_lock::cargo_lock(),
         Commands::HeaderFix => header::fix(),
         Commands::HeaderCheck => header::check(),
-        Commands::Test {
-            archive,
-            shard,
-            workspace_remap,
-            firmware_bundle,
-            emulator_bundle,
-        } => test::test(test::TestArgs {
-            archive: archive.as_deref(),
-            shard: shard.as_deref(),
-            workspace_remap: workspace_remap.as_deref().and_then(|p| p.to_str()),
-            firmware_bundle: firmware_bundle.as_deref().and_then(|p| p.to_str()),
-            emulator_bundle: emulator_bundle.as_deref().and_then(|p| p.to_str()),
-        }),
+        Commands::Test => test::test(),
         Commands::RegistersAutogen {
             check,
             files,
@@ -580,17 +505,8 @@ fn main() {
             } => auth_manifest::create(images, mcu_image, output),
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
-        Commands::Corim { subcommand } => match subcommand {
-            CorimCommands::GenRefval { bundle, config } => {
-                corim::CorimConfig::load(config.as_deref())
-                    .and_then(|cfg| corim::generate(bundle, cfg))
-            }
-            CorimCommands::SampleConfig => {
-                corim::CorimConfig::print_sample();
-                Ok(())
-            }
-        },
         Commands::FirmwareBundler { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
+        Commands::Network { cmd } => network::run(cmd.clone()),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);

@@ -26,6 +26,7 @@ const IGNORED_DIRS: &[&str] = &[
     "compliance-test",
     "i3c-core",
     "libtock",
+    "lwip",
     "out",
     "target",
 ];

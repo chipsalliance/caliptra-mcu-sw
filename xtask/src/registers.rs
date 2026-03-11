@@ -1,7 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use fusegen::{HEADER_PREFIX, HEADER_SUFFIX};
 use mcu_builder::PROJECT_ROOT;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
@@ -22,11 +21,22 @@ use std::sync::LazyLock;
 
 use crate::fuses::autogen_fuses;
 
+pub(crate) static HEADER_PREFIX: &str = r"/*
+Licensed under the Apache-2.0 license.
+";
+
+pub(crate) static HEADER_SUFFIX: &str = r"
+*/
+";
+
 static SKIP_TYPES: LazyLock<HashSet<&str>> = LazyLock::new(|| {
     HashSet::from([
         "csrng", "hmac", "kv_read", "hmac512", "sha256", "sha512", "spi_host",
     ])
 });
+
+/// Types that should have peripheral code generated but NOT be included in AutoRootBus.
+static ROOTBUS_SKIP_TYPES: LazyLock<HashSet<&str>> = LazyLock::new(|| HashSet::from(["ethernet"]));
 
 pub(crate) fn autogen(
     check: bool,
@@ -50,6 +60,7 @@ pub(crate) fn autogen(
     let rdl_files = [
         "hw/caliptra-ss/src/integration/rtl/soc_address_map.rdl",
         "hw/mcu.rdl",
+        "hw/network.rdl",
     ];
     let mut rdl_files: Vec<PathBuf> = rdl_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
     rdl_files.extend_from_slice(extra_files);
@@ -187,7 +198,8 @@ pub(crate) fn autogen(
 
     let addrmap = scope.lookup_typedef("soc").unwrap();
     let addrmap2 = scope.lookup_typedef("mcu").unwrap();
-    let mut scopes = vec![addrmap, addrmap2];
+    let addrmap_network = scope.lookup_typedef("network").unwrap();
+    let mut scopes = vec![addrmap, addrmap2, addrmap_network];
     if !extra_addrmap.is_empty() {
         let addrmap3 = scope.lookup_typedef("extra").unwrap();
         scopes.push(addrmap3);
@@ -297,7 +309,8 @@ fn generate_emulator_types(
     let root_bus_code = emu_make_root_bus(
         validated_blocks
             .iter()
-            .filter(|b| !SKIP_TYPES.contains(b.block().name.as_str())),
+            .filter(|b| !SKIP_TYPES.contains(b.block().name.as_str()))
+            .filter(|b| !ROOTBUS_SKIP_TYPES.contains(b.block().name.as_str())),
     )?;
     let root_bus_file = dest_dir.join("root_bus.rs");
     file_action(
@@ -1050,7 +1063,9 @@ fn emu_make_root_bus<'a>(
 
     for block in blocks_sorted {
         let rblock = block.block();
-        if SKIP_TYPES.contains(rblock.name.as_str()) {
+        if SKIP_TYPES.contains(rblock.name.as_str())
+            || ROOTBUS_SKIP_TYPES.contains(rblock.name.as_str())
+        {
             continue;
         }
         assert_eq!(rblock.instances.len(), 1);

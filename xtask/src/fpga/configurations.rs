@@ -196,6 +196,7 @@ impl<'a> ActionHandler<'a> for Subsystem {
         let args = AllBuildArgs {
             output: Some("all-fw.zip"),
             platform: Some("fpga"),
+            runtime_features: Some("test-mctp-capsule-loopback,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming"),
             mcu_cfgs: mcu_cfgs,
             separate_runtimes: true,
             ..Default::default()
@@ -267,7 +268,8 @@ impl CoreOnSubsystem {
 
 impl<'a> ActionHandler<'a> for CoreOnSubsystem {
     fn bootstrap(&self) -> Result<()> {
-        let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=caliptra-2.0 --depth=1";
+        // TODO(clundin): Consider overriding branch command
+        let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=main-2.x --depth=1";
         let target_host = self.target_host.as_deref();
         run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-sw repo")?;
 
@@ -373,7 +375,7 @@ impl Core {
 
 impl<'a> ActionHandler<'a> for Core {
     fn bootstrap(&self) -> Result<()> {
-        let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=caliptra-2.0 --depth=1";
+        let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=main-2.x --depth=1";
         let target_host = self.target_host.as_deref();
         run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-sw repo")?;
 
