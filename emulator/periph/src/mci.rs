@@ -2,7 +2,9 @@
 
 use crate::mcu_mbox0::McuMailbox0Internal;
 use crate::reset_reason::ResetReasonEmulator;
-use caliptra_emu_bus::{ActionHandle, BusMmio, Clock, ReadWriteRegister, Timer, TimerAction, Bus, Ram};
+use caliptra_emu_bus::{
+    ActionHandle, Bus, BusMmio, Clock, Ram, ReadWriteRegister, Timer, TimerAction,
+};
 use caliptra_emu_cpu::Irq;
 use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
