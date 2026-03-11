@@ -684,7 +684,7 @@ mod test {
         assert_eq!(0, test);
     }
 
-    // Helper to create test options for soc boot tests
+    // Helper to create test options for soc boot tests (prebuilt when available, identical images)
     fn create_soc_boot_options(is_flash_based_boot: bool) -> TestOptions {
         env::set_var(
             "CPTRA_EMULATOR_SS_MCI_OFFSET",
@@ -704,8 +704,25 @@ mod test {
             create_soc_boot_test_options_prebuilt(feature, is_flash_based_boot, i3c_port)
         } else {
             println!("Building binaries for feature: {}", feature);
-            create_soc_boot_test_options_build(feature, is_flash_based_boot, i3c_port)
+            create_soc_boot_test_options_build(feature, is_flash_based_boot, i3c_port, false)
         }
+    }
+
+    // Helper for non-identical SOC images test (always build path, exposes endianness bugs in root_bus)
+    fn create_soc_boot_options_non_identical(is_flash_based_boot: bool) -> TestOptions {
+        env::set_var(
+            "CPTRA_EMULATOR_SS_MCI_OFFSET",
+            format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
+        );
+
+        let feature = if is_flash_based_boot {
+            "test-flash-based-boot"
+        } else {
+            "test-pldm-streaming-boot"
+        };
+        let i3c_port = PortPicker::new().random(true).pick().unwrap().into();
+
+        create_soc_boot_test_options_build(feature, is_flash_based_boot, i3c_port, true)
     }
 
     // Creates test options using prebuilt binaries from CPTRA_FIRMWARE_BUNDLE
@@ -874,17 +891,22 @@ mod test {
         feature: &'static str,
         is_flash_based_boot: bool,
         i3c_port: u32,
+        use_non_identical_soc_images: bool,
     ) -> TestOptions {
-        let soc_image_fw_1 = [0x55u8; 512]; // Example firmware data for SOC image 1
-        let soc_image_fw_2 = [0xAAu8; 256]; // Example firmware data for SOC image 2
+        // Non-identical bytes expose endianness bugs (to_be_bytes vs to_le_bytes in root_bus McuMbox1Sram read)
+        let (soc_image_fw_1, soc_image_fw_2): (Vec<u8>, Vec<u8>) = if use_non_identical_soc_images {
+            let fw_1 = [0x55u8, 0x56, 0x57, 0x58].repeat(128); // 4 * 128 = 512 bytes
+            let fw_2 = [0xAAu8, 0xAB, 0xAC, 0xAD].repeat(64); // 4 * 64 = 256 bytes
+            (fw_1, fw_2)
+        } else {
+            ([0x55u8; 512].to_vec(), [0xAAu8; 256].to_vec())
+        };
 
         // Compile the runtime once with the appropriate feature
         let test_runtime = compile_runtime(Some(feature), false);
 
-        let soc_images_paths = create_soc_images(vec![
-            soc_image_fw_1.clone().to_vec(),
-            soc_image_fw_2.clone().to_vec(),
-        ]);
+        let soc_images_paths =
+            create_soc_images(vec![soc_image_fw_1.clone(), soc_image_fw_2.clone()]);
 
         // Create SOC image metadata that will be written to the SoC manifest
         let soc_images = vec![
@@ -1062,6 +1084,17 @@ mod test {
     fn test_streaming_soc_boot_successful() {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_soc_boot_options(false);
+        test_successful_boot(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Regression test: non-identical SOC image bytes expose endianness bugs.
+    /// Would fail if root_bus.rs McuMbox1Sram read used to_be_bytes instead of to_le_bytes
+    /// (must match axicdma's from_le_bytes when writing).
+    #[test]
+    fn test_streaming_soc_boot_successful_non_identical() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options_non_identical(false);
         test_successful_boot(&opts);
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
