@@ -266,6 +266,7 @@ static struct CEmulator* global_emulator = NULL;
 
 // Function declarations
 void free_run(struct CEmulator* emulator);
+void non_blocking_gdb_run(struct CEmulator* emulator);
 
 // Terminal settings for raw input
 #ifdef _WIN32
@@ -374,6 +375,8 @@ void print_usage(const char* program_name) {
     printf("  -l, --log-dir <LOG_DIR>              Directory in which to log execution artifacts\n");
     printf("  -t, --trace-instr                    Trace instructions\n");
     printf("      --no-stdin-uart                  Don't pass stdin to the MCU UART Rx\n");
+    printf("      --non-blocking-gdb               Use non-blocking GDB mode (C controls execution)\n");
+    printf("      --allow-sideloaded-rom           Allow writing to the ROM while the emulator is running\n");
     printf("      --i3c-port <I3C_PORT>            I3C socket port\n");
     printf("      --device-security-state <value>     Device lifecycle: 0=Unprovisioned, 1=Manufacturing, 2=Reserved, 3=Production\n");
     printf("      --vendor-pk-hash <VENDOR_PK_HASH>\n");
@@ -395,6 +398,10 @@ void print_usage(const char* program_name) {
     printf("      --uart-size <UART_SIZE>          Override UART size\n");
     printf("      --sram-offset <SRAM_OFFSET>      Override SRAM offset\n");
     printf("      --sram-size <SRAM_SIZE>          Override SRAM size\n");
+    printf("      --mcu-sram-sideload-offset <MCU_SRAM_SIDELOAD_OFFSET>\n");
+    printf("                                       Override MCU sideload SRAM offset\n");
+    printf("      --mcu-sram-sideload-size <MCU_SRAM_SIDELOAD_SIZE>\n");
+    printf("                                       Override MCU sideload SRAM size\n");
     printf("      --pic-offset <PIC_OFFSET>        Override PIC offset\n");
     printf("      --dccm-offset <DCCM_OFFSET>      Override DCCM offset\n");
     printf("      --dccm-size <DCCM_SIZE>          Override DCCM size\n");
@@ -418,6 +425,13 @@ void print_usage(const char* program_name) {
     printf("      --lc-size <LC_SIZE>              Override LC size\n");
     printf("      --mbox-offset <MBOX_OFFSET>      Override Caliptra mailbox offset\n");
     printf("      --mbox-size <MBOX_SIZE>          Override Caliptra mailbox size\n");
+    printf("\nFuse configuration (use hex values like 0x12345678):\n");
+    printf("      --fuse-soc-manifest-svn <FUSE_SOC_MANIFEST_SVN>\n");
+    printf("                                       SoC Manifest SVN Fuse Value\n");
+    printf("      --fuse-soc-manifest-max-svn <FUSE_SOC_MANIFEST_MAX_SVN>\n");
+    printf("                                       SoC Manifest Max SVN Fuse Value\n");
+    printf("      --fuse-vendor-hashes-prod-partition <FUSE_VENDOR_HASHES_PROD_PARTITION>\n");
+    printf("                                       Vendor Hashes Production Partition Path\n");
     printf("      --stub-warnings                  Enable warning prints for unoverridden register stubs\n");
 }
 
@@ -510,6 +524,154 @@ void free_run(struct CEmulator* emulator) {
     free(uart_buffer);
 }
 
+// Non-blocking GDB run function - demonstrates non-blocking GDB usage pattern
+void non_blocking_gdb_run(struct CEmulator* emulator) {
+    printf("Running emulator in non-blocking GDB mode...\n");
+    printf("GDB server available on port %u\n", emulator_get_gdb_port(emulator));
+    printf("Connect with: gdb -ex 'target remote localhost:%u'\n", emulator_get_gdb_port(emulator));
+
+    // Start the non-blocking GDB server
+    enum EmulatorError result = emulator_start_nonblocking_gdb_server(emulator);
+    if (result != Success) {
+        fprintf(stderr, "Failed to start GDB server: %d\n", result);
+        return;
+    }
+
+    printf("Non-blocking GDB server started\n");
+
+    // Buffer for UART output (streaming mode)
+    const size_t uart_buffer_size = 1024;
+    char* uart_buffer = malloc(uart_buffer_size);
+    if (!uart_buffer) {
+        fprintf(stderr, "Failed to allocate UART buffer\n");
+        return;
+    }
+
+    // Main execution loop
+    int gdb_connected = 0;
+    int step_count = 0;
+    
+    while (1) {
+        // Try to accept GDB connections (non-blocking)
+        if (!gdb_connected) {
+            int accept_result = emulator_gdb_try_accept(emulator);
+            if (accept_result == 1) {
+                printf("GDB client connected!\n");
+                gdb_connected = 1;
+            } else if (accept_result == -1) {
+                fprintf(stderr, "Error accepting GDB connection\n");
+                break;
+            }
+        }
+
+        // Process GDB messages if connected 
+        // Note: This will block when GDB is in break mode (stopped at breakpoint, etc.)
+        // and return immediately when GDB is in running mode
+        if (gdb_connected) {
+            int process_result = emulator_gdb_process_messages(emulator);
+            if (process_result == 0) {
+                printf("GDB client disconnected\n");
+                gdb_connected = 0;
+            } else if (process_result == -1) {
+                fprintf(stderr, "Error processing GDB messages\n");
+                break;
+            }
+        }
+
+        // Check if GDB wants us to stop before stepping
+        if (gdb_connected) {
+            int should_stop_before = emulator_gdb_should_stop_before_step(emulator);
+            if (should_stop_before == 1) {
+                // GDB wants us to stop (breakpoint at current PC, interrupt, etc.)
+                continue; // Skip stepping and continue processing GDB messages
+            } else if (should_stop_before == -1) {
+                fprintf(stderr, "Error checking GDB stop condition before step\n");
+                break;
+            }
+        }
+
+        // Step the emulator (C controls the execution pace)
+        enum CStepAction action = emulator_step(emulator);
+        step_count++;
+        
+        // Check if GDB wants us to stop after stepping
+        if (gdb_connected) {
+            int should_stop_after = emulator_gdb_should_stop_after_step(emulator);
+            if (should_stop_after == 1) {
+                // GDB wants us to stop (single step completed)
+                // Report the stop to GDB
+                int report_result = emulator_gdb_report_stop(emulator, action);
+                if (report_result == 0) {
+                    printf("GDB client disconnected during stop report\n");
+                    gdb_connected = 0;
+                } else if (report_result == -1) {
+                    fprintf(stderr, "Error reporting stop to GDB\n");
+                    // Continue anyway - don't break the loop
+                }
+                continue; // Skip normal processing and let GDB handle the stop
+            } else if (should_stop_after == -1) {
+                fprintf(stderr, "Error checking GDB stop condition after step\n");
+                break;
+            }
+        }
+
+        // Always report step results to GDB if connected for other stop conditions
+        if (gdb_connected && (action == Break || action == ExitSuccess || action == ExitFailure)) {
+            int report_result = emulator_gdb_report_stop(emulator, action);
+            if (report_result == 0) {
+                printf("GDB client disconnected during stop report\n");
+                gdb_connected = 0;
+            } else if (report_result == -1) {
+                fprintf(stderr, "Error reporting stop to GDB\n");
+                // Continue anyway - don't break the loop
+            }
+        }
+
+        // Check for UART output (streaming mode)
+        int uart_len = emulator_get_uart_output_streaming(emulator, uart_buffer, uart_buffer_size);
+        if (uart_len > 0) {
+            // Print UART output to stderr to match Rust emulator behavior
+            fprintf(stderr, "%.*s", uart_len, uart_buffer);
+            fflush(stderr);
+        }
+        
+        switch (action) {
+            case Continue:
+                // Normal execution continues
+                break;
+                
+            case Break:
+                printf("Emulator hit a breakpoint at step %d\n", step_count);
+                // GDB will handle this automatically via report_stop above
+                break;
+                
+            case ExitSuccess:
+                printf("Emulator exited successfully at step %d\n", step_count);
+                free(uart_buffer);
+                return;
+                
+            case ExitFailure:
+                printf("Emulator exited with failure at step %d\n", step_count);
+                free(uart_buffer);
+                return;
+        }
+
+        // Print progress periodically
+        if (step_count % 10000 == 0) {
+            printf("Executed %d steps, PC: 0x%08x, GDB connected: %s\n", 
+                   step_count, 
+                   emulator_get_pc(emulator),
+                   gdb_connected ? "yes" : "no");
+        }
+
+        // Small delay to prevent busy-waiting (optional)
+        usleep(1);
+    }
+
+    printf("Non-blocking GDB execution completed\n");
+    free(uart_buffer);
+}
+
 unsigned int parse_hex_or_decimal(const char* str) {
     if (strncmp(str, "0x", 2) == 0 || strncmp(str, "0X", 2) == 0) {
         return (unsigned int)strtoul(str, NULL, 16);
@@ -519,6 +681,9 @@ unsigned int parse_hex_or_decimal(const char* str) {
 }
 
 int main(int argc, char *argv[]) {
+    // Flag to track non-blocking GDB mode
+    int non_blocking_gdb = 0;
+    
     // Initialize config with defaults
     struct CEmulatorConfig config = {
         .rom_path = NULL,
@@ -542,6 +707,8 @@ int main(int argc, char *argv[]) {
         .hw_revision_major = 2,
         .hw_revision_minor = 0,
         .hw_revision_patch = 0,
+        .flash_based_boot = 0,
+        .allow_sideloaded_rom = 0,
         // Initialize all memory layout overrides to -1 (use defaults)
         .rom_offset = -1,
         .rom_size = -1,
@@ -551,6 +718,8 @@ int main(int argc, char *argv[]) {
         .ctrl_size = -1,
         .sram_offset = -1,
         .sram_size = -1,
+        .mcu_sram_sideload_offset = -1,
+        .mcu_sram_sideload_size = -1,
         .pic_offset = -1,
         .external_test_sram_offset = -1,
         .external_test_sram_size = -1,
@@ -574,6 +743,9 @@ int main(int argc, char *argv[]) {
         .otp_size = -1,
         .lc_offset = -1,
         .lc_size = -1,
+        .fuse_soc_manifest_svn = -1,
+        .fuse_soc_manifest_max_svn = -1,
+        .fuse_vendor_hashes_prod_partition = NULL,
         .external_read_callback = NULL,
         .external_write_callback = NULL,
         .callback_context = NULL,
@@ -589,6 +761,8 @@ int main(int argc, char *argv[]) {
         {"log-dir", required_argument, 0, 'l'},
         {"trace-instr", no_argument, 0, 't'},
         {"no-stdin-uart", no_argument, 0, 128},
+        {"non-blocking-gdb", no_argument, 0, 165},
+        {"allow-sideloaded-rom", no_argument, 0, 171},
         {"caliptra-rom", required_argument, 0, 129},
         {"caliptra-firmware", required_argument, 0, 130},
         {"soc-manifest", required_argument, 0, 131},
@@ -606,6 +780,8 @@ int main(int argc, char *argv[]) {
         {"uart-size", required_argument, 0, 143},
         {"sram-offset", required_argument, 0, 144},
         {"sram-size", required_argument, 0, 145},
+        {"mcu-sram-sideload-offset", required_argument, 0, 169},
+        {"mcu-sram-sideload-size", required_argument, 0, 170},
         {"pic-offset", required_argument, 0, 146},
         {"dccm-offset", required_argument, 0, 147},
         {"dccm-size", required_argument, 0, 148},
@@ -625,6 +801,9 @@ int main(int argc, char *argv[]) {
         {"lc-size", required_argument, 0, 162},
         {"mbox-offset", required_argument, 0, 163},
         {"mbox-size", required_argument, 0, 164},
+        {"fuse-soc-manifest-svn", required_argument, 0, 166},
+        {"fuse-soc-manifest-max-svn", required_argument, 0, 167},
+        {"fuse-vendor-hashes-prod-partition", required_argument, 0, 168},
         {"stub-warnings", no_argument, 0, 172},
         {"help", no_argument, 0, 'h'},
         {"version", no_argument, 0, 'V'},
@@ -656,6 +835,12 @@ int main(int argc, char *argv[]) {
                 break;
             case 128: // --no-stdin-uart
                 config.stdin_uart = 0;
+                break;
+            case 165: // --non-blocking-gdb
+                non_blocking_gdb = 1;
+                break;
+            case 171: // --allow-sideloaded-rom
+                config.allow_sideloaded_rom = 1;
                 break;
             case 129: // --caliptra-rom
                 config.caliptra_rom_path = optarg;
@@ -712,6 +897,12 @@ int main(int argc, char *argv[]) {
                 break;
             case 145: // --sram-size
                 config.sram_size = parse_hex_or_decimal(optarg);
+                break;
+            case 169: // --mcu-sram-sideload-offset
+                config.mcu_sram_sideload_offset = parse_hex_or_decimal(optarg);
+                break;
+            case 170: // --mcu-sram-sideload-size
+                config.mcu_sram_sideload_size = parse_hex_or_decimal(optarg);
                 break;
             case 146: // --pic-offset
                 config.pic_offset = parse_hex_or_decimal(optarg);
@@ -770,6 +961,14 @@ int main(int argc, char *argv[]) {
             case 164: // --mbox-size
                 config.mbox_size = parse_hex_or_decimal(optarg);
                 break;
+            case 166: // --fuse-soc-manifest-svn
+                config.fuse_soc_manifest_svn = parse_hex_or_decimal(optarg);
+                break;
+            case 167: // --fuse-soc-manifest-max-svn
+                config.fuse_soc_manifest_max_svn = parse_hex_or_decimal(optarg);
+                break;
+            case 168: // --fuse-vendor-hashes-prod-partition
+                config.fuse_vendor_hashes_prod_partition = optarg;
             case 172: // --stub-warnings
                 config.stub_warnings = 1;
                 break;
@@ -872,18 +1071,23 @@ int main(int argc, char *argv[]) {
     // Check if we're in GDB mode
     if (emulator_is_gdb_mode(global_emulator)) {
         unsigned int port = emulator_get_gdb_port(global_emulator);
-
-        // Traditional blocking GDB mode
-        printf("GDB server available on port %u\n", port);
-        printf("Connect with: gdb -ex 'target remote :%u'\n", port);
-
-        // Start GDB server (blocking)
-        printf("Starting GDB server (this will block until GDB disconnects)\n");
-        enum EmulatorError gdb_result = emulator_run_gdb_server(global_emulator);
-        if (gdb_result == Success) {
-            printf("GDB session completed successfully\n");
+        
+        if (non_blocking_gdb) {
+            // Non-blocking GDB mode - C controls execution
+            non_blocking_gdb_run(global_emulator);
         } else {
-            printf("GDB session failed with error %d\n", gdb_result);
+            // Traditional blocking GDB mode
+            printf("GDB server available on port %u\n", port);
+            printf("Connect with: gdb -ex 'target remote :%u'\n", port);
+            
+            // Start GDB server (blocking)
+            printf("Starting GDB server (this will block until GDB disconnects)\n");
+            enum EmulatorError gdb_result = emulator_run_gdb_server(global_emulator);
+            if (gdb_result == Success) {
+                printf("GDB session completed successfully\n");
+            } else {
+                printf("GDB session failed with error %d\n", gdb_result);
+            }
         }
     } else {
         // Normal mode - free run like main.rs
