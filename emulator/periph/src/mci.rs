@@ -2,7 +2,9 @@
 
 use crate::mcu_mbox0::McuMailbox0Internal;
 use crate::reset_reason::ResetReasonEmulator;
-use caliptra_emu_bus::{ActionHandle, BusMmio, Clock, ReadWriteRegister, Timer, TimerAction, Bus, Ram};
+use caliptra_emu_bus::{
+    ActionHandle, Bus, BusMmio, Clock, Ram, ReadWriteRegister, Timer, TimerAction,
+};
 use caliptra_emu_cpu::Irq;
 use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
@@ -41,7 +43,6 @@ pub struct Mci {
     reset_cycle_complete: bool,
     irq: Rc<RefCell<Irq>>,
     mcu_mailbox0: Option<McuMailbox0Internal>,
-    mcu_sram: Option<Rc<RefCell<Ram>>>,
     mcu_sram: Option<Rc<RefCell<Ram>>>,
 
     // machine timer compare
@@ -98,10 +99,6 @@ impl Mci {
             mcu_mailbox1,
             soc_regs,
         }
-    }
-
-    pub fn set_mcu_sram(&mut self, ram: Option<Rc<RefCell<Ram>>>) {
-        self.mcu_sram = ram;
     }
 
     pub fn set_mcu_sram(&mut self, ram: Option<Rc<RefCell<Ram>>>) {
