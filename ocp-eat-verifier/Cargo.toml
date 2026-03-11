@@ -17,3 +17,5 @@ hex = "0.4"
 thiserror = "2.0"
 openssl = { version = "0.10", features = ["vendored"] }
 clap = { version = "4", features = ["derive"] }
+corim-rs = { git = "https://github.com/veraison/corim-rs" }
+ciborium = "0.2"
