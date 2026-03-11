@@ -80,7 +80,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::AlertTest::Register,
+            registers_generated::otp_ctrl::bits::AlertTest::Register,
         >,
     ) {
         if let Some(generated) = self.generated() {
@@ -1649,7 +1649,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::AlertTest::Register,
+            registers_generated::otp_ctrl::bits::AlertTest::Register,
         >,
     ) {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;

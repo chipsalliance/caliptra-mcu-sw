@@ -942,7 +942,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::SsDebugIntent::Register,
+        registers_generated::mci::bits::SsDebugIntent::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_ss_debug_intent();
@@ -1015,7 +1015,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
+        registers_generated::mci::bits::GlobalIntrEnT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_global_intr_en_r();
@@ -1026,7 +1026,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
+            registers_generated::mci::bits::GlobalIntrEnT::Register,
         >,
     ) {
         if let Some(generated) = self.generated() {
@@ -1125,7 +1125,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::GlobalIntrT::Register,
+        registers_generated::mci::bits::GlobalIntrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_global_intr_r();
@@ -1136,7 +1136,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::GlobalIntrT::Register,
+        registers_generated::mci::bits::GlobalIntrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_global_intr_r();
@@ -2685,7 +2685,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_internal_intr_count_incr_r();
@@ -2696,7 +2696,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r();
@@ -2707,7 +2707,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r();
@@ -2718,7 +2718,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2730,7 +2730,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2742,7 +2742,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2754,7 +2754,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r();
@@ -2765,7 +2765,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r();
@@ -2776,7 +2776,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r();
@@ -2787,7 +2787,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r();
@@ -2798,7 +2798,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r();
@@ -2809,7 +2809,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r();
@@ -2820,7 +2820,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r();
@@ -2831,7 +2831,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r();
@@ -2842,7 +2842,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r();
@@ -2853,7 +2853,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r();
@@ -2864,7 +2864,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2876,7 +2876,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2888,7 +2888,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2900,7 +2900,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2912,7 +2912,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2924,7 +2924,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2936,7 +2936,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2948,7 +2948,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2960,7 +2960,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2972,7 +2972,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2984,7 +2984,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -2996,7 +2996,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3008,7 +3008,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3020,7 +3020,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3032,7 +3032,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3044,7 +3044,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3056,7 +3056,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3068,7 +3068,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3080,7 +3080,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3092,7 +3092,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3104,7 +3104,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3116,7 +3116,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3128,7 +3128,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r();
@@ -3139,7 +3139,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3151,7 +3151,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r();
@@ -3162,7 +3162,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3174,7 +3174,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3186,7 +3186,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3198,7 +3198,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3210,7 +3210,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3222,7 +3222,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3234,7 +3234,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3246,7 +3246,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3258,7 +3258,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3270,7 +3270,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3282,7 +3282,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3294,7 +3294,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3306,7 +3306,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3318,7 +3318,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3330,7 +3330,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3342,7 +3342,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3354,7 +3354,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3366,7 +3366,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3378,7 +3378,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3390,7 +3390,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3402,7 +3402,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3414,7 +3414,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3426,7 +3426,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3438,7 +3438,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3450,7 +3450,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3462,7 +3462,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3474,7 +3474,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3486,7 +3486,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3498,7 +3498,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3510,7 +3510,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3522,7 +3522,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3534,7 +3534,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3546,7 +3546,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3558,7 +3558,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3570,7 +3570,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r();
@@ -3581,7 +3581,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r();
@@ -3592,7 +3592,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3604,7 +3604,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r();
@@ -3615,7 +3615,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r();
@@ -3626,7 +3626,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r();
@@ -3637,7 +3637,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r();
@@ -3648,7 +3648,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3660,7 +3660,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3672,7 +3672,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated
@@ -3682,10 +3682,8 @@ pub trait MciPeripheral {
     }
     fn read_mcu_trace_buffer_csr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
-    > {
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Status::Register>
+    {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_trace_buffer_csr_status();
         }
@@ -3733,7 +3731,7 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
     {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox0_csr_mbox_lock();
@@ -3805,7 +3803,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxExecute::Register,
+        registers_generated::mci::bits::MboxExecute::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox0_csr_mbox_execute();
@@ -3816,7 +3814,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxExecute::Register,
+            registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         if let Some(generated) = self.generated() {
@@ -3891,7 +3889,7 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox1_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
     {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox1_csr_mbox_lock();
@@ -3963,7 +3961,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxExecute::Register,
+        registers_generated::mci::bits::MboxExecute::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox1_csr_mbox_execute();
@@ -3974,7 +3972,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxExecute::Register,
+            registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         if let Some(generated) = self.generated() {
@@ -5932,7 +5930,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::SsDebugIntent::Register,
+        registers_generated::mci::bits::SsDebugIntent::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_ss_debug_intent)
     }
@@ -6002,7 +6000,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
+        registers_generated::mci::bits::GlobalIntrEnT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_global_intr_en_r)
     }
@@ -6010,7 +6008,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
+            registers_generated::mci::bits::GlobalIntrEnT::Register,
         >,
     ) {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
@@ -6276,7 +6274,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::GlobalIntrT::Register,
+        registers_generated::mci::bits::GlobalIntrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_error_global_intr_r)
     }
@@ -6284,7 +6282,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::GlobalIntrT::Register,
+        registers_generated::mci::bits::GlobalIntrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_notif_global_intr_r)
     }
@@ -8152,7 +8150,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_internal_intr_count_incr_r,
@@ -8162,7 +8160,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r,
@@ -8172,7 +8170,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r,
@@ -8182,7 +8180,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r,
@@ -8192,7 +8190,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r,
@@ -8202,7 +8200,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_incr_r,
@@ -8212,7 +8210,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r,
@@ -8222,7 +8220,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r,
@@ -8232,7 +8230,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r,
@@ -8242,7 +8240,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r,
@@ -8252,7 +8250,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r,
@@ -8262,7 +8260,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r,
@@ -8272,7 +8270,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r,
@@ -8282,7 +8280,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r,
@@ -8292,7 +8290,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r,
@@ -8302,7 +8300,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r,
@@ -8312,7 +8310,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r,
@@ -8322,7 +8320,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r,
@@ -8332,7 +8330,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r,
@@ -8342,7 +8340,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r,
@@ -8352,7 +8350,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r,
@@ -8362,7 +8360,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r,
@@ -8372,7 +8370,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r,
@@ -8382,7 +8380,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r,
@@ -8392,7 +8390,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r,
@@ -8402,7 +8400,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r,
@@ -8412,7 +8410,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r,
@@ -8422,7 +8420,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r,
@@ -8432,7 +8430,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r,
@@ -8442,7 +8440,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r,
@@ -8452,7 +8450,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r,
@@ -8462,7 +8460,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r,
@@ -8472,7 +8470,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r,
@@ -8482,7 +8480,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r,
@@ -8492,7 +8490,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r,
@@ -8502,7 +8500,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r,
@@ -8512,7 +8510,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r,
@@ -8522,7 +8520,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r,
@@ -8532,7 +8530,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r,
@@ -8542,7 +8540,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_incr_r,
@@ -8552,7 +8550,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r,
@@ -8562,7 +8560,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r,
@@ -8572,7 +8570,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r,
@@ -8582,7 +8580,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r,
@@ -8592,7 +8590,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r,
@@ -8602,7 +8600,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r,
@@ -8612,7 +8610,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r,
@@ -8622,7 +8620,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r,
@@ -8632,7 +8630,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r,
@@ -8642,7 +8640,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r,
@@ -8652,7 +8650,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r,
@@ -8662,7 +8660,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r,
@@ -8672,7 +8670,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r,
@@ -8682,7 +8680,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r,
@@ -8692,7 +8690,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r,
@@ -8702,7 +8700,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r,
@@ -8712,7 +8710,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r,
@@ -8722,7 +8720,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r,
@@ -8732,7 +8730,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r,
@@ -8742,7 +8740,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r,
@@ -8752,7 +8750,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r,
@@ -8762,7 +8760,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r,
@@ -8772,7 +8770,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r,
@@ -8782,7 +8780,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r,
@@ -8792,7 +8790,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r,
@@ -8802,7 +8800,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r,
@@ -8812,7 +8810,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r,
@@ -8822,7 +8820,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r,
@@ -8832,7 +8830,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r,
@@ -8842,7 +8840,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r,
@@ -8852,7 +8850,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r,
@@ -8862,7 +8860,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r,
@@ -8872,7 +8870,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r,
@@ -8882,7 +8880,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_incr_r,
@@ -8892,7 +8890,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_incr_r,
@@ -8902,7 +8900,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r,
@@ -8912,7 +8910,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r,
@@ -8922,7 +8920,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_incr_r,
@@ -8932,7 +8930,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r,
@@ -8942,7 +8940,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r,
@@ -8952,7 +8950,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r,
@@ -8962,7 +8960,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r,
@@ -8972,7 +8970,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_incr_r,
@@ -8982,7 +8980,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_incr_r,
@@ -8992,7 +8990,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_incr_r,
@@ -9000,10 +8998,8 @@ impl MciPeripheral for MciGenerated {
     }
     fn read_mcu_trace_buffer_csr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
-    > {
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Status::Register>
+    {
         caliptra_emu_bus::ReadWriteRegister::new(self.mcu_trace_buffer_csr_status)
     }
     fn read_mcu_trace_buffer_csr_config(&mut self) -> caliptra_emu_types::RvData {
@@ -9039,7 +9035,7 @@ impl MciPeripheral for MciGenerated {
     }
     fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
     {
         caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox0_csr_mbox_lock)
     }
@@ -9105,7 +9101,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxExecute::Register,
+        registers_generated::mci::bits::MboxExecute::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox0_csr_mbox_execute)
     }
@@ -9113,7 +9109,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxExecute::Register,
+            registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
@@ -9190,7 +9186,7 @@ impl MciPeripheral for MciGenerated {
     }
     fn read_mcu_mbox1_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
     {
         caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox1_csr_mbox_lock)
     }
@@ -9256,7 +9252,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxExecute::Register,
+        registers_generated::mci::bits::MboxExecute::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox1_csr_mbox_execute)
     }
@@ -9264,7 +9260,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxExecute::Register,
+            registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;

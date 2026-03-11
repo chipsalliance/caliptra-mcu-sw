@@ -130,7 +130,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
+        registers_generated::sha512_acc::bits::Status::Register,
     > {
         if let Some(generated) = self.generated() {
             return generated.read_status();
@@ -645,7 +645,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
+        registers_generated::sha512_acc::bits::Status::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.status)
     }

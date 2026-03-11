@@ -1264,10 +1264,8 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        registers_generated::sha512_acc::bits::Control::Register,
-    > {
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Control::Register>
+    {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_control();
         }
@@ -1277,7 +1275,7 @@ pub trait I3cPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::Control::Register,
+            registers_generated::i3c::bits::Control::Register,
         >,
     ) {
         if let Some(generated) = self.generated() {
@@ -1286,10 +1284,8 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
-    > {
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Status::Register>
+    {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_status();
         }
@@ -3618,17 +3614,15 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_tti_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        registers_generated::sha512_acc::bits::Control::Register,
-    > {
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Control::Register>
+    {
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_control)
     }
     fn write_i3c_ec_tti_control(
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::Control::Register,
+            registers_generated::i3c::bits::Control::Register,
         >,
     ) {
         let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
@@ -3646,10 +3640,8 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_tti_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
-    > {
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Status::Register>
+    {
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_status)
     }
     fn read_i3c_ec_tti_tti_reset_control(
