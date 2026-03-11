@@ -1,0 +1,43 @@
+// Test RDL file with mixed register widths (8, 16, 32, 64 bit)
+
+addrmap mixed_widths {
+    name = "Mixed Width Registers";
+    desc = "Test addrmap with various register widths for testing padding and alignment";
+
+    // 8-bit register
+    reg reg8_t {
+        regwidth = 8;
+        field {} data[7:0];
+    };
+
+    // 16-bit register  
+    reg reg16_t {
+        regwidth = 16;
+        field {} low[7:0];
+        field {} high[15:8];
+    };
+
+    // 32-bit register (default)
+    reg reg32_t {
+        regwidth = 32;
+        field {} value[31:0];
+    };
+
+    // 64-bit register
+    reg reg64_t {
+        regwidth = 64;
+        field {} low[31:0];
+        field {} high[63:32];
+    };
+
+    // Instances - sequential layout
+    reg8_t  byte_reg0 @ 0x00;
+    reg8_t  byte_reg1 @ 0x01;
+    reg8_t  byte_reg2 @ 0x02;
+    reg8_t  byte_reg3 @ 0x03;
+    reg32_t word_reg0 @ 0x04;
+    reg64_t dword_reg0 @ 0x08;
+    reg16_t half_reg0 @ 0x10;
+    reg16_t half_reg1 @ 0x12;
+    reg32_t word_reg1 @ 0x14;
+};

@@ -36,6 +36,7 @@ fusegen.workspace = true
 mcu-rom-common.workspace = true
 mcu-hw-model = { workspace = true, optional = true }
 mcu-fuses-generator.workspace = true
+mcu-registers-generator-new.workspace = true
 p384.workspace = true
 pldm-fw-pkg.workspace = true
 proc-macro2.workspace = true

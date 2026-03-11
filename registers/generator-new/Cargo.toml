@@ -1,0 +1,19 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-registers-generator-new"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow.workspace = true
+proc-macro2.workspace = true
+mcu-registers-systemrdl-new.workspace = true
+quote.workspace = true
+registers-systemrdl.workspace = true
+winnow.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
