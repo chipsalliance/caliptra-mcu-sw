@@ -353,6 +353,16 @@ impl McuError {
             "SS_CONFIG_DONE or SS_CONFIG_DONE_STICKY verification failed after setting"
         ),
         (
+            ROM_SOC_ICCM_ECC_UNC,
+            0x5_0011,
+            "ICCM uncorrectable ECC error"
+        ),
+        (
+            ROM_SOC_DCCM_ECC_UNC,
+            0x5_0012,
+            "DCCM uncorrectable ECC error"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"

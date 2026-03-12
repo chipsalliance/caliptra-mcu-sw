@@ -105,6 +105,18 @@ impl ColdBoot {
             mci.set_flow_checkpoint(partition_status);
         }
     }
+
+    fn check_hw_errors(soc: &crate::Soc) {
+        let hw_error = soc.cptra_hw_error_fatal();
+        if (hw_error & (1 << 0)) != 0 {
+            romtime::println!("[mcu-rom] Caliptra reported an ICCM ECC uncorrectable error");
+            fatal_error(McuError::ROM_SOC_ICCM_ECC_UNC);
+        }
+        if (hw_error & (1 << 1)) != 0 {
+            romtime::println!("[mcu-rom] Caliptra reported a DCCM ECC uncorrectable error");
+            fatal_error(McuError::ROM_SOC_DCCM_ECC_UNC);
+        }
+    }
 }
 
 /// Attempts DOT recovery using available recovery mechanisms.
@@ -423,6 +435,7 @@ impl BootFlow for ColdBoot {
                 romtime::println!("[mcu-rom] Caliptra reported a fatal error");
                 fatal_error(McuError::ROM_COLD_BOOT_CALIPTRA_FATAL_ERROR_BEFORE_MB_READY);
             }
+            Self::check_hw_errors(soc);
         }
 
         romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
@@ -609,7 +622,9 @@ impl BootFlow for ColdBoot {
         romtime::println!(
             "[mcu-rom] Waiting for Caliptra RT to be ready for runtime mailbox commands"
         );
-        while !soc.ready_for_runtime() {}
+        while !soc.ready_for_runtime() {
+            Self::check_hw_errors(soc);
+        }
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
 
         romtime::println!("[mcu-rom] Finished common initialization");
