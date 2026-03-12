@@ -1138,7 +1138,7 @@ pub unsafe extern "C" fn emulator_write_pc(
 ///
 /// # Arguments
 /// * `emulator_memory` - Pointer to the initialized emulator
-/// * `irq_num` - IRQ number to set (0-31)
+/// * `irq_num` - IRQ number to set (0-255]
 /// * `is_high` - 1 to set interrupt high, 0 to set interrupt low
 ///
 /// # Returns
@@ -1157,7 +1157,7 @@ pub unsafe extern "C" fn emulator_set_external_interrupt(
         return EmulatorError::NullPointer;
     }
 
-    if irq_num > 31 {
+    if irq_num == 0 || irq_num > 255 {
         return EmulatorError::InvalidArgs;
     }
 
