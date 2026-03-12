@@ -22,7 +22,6 @@ store-failure-output = true
 
 [profile.nightly-ci]
 inherits = "nightly"
-# Modify test(test_uds) as we onboard crates to the FPGA test suite.
 default-filter = """
 (package(mcu-hw-model)
     - test(model_emulated::test::test_new_unbooted)) |
@@ -33,16 +32,17 @@ default-filter = """
 (package(tests-integration) and test(test_uds)) |
 (package(tests-integration) and test(test_imaginary_flash_controller)) |
 (package(tests-integration) and test(test_fw_update_e2e)) |
+(package(tests-integration) and test(test_mctp_capsule_loopback)) |
 (package(tests-integration) and test(test_mctp_vdm_cmds)) |
 (package(tests-integration) and test(test_mcu_mbox_usermode)) |
 (package(tests-integration) and test(test_mcu_mbox_cmds)) |
 (package(tests-integration) and test(test_mcu_mbox_fips_self_test)) |
 (package(tests-integration) and test(test_mcu_mbox_fips_periodic)) |
+(package(tests-integration) and test(test_warm_reset_success)) |
+(package(tests-integration) and test(test_hitless_update_flow)) |
 (package(tests-integration) and test(test_i3c_constant_writes)) |
 (package(tests-integration) and test(test_i3c_simple)) |
 (package(tests-integration) and test(test_sw_digest_lock))
 """
-# disabled for now due to flakiness of recovery boot
-# (package(tests-integration) and test(test_mctp_capsule_loopback)) |
 # disabled for now due to flakiness of firmware update
 # (package(tests-integration) and test(test_firmware_update_streaming_fpga)) |
