@@ -2301,7 +2301,7 @@ caliptra_ss_top #(
 
     // LC Clock bypass not interesting for FPGA. Tie to Off so that LC transitions work.
     .cptra_ss_lc_clk_byp_ack_i(lc_ctrl_pkg::Off),
-    .cptra_ss_lc_clk_byp_req_o(lc_ctrl_pkg::Off),
+    .cptra_ss_lc_clk_byp_req_o(/*lc_ctrl_pkg::Off*/),
     .cptra_ss_lc_ctrl_scan_rst_ni_i(1'b1),
     .cptra_ss_lc_sec_volatile_raw_unlock_en_i(), // TODO: Connect?
 
