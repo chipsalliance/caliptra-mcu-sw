@@ -2297,7 +2297,7 @@ caliptra_ss_top #(
 
     // LC Clock bypass not interesting for FPGA. Tie to Off so that LC transitions work.
     .cptra_ss_lc_clk_byp_ack_i(lc_ctrl_pkg::Off),
-    .cptra_ss_lc_clk_byp_req_o(lc_ctrl_pkg::Off),
+    .cptra_ss_lc_clk_byp_req_o(/*lc_ctrl_pkg::Off*/),
     .cptra_ss_lc_ctrl_scan_rst_ni_i(1'b1),
 
     .cptra_ss_lc_esclate_scrap_state0_i(hwif_out.interface_regs.mcu_config.cptra_ss_lc_esclate_scrap_state0_i.value),   // NOTE: These two signals are very important. FIXME: Renaming is needed
