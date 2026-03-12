@@ -10,6 +10,7 @@ fpga_realtime = [
 	"mcu-hw-model/fpga_realtime",
 	"dep:caliptra-hw-model",
 	"dep:mcu-hw-model",
+	"dep:mcu-rom-common",
 ]
 
 [dependencies]
@@ -33,7 +34,7 @@ mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true
 mcu-firmware-bundler.workspace = true
 fusegen.workspace = true
-mcu-rom-common.workspace = true
+mcu-rom-common = { workspace = true, optional = true }
 mcu-hw-model = { workspace = true, optional = true }
 mcu-fuses-generator.workspace = true
 p384.workspace = true
