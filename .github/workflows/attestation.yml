@@ -65,7 +65,7 @@ jobs:
           go install github.com/veraison/cocli@v1.0.0-alpha0
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
-      # ── Attestation via spdm_requester_emu ────────────────────────
+      # ---- Attestation via spdm_requester_emu -------------------------------
       - name: Install cmake 3.x
         run: |
           wget https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz &&
@@ -93,17 +93,17 @@ jobs:
           popd
           popd
 
-      # ── Build firmware with test features ──────────────────────────────
+      # ---- Build firmware with test features enabled -------------------------------
       - name: Build firmware with test SPDM responder features
         run: |
           cargo xtask all-build --runtime-features test-mctp-spdm-attestation
 
-      # ── Generate CoRIM reference values ────────────────────────────────
+      # ---- Generate reference CoRIM values -------------------------------
       - name: Generate reference-value CoRIM
         run: |
           cat > /tmp/corim-config.json << 'EOF'
           {
-            "output_dir": "attestation-artifacts/corim",
+            "output_dir": "attestation-artifacts/refval-corim",
             "signing": {
               "test_key": "caliptra-corim-test-signing-key"
             }
@@ -111,8 +111,8 @@ jobs:
           EOF
           cargo xtask corim gen-refval --bundle target/all-fw.zip --config /tmp/corim-config.json
 
-      # ── Upload CoRIM artifacts ──────────────────────────────────────────
-      - name: Upload CoRIM artifacts
+      # ---- Upload Reference CoRIM artifacts -------------------------------
+      - name: Upload Reference CoRIM artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -120,6 +120,7 @@ jobs:
           path: |
             attestation-artifacts/
 
+      # ---- Run SPDM attestation test on MCTP transport -------------------------------
       - name: Generate SPDM nonce
         run: |
           echo "SPDM_NONCE=$(openssl rand -hex 32)" >> $GITHUB_ENV
@@ -148,3 +149,57 @@ jobs:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
           cat $SPDM_VALIDATOR_DIR/spdm_requester_emu_output.txt
+
+      # ---- Verify COSE_Sign1 signature on EAT using ocptoken -------------------------------
+      - name: Verify EAT COSE_Sign1 signature
+        working-directory: ocp-eat-verifier
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+        run: |
+          cargo build --release -p ocptoken
+          ./target/release/ocptoken verify \
+            -e $SPDM_VALIDATOR_DIR/measurement_block_fd.bin
+
+      # ---- Authenticate evidence against Trust Anchor Store -------------------------------
+      - name: Prepare Attestation Artifacts and Build Trust Anchor Store
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+          CORIM_DIR: attestation-artifacts/refval-corim
+        run: |
+          # Copy evidence artifacts
+          EVIDENCE_DIR="attestation-artifacts/evidence"
+          mkdir -p "$EVIDENCE_DIR"
+          cp $SPDM_VALIDATOR_DIR/measurement_block_fd.bin "$EVIDENCE_DIR/"
+          cp $SPDM_VALIDATOR_DIR/certificate_chain_slot_00.der "$EVIDENCE_DIR/"
+          echo "Evidence artifacts:"
+          ls -la "$EVIDENCE_DIR"
+
+          #  Signed Reference CoRIMs
+          echo "Reference CoRIM artifacts:"
+          ls -la "$CORIM_DIR"/signed-*.cbor | sort
+
+          # Build Trust Anchor Store
+          TA_STORE_DIR="attestation-artifacts/ta_store"
+          mkdir -p "$TA_STORE_DIR/roots" "$TA_STORE_DIR/signing-certs"
+
+          # Copy the test root CA cert which endorsed the device ID cert into roots/
+          cp ocp-eat-verifier/ocptoken-rs/test-data/ta-store/roots/slot0_ecc_test_root_ca.der \
+            "$TA_STORE_DIR/roots/slot0_ecc_test_root_ca.der"
+
+          # Copy the CoRIM signing certificate into roots/ and signing-certs/
+          cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/roots/corim_signing_cert.der"
+          cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/signing-certs/corim_signing_cert.der"
+
+          echo "Trust Anchor Store contents:"
+          find "$TA_STORE_DIR" -type f | sort
+
+      # ---- Authenticate and verify EAT evidence -------------------------------
+      - name: Authenticate and verify EAT evidence
+        working-directory: ocp-eat-verifier
+        env:
+          EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
+          OCP_TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
+        run: |
+          ./target/release/ocptoken authenticate \
+            -e $EVIDENCE_DIR/measurement_block_fd.bin \
+            -c $EVIDENCE_DIR/certificate_chain_slot_00.der
