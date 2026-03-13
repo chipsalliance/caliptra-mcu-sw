@@ -226,7 +226,8 @@ impl Otp {
     fn load_state(&mut self, state: &OtpState) {
         *self.partitions.borrow_mut() = state.partitions.clone();
         self.calculate_digests_on_reset = state.calculate_digests_on_reset.clone();
-        self.digests.copy_from_slice(&state.digests);
+        let len = state.digests.len().min(self.digests.len());
+        self.digests[..len].copy_from_slice(&state.digests[..len]);
     }
 
     fn read_from_file(&mut self) -> Result<(), std::io::Error> {
