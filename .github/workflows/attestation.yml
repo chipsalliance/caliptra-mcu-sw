@@ -214,7 +214,7 @@ jobs:
         env:
           EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
           TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
-          SIGNED_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed_refval_corims
+          SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed_refval_corims
         run: |
           ./target/release/ocptoken authenticate \
             -e $EVIDENCE_DIR/measurement_block_fd.bin \

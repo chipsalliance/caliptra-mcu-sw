@@ -317,10 +317,11 @@ ocp-eat = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "8bfab8d
 # caliptra-image-types = { path = "../caliptra-sw/image/types" }
 # caliptra-registers = { path = "../caliptra-sw/registers" }
 # caliptra-test = { path = "../caliptra-sw/test" }
+# caliptra-test-harness = { path = "../caliptra-sw/test-harness" }
 # caliptra-test-harness-types = { path = "../caliptra-sw/test-harness/types" }
 # ureg = { path = "../caliptra-sw/ureg" }
 # dpe = { path = "../caliptra-sw/dpe/dpe", default-features = false, features = ["dpe_profile_p384_sha384"] }
-# ocp-eat = { path = "../caliptra-sw/common/eat",  default-features = false  }
+# ocp-eat = { path = "../caliptra-sw/common/eat", default-features = false }
 
 # tock dependencies; keep git revs in sync
 capsules-core = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
