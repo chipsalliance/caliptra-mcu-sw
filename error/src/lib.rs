@@ -378,6 +378,11 @@ impl McuError {
             "Caliptra WDT config index out of range"
         ),
         (
+            ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR,
+            0x1_0016,
+            "Firmware manifest DOT command processing error"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"

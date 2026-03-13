@@ -148,6 +148,7 @@ pub struct UnlockMethod(u8);
 
 /// Standard challenge-response unlock method.
 pub const CHALLENGE_RESPONSE: UnlockMethod = UnlockMethod(1);
+const ZERO_OWNER_PK_HASH: OwnerPkHash = OwnerPkHash([0u32; 12]);
 
 impl DotBlob {
     /// Returns the Code Authentication Key (CAK) if present.
@@ -245,11 +246,14 @@ pub fn derive_stable_key_flow(
 }
 
 /// Calls Caliptra to derive the DOT Effective Key using the stable key derivation command.
+/// Uses `start_mailbox_req_bytes` + `finish_mailbox_resp_bytes` to stream.
 fn cm_derive_stable_key(
     env: &mut RomEnv,
     dot_fuses: &DotFuses,
     key_type: CmStableKeyType,
 ) -> McuResult<DotEffectiveKey> {
+    use caliptra_api::mailbox::CMK_SIZE_BYTES;
+
     // Construct the label as fixed label + 16-bit fuse value.
     // Per spec, EVEN state (unlocked) derives with (n+1) for next DOT_BLOB sealing,
     // while ODD state (locked) derives with (n) for current DOT_BLOB authentication.
@@ -258,92 +262,143 @@ fn cm_derive_stable_key(
     } else {
         dot_fuses.burned
     };
-    let mut info = [0u8; 32];
-    const LABEL_LEN: usize = DOT_LABEL.len();
-    info[..LABEL_LEN].copy_from_slice(DOT_LABEL);
-    let fuse_slice: [u8; 2] = derivation_value.to_le_bytes();
-    // copy_from_slice wants to insert a panic for some reason
-    info[LABEL_LEN] = fuse_slice[0];
-    info[LABEL_LEN + 1] = fuse_slice[1];
-
-    let mut resp = [0u32; core::mem::size_of::<CmDeriveStableKeyResp>() / 4];
-    let req = CmDeriveStableKeyReq {
-        info,
+    let mut req = CmDeriveStableKeyReq {
+        info: [0u8; 32],
         key_type: key_type.into(),
         ..Default::default()
     };
-    let mut req32: [u32; core::mem::size_of::<CmDeriveStableKeyReq>() / 4] = transmute!(req);
+    const LABEL_LEN: usize = DOT_LABEL.len();
+    req.info[..LABEL_LEN].copy_from_slice(DOT_LABEL);
+    let fuse_slice: [u8; 2] = derivation_value.to_le_bytes();
+    req.info[LABEL_LEN] = fuse_slice[0];
+    req.info[LABEL_LEN + 1] = fuse_slice[1];
 
-    if let Err(err) = env.soc_manager.exec_mailbox_req_u32(
-        CommandId::CM_DERIVE_STABLE_KEY.into(),
-        &mut req32,
-        &mut resp,
-    ) {
+    let cmd: u32 = CommandId::CM_DERIVE_STABLE_KEY.into();
+    let chksum = caliptra_api::calc_checksum(cmd, &req.as_bytes()[4..]);
+    req.hdr.chksum = chksum;
+
+    if let Err(err) = env.soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
         romtime::println!("[mcu-rom] Error deriving DOT stable key: {:?}", err);
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
-    let resp: CmDeriveStableKeyResp = transmute!(resp);
-    let dot_effective_key = DotEffectiveKey(Cmk(transmute!(resp.cmk)));
-    Ok(dot_effective_key)
-}
 
-// CM_HMAC copy with smaller data
-#[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
-pub struct CmHmacReq {
-    pub hdr: MailboxReqHeader,
-    pub cmk: Cmk,
-    pub hash_algorithm: u32,
-    pub data_size: u32,
-    pub data: [u8; core::mem::size_of::<DotBlob>()],
-}
-
-impl Default for CmHmacReq {
-    fn default() -> Self {
-        Self {
-            hdr: MailboxReqHeader::default(),
-            cmk: Cmk::default(),
-            hash_algorithm: 0,
-            data_size: 0,
-            data: [0u8; core::mem::size_of::<DotBlob>()],
-        }
-    }
-}
-
-/// Calls Caliptra to compute an HMAC.
-fn cm_hmac(env: &mut RomEnv, key: &Cmk, data: &[u8]) -> McuResult<[u32; 16]> {
-    let mut resp = [0u32; core::mem::size_of::<CmHmacResp>() / 4];
-    let mut req = CmHmacReq {
-        cmk: transmute!(key.0),
-        hash_algorithm: CmHashAlgorithm::Sha512.into(),
-        data_size: data.len() as u32,
-        ..Default::default()
-    };
-    let len = data.len();
-    if len > req.data.len() {
-        romtime::println!(
-            "[mcu-rom-dot] Cannot HMAC more than {} bytes",
-            req.data.len()
-        );
+    // CmDeriveStableKeyResp = hdr(8) + cmk(128) = 136 bytes
+    let mut resp_buf = [0u8; core::mem::size_of::<CmDeriveStableKeyResp>()];
+    if let Err(err) = env.soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+        romtime::println!("[mcu-rom] Error deriving DOT stable key: {:?}", err);
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
-    // should be impossible for this slice to fail but the compiler seems to generate a panic
-    req.data
-        .get_mut(..len)
-        .ok_or(McuError::ROM_COLD_BOOT_DOT_ERROR)?
-        .copy_from_slice(&data[..len]);
 
-    let mut req: [u32; core::mem::size_of::<CmHmacReq>() / 4] = transmute!(req);
+    // Extract CMK (128 bytes = 32 u32 words) from response after the 8-byte header.
+    let mut cmk = [0u32; 32];
+    match resp_buf.get(8..8 + CMK_SIZE_BYTES) {
+        Some(src) => {
+            for (i, chunk) in src.chunks_exact(4).enumerate() {
+                cmk[i] = u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            }
+        }
+        None => return Err(McuError::ROM_COLD_BOOT_DOT_ERROR),
+    }
+    Ok(DotEffectiveKey(Cmk(cmk)))
+}
 
-    if let Err(err) =
+/// Calls Caliptra to compute an HMAC, streaming the request to avoid a large
+/// stack buffer.  Uses `start_mailbox_req_bytes` + `finish_mailbox_resp_bytes`,
+/// the same pattern as `cm_import_aes_key` and other cold-boot mailbox helpers.
+fn cm_hmac(env: &mut RomEnv, key: &Cmk, data: &[u8]) -> McuResult<[u32; 16]> {
+    use caliptra_api::mailbox::CMK_SIZE_BYTES;
+
+    let cmd: u32 = CommandId::CM_HMAC.into();
+    let hash_algorithm: u32 = CmHashAlgorithm::Sha512.into();
+    let data_size: u32 = data.len() as u32;
+
+    // Payload = cmk + hash_algorithm + data_size + data (everything after hdr).
+    let payload_len = CMK_SIZE_BYTES + 4 + 4 + data.len();
+    let total_len = core::mem::size_of::<MailboxReqHeader>() + payload_len;
+
+    // Compute checksum: 0 - (cmd + sum of all payload bytes).
+    let mut sum = cmd;
+    for &w in key.0.iter() {
+        for &b in w.to_ne_bytes().iter() {
+            sum = sum.wrapping_add(b as u32);
+        }
+    }
+    for &b in hash_algorithm.to_le_bytes().iter() {
+        sum = sum.wrapping_add(b as u32);
+    }
+    for &b in data_size.to_le_bytes().iter() {
+        sum = sum.wrapping_add(b as u32);
+    }
+    for &b in data.iter() {
+        sum = sum.wrapping_add(b as u32);
+    }
+    let chksum = 0u32.wrapping_sub(sum);
+
+    // Stream the request word-by-word into the mailbox FIFO.
+    env.soc_manager
+        .initiate_request(cmd, total_len)
+        .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+
+    // hdr.chksum
+    env.soc_manager
+        .write_data(chksum)
+        .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+
+    // cmk (128 bytes = 32 words, already u32)
+    for &w in key.0.iter() {
         env.soc_manager
-            .exec_mailbox_req_u32(CommandId::CM_HMAC.into(), &mut req, &mut resp)
-    {
+            .write_data(w)
+            .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+    }
+
+    // hash_algorithm + data_size
+    env.soc_manager
+        .write_data(hash_algorithm)
+        .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+    env.soc_manager
+        .write_data(data_size)
+        .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+
+    // data – stream directly from the caller's slice.
+    let full_words = data.len() / 4;
+    for i in 0..full_words {
+        let off = i * 4;
+        let word = u32::from_ne_bytes([data[off], data[off + 1], data[off + 2], data[off + 3]]);
+        env.soc_manager
+            .write_data(word)
+            .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+    }
+    let tail = data.len() % 4;
+    if tail != 0 {
+        let off = full_words * 4;
+        let mut pad = [0u8; 4];
+        pad[..tail].copy_from_slice(&data[off..off + tail]);
+        env.soc_manager
+            .write_data(u32::from_ne_bytes(pad))
+            .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+    }
+
+    env.soc_manager
+        .execute_command()
+        .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+
+    // Read response – CmHmacResp is MailboxRespHeaderVarSize(12) + mac(64) = 76 bytes.
+    let mut resp_buf = [0u8; core::mem::size_of::<CmHmacResp>()];
+    if let Err(err) = env.soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
         romtime::println!("[mcu-rom] Error computing HMAC: {:?}", err);
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
-    let resp: CmHmacResp = transmute!(resp);
-    Ok(transmute!(resp.mac))
+
+    // Extract the 64-byte MAC starting after the var-size header (12 bytes).
+    let mut mac = [0u32; 16];
+    let mac_bytes = match resp_buf.get(12..76) {
+        Some(b) => b,
+        None => return Err(McuError::ROM_COLD_BOOT_DOT_ERROR),
+    };
+    for (i, chunk) in mac_bytes.chunks_exact(4).enumerate() {
+        mac[i] = u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+    }
+    Ok(mac)
 }
 
 /// Verifies the authenticity of a DOT blob using HMAC.
@@ -473,7 +528,7 @@ fn burn_dot_fuses(env: &mut RomEnv, dot_fuses: &DotFuses, blob: &DotBlob) -> Mcu
     if needs_lock_transition {
         romtime::println!("[mcu-rom-dot] DOT state transition needed: unlocked -> locked");
 
-        burn_dot_lock_fuse(env, dot_fuses)?;
+        burn_dot_lock_fuse(&env.otp, dot_fuses)?;
 
         romtime::println!("[mcu-rom-dot] DOT lock fuse burned successfully");
         romtime::println!("[mcu-rom-dot] Transition to locked state complete");
@@ -491,13 +546,13 @@ fn burn_dot_fuses(env: &mut RomEnv, dot_fuses: &DotFuses, blob: &DotBlob) -> Mcu
 /// next unburned bit is determined by the current burned count.
 ///
 /// # Arguments
-/// * `env` - ROM environment containing OTP controller access.
+/// * `otp` - OTP controller for fuse read/write access.
 /// * `dot_fuses` - Current DOT fuse state (used to determine which bit to burn next).
 ///
 /// # Returns
 /// * `Ok(())` - If the fuse was successfully burned.
 /// * `Err(McuError)` - If the OTP write operation fails.
-fn burn_dot_lock_fuse(env: &RomEnv, dot_fuses: &DotFuses) -> McuResult<()> {
+fn burn_dot_lock_fuse(otp: &Otp, dot_fuses: &DotFuses) -> McuResult<()> {
     use registers_generated::fuses;
     // Each state transition burns the next sequential bit in the dot_fuse_array.
     let next_bit = dot_fuses.burned as u32;
@@ -513,7 +568,7 @@ fn burn_dot_lock_fuse(env: &RomEnv, dot_fuses: &DotFuses) -> McuResult<()> {
     let fuse_array_word_addr = (fuses::DOT_FUSE_ARRAY.byte_offset / 4) + word_index as usize;
 
     // Read the current value at this word address.
-    let current_value = env.otp.read_word(fuse_array_word_addr)?;
+    let current_value = otp.read_word(fuse_array_word_addr)?;
 
     let new_value = current_value | (1u32 << bit_in_word);
 
@@ -524,7 +579,302 @@ fn burn_dot_lock_fuse(env: &RomEnv, dot_fuses: &DotFuses) -> McuResult<()> {
         new_value
     );
 
-    env.otp.write_word(fuse_array_word_addr, new_value)?;
+    otp.write_word(fuse_array_word_addr, new_value)?;
 
+    Ok(())
+}
+
+/// Creates, HMAC-seals, and writes a DOT blob to flash storage.
+///
+/// This is used by manifest DOT commands (LOCK, DISABLE, ROTATE) to persist
+/// ownership credentials alongside the fuse burn.
+fn create_and_seal_dot_blob(
+    env: &mut RomEnv,
+    dot_fuses: &DotFuses,
+    cak: &OwnerPkHash,
+    lak: &LakPkHash,
+    dot_flash: Option<&dyn crate::flash::hil::FlashStorage>,
+) -> McuResult<()> {
+    use caliptra_api::mailbox::CmStableKeyType;
+
+    // Derive the effective key for the target (post-burn) state.
+    let dot_effective_key = derive_stable_key_flow(env, dot_fuses, CmStableKeyType::IDevId)?;
+
+    // Build the blob payload (everything except the HMAC tag).
+    let mut blob = DotBlob {
+        version: 1,
+        cak: cak.clone(),
+        lak_pub: lak.clone(),
+        unlock_method: CHALLENGE_RESPONSE,
+        reserved: [0u8; 3],
+        hmac: [0u32; 16],
+    };
+
+    // Compute HMAC over the blob contents (excluding the hmac field itself).
+    let blob_bytes = blob.as_bytes();
+    let hmac_len = blob_bytes.len() - core::mem::size_of_val(&blob.hmac);
+    let hmac_data = match blob_bytes.get(..hmac_len) {
+        Some(d) => d,
+        None => return Err(McuError::ROM_COLD_BOOT_DOT_ERROR),
+    };
+    let hmac_tag = cm_hmac(env, &dot_effective_key.0, hmac_data)?;
+    blob.hmac = hmac_tag;
+
+    // Write the sealed DOT blob to flash.
+    if let Some(flash) = dot_flash {
+        if let Err(err) = flash.write(blob.as_bytes(), 0) {
+            romtime::println!(
+                "[mcu-rom-dot] Failed to write DOT blob to flash: {}",
+                romtime::HexWord(usize::from(err) as u32)
+            );
+            return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Firmware manifest DOT command section
+// ---------------------------------------------------------------------------
+
+/// Magic number identifying a firmware manifest DOT command section.
+pub const FW_MANIFEST_DOT_MAGIC: u32 = 0x444F_5443; // "DOTC"
+
+/// Maximum number of DOT commands in a single manifest section.
+pub const MAX_FW_MANIFEST_DOT_COMMANDS: usize = 8;
+
+// DOT command codes used inside [`FwManifestDotSection::commands`].
+/// No-operation / padding.
+pub const FW_MANIFEST_DOT_CMD_NOP: u8 = 0;
+/// Lock: transition from unlocked (EVEN) to locked (ODD).
+pub const FW_MANIFEST_DOT_CMD_LOCK: u8 = 1;
+/// Unlock: transition from locked (ODD) to unlocked (EVEN).
+pub const FW_MANIFEST_DOT_CMD_UNLOCK: u8 = 2;
+/// Rotate: burn two fuses to advance the DOT effective key while
+/// preserving the current lock/unlock parity.  Uses `min_fuse_count`
+/// for idempotency – the rotation is only applied when the current
+/// burned count is below `min_fuse_count`.
+pub const FW_MANIFEST_DOT_CMD_ROTATE: u8 = 3;
+/// Disable: ensure the device is in ODD (locked/disabled) state.
+/// Functionally identical to LOCK at the fuse level; the DOT blob
+/// determines whether the ODD state means "locked" (CAK present) or
+/// "disabled" (no CAK).
+pub const FW_MANIFEST_DOT_CMD_DISABLE: u8 = 4;
+
+/// Optional section that can be prepended to the MCU firmware image
+/// to request DOT state transitions during firmware updates.
+///
+/// The ROM always checks the start of MCU SRAM for the magic number.
+/// If the magic does not match, the section is silently ignored and
+/// no DOT commands are executed.  When present, the actual firmware
+/// follows immediately after this section.
+///
+/// All commands are **idempotent**: a command that does not apply to the
+/// current DOT fuse state is skipped without error.
+///
+/// Size: 128 bytes (naturally aligned, 4 bytes reserved padding).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
+pub struct FwManifestDotSection {
+    /// Must be [`FW_MANIFEST_DOT_MAGIC`] for the section to be recognised.
+    pub magic: u32,
+    /// Ones-complement checksum of all bytes after this field.
+    /// Computed as `!sum_of_le_u32_words(bytes[8..])`.
+    pub checksum: u32,
+    /// Section format version (must be 1).
+    pub version: u32,
+    /// Number of valid entries in `commands` (≤ [`MAX_FW_MANIFEST_DOT_COMMANDS`]).
+    pub num_commands: u32,
+    /// For the ROTATE command: the minimum burned-fuse count after which
+    /// rotation is considered already applied.  Ignored by other commands.
+    pub min_fuse_count: u32,
+    /// Up to [`MAX_FW_MANIFEST_DOT_COMMANDS`] command bytes, executed in order.
+    pub commands: [u8; MAX_FW_MANIFEST_DOT_COMMANDS],
+    /// Code Authentication Key (owner PK hash) for LOCK/ROTATE commands.
+    /// Set to all zeros when not applicable.
+    pub cak: [u32; 12],
+    /// Lock Authentication Key (public hash) for LOCK/DISABLE commands.
+    /// Set to all zeros when not applicable.
+    pub lak: [u32; 12],
+    /// Reserved padding (must be zero).
+    pub _reserved: [u8; 4],
+}
+
+/// Size of [`FwManifestDotSection`] in bytes.
+pub const FW_MANIFEST_DOT_SECTION_SIZE: usize = core::mem::size_of::<FwManifestDotSection>();
+
+impl FwManifestDotSection {
+    /// Verify the ones-complement checksum covering bytes 8..end of the section.
+    pub fn verify_checksum(&self) -> bool {
+        let bytes = self.as_bytes();
+        // Sum all u32 words from offset 4 (checksum field itself + payload).
+        // If the checksum is correct, the total including the checksum word
+        // equals 0xFFFF_FFFF.
+        let sum = bytes[4..]
+            .chunks_exact(4)
+            .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .fold(0u32, |acc, w| acc.wrapping_add(w));
+        sum == 0xFFFF_FFFF
+    }
+
+    /// Compute the checksum for this section and return an updated copy.
+    pub fn with_checksum(mut self) -> Self {
+        self.checksum = 0;
+        let bytes = self.as_bytes();
+        let payload_sum = bytes[8..]
+            .chunks_exact(4)
+            .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .fold(0u32, |acc, w| acc.wrapping_add(w));
+        self.checksum = !payload_sum;
+        self
+    }
+}
+
+/// Parses and executes DOT commands from an optional firmware manifest section.
+///
+/// Each command inspects the current DOT fuse state (re-read from OTP before
+/// every command) and only acts when the requested transition is applicable.
+/// This makes every command idempotent: re-running the same manifest after a
+/// power cycle will not burn additional fuses.
+///
+/// For LOCK/DISABLE/ROTATE commands, the manifest carries the CAK (owner PK
+/// hash) and LAK (locking key) which are written into the DOT blob alongside
+/// the fuse burn.
+///
+/// # Arguments
+/// * `env`     – ROM environment (OTP, SoC manager for Caliptra mailbox, etc.).
+/// * `section` – The firmware manifest DOT section parsed from the image header.
+/// * `dot_flash` – Optional DOT flash driver for writing the DOT blob.
+///
+/// # Returns
+/// * `Ok(())` on success (including when all commands are no-ops).
+/// * `Err(McuError)` on an unrecoverable error (unsupported version, OTP failure).
+pub fn process_fw_manifest_dot_commands(
+    env: &mut RomEnv,
+    section: &FwManifestDotSection,
+    dot_flash: Option<&dyn crate::flash::hil::FlashStorage>,
+) -> McuResult<()> {
+    if section.magic != FW_MANIFEST_DOT_MAGIC {
+        // Not a DOT manifest section – silently skip.
+        return Ok(());
+    }
+
+    if !section.verify_checksum() {
+        romtime::println!("[mcu-rom-dot] Firmware manifest DOT checksum mismatch");
+        return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
+    }
+
+    if section.version != 1 {
+        romtime::println!(
+            "[mcu-rom-dot] Unsupported fw manifest DOT version: {}",
+            section.version
+        );
+        return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
+    }
+
+    romtime::println!("[mcu-rom-dot] Processing manifest DOT commands");
+
+    let num_commands = section.num_commands as usize;
+    if num_commands > MAX_FW_MANIFEST_DOT_COMMANDS {
+        return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
+    }
+
+    // Reject manifests that contain both LOCK and UNLOCK commands.
+    // Allowing both would rapidly burn through DOT fuses on every reset.
+    let cmds = match section.commands.get(..num_commands) {
+        Some(c) => c,
+        None => return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR),
+    };
+    let has_lock = cmds
+        .iter()
+        .any(|&c| c == FW_MANIFEST_DOT_CMD_LOCK || c == FW_MANIFEST_DOT_CMD_DISABLE);
+    let has_unlock = cmds.iter().any(|&c| c == FW_MANIFEST_DOT_CMD_UNLOCK);
+    if has_lock && has_unlock {
+        romtime::println!("[mcu-rom-dot] Fatal: both LOCK/DISABLE and UNLOCK present in manifest");
+        return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
+    }
+
+    for &cmd in cmds {
+        // Reload fuse state – a previous command may have changed it.
+        let dot_fuses = DotFuses::load_from_otp(&env.otp)?;
+
+        if !dot_fuses.enabled && cmd != FW_MANIFEST_DOT_CMD_NOP {
+            return Ok(());
+        }
+
+        match cmd {
+            FW_MANIFEST_DOT_CMD_NOP => {}
+
+            FW_MANIFEST_DOT_CMD_LOCK => {
+                // LOCK: transition EVEN → ODD, install CAK + LAK into DOT blob.
+                if dot_fuses.is_unlocked() {
+                    create_and_seal_dot_blob(
+                        env,
+                        &dot_fuses,
+                        &OwnerPkHash(section.cak),
+                        &LakPkHash(section.lak),
+                        dot_flash,
+                    )?;
+                    burn_dot_lock_fuse(&env.otp, &dot_fuses)?;
+                }
+            }
+
+            FW_MANIFEST_DOT_CMD_DISABLE => {
+                // DISABLE: like LOCK but with zeroed CAK (no code auth).
+                if dot_fuses.is_unlocked() {
+                    create_and_seal_dot_blob(
+                        env,
+                        &dot_fuses,
+                        &ZERO_OWNER_PK_HASH,
+                        &LakPkHash(section.lak),
+                        dot_flash,
+                    )?;
+                    burn_dot_lock_fuse(&env.otp, &dot_fuses)?;
+                }
+            }
+
+            FW_MANIFEST_DOT_CMD_UNLOCK => {
+                // UNLOCK: transition ODD → EVEN, write an unlock DOT blob.
+                // A blank/missing DOT blob is a fatal error when DOT is
+                // enabled, so we must always leave a valid sealed blob.
+                if dot_fuses.is_locked() {
+                    burn_dot_lock_fuse(&env.otp, &dot_fuses)?;
+                    // Re-read fuse state after the burn (now EVEN = unlocked).
+                    let new_fuses = DotFuses::load_from_otp(&env.otp)?;
+                    // Write an unlock DOT blob: zero CAK (no owner), keep LAK.
+                    create_and_seal_dot_blob(
+                        env,
+                        &new_fuses,
+                        &ZERO_OWNER_PK_HASH,
+                        &LakPkHash(section.lak),
+                        dot_flash,
+                    )?;
+                }
+            }
+
+            FW_MANIFEST_DOT_CMD_ROTATE => {
+                // ROTATE: burn 2 fuses, re-seal DOT blob with new effective key.
+                if (dot_fuses.burned as u32) < section.min_fuse_count {
+                    burn_dot_lock_fuse(&env.otp, &dot_fuses)?;
+                    let new_fuses = DotFuses::load_from_otp(&env.otp)?;
+                    burn_dot_lock_fuse(&env.otp, &new_fuses)?;
+                    // Re-seal the DOT blob with the rotated effective key.
+                    let rotated_fuses = DotFuses::load_from_otp(&env.otp)?;
+                    create_and_seal_dot_blob(
+                        env,
+                        &rotated_fuses,
+                        &OwnerPkHash(section.cak),
+                        &LakPkHash(section.lak),
+                        dot_flash,
+                    )?;
+                }
+            }
+
+            _ => {}
+        }
+    }
+
+    romtime::println!("[mcu-rom-dot] Manifest DOT processing complete");
     Ok(())
 }
