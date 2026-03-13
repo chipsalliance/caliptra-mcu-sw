@@ -1,0 +1,50 @@
+# Licensed under the Apache-2.0 license
+
+name: Verify Reproducible Build
+
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  check_rom_hash:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      CARGO_INCREMENTAL: 0
+      EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git && \
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Build
+        run: cargo xtask rom
+
+      - name: Calculate ROM and runtime digests
+        run: |
+          echo "rom_hash=$(sha384sum target/riscv32imc-unknown-none-elf/release/mcu-rom-emulator.bin)" >> $GITHUB_ENV
+          echo "runtime_hash=$(sha384sum target/riscv32imc-unknown-none-elf/release/mcu-runtime-emulator.bin)" >> $GITHUB_ENV
+
+      - name: Clean
+        run: cargo clean
+
+      - name: Build again
+        run: cargo xtask rom
+
+      - name: Calculate digests again and ensure it hasn't changed
+        run: |
+          echo "Comparing ROM hash"
+          test "$rom_hash" = "$(sha384sum target/riscv32imc-unknown-none-elf/release/mcu-rom-emulator.bin)"
+          echo "Comparing runtime hash"
+          test "$runtime_hash" = "$(sha384sum target/riscv32imc-unknown-none-elf/release/mcu-runtime-emulator.bin)"
