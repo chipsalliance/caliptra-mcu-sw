@@ -26,4 +26,10 @@ pub enum OcpError {
     RecoveryStatusImageIndexOutOfRange = 9,
     /// RECOVERY_STATUS: reserved value in Device Recovery Status field (byte 0, bits 0-3).
     RecoveryStatusInvalidStatus = 10,
+    /// INDIRECT_CTRL: IMO is not 4-byte aligned (bits 1:0 must be zero).
+    IndirectCtrlImoNotAligned = 11,
+    /// INDIRECT_STATUS: reserved CMS region type value (byte 1, bits 0-2).
+    IndirectStatusInvalidCmsRegionType = 12,
+    /// INDIRECT_FIFO_CTRL: reserved value in Reset field (byte 1).
+    IndirectFifoCtrlInvalid = 13,
 }
