@@ -68,7 +68,6 @@ pub extern "C" fn rom_entry() -> ! {
     };
 
     let dot_flash: &dyn FlashStorage = &SimpleFlash::new(raw_dot_flash);
-    let dot_flash = Some(dot_flash);
 
     if cfg!(feature = "test-flash-based-boot") {
         // Initialize the flash controller for testing purposes
@@ -134,8 +133,29 @@ pub extern "C" fn rom_entry() -> ! {
 
         mcu_rom_common::rom_start(RomParameters {
             flash_partition_driver: Some(&mut flash_image_partition_driver),
-            dot_flash,
+            dot_flash: Some(dot_flash),
             request_flash_boot: true,
+            ..Default::default()
+        });
+    } else if cfg!(any(
+        feature = "test-mcu-svn-gt-fuse",
+        feature = "test-mcu-svn-lt-fuse"
+    )) {
+        use crate::mcu_image_verifier::McuImageVerifier;
+        let mcu_image_verifier = McuImageVerifier;
+        let rom_parameters = RomParameters {
+            mcu_image_verifier: Some(&mcu_image_verifier),
+            mcu_image_header_size: core::mem::size_of::<mcu_image_header::McuImageHeader>(),
+            dot_flash: Some(dot_flash),
+            otp_enable_integrity_check: true,
+            otp_enable_consistency_check: true,
+            ..Default::default()
+        };
+        mcu_rom_common::rom_start(rom_parameters);
+    } else if cfg!(feature = "test-fw-manifest-dot") {
+        mcu_rom_common::rom_start(RomParameters {
+            dot_flash: Some(dot_flash),
+            mcu_image_header_size: core::mem::size_of::<mcu_rom_common::FwManifestDotSection>(),
             ..Default::default()
         });
     } else if cfg!(feature = "hw-2-1") {
@@ -160,29 +180,14 @@ pub extern "C" fn rom_entry() -> ! {
 
         mcu_rom_common::rom_start(RomParameters {
             flash_partition_driver: Some(&mut flash_partition),
-            dot_flash,
+            dot_flash: Some(dot_flash),
             // Let the generic wire (bit 29 of mci_reg_generic_input_wires[1]) control flash boot
             // request_flash_boot defaults to false - emulator sets the wire when flash boot is requested
             ..Default::default()
         });
-    } else if cfg!(any(
-        feature = "test-mcu-svn-gt-fuse",
-        feature = "test-mcu-svn-lt-fuse"
-    )) {
-        use crate::mcu_image_verifier::McuImageVerifier;
-        let mcu_image_verifier = McuImageVerifier;
-        let rom_parameters = RomParameters {
-            mcu_image_verifier: Some(&mcu_image_verifier),
-            mcu_image_header_size: core::mem::size_of::<mcu_image_header::McuImageHeader>(),
-            dot_flash,
-            otp_enable_integrity_check: true,
-            otp_enable_consistency_check: true,
-            ..Default::default()
-        };
-        mcu_rom_common::rom_start(rom_parameters);
     } else {
         mcu_rom_common::rom_start(RomParameters {
-            dot_flash,
+            dot_flash: Some(dot_flash),
             ..Default::default()
         });
     }

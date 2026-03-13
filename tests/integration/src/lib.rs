@@ -73,6 +73,10 @@ mod test {
         pub otp_memory: Option<Vec<u8>>,
         /// Enable FIPS zeroization PPD signal for cold boot testing.
         pub fips_zeroization: bool,
+        /// Optional custom MCU ROM bytes (overrides the default/compiled ROM).
+        pub custom_mcu_rom: Option<Vec<u8>>,
+        /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
+        pub firmware_prefix: Option<Vec<u8>>,
     }
 
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
@@ -110,8 +114,10 @@ mod test {
         compile_rom(feature)
     }
 
-    // only build the ROM once
+    // only build the default ROM once
     pub static ROM: LazyLock<PathBuf> = LazyLock::new(|| get_or_compile_rom(""));
+    pub static ROM_FW_MANIFEST_DOT: LazyLock<PathBuf> =
+        LazyLock::new(|| get_or_compile_rom("test-fw-manifest-dot"));
 
     pub static TEST_LOCK: LazyLock<Mutex<AtomicU32>> =
         LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
@@ -130,16 +136,26 @@ mod test {
     }
 
     fn compile_rom(feature: &str) -> PathBuf {
-        let feature = if TEST_HW_REVISION == "2.1.0" && feature.is_empty() {
-            "hw-2-1"
+        let target_name = if cfg!(feature = "fpga_realtime") {
+            "mcu-rom-fpga"
         } else {
-            feature
+            "mcu-rom-emulator"
         };
-        let output: PathBuf =
-            mcu_builder::rom_build(Some(platform().to_string()), Some(feature.to_string()))
-                .expect("ROM build failed");
-        assert!(output.exists());
-        output
+        let feature = if TEST_HW_REVISION == "2.1.0" {
+            if feature.is_empty() {
+                "hw-2-1".to_string()
+            } else {
+                format!("hw-2-1,{feature}")
+            }
+        } else {
+            feature.to_string()
+        };
+        let output: PathBuf = mcu_builder::rom_build(Some(platform().to_string()), Some(feature))
+            .expect("ROM build failed");
+        let stable_output = target_binary(&format!("{target_name}.bin"));
+        std::fs::copy(&output, &stable_output).expect("Failed to copy ROM binary");
+        assert!(stable_output.exists());
+        stable_output
     }
 
     pub fn compile_runtime(feature: Option<&str>, example_app: bool) -> PathBuf {
@@ -221,15 +237,37 @@ mod test {
         test_binaries
     }
 
-    fn build_test_binaries(feature: Option<&str>) -> TestBinaries {
-        let mcu_runtime = compile_runtime(feature, false);
+    fn build_test_binaries(feature: Option<&str>, firmware_prefix: Option<&[u8]>) -> TestBinaries {
+        let mcu_runtime_path = compile_runtime(feature, false);
+        let mcu_rom_path = if firmware_prefix.is_some() {
+            ROM_FW_MANIFEST_DOT.clone()
+        } else {
+            ROM.clone()
+        };
+
+        // When a firmware prefix is provided, create a modified binary that
+        // includes the prefix so the SOC manifest digest covers both.
+        let (mcu_runtime_for_builder, mcu_runtime_bytes) = if let Some(prefix) = firmware_prefix {
+            let original = std::fs::read(&mcu_runtime_path).unwrap();
+            let mut prefixed = prefix.to_vec();
+            prefixed.extend_from_slice(&original);
+
+            // Write the prefixed binary to a temp file for CaliptraBuilder
+            let prefixed_path = mcu_runtime_path.with_extension("prefixed");
+            std::fs::write(&prefixed_path, &prefixed).unwrap();
+            (prefixed_path, prefixed)
+        } else {
+            let bytes = std::fs::read(&mcu_runtime_path).unwrap();
+            (mcu_runtime_path, bytes)
+        };
+
         let mut builder = CaliptraBuilder::new(
             cfg!(feature = "fpga_realtime"),
             None,
             None,
             None,
             None,
-            Some(mcu_runtime.clone()),
+            Some(mcu_runtime_for_builder),
             None,
             None,
             None,
@@ -250,7 +288,7 @@ mod test {
         )
         .unwrap();
 
-        let mcu_rom = std::fs::read(&*ROM).unwrap();
+        let mcu_rom = std::fs::read(mcu_rom_path).unwrap();
         let soc_manifest = std::fs::read(
             builder
                 .get_soc_manifest(None)
@@ -259,7 +297,6 @@ mod test {
         .unwrap();
         let vendor_pk_hash_u8 = hex::decode(builder.get_vendor_pk_hash().unwrap())
             .expect("Invalid hex string for vendor_pk_hash");
-        let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
 
         // Network ROM is optional - build it if the build system supports it
         let network_rom = match mcu_builder::network_rom_build() {
@@ -273,7 +310,7 @@ mod test {
             caliptra_fw,
             mcu_rom,
             soc_manifest,
-            mcu_runtime,
+            mcu_runtime: mcu_runtime_bytes,
             network_rom,
         }
     }
@@ -291,11 +328,27 @@ mod test {
             mcu_runtime,
             network_rom,
         } = match FirmwareBinaries::from_env() {
-            Ok(binaries) => prebuilt_binaries(params.feature, binaries),
+            Ok(binaries) => {
+                // NOTE: firmware_prefix is not supported with prebuilt binaries because the
+                // SOC manifest digest must cover the prefixed firmware. Tests that use
+                // firmware_prefix must not set a `feature` that has prebuilt binaries.
+                assert!(
+                    params.firmware_prefix.is_none() || params.feature.is_none(),
+                    "firmware_prefix with prebuilt feature binaries is not supported"
+                );
+                prebuilt_binaries(params.feature, binaries)
+            }
             _ => {
                 println!("Could not find prebuilt firmware binaries, building firmware...");
-                build_test_binaries(params.feature)
+                build_test_binaries(params.feature, params.firmware_prefix.as_deref())
             }
+        };
+
+        // Use custom MCU ROM if provided, otherwise use prebuilt/compiled
+        let mcu_rom = if let Some(custom_rom) = params.custom_mcu_rom {
+            custom_rom
+        } else {
+            mcu_rom
         };
 
         // Use custom Caliptra FW if provided, otherwise use prebuilt/compiled
