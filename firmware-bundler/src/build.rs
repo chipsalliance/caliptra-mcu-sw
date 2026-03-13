@@ -146,12 +146,20 @@ impl<'a> BuildPass<'a> {
     /// Execute a BuildPass run.  This will include both building the elf with the specified linker
     /// file via `rustc` and then using `objcopy` to produce a binary file from that elf.
     fn run(&self) -> Result<BuildOutput> {
-        let rom = self
-            .build_definition
-            .rom
-            .as_ref()
-            .map(|r| self.build_binary(r, &self.build_args.rom_features, ROM_OBJCOPY_FLAGS))
-            .transpose()?;
+        // Skip rebuilding ROM.
+        let rom = {
+            if let Some(app) = self.build_definition.rom.as_ref() {
+                let elf = self.binary_dir.join(&app.name);
+                let binary = elf.with_extension("bin");
+                Some(BuiltBinary {
+                    name: app.name.clone(),
+                    elf,
+                    binary,
+                })
+            } else {
+                None
+            }
+        };
 
         let (kernal_linker, kernel_instructions) = &self.build_definition.kernel;
         let kernel = (
