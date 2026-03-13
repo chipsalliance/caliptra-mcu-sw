@@ -10,8 +10,9 @@
 # Optional env vars:
 #   WORKSPACE           - repo root (defaults to caliptra-mcu-sw under this script's directory)
 #   DEMO_MODE           - set to 1 to pause between phases for a live demo
-#   SKIP_BUILD          - set to 1 to skip Stage 0 (firmware build)
+#   SKIP_BUILD          - set to 1 to skip Pre-Stage (firmware build)
 #   SPDM_DUMP_DIR       - path to spdm_dump binary directory (for pcap transaction log)
+#   SAFE_REPORT_GEN_DIR  - path to directory containing the SAFE endorsement generation script
 
 set -euo pipefail
 
@@ -51,6 +52,15 @@ phase_banner() {
     echo ""
 }
 
+substage_banner() {
+    local label="$1"
+    local desc="$2"
+    echo ""
+    echo -e "${C_BOLD}┌──────────────────────────────────────────────────────────────────────┐${C_RESET}"
+    echo -e "${C_BOLD}│  ${label}${label:+: }${desc}${C_RESET}"
+    echo -e "${C_BOLD}└──────────────────────────────────────────────────────────────────────┘${C_RESET}"
+}
+
 demo_pause() {
     if [[ "$DEMO_MODE" == "1" ]]; then
         echo ""
@@ -79,9 +89,9 @@ CORIM_DIR="$WORKSPACE/attestation-artifacts/refval-corim"
 
 if [[ "$SKIP_BUILD" != "1" ]]; then
 # ══════════════════════════════════════════════════════════════════════════════
-# Stage 0: Prerequisites & Firmware Build
+# Pre-Stage: Prerequisites & Firmware Build
 # ══════════════════════════════════════════════════════════════════════════════
-phase_banner "Stage 0" "Prerequisites & Firmware Build"
+phase_banner "Pre-Stage" "Prerequisites & Firmware Build"
 
 FEATURE="test-mctp-spdm-attestation"
 BUILD_LOG="/tmp/attestation-build.log"
@@ -102,13 +112,27 @@ cat > "$CORIM_CONFIG" << 'EOF'
 EOF
 
 CORIM_LOG="/tmp/attestation-corim-gen.log"
-# info "${C_BOLD}Running: cargo xtask corim gen-refval --bundle target/all-fw.zip --config $CORIM_CONFIG${C_RESET}"
-# info "  (full log: $CORIM_LOG)"
+info "Generating reference-value CoRIM from firmware bundle..."
 pushd "$WORKSPACE" >/dev/null
 cargo xtask corim gen-refval --bundle target/all-fw.zip --config "$CORIM_CONFIG" 2>&1 | tee "$CORIM_LOG" | grep -E '(error|warning\[)' || true
 popd >/dev/null
 
-info "${C_GREEN}✔${C_RESET} Stage 0 complete: firmware built."
+# Generate SAFE endorsement CoRIMs (if SAFE_REPORT_GEN_DIR is set)
+ENDORSEMENT_SRC_DIR="$WORKSPACE/attestation-artifacts/safe_endorsements"
+SAFE_LOG="/tmp/attestation-safe-gen.log"
+if [ -n "${SAFE_REPORT_GEN_DIR:-}" ]; then
+    SAFE_SCRIPT="$SAFE_REPORT_GEN_DIR/gen_endorsement_corim.sh"
+    if [ -x "$SAFE_SCRIPT" ]; then
+        info "Generating SAFE endorsement CoRIMs via ${C_CYAN}${SAFE_SCRIPT}${C_RESET}..."
+        "$SAFE_SCRIPT" "$ENDORSEMENT_SRC_DIR" > "$SAFE_LOG" 2>&1 || true
+    else
+        info "${C_YELLOW}⚠${C_RESET} gen_endorsement_corim.sh not found — using pre-existing endorsement artifacts."
+    fi
+fi
+
+
+
+info "${C_GREEN}✔${C_RESET} Pre-Stage complete: firmware built, CoRIMs generated."
 demo_pause
 
 fi  # end SKIP_BUILD
@@ -116,10 +140,10 @@ fi  # end SKIP_BUILD
 [[ -f "$WORKSPACE/target/all-fw.zip" ]] || error "target/all-fw.zip not found — run without SKIP_BUILD first."
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Stage 1: Prerequisite — Trust Anchor Store
+# Stage 0: Trust Anchor Store
 #   Assemble trusted CA certs & CoRIM signing certs
 # ══════════════════════════════════════════════════════════════════════════════
-phase_banner "Stage 1" "Prerequisite — Trust Anchor Store"
+phase_banner "Stage 0" "Trust Anchor Store"
 
 rm -rf "$WORKSPACE/attestation-artifacts/ta_store"
 
@@ -136,58 +160,88 @@ info "Set up signing-certs/ — CoRIM signing certificates for verifying referen
 # Copy the CoRIM signing certificate into signing-certs/
 cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/signing-certs/refval_corim_signing_cert.der"
 
-info "Trust Anchor Store:"
-tree -n "${TA_STORE_DIR#$WORKSPACE/}" | sed "s/[^ ]*\.[^ ]*$/$(echo -ne "$C_GREEN")&$(echo -ne "$C_RESET")/"
+# If endorsement CoRIMs exist, add their signing cert to roots/ and signing-certs/
+ENDORSEMENT_CERT_SRC="$WORKSPACE/attestation-artifacts/safe_endorsements"
+if [ -f "$ENDORSEMENT_CERT_SRC/testkey_p384_cert.der" ]; then
+    cp "$ENDORSEMENT_CERT_SRC/testkey_p384_cert.der" "$TA_STORE_DIR/roots/endorsement_corim_signing_cert.der"
+    cp "$ENDORSEMENT_CERT_SRC/testkey_p384_cert.der" "$TA_STORE_DIR/signing-certs/endorsement_corim_signing_cert.der"
+fi
+
+# info "Trust Anchor Store:"
+# tree -n "${TA_STORE_DIR#$WORKSPACE/}" | sed "s/[^ ]*\.[^ ]*$/$(echo -ne "$C_GREEN")&$(echo -ne "$C_RESET")/"
 
 echo -ne "${C_RESET}"
 info "${C_GREEN}✔${C_RESET} Trust Anchor Store is ready."
 demo_pause
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Stage 2: Provision Reference Values
-#   Generate and sign CoRIMs from firmware
+# Stage 1: Provisioning
+#   1a: Provision pre-built reference-value CoRIMs (generated in Pre-Stage)
+#   1b: Provision pre-built endorsement CoRIMs (generated in Pre-Stage)
 # ══════════════════════════════════════════════════════════════════════════════
-phase_banner "Stage 2" "Provision Reference Values"
+phase_banner "Stage 1" "Provisioning"
 
-info "Generating reference-value CoRIM from firmware bundle..."
-CORIM_CONFIG="/tmp/corim-config.json"
-cat > "$CORIM_CONFIG" << 'EOF'
-{
-  "output_dir": "attestation-artifacts/refval-corim",
-  "signing": {
-    "test_key": "caliptra-corim-test-signing-key"
-  }
-}
-EOF
-
-CORIM_LOG="/tmp/attestation-corim-gen.log"
-info "${C_BOLD}Running: cargo xtask corim gen-refval --bundle target/all-fw.zip --config $CORIM_CONFIG${C_RESET}"
-info "  (full log: $CORIM_LOG)"
-pushd "$WORKSPACE" >/dev/null
-cargo xtask corim gen-refval --bundle target/all-fw.zip --config "$CORIM_CONFIG" 2>&1 | tee "$CORIM_LOG" | grep -E '(Generating|Writing|Signing certificate|Signed CoRIM:|error|warning\[)' || true
-popd >/dev/null
-
-info "${C_GREEN}✔${C_RESET} Reference values generated and signed."
-
-# Now that test keys have been generated, copy signing cert into Trust Anchor Store
-cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/roots/refval_corim_signing_cert.der"
-cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/signing-certs/refval_corim_signing_cert.der"
+# ── Stage 1a: Provision Reference Values ─────────────────────────────────────
+substage_banner "Stage 1a" "Provision Reference Values"
 
 rm -rf "$WORKSPACE/attestation-artifacts/signed_refval_corims"
-
-# Copy signed Reference CoRIMs to dedicated folder
 SIGNED_CORIM_DIR="$WORKSPACE/attestation-artifacts/signed_refval_corims"
 mkdir -p "$SIGNED_CORIM_DIR"
-cp "$CORIM_DIR"/signed-*.cbor "$SIGNED_CORIM_DIR/"
 
-info "${C_GREEN}✔${C_RESET} Stage 2 complete: provisioning finished."
+if ls "$CORIM_DIR"/vendor-signed-*.cbor >/dev/null 2>&1; then
+    cp "$CORIM_DIR"/vendor-signed-*.cbor "$SIGNED_CORIM_DIR/"
+    for f in "$SIGNED_CORIM_DIR"/*.cbor; do
+        echo -e "  Signed CoRIM:          ${C_CYAN}${f#$WORKSPACE/}${C_RESET}"
+    done
+else
+    info "${C_YELLOW}⚠${C_RESET} No signed refval CoRIMs found in ${CORIM_DIR#$WORKSPACE/} — skipping."
+fi
+
+# Copy signing cert into Trust Anchor Store
+if [ -f "$CORIM_DIR/fake_keys/signing-cert.der" ]; then
+    cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/roots/refval_corim_signing_cert.der"
+    cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/signing-certs/refval_corim_signing_cert.der"
+fi
+
+info "${C_GREEN}✔${C_RESET} Stage 1a complete: reference values provisioned."
+
+# ── Stage 1b: Provision Endorsements ─────────────────────────────────────────
+substage_banner "Stage 1b" "Provision Endorsements"
+
+ENDORSEMENT_SRC_DIR="$WORKSPACE/attestation-artifacts/safe_endorsements"
+SIGNED_ENDORSEMENT_DIR="$WORKSPACE/attestation-artifacts/signed_endorsement_corims"
+rm -rf "$SIGNED_ENDORSEMENT_DIR"
+mkdir -p "$SIGNED_ENDORSEMENT_DIR"
+
+if [ -d "$ENDORSEMENT_SRC_DIR" ] && ls "$ENDORSEMENT_SRC_DIR"/*.cbor >/dev/null 2>&1; then
+    # Copy signed endorsement CoRIMs
+    cp "$ENDORSEMENT_SRC_DIR"/*.cbor "$SIGNED_ENDORSEMENT_DIR/"
+    for f in "$SIGNED_ENDORSEMENT_DIR"/*.cbor; do
+        echo -e "  Signed CoRIM:          ${C_MAGENTA}${f#$WORKSPACE/}${C_RESET}"
+    done
+
+    # Copy endorsement signing cert into Trust Anchor Store
+    if [ -f "$ENDORSEMENT_SRC_DIR/testkey_p384_cert.der" ]; then
+        cp "$ENDORSEMENT_SRC_DIR/testkey_p384_cert.der" \
+          "$TA_STORE_DIR/roots/endorsement_corim_signing_cert.der"
+        cp "$ENDORSEMENT_SRC_DIR/testkey_p384_cert.der" \
+          "$TA_STORE_DIR/signing-certs/endorsement_corim_signing_cert.der"
+    fi
+
+    info "${C_GREEN}✔${C_RESET} Stage 1b complete: endorsements provisioned."
+else
+    info "${C_YELLOW}⚠${C_RESET} No endorsement CoRIMs found in ${ENDORSEMENT_SRC_DIR#$WORKSPACE/} — skipping."
+fi
+
+echo ""
+info "${C_GREEN}✔${C_RESET} Stage 1 complete: all provisioning finished."
 demo_pause
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Stage 3: Acquire Evidence from Attester (SPDM Attestation)
+# Stage 2: Acquire Evidence from Attester (SPDM Attestation)
 #   — The verifier challenges the attester and collects fresh evidence.
 # ══════════════════════════════════════════════════════════════════════════════
-phase_banner "Stage 3" "Acquire Evidence from Attester"
+phase_banner "Stage 2" "Acquire Evidence from Attester"
 
 info "Generating SPDM nonce..."
 export SPDM_NONCE
@@ -228,7 +282,7 @@ mkdir -p "$EVIDENCE_DIR"
 cp "$SPDM_VALIDATOR_DIR/measurement_block_fd.bin" "$EVIDENCE_DIR/"
 cp "$SPDM_VALIDATOR_DIR/certificate_chain_slot_00.der" "$EVIDENCE_DIR/"
 
-info "${C_GREEN}✔${C_RESET} Stage 3 complete: evidence acquired from Attester."
+info "${C_GREEN}✔${C_RESET} Stage 2 complete: evidence acquired from Attester."
 demo_pause
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -238,12 +292,17 @@ phase_banner "" "Verifier Inputs Summary"
 
 info "Verifier inputs:"
 echo ""
-echo -e "  ${C_GREEN}Trust Anchor Store:\033[0m"
-tree -n "${TA_STORE_DIR#$WORKSPACE/}" | sed "s/[^ ]*\.[^ ]*$/$(echo -ne "$C_GREEN")&$(echo -ne "$C_RESET")/" | sed 's/^/    /'
-echo ""
+# echo -e "  ${C_GREEN}Trust Anchor Store:\033[0m"
+# tree -n "${TA_STORE_DIR#$WORKSPACE/}" | sed "s/[^ ]*\.[^ ]*$/$(echo -ne "$C_GREEN")&$(echo -ne "$C_RESET")/" | sed 's/^/    /'
+# echo ""
 echo -e "  ${C_CYAN}Signed Reference Value CoRIMs:\033[0m"
 tree -n "${SIGNED_CORIM_DIR#$WORKSPACE/}" | sed "s/[^ ]*\.[^ ]*$/$(echo -ne "$C_CYAN")&$(echo -ne "$C_RESET")/" | sed 's/^/    /'
 echo ""
+if [ -d "$SIGNED_ENDORSEMENT_DIR" ] && ls "$SIGNED_ENDORSEMENT_DIR"/*.cbor >/dev/null 2>&1; then
+    echo -e "  ${C_MAGENTA}Signed Endorsement CoRIMs:\033[0m"
+    tree -n "${SIGNED_ENDORSEMENT_DIR#$WORKSPACE/}" | sed "s/[^ ]*\.[^ ]*$/$(echo -ne "$C_MAGENTA")&$(echo -ne "$C_RESET")/" | sed 's/^/    /'
+    echo ""
+fi
 echo -e "  \033[1;38;2;178;34;34mEvidence (OCP EAT & cert chain):\033[0m"
 tree -n "${EVIDENCE_DIR#$WORKSPACE/}" | sed "s/[^ ]*\.[^ ]*$/$(echo -ne '\033[1;38;2;178;34;34m')&$(echo -ne '\033[0m')/" | sed 's/^/    /'
 echo ""
@@ -256,7 +315,7 @@ demo_pause
 #
 # The ocptoken 'appraise' subcommand runs the OCP EAT Verifier Algorithm:
 #   Phase 1: Input Validation & Transformation  — authenticate evidence & CoRIMs
-#   Phase 2: Evidence Augmentation              — decode EAT claims → ACS
+#   Phase 2: Evidence Augmentation              — decode EAT claims and initialize appraisal context
 #   Phase 3: Reference Values Corroboration     — match ref-vals against evidence
 #   Phase 5: Verifier Augmentation              — nonce freshness & debug status
 # ══════════════════════════════════════════════════════════════════════════════
@@ -274,6 +333,11 @@ popd >/dev/null
 info "Running appraisal pipeline..."
 export TA_STORE_PATH="$TA_STORE_DIR"
 export SIGNED_REFVAL_CORIM_PATH="$SIGNED_CORIM_DIR"
+
+if [ -d "$SIGNED_ENDORSEMENT_DIR" ] && ls "$SIGNED_ENDORSEMENT_DIR"/*.cbor >/dev/null 2>&1; then
+    export SIGNED_ENDORSEMENT_CORIM_PATH="$SIGNED_ENDORSEMENT_DIR"
+    info "Endorsement CoRIMs: ${C_CYAN}${SIGNED_ENDORSEMENT_DIR}${C_RESET}"
+fi
 
 DEMO_FLAG=""
 if [[ "$DEMO_MODE" == "1" ]]; then

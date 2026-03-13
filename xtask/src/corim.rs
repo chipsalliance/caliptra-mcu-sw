@@ -461,6 +461,15 @@ fn generate_test_keys(
 ) -> Result<(PathBuf, PathBuf)> {
     std::fs::create_dir_all(keys_dir)?;
 
+    let jwk_path = keys_dir.join("signing-key.jwk");
+    let cert_path = keys_dir.join("signing-cert.der");
+
+    // Skip regeneration if both key and certificate already exist
+    if jwk_path.exists() && cert_path.exists() {
+        println!("  Reusing existing test signing keys in {}", keys_dir.display());
+        return Ok((jwk_path, cert_path));
+    }
+
     let secret_key = p384::SecretKey::from_bytes(seed[..].into())
         .map_err(|e| anyhow::anyhow!("Failed to create P-384 key from seed: {}", e))?;
 
@@ -482,7 +491,6 @@ fn generate_test_keys(
         "y": URL_SAFE_NO_PAD.encode(&y_bytes[..]),
         "d": URL_SAFE_NO_PAD.encode(&seed[..])
     });
-    let jwk_path = keys_dir.join("signing-key.jwk");
     std::fs::write(&jwk_path, serde_json::to_string_pretty(&jwk)?)?;
 
     // Write PKCS#8 PEM (for openssl certificate generation)
@@ -500,7 +508,6 @@ fn generate_test_keys(
     std::fs::write(&pem_path, pem_string.as_bytes())?;
 
     // Generate self-signed X.509 certificate in DER format using openssl
-    let cert_path = keys_dir.join("signing-cert.der");
     let openssl_result = Command::new("openssl")
         .args([
             "req",
@@ -552,6 +559,140 @@ fn generate_meta_template(output_dir: &Path) -> Result<PathBuf> {
     let meta_path = output_dir.join("meta-caliptra.json");
     std::fs::write(&meta_path, serde_json::to_string_pretty(&meta)?)?;
     Ok(meta_path)
+}
+
+/// Generate OCP SAFE report JSON files for FMC_INFO and RT_INFO components.
+///
+/// Reads the firmware bundle, extracts FMC and RT digests (SHA-384 and SHA-512),
+/// and writes SAFE-format JSON reports matching the target environment used in CoRIM.
+pub fn generate_test_safe_report(
+    bundle: &str,
+    config: CorimConfig,
+    _feature: Option<&str>,
+    output_dir: Option<&str>,
+) -> Result<()> {
+    let bundle_path = Path::new(bundle);
+    if !bundle_path.exists() {
+        bail!(
+            "Bundle file not found: {}. Run `cargo xtask all-build` first.",
+            bundle
+        );
+    }
+
+    // Read firmware bundle to get FMC and RT binary content
+    let file = std::fs::File::open(bundle_path)?;
+    let mut zip = zip::ZipArchive::new(file)?;
+
+    let mut caliptra_fw_data: Option<Vec<u8>> = None;
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i)?;
+        let name = entry.name().to_string();
+        if name == CALIPTRA_FW_NAME {
+            let mut data = Vec::new();
+            entry.read_to_end(&mut data)?;
+            caliptra_fw_data = Some(data);
+            break;
+        }
+    }
+
+    let caliptra_fw = caliptra_fw_data
+        .ok_or_else(|| anyhow::anyhow!("{} not found in bundle", CALIPTRA_FW_NAME))?;
+
+    if caliptra_fw.len() < IMAGE_MANIFEST_BYTE_SIZE {
+        bail!(
+            "caliptra_fw.bin too small ({} bytes) to contain manifest ({} bytes)",
+            caliptra_fw.len(),
+            IMAGE_MANIFEST_BYTE_SIZE
+        );
+    }
+
+    let image_manifest: ImageManifest = {
+        let bytes: [u8; IMAGE_MANIFEST_BYTE_SIZE] = caliptra_fw[..IMAGE_MANIFEST_BYTE_SIZE]
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("Failed to read manifest bytes"))?;
+        zerocopy::transmute!(bytes)
+    };
+
+    let fmc_offset = image_manifest.fmc.offset as usize;
+    let fmc_size = image_manifest.fmc.size as usize;
+    let rt_offset = image_manifest.runtime.offset as usize;
+    let rt_size = image_manifest.runtime.size as usize;
+
+    if fmc_offset + fmc_size > caliptra_fw.len() || rt_offset + rt_size > caliptra_fw.len() {
+        bail!("caliptra_fw.bin truncated - FMC or runtime extends beyond bundle size");
+    }
+
+    let fmc_content = &caliptra_fw[fmc_offset..fmc_offset + fmc_size];
+    let rt_content = &caliptra_fw[rt_offset..rt_offset + rt_size];
+
+    let fw_version = "2.0".to_string();
+    let repo_tag = "release_v2.0".to_string();
+
+    // Compute digests
+    let fmc_sha384 = hex::encode(Sha384::digest(fmc_content));
+    let rt_sha384 = hex::encode(Sha384::digest(rt_content));
+
+    let out_dir = output_dir.unwrap_or("target/safe-reports");
+    let out_path = Path::new(out_dir);
+    std::fs::create_dir_all(out_path)?;
+
+    // Build SAFE report for FMC_INFO
+    // Note: FMC and RT are Caliptra-internal components — their evidence triples
+    // use only class-id (no vendor/model), matching the CoRIM reference values.
+    let fmc_report = serde_json::json!({
+        "review_framework_version": "0.3",
+        "device": {
+            "class_id": CLASS_ID_FMC,
+            "category": format!("Root of Trust - {} ({})", CLASS_ID_FMC, CALIPTRA_FW_NAME),
+            "repo_tag": repo_tag,
+            "fw_version": fw_version,
+            "fw_hash_sha2_384": fmc_sha384
+        },
+        "audit": {
+            "srp": "NCC Group",
+            "methodology": "whitebox",
+            "completion_date": "2026-03-12",
+            "report_version": "1.0",
+            "cvss_version": "3.1",
+            "issues": []
+        }
+    });
+
+    // Build SAFE report for RT_INFO
+    let rt_report = serde_json::json!({
+        "review_framework_version": "0.3",
+        "device": {
+            "class_id": CLASS_ID_RT,
+            "category": format!("Root of Trust - {} ({})", CLASS_ID_RT, CALIPTRA_FW_NAME),
+            "repo_tag": repo_tag,
+            "fw_version": fw_version,
+            "fw_hash_sha2_384": rt_sha384
+        },
+        "audit": {
+            "srp": "NCC Group",
+            "methodology": "whitebox",
+            "completion_date": "2026-03-12",
+            "report_version": "1.0",
+            "cvss_version": "3.1",
+            "issues": []
+        }
+    });
+
+    let fmc_path = out_path.join("OCP_SAFE_-_caliptra_-_FMC.json");
+    let rt_path = out_path.join("OCP_SAFE_-_caliptra_-_Runtime.json");
+
+    std::fs::write(&fmc_path, serde_json::to_string_pretty(&fmc_report)?)?;
+    std::fs::write(&rt_path, serde_json::to_string_pretty(&rt_report)?)?;
+
+    println!("Generated SAFE reports:");
+    println!("  FMC_INFO: \x1b[36m{}\x1b[0m", fmc_path.display());
+    println!("  RT_INFO:  \x1b[36m{}\x1b[0m", rt_path.display());
+    println!();
+    println!("Target environment (matches evidence class-ids):");
+    println!("  FMC class-id: {}", CLASS_ID_FMC);
+    println!("  RT  class-id: {}", CLASS_ID_RT);
+
+    Ok(())
 }
 
 /// Generate CoRIM from a firmware bundle ZIP using cocli.
@@ -752,7 +893,7 @@ pub fn generate(bundle: &str, config: CorimConfig, feature: Option<&str>) -> Res
 
     // Sign the CoRIM
     println!("\n\x1b[36mSigning CoRIM...\x1b[0m");
-    let signed_corim_path = output_path.join("signed-corim-refval-caliptra.cbor");
+    let signed_corim_path = output_path.join("vendor-signed-corim-refval.cbor");
     let corim_sign = Command::new("cocli")
         .args([
             "corim",
@@ -772,7 +913,13 @@ pub fn generate(bundle: &str, config: CorimConfig, feature: Option<&str>) -> Res
 
     match corim_sign {
         Ok(output) if output.status.success() => {
-            println!("Signed CoRIM created: \x1b[36m{}\x1b[0m", signed_corim_path.file_name().unwrap_or(signed_corim_path.as_os_str()).to_string_lossy());
+            println!(
+                "Signed CoRIM created: \x1b[36m{}\x1b[0m",
+                signed_corim_path
+                    .file_name()
+                    .unwrap_or(signed_corim_path.as_os_str())
+                    .to_string_lossy()
+            );
         }
         Ok(output) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -784,13 +931,31 @@ pub fn generate(bundle: &str, config: CorimConfig, feature: Option<&str>) -> Res
     }
 
     println!("\n\x1b[1mOutput files:\x1b[0m");
-    println!("  CoMID template:  \x1b[36m{}\x1b[0m", comid_template_path.display());
-    println!("  CoRIM template:  \x1b[36m{}\x1b[0m", corim_template_path.display());
-    println!("  CoMID CBOR:      \x1b[36m{}\x1b[0m", comid_cbor_path.display());
-    println!("  CoRIM CBOR:      \x1b[36m{}\x1b[0m", corim_output_path.display());
-    println!("  Signed CoRIM:    \x1b[36m{}\x1b[0m", signed_corim_path.display());
+    println!(
+        "  CoMID template:  \x1b[36m{}\x1b[0m",
+        comid_template_path.display()
+    );
+    println!(
+        "  CoRIM template:  \x1b[36m{}\x1b[0m",
+        corim_template_path.display()
+    );
+    println!(
+        "  CoMID CBOR:      \x1b[36m{}\x1b[0m",
+        comid_cbor_path.display()
+    );
+    println!(
+        "  CoRIM CBOR:      \x1b[36m{}\x1b[0m",
+        corim_output_path.display()
+    );
+    println!(
+        "  Signed CoRIM:    \x1b[36m{}\x1b[0m",
+        signed_corim_path.display()
+    );
     println!("  Signing key:     \x1b[36m{}\x1b[0m", jwk_path.display());
-    println!("  Signing certificate:     \x1b[36m{}\x1b[0m", cert_path.display());
+    println!(
+        "  Signing certificate:     \x1b[36m{}\x1b[0m",
+        cert_path.display()
+    );
 
     Ok(())
 }

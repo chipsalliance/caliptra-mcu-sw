@@ -453,6 +453,34 @@ EXAMPLES:
     },
     /// Print a sample JSON config file with all fields documented
     SampleConfig,
+    /// Generate OCP SAFE report JSON files for FMC and Runtime components
+    #[command(long_about = "\
+Generate OCP SAFE report JSON files for Caliptra FMC_INFO and RT_INFO components.
+
+Reads the all-build ZIP bundle and produces SAFE-format JSON report files with
+SHA-384 digests. The target environment (vendor, model, class-id) matches the
+CoRIM reference values so that verifiers can correlate SAFE reports with CoRIM endorsements.
+
+EXAMPLES:
+  cargo xtask corim gen-safe-report --bundle target/all-fw.zip
+  cargo xtask corim gen-safe-report --bundle target/all-fw.zip --output-dir attestation-artifacts/safe-reports")]
+    GenSafeReport {
+        /// Path to the firmware bundle ZIP (from `cargo xtask all-build`)
+        #[arg(long, value_name = "BUNDLE", required = true)]
+        bundle: String,
+
+        /// Path to JSON config file (vendor, model, hash_algo, etc.)
+        #[arg(long, value_name = "CONFIG")]
+        config: Option<String>,
+
+        /// Feature name to select per-feature entries from the bundle
+        #[arg(long, value_name = "FEATURE")]
+        feature: Option<String>,
+
+        /// Output directory for SAFE report JSON files (default: target/safe-reports)
+        #[arg(long, value_name = "OUTPUT_DIR")]
+        output_dir: Option<String>,
+    },
 }
 
 fn main() {
@@ -584,14 +612,29 @@ fn main() {
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
         Commands::Corim { subcommand } => match subcommand {
-            CorimCommands::GenRefval { bundle, config, feature } => {
-                corim::CorimConfig::load(config.as_deref())
-                    .and_then(|cfg| corim::generate(bundle, cfg, feature.as_deref()))
-            }
+            CorimCommands::GenRefval {
+                bundle,
+                config,
+                feature,
+            } => corim::CorimConfig::load(config.as_deref())
+                .and_then(|cfg| corim::generate(bundle, cfg, feature.as_deref())),
             CorimCommands::SampleConfig => {
                 corim::CorimConfig::print_sample();
                 Ok(())
             }
+            CorimCommands::GenSafeReport {
+                bundle,
+                config,
+                feature,
+                output_dir,
+            } => corim::CorimConfig::load(config.as_deref()).and_then(|cfg| {
+                corim::generate_test_safe_report(
+                    bundle,
+                    cfg,
+                    feature.as_deref(),
+                    output_dir.as_deref(),
+                )
+            }),
         },
         Commands::FirmwareBundler { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
     };

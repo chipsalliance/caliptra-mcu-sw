@@ -18,6 +18,5 @@ thiserror = "2.0"
 openssl = { version = "0.10", features = ["vendored"] }
 clap = { version = "4", features = ["derive"] }
 corim-rs = { git = "https://github.com/parvathib/corim-rs.git", branch = "pbhogaraju/add_coev" }
-# corim-rs = { path = "../../../../CORIM_COEV_DECODE_CUSTOM/corim-rs" }
 ciborium = "0.2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

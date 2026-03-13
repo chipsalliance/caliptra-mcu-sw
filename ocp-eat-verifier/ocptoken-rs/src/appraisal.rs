@@ -179,7 +179,12 @@ fn verify_preconditions(
             name: "Freshness (nonce)".into(),
             passed: nonce_ok,
             detail: if nonce_ok {
-                "evidence nonce matches expected nonce".into()
+                let short = if evidence_nonce_hex.len() > 16 {
+                    format!("{}…{}", &evidence_nonce_hex[..8], &evidence_nonce_hex[evidence_nonce_hex.len()-8..])
+                } else {
+                    evidence_nonce_hex.clone()
+                };
+                format!("nonce={} — evidence matches expected", short)
             } else {
                 format!(
                     "nonce mismatch: expected={}, evidence={}",

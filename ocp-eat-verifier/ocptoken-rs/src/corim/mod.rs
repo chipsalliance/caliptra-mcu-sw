@@ -17,7 +17,9 @@
 //! }
 //! ```
 
+pub mod endorsement;
 pub mod refval;
+pub use endorsement::EndorsementCorims;
 pub use refval::RefValCorims;
 
 use std::fs;
@@ -132,6 +134,11 @@ impl<'a> SignedCorim<'a> {
     /// The file name this CoRIM was loaded from.
     pub fn file_name(&self) -> &str {
         &self.file_name
+    }
+
+    /// Access the underlying decoded COSE_Sign1 structure.
+    pub(crate) fn decoded_ref(&self) -> &DecodedCoseSign1 {
+        &self.decoded
     }
 }
 
