@@ -23,7 +23,10 @@ members = [
     "error",
     "firmware-bundler",
     "hw/model",
-    "hw/model/test-fw",
+    "hw/model/test-fw/exception-handler",
+    "hw/model/test-fw/hitless-update-flow",
+    "hw/model/test-fw/mailbox-responder",
+    "hw/model/test-fw/sw-digest-lock",
     "platforms/common",
     "platforms/emulator/config",
     "platforms/emulator/mcu-image-header",
@@ -207,7 +210,10 @@ mcu-error = { path = "error" }
 mcu-firmware-bundler = { path = "firmware-bundler" }
 mcu-fuses-generator = { path = "registers/fuses" }
 mcu-hw-model = { path = "hw/model" }
-mcu-hw-model-test-fw = { path = "hw/model/test-fw" }
+mcu-test-fw-exception-handler = { path = "hw/model/test-fw/exception-handler" }
+mcu-test-fw-hitless-update-flow = { path = "hw/model/test-fw/hitless-update-flow" }
+mcu-test-fw-mailbox-responder = { path = "hw/model/test-fw/mailbox-responder" }
+mcu-test-fw-sw-digest-lock = { path = "hw/model/test-fw/sw-digest-lock" }
 mcu-image-header = { path = "platforms/emulator/mcu-image-header" }
 mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
 mcu-mbox-common = { path = "common/mcu-mbox" }
