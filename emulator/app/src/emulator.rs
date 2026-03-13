@@ -19,7 +19,7 @@ use crate::tests;
 use crate::tests::spdm_responder_validator::SpdmTestType;
 use caliptra_api_types::DeviceLifecycle;
 use caliptra_emu_bus::BusMmio;
-use caliptra_emu_bus::{Bus, Clock, Timer};
+use caliptra_emu_bus::{Bus, Clock, Ram, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::MailboxRequester;
@@ -116,6 +116,10 @@ pub struct EmulatorArgs {
     #[arg(long = "stdin-uart", overrides_with = "stdin_uart")]
     pub _no_stdin_uart: bool,
 
+    /// Allow writing to the ROM while the emulator is running.
+    #[arg(long, action = ArgAction::SetTrue, default_value_t = false)]
+    pub allow_sideloaded_rom: bool,
+
     /// Enable flash based boot (default false).
     #[arg(long, default_value_t = false)]
     pub flash_based_boot: bool,
@@ -185,6 +189,12 @@ pub struct EmulatorArgs {
     /// Override SRAM size
     #[arg(long, value_parser=maybe_hex::<u32>)]
     pub sram_size: Option<u32>,
+    /// Override MCU sideload SRAM offset
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    pub mcu_sram_sideload_offset: Option<u32>,
+    /// Override MCU sideload SRAM size
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    pub mcu_sram_sideload_size: Option<u32>,
     /// Override PIC offset
     #[arg(long, value_parser=maybe_hex::<u32>)]
     pub pic_offset: Option<u32>,
@@ -430,6 +440,12 @@ impl Emulator {
         if let Some(sram_size) = cli.sram_size {
             mcu_root_bus_offsets.ram_size = sram_size;
         }
+        if let Some(mcu_sram_sideload_offset) = cli.mcu_sram_sideload_offset {
+            mcu_root_bus_offsets.mcu_sram_sideload_offset = mcu_sram_sideload_offset;
+        }
+        if let Some(mcu_sram_sideload_size) = cli.mcu_sram_sideload_size {
+            mcu_root_bus_offsets.mcu_sram_sideload_size = mcu_sram_sideload_size;
+        }
         if let Some(dccm_offset) = cli.dccm_offset {
             mcu_root_bus_offsets.rom_dedicated_ram_offset = dccm_offset;
         }
@@ -485,6 +501,14 @@ impl Emulator {
             auto_root_bus_offsets.lc_size = lc_size;
         }
 
+        let mcu_sram_sideload = (mcu_root_bus_offsets.mcu_sram_sideload_size > 0).then(|| {
+            Rc::new(RefCell::new(Ram::new(vec![
+                0;
+                mcu_root_bus_offsets.mcu_sram_sideload_size
+                    as usize
+            ])))
+        });
+
         let bus_args = McuRootBusArgs {
             offsets: mcu_root_bus_offsets.clone(),
             rom: rom_buffer,
@@ -493,6 +517,8 @@ impl Emulator {
             uart_rx: stdin_uart.clone(),
             pic: pic.clone(),
             clock: clock.clone(),
+            mcu_sram_sideload: mcu_sram_sideload.clone(),
+            allow_sideloaded_rom: cli.allow_sideloaded_rom,
         };
         let root_bus = McuRootBus::new(bus_args).unwrap();
 
@@ -819,7 +845,7 @@ impl Emulator {
             )
         };
 
-        let mci = Mci::new(
+        let mut mci = Mci::new(
             &clock.clone(),
             ext_mci,
             mci_irq,
@@ -828,6 +854,7 @@ impl Emulator {
             Some(soc_ifc),
             [0, 0],
         );
+        mci.set_mcu_sram(mcu_sram_sideload.clone());
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,

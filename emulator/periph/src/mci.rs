@@ -2,10 +2,12 @@
 
 use crate::mcu_mbox0::McuMailbox0Internal;
 use crate::reset_reason::ResetReasonEmulator;
-use caliptra_emu_bus::{ActionHandle, BusMmio, Clock, ReadWriteRegister, Timer, TimerAction};
+use caliptra_emu_bus::{
+    ActionHandle, Bus, BusMmio, Clock, Ram, ReadWriteRegister, Timer, TimerAction,
+};
 use caliptra_emu_cpu::Irq;
 use caliptra_emu_periph::SocToCaliptraBus;
-use caliptra_emu_types::RvData;
+use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use caliptra_registers::soc_ifc::RegisterBlock;
 use emulator_registers_generated::mci::{MciGenerated, MciPeripheral};
 use registers_generated::mci::bits::{
@@ -41,6 +43,7 @@ pub struct Mci {
     reset_cycle_complete: bool,
     irq: Rc<RefCell<Irq>>,
     mcu_mailbox0: Option<McuMailbox0Internal>,
+    mcu_sram: Option<Rc<RefCell<Ram>>>,
 
     // machine timer compare
     mtimecmp: u64,
@@ -87,6 +90,7 @@ impl Mci {
             reset_cycle_complete: false,
             irq,
             mcu_mailbox0,
+            mcu_sram: None,
             reset_requested: false,
 
             // --- init mtimecmp ---
@@ -95,6 +99,10 @@ impl Mci {
             mcu_mailbox1,
             soc_regs,
         }
+    }
+
+    pub fn set_mcu_sram(&mut self, ram: Option<Rc<RefCell<Ram>>>) {
+        self.mcu_sram = ram;
     }
 
     fn arm_mtime_interrupt(&mut self) {
@@ -127,6 +135,22 @@ impl Mci {
 }
 
 impl MciPeripheral for Mci {
+    fn read_mcu_sram(&mut self, index: usize) -> RvData {
+        if let Some(ram) = &self.mcu_sram {
+            let addr = (index * 4) as RvAddr;
+            ram.borrow_mut().read(RvSize::Word, addr).unwrap_or(0)
+        } else {
+            0
+        }
+    }
+
+    fn write_mcu_sram(&mut self, val: RvData, index: usize) {
+        if let Some(ram) = &self.mcu_sram {
+            let addr = (index * 4) as RvAddr;
+            let _ = ram.borrow_mut().write(RvSize::Word, addr, val);
+        }
+    }
+
     fn generated(&mut self) -> Option<&mut MciGenerated> {
         Some(&mut self.generated)
     }
