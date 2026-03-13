@@ -25,7 +25,6 @@ const DEFAULT_TEST_KEY_SEED: &str = "caliptra-corim-default-test-signing-key";
 /// See platforms/emulator/runtime/userspace/apps/user/src/soc_env.rs
 const CLASS_ID_FMC: &str = "FMC_INFO";
 const CLASS_ID_RT: &str = "RT_INFO";
-const CLASS_ID_SOC_MANIFEST: &str = "SOC_MANIFEST";
 
 /// MCU runtime firmware identifier.
 /// See common/flash-image/src/lib.rs: MCU_RT_IDENTIFIER = 0x00000002
@@ -165,10 +164,8 @@ struct EvidenceComponent {
     model: Option<String>,
     /// Pre-formatted digest string (e.g. "sha-384:base64...").
     digest: String,
-    /// Firmware version string.
-    version: String,
-    /// Security Version Number.
-    svn: u32,
+    /// Security Version Number (omitted for SoC firmware components).
+    svn: Option<u32>,
 }
 
 /// Compute SHA-256 digest and return as "sha-256:<base64>" string.
@@ -207,9 +204,18 @@ fn sha384_raw_to_digest_str(digest: &[u8; 48]) -> String {
 fn read_evidence_components(
     bundle_path: &Path,
     config: &CorimConfig,
+    feature: Option<&str>,
 ) -> Result<Vec<EvidenceComponent>> {
     let file = std::fs::File::open(bundle_path)?;
     let mut zip = zip::ZipArchive::new(file)?;
+
+    // When a feature is specified, prefer per-feature entries over generic ones.
+    let soc_manifest_name = feature
+        .map(|f| format!("mcu-test-soc-manifest-{}.bin", f))
+        .unwrap_or_else(|| SOC_MANIFEST_NAME.to_string());
+    let mcu_runtime_name = feature
+        .map(|f| format!("mcu-test-runtime-{}.bin", f))
+        .unwrap_or_else(|| MCU_RUNTIME_NAME.to_string());
 
     let mut caliptra_fw_data: Option<Vec<u8>> = None;
     let mut soc_manifest_data: Option<Vec<u8>> = None;
@@ -221,18 +227,19 @@ fn read_evidence_components(
         let mut data = Vec::new();
         file.read_to_end(&mut data)?;
 
-        match name.as_str() {
-            CALIPTRA_FW_NAME => caliptra_fw_data = Some(data),
-            SOC_MANIFEST_NAME => soc_manifest_data = Some(data),
-            MCU_RUNTIME_NAME => mcu_runtime_data = Some(data),
-            _ => {}
+        if name == CALIPTRA_FW_NAME {
+            caliptra_fw_data = Some(data);
+        } else if name == soc_manifest_name {
+            soc_manifest_data = Some(data);
+        } else if name == mcu_runtime_name {
+            mcu_runtime_data = Some(data);
         }
     }
 
     let caliptra_fw = caliptra_fw_data
         .ok_or_else(|| anyhow::anyhow!("{} not found in bundle", CALIPTRA_FW_NAME))?;
     let soc_manifest = soc_manifest_data
-        .ok_or_else(|| anyhow::anyhow!("{} not found in bundle", SOC_MANIFEST_NAME))?;
+        .ok_or_else(|| anyhow::anyhow!("{} not found in bundle", soc_manifest_name))?;
 
     // Decompose caliptra_fw.bin into FMC and Runtime
     if caliptra_fw.len() < IMAGE_MANIFEST_BYTE_SIZE {
@@ -262,10 +269,8 @@ fn read_evidence_components(
     let fmc_content = &caliptra_fw[fmc_offset..fmc_offset + fmc_size];
     let rt_content = &caliptra_fw[rt_offset..rt_offset + rt_size];
 
-    // Extract version and SVN from the Caliptra image manifest header
+    // Extract SVN from the Caliptra image manifest header
     let caliptra_fw_svn = image_manifest.header.svn;
-    let fmc_version = image_manifest.fmc.version;
-    let rt_version = image_manifest.runtime.version;
 
     // Parse AuthManifest to get preamble version/SVN and per-image metadata
     let auth_manifest = AuthorizationManifest::read_from_bytes(&soc_manifest).map_err(|e| {
@@ -282,8 +287,7 @@ fn read_evidence_components(
             vendor: None,
             model: None,
             digest: compute_digest(fmc_content, &config.hash_algo),
-            version: format!("{}", fmc_version),
-            svn: caliptra_fw_svn,
+            svn: Some(caliptra_fw_svn),
         },
         EvidenceComponent {
             class_id: CLASS_ID_RT.to_string(),
@@ -291,19 +295,18 @@ fn read_evidence_components(
             vendor: None,
             model: None,
             digest: compute_digest(rt_content, &config.hash_algo),
-            version: format!("{}", rt_version),
-            svn: caliptra_fw_svn,
+            svn: Some(caliptra_fw_svn),
         },
-        // SOC_MANIFEST: version/SVN not available per-image in AuthManifestImageMetadata
-        EvidenceComponent {
-            class_id: CLASS_ID_SOC_MANIFEST.to_string(),
-            mkey: 2,
-            vendor: None,
-            model: None,
-            digest: compute_digest(&soc_manifest, &config.hash_algo),
-            version: "0".to_string(),
-            svn: 0,
-        },
+        // SOC_MANIFEST: Commented out - non-deterministic signatures cause digest mismatch
+        // EvidenceComponent {
+        //     class_id: CLASS_ID_SOC_MANIFEST.to_string(),
+        //     mkey: 2,
+        //     vendor: None,
+        //     model: None,
+        //     digest: compute_digest(&soc_manifest, &config.hash_algo),
+        //     version: "0".to_string(),
+        //     svn: 0,
+        // },
     ];
 
     // Auto-discover SoC firmware components from the AuthManifest metadata
@@ -329,13 +332,11 @@ fn read_evidence_components(
 
         components.push(EvidenceComponent {
             class_id: format!("0x{:08X}", metadata.fw_id),
-            mkey: 3 + i,
+            mkey: 2 + i,
             vendor: Some(config.vendor.clone()),
             model: Some(config.model.clone()),
             digest,
-            // Per-image version/SVN not available in AuthManifestImageMetadata
-            version: "0".to_string(),
-            svn: 0,
+            svn: None,
         });
     }
 
@@ -346,7 +347,7 @@ fn read_evidence_components(
 /// the OCP EAT evidence triples from the device.
 ///
 /// Each evidence component gets its own environment (class-id) and measurement
-/// entry with version, svn, and digests fields.
+/// entry with svn and digests fields.
 fn generate_comid_template(components: &[EvidenceComponent]) -> serde_json::Value {
     let tag_id = uuid::Uuid::new_v4().to_string().to_uppercase();
 
@@ -379,6 +380,16 @@ fn generate_comid_template(components: &[EvidenceComponent]) -> serde_json::Valu
                 class_map["model"] = serde_json::json!(model);
             }
 
+            let mut meas_value = serde_json::json!({
+                "digests": [comp.digest]
+            });
+            if let Some(svn) = comp.svn {
+                meas_value["svn"] = serde_json::json!({
+                    "type": "exact-value",
+                    "value": svn
+                });
+            }
+
             serde_json::json!({
                 "environment": {
                     "class": class_map
@@ -389,17 +400,7 @@ fn generate_comid_template(components: &[EvidenceComponent]) -> serde_json::Valu
                             "type": "uint",
                             "value": comp.mkey
                         },
-                        "value": {
-                            "version": {
-                                "value": comp.version,
-                                "scheme": "multipartnumeric"
-                            },
-                            "svn": {
-                                "type": "exact-value",
-                                "value": comp.svn
-                            },
-                            "digests": [comp.digest]
-                        }
+                        "value": meas_value
                     }
                 ]
             })
@@ -568,7 +569,7 @@ fn generate_meta_template(output_dir: &Path) -> Result<PathBuf> {
 /// Note: integrity-registers (journey PCR values) are runtime-computed and
 /// cannot be pre-determined from static build artifacts. They are not included
 /// in the reference values.
-pub fn generate(bundle: &str, config: CorimConfig) -> Result<()> {
+pub fn generate(bundle: &str, config: CorimConfig, feature: Option<&str>) -> Result<()> {
     let bundle_path = Path::new(bundle);
     if !bundle_path.exists() {
         bail!(
@@ -581,8 +582,11 @@ pub fn generate(bundle: &str, config: CorimConfig) -> Result<()> {
     std::fs::create_dir_all(output_path)?;
 
     // Step 1: Read and decompose firmware binaries to match evidence structure
-    println!("Reading firmware binaries from: {}", bundle);
-    let components = read_evidence_components(bundle_path, &config)?;
+    println!("Reading firmware binaries from: \x1b[36m{}\x1b[0m", bundle);
+    if let Some(f) = feature {
+        println!("Using per-feature entries for: {}", f);
+    }
+    let components = read_evidence_components(bundle_path, &config, feature)?;
     for comp in &components {
         println!(
             "  [mkey {}] {} ({})",
@@ -592,8 +596,8 @@ pub fn generate(bundle: &str, config: CorimConfig) -> Result<()> {
         );
     }
     println!();
-    println!("Note: integrity-registers (journey PCR values) are runtime-computed");
-    println!("and are not included in the reference values.");
+    println!("\x1b[33mNote: integrity-registers (journey PCR values) are runtime-computed");
+    println!("and are not included in the reference values.\x1b[0m");
 
     // Step 2: Generate CoMID JSON template
     let comid_template = generate_comid_template(&components);
@@ -616,7 +620,7 @@ pub fn generate(bundle: &str, config: CorimConfig) -> Result<()> {
     );
 
     // Step 4: Create CBOR-encoded CoMID using cocli
-    println!("Creating CBOR-encoded CoMID...");
+    println!("\x1b[36mCreating CBOR-encoded CoMID...\x1b[0m");
     let comid_create = Command::new("cocli")
         .args([
             "comid",
@@ -631,7 +635,7 @@ pub fn generate(bundle: &str, config: CorimConfig) -> Result<()> {
     let comid_cbor_path = output_path.join("comid-caliptra.cbor");
     match comid_create {
         Ok(output) if output.status.success() => {
-            println!("  CoMID CBOR created successfully");
+            println!("\x1b[32m  CoMID CBOR created successfully\x1b[0m");
         }
         Ok(output) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -648,7 +652,7 @@ pub fn generate(bundle: &str, config: CorimConfig) -> Result<()> {
     }
 
     // Step 5: Create unsigned CoRIM from CoMID + template
-    println!("Creating unsigned CoRIM...");
+    println!("\x1b[36mCreating unsigned CoRIM...\x1b[0m");
     let corim_output_path = output_path.join("corim-caliptra.cbor");
     let corim_create = Command::new("cocli")
         .args([
@@ -666,7 +670,7 @@ pub fn generate(bundle: &str, config: CorimConfig) -> Result<()> {
     match corim_create {
         Ok(output) if output.status.success() => {
             println!(
-                "CoRIM created successfully: {}",
+                "CoRIM created successfully: \x1b[32m{}\x1b[0m",
                 corim_output_path.display()
             );
         }
@@ -680,7 +684,7 @@ pub fn generate(bundle: &str, config: CorimConfig) -> Result<()> {
     }
 
     // Display the unsigned CoRIM contents for verification
-    println!("\nDisplaying unsigned CoRIM contents...");
+    println!("\n\x1b[36mDisplaying unsigned CoRIM contents...\x1b[0m");
     let display = Command::new("cocli")
         .args([
             "corim",
@@ -747,7 +751,7 @@ pub fn generate(bundle: &str, config: CorimConfig) -> Result<()> {
     println!("  Meta:        {}", meta_path.display());
 
     // Sign the CoRIM
-    println!("\nSigning CoRIM...");
+    println!("\n\x1b[36mSigning CoRIM...\x1b[0m");
     let signed_corim_path = output_path.join("signed-corim-refval-caliptra.cbor");
     let corim_sign = Command::new("cocli")
         .args([
@@ -768,7 +772,7 @@ pub fn generate(bundle: &str, config: CorimConfig) -> Result<()> {
 
     match corim_sign {
         Ok(output) if output.status.success() => {
-            println!("Signed CoRIM created: {}", signed_corim_path.display());
+            println!("Signed CoRIM created: \x1b[36m{}\x1b[0m", signed_corim_path.file_name().unwrap_or(signed_corim_path.as_os_str()).to_string_lossy());
         }
         Ok(output) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -779,14 +783,14 @@ pub fn generate(bundle: &str, config: CorimConfig) -> Result<()> {
         }
     }
 
-    println!("\nOutput files:");
-    println!("  CoMID template:  {}", comid_template_path.display());
-    println!("  CoRIM template:  {}", corim_template_path.display());
-    println!("  CoMID CBOR:      {}", comid_cbor_path.display());
-    println!("  CoRIM CBOR:      {}", corim_output_path.display());
-    println!("  Signed CoRIM:    {}", signed_corim_path.display());
-    println!("  Signing key:     {}", jwk_path.display());
-    println!("  Certificate:     {}", cert_path.display());
+    println!("\n\x1b[1mOutput files:\x1b[0m");
+    println!("  CoMID template:  \x1b[36m{}\x1b[0m", comid_template_path.display());
+    println!("  CoRIM template:  \x1b[36m{}\x1b[0m", corim_template_path.display());
+    println!("  CoMID CBOR:      \x1b[36m{}\x1b[0m", comid_cbor_path.display());
+    println!("  CoRIM CBOR:      \x1b[36m{}\x1b[0m", corim_output_path.display());
+    println!("  Signed CoRIM:    \x1b[36m{}\x1b[0m", signed_corim_path.display());
+    println!("  Signing key:     \x1b[36m{}\x1b[0m", jwk_path.display());
+    println!("  Signing certificate:     \x1b[36m{}\x1b[0m", cert_path.display());
 
     Ok(())
 }

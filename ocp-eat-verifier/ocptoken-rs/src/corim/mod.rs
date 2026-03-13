@@ -17,6 +17,9 @@
 //! }
 //! ```
 
+pub mod refval;
+pub use refval::RefValCorims;
+
 use std::fs;
 use std::path::Path;
 
@@ -181,7 +184,7 @@ pub enum CorimError {
 pub type CorimResult<T> = std::result::Result<T, CorimError>;
 
 /// Collect sorted `.cbor` file entries from a directory.
-fn collect_cbor_entries(dir: &Path) -> CorimResult<Vec<fs::DirEntry>> {
+pub(crate) fn collect_cbor_entries(dir: &Path) -> CorimResult<Vec<fs::DirEntry>> {
     if !dir.is_dir() {
         return Err(CorimError::DirNotFound(dir.display().to_string()));
     }

@@ -15,10 +15,9 @@ use ocp_eat::ocp_profile::{
 };
 use ocp_eat::{
     ClassIdTypeChoice, ClassMap, ConciseEvidence, ConciseEvidenceMap, DigestEntry, EnvironmentMap,
-    EvTriplesMap, EvidenceTripleRecord, MeasurementMap, MeasurementValue, TaggedBytes,
+    EvTriplesMap, EvidenceTripleRecord, MeasurementMap, MeasurementValue, TaggedBytes, VersionMap,
 };
 use spdm_lib::measurements::{MeasurementsError, MeasurementsResult};
-use zerocopy::IntoBytes;
 
 const NUM_FW_TARGET_ENV: usize = NUM_DEFAULT_FW_COMPONENTS + NUM_SOC_FW_COMPONENTS;
 const NUM_HW_TARGET_ENV: usize = 0; // For now, no HW IDs
@@ -36,8 +35,8 @@ const MAX_RAW_VALUE_LEN: usize = 32;
 
 const FMC_MEASUREMENT_INDEX: usize = 0;
 const RT_MEASUREMENT_INDEX: usize = 1;
-const AUTHMAN_MEASUREMENT_INDEX: usize = 2;
-const NUM_DEFAULT_FW_COMPONENTS: usize = 3;
+// const AUTHMAN_MEASUREMENT_INDEX: usize = 2; // Commented out - SOC_MANIFEST skipped
+const NUM_DEFAULT_FW_COMPONENTS: usize = 2;
 
 const EAT_DEFAULT_ISSUER: &str = "CN=Caliptra EAT DPE Attestation Key";
 
@@ -178,6 +177,16 @@ pub async fn generate_claims(claims_buf: &mut [u8], nonce: &[u8]) -> Measurement
         version_fields[i].buf = version_to_str(versions[i]);
     }
 
+    // Convert [u32; 12] digests to [u8; 48] in big-endian byte order.
+    // Caliptra HW returns digests as u32 words; .as_bytes() would use platform
+    // (little-endian) byte order, but SHA-384 digests must be big-endian.
+    let mut digest_bytes = [[0u8; SHA384_HASH_SIZE]; NUM_FW_HW_TARGET_ENV];
+    for i in 0..NUM_FW_HW_TARGET_ENV {
+        for (j, word) in digests[i].iter().enumerate() {
+            digest_bytes[i][j * 4..(j + 1) * 4].copy_from_slice(&word.to_be_bytes());
+        }
+    }
+
     // Fill the digest entries and integrity registers
     for i in 0..NUM_FW_TARGET_ENV {
         journey_digest_entries_arr[i][0] = DigestEntry {
@@ -188,7 +197,7 @@ pub async fn generate_claims(claims_buf: &mut [u8], nonce: &[u8]) -> Measurement
     for i in 0..NUM_FW_TARGET_ENV {
         digest_entries_arr[i][0] = DigestEntry {
             alg_id: 7,
-            value: digests[i].as_bytes(),
+            value: &digest_bytes[i],
         };
         integrity_registers_arr[i][0] = IntegrityRegisterEntry {
             id: IntegrityRegisterIdChoice::Uint(0),
@@ -204,7 +213,10 @@ pub async fn generate_claims(claims_buf: &mut [u8], nonce: &[u8]) -> Measurement
         measurement_maps[i] = MeasurementMap {
             key: i as u64,
             mval: MeasurementValue {
-                version: Some(&version_fields[i].buf),
+                version: Some(VersionMap {
+                    version: &version_fields[i].buf,
+                    version_scheme: Some(1), // multipartnumeric
+                }),
                 svn: Some(svns[i] as u64),
                 digests: Some(&digest_entries_arr[i]),
                 integrity_registers: Some(&integrity_registers_arr[i]),
@@ -286,17 +298,17 @@ async fn fill_fw_config_info(
     // VERSIONS: Get from fw_version
     versions[FMC_MEASUREMENT_INDEX] = fmc_version;
     versions[RT_MEASUREMENT_INDEX] = rt_version;
-    versions[AUTHMAN_MEASUREMENT_INDEX] = 0; // TODO: AuthMan version to be captured
+    // versions[AUTHMAN_MEASUREMENT_INDEX] = 0; // SOC_MANIFEST skipped
 
     // SVNs: Get from fw_info
     svns[FMC_MEASUREMENT_INDEX] = fw_info.fw_svn;
     svns[RT_MEASUREMENT_INDEX] = fw_info.fw_svn;
-    svns[AUTHMAN_MEASUREMENT_INDEX] = fw_info.fw_svn;
+    // svns[AUTHMAN_MEASUREMENT_INDEX] = fw_info.fw_svn; // SOC_MANIFEST skipped
 
     // DIGESTS: Get digests from fw_info
     digests[FMC_MEASUREMENT_INDEX] = fw_info.fmc_sha384_digest;
     digests[RT_MEASUREMENT_INDEX] = fw_info.runtime_sha384_digest;
-    digests[AUTHMAN_MEASUREMENT_INDEX] = fw_info.authman_sha384_digest;
+    // digests[AUTHMAN_MEASUREMENT_INDEX] = fw_info.authman_sha384_digest; // SOC_MANIFEST skipped
 
     // JOURNEY DIGESTS: Get journey digests from PCRs
     let pcrs = PcrQuote::get_pcrs()
@@ -305,18 +317,27 @@ async fn fill_fw_config_info(
 
     journey_digests[FMC_MEASUREMENT_INDEX] = pcrs[FMC_FW_JOURNEY_PCR_INDEX];
     journey_digests[RT_MEASUREMENT_INDEX] = pcrs[RT_FW_JOURNEY_PCR_INDEX];
-    journey_digests[AUTHMAN_MEASUREMENT_INDEX] = pcrs[RT_FW_JOURNEY_PCR_INDEX];
+    // journey_digests[AUTHMAN_MEASUREMENT_INDEX] = pcrs[RT_FW_JOURNEY_PCR_INDEX]; // SOC_MANIFEST skipped
 
     // Populate for SOC FW components next
     #[allow(clippy::reversed_empty_ranges)]
     for i in 0..NUM_SOC_FW_COMPONENTS {
-        let _image_info = DeviceState::image_info(SOC_FW_IDS[i])
+        let image_info = DeviceState::image_info(SOC_FW_IDS[i])
             .await
             .map_err(MeasurementsError::CaliptraApi)?;
-        // For now, set dummy values
         versions[NUM_DEFAULT_FW_COMPONENTS + i] = 0;
-        svns[NUM_DEFAULT_FW_COMPONENTS + i] = 0;
-        digests[NUM_DEFAULT_FW_COMPONENTS + i] = [0u32; SHA384_HASH_WORDS];
+        svns[NUM_DEFAULT_FW_COMPONENTS + i] = image_info.svn;
+        // Convert [u8; 48] digest to [u32; 12] big-endian words
+        let mut words = [0u32; SHA384_HASH_WORDS];
+        for (j, word) in words.iter_mut().enumerate() {
+            *word = u32::from_be_bytes([
+                image_info.digest[j * 4],
+                image_info.digest[j * 4 + 1],
+                image_info.digest[j * 4 + 2],
+                image_info.digest[j * 4 + 3],
+            ]);
+        }
+        digests[NUM_DEFAULT_FW_COMPONENTS + i] = words;
         journey_digests[NUM_DEFAULT_FW_COMPONENTS + i] = [0u8; SHA384_HASH_SIZE];
     }
     Ok(())

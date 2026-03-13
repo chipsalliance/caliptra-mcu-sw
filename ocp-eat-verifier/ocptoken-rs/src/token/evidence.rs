@@ -6,7 +6,10 @@ use crate::cose_verify::{
 };
 use crate::error::{OcpEatError, OcpEatResult};
 use crate::ta_store::TrustAnchorStore;
+use crate::token::claims::OcpEatClaims;
+use coset::cwt::ClaimsSet;
 use coset::iana::Algorithm;
+use coset::CborSerializable;
 
 pub const OCP_EAT_CLAIMS_KEY_ID: &str = "";
 pub const CBOR_TAG_CBOR: u64 = 55799;
@@ -24,6 +27,7 @@ pub const OCP_EAT_TAGS: &[u64] = &[CBOR_TAG_CBOR, CBOR_TAG_CWT, CBOR_TAG_COSE_SI
 pub struct Evidence<'a> {
     decoded: DecodedCoseSign1,
     ta_store: &'a dyn TrustAnchorStore,
+    claims: OcpEatClaims,
 }
 
 impl<'a> Evidence<'a> {
@@ -33,8 +37,15 @@ impl<'a> Evidence<'a> {
         let decoded = DecodedCoseSign1::decode(slice, OCP_EAT_TAGS)?;
 
         verify_eat_protected_header(decoded.protected_header())?;
+        verify_eat_unprotected_header(decoded.unprotected_header())?;
 
-        Ok(Evidence { decoded, ta_store })
+        let claims = Self::decode_claims_from_payload(&decoded)?;
+
+        Ok(Evidence {
+            decoded,
+            ta_store,
+            claims,
+        })
     }
 
     /// Authenticate the signing key against the Trust Anchor Store.
@@ -64,6 +75,20 @@ impl<'a> Evidence<'a> {
         )?)
     }
 
+    /// Decode the EAT claims from the COSE_Sign1 payload.
+    fn decode_claims_from_payload(decoded: &DecodedCoseSign1) -> OcpEatResult<OcpEatClaims> {
+        let payload = decoded
+            .payload()
+            .ok_or(OcpEatError::InvalidToken("Missing payload"))?;
+        let claims_set = ClaimsSet::from_slice(payload)?;
+        OcpEatClaims::from_claims_set(claims_set)
+    }
+
+    /// Access the decoded OCP EAT claims.
+    pub fn claims(&self) -> &OcpEatClaims {
+        &self.claims
+    }
+
     /// Authenticate the signing key and cryptographically verify
     /// the COSE_Sign1 signature.
     ///
@@ -78,6 +103,23 @@ impl<'a> Evidence<'a> {
         verifier.verify_ref(&self.decoded, &authenticated_leaf)?;
         Ok(())
     }
+}
+
+/// COSE header label for x5chain (RFC 9360).
+const COSE_HDR_PARAM_X5CHAIN: i64 = 33;
+
+/// Verify that the unprotected header contains an x5chain (label 33).
+fn verify_eat_unprotected_header(unprotected: &coset::Header) -> OcpEatResult<()> {
+    let has_x5chain = unprotected
+        .rest
+        .iter()
+        .any(|(label, _)| *label == coset::Label::Int(COSE_HDR_PARAM_X5CHAIN));
+    if !has_x5chain {
+        return Err(OcpEatError::InvalidToken(
+            "x5chain not found in unprotected header",
+        ));
+    }
+    Ok(())
 }
 
 /// EAT-specific protected header checks (algorithm + content-type).
