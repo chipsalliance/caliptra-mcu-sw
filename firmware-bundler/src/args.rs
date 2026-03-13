@@ -26,6 +26,11 @@ pub struct Common {
     /// McuImageHeader with the given svn value, and the binaries moved appropriately.
     #[arg(long)]
     pub svn: Option<u16>,
+
+    /// The target directory to use for this build.  If not specified the tool will attempt to find
+    /// the target directory based on the workspace directory.
+    #[arg(long)]
+    pub target_dir: Option<PathBuf>,
 }
 
 impl Common {
@@ -39,8 +44,12 @@ impl Common {
     }
 
     /// Retrieve the target directory, either derived from the command line specification for the
-    /// workspace directory or algorithmically based on the current execution directory.
+    /// workspace directory, algorithmically based on the current execution directory, or
+    /// explicitly overridden via the `target_dir` field.
     pub fn target_dir(&self) -> Result<PathBuf> {
+        if let Some(td) = &self.target_dir {
+            return Ok(td.clone());
+        }
         match &self.workspace_dir {
             Some(wd) => Ok(wd.join("target")),
             None => utils::find_target_directory(),
@@ -62,6 +71,7 @@ impl Common {
             manifest: workspace_dir.join("manifest.toml"),
             workspace_dir: Some(workspace_dir),
             svn: None,
+            target_dir: None,
         }
     }
 }

@@ -107,6 +107,7 @@ bit-vec = "0.6.3"
 cargo_metadata = "0.20.0"
 cbindgen = "0.24"
 cc = "1.0"
+cfg-if = "1.0.0"
 chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.23", features = [
     "cargo",
@@ -153,6 +154,7 @@ prettyplease = "0.2.37"
 proc-macro2 = "1.0.66"
 quote = "1.0"
 rand = "0.8.5"
+rayon = "1.10"
 random-port = "0.1.1"
 same-file = "1"
 semver = "1.0.23"

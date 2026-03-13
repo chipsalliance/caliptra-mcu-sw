@@ -6,6 +6,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
+parallel-build = ["mcu-builder/parallel-build"]
 fpga_realtime = [
 	"mcu-hw-model/fpga_realtime",
 	"dep:caliptra-hw-model",

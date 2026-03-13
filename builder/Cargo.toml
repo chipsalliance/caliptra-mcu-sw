@@ -14,6 +14,7 @@ caliptra-image-fake-keys.workspace = true
 caliptra-image-gen.workspace = true
 caliptra-image-types.workspace = true
 cargo_metadata.workspace = true
+cfg-if.workspace = true
 chrono.workspace = true
 elf.workspace = true
 flash-image.workspace = true
@@ -23,6 +24,7 @@ mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true
 mcu-firmware-bundler.workspace = true
 pldm-fw-pkg.workspace = true
+rayon = { workspace = true, optional = true }
 serde.workspace = true
 semver.workspace = true
 subst.workspace = true
@@ -32,3 +34,6 @@ uuid.workspace = true
 walkdir.workspace = true
 zerocopy.workspace = true
 zip.workspace = true
+
+[features]
+parallel-build = ["dep:rayon"]

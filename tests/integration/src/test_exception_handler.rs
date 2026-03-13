@@ -22,6 +22,7 @@ mod test {
             let rom_file = mcu_builder::test_rom_build(
                 Some(platform()),
                 &firmware::hw_model_tests::EXCEPTION_HANDLER,
+                None,
             )
             .unwrap();
             std::fs::read(&rom_file).unwrap()

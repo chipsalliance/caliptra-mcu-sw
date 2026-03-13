@@ -24,6 +24,7 @@ pub fn runtime_build_with_apps(
     example_app: bool,
     platform: Option<&str>,
     svn: Option<u16>,
+    target_dir: Option<PathBuf>,
 ) -> Result<PathBuf> {
     let manifest = manifest_file(platform, example_app)?;
     let platform = platform.unwrap_or("emulator");
@@ -32,6 +33,7 @@ pub fn runtime_build_with_apps(
     let common = Common {
         manifest,
         svn,
+        target_dir,
         ..Default::default()
     };
     let runtime_bin = common.release_dir()?.join(&output_name);

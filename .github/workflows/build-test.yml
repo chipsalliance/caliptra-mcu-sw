@@ -36,7 +36,8 @@ jobs:
         run: cargo xtask precheckin
 
   build-firmware:
-    runs-on: e2-standard-16
+    # Don't re-use the machine instance shape with non-big-disk jobs, they will steal the worker we need.
+    runs-on: [e2-standard-32, big-disk]
     timeout-minutes: 60
 
     env:
@@ -89,9 +90,8 @@ jobs:
 
       - name: Build ROM and runtime binaries
         run: |
-          # Build all test runtime features used by integration tests
-          # Note: nightly tests (test-*-spdm-*, test-caliptra-util-host-validator) are excluded
-          cargo xtask all-build --platform emulator --separate-runtimes
+          # Build with parallel-build feature to enable Rayon and unique target directories
+          cargo run -p xtask --features parallel-build -- all-build --platform emulator --separate-runtimes
           sccache --show-stats
 
       - name: Upload firmware bundle

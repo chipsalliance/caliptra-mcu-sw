@@ -10,8 +10,8 @@ pub(crate) fn precheckin() -> Result<()> {
     crate::deps::check()?;
     crate::docs::check_docs()?;
     crate::registers::autogen(true, &[], &[], None, None)?;
-    mcu_builder::runtime_build_with_apps(&[], None, false, None, None)?;
-    mcu_builder::runtime_build_with_apps(&[], None, false, Some("fpga"), None)?;
+    mcu_builder::runtime_build_with_apps(&[], None, false, None, None, None)?;
+    mcu_builder::runtime_build_with_apps(&[], None, false, Some("fpga"), None, None)?;
     crate::test::test_panic_missing()?;
     crate::test::e2e_tests()?;
     crate::test::test_hello_c_emulator()?;

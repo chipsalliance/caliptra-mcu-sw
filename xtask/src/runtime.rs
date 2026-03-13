@@ -35,8 +35,8 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     }
     // include debug features since this is interactive
     features.push("debug");
-    let rom_binary = mcu_builder::rom_build(None, None)?;
-    let tock_binary = runtime_build_with_apps(&features, None, false, None, None)?;
+    let rom_binary = mcu_builder::rom_build(None, None, None)?;
+    let tock_binary = runtime_build_with_apps(&features, None, false, None, None, None)?;
 
     let mut caliptra_builder = CaliptraBuilder::new(
         false,

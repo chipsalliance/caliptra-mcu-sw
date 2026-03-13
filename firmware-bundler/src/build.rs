@@ -124,6 +124,7 @@ struct BuildPass<'a> {
     build_definition: &'a BuildDefinition,
     build_args: &'a BuildArgs,
     binary_dir: PathBuf,
+    target_dir: PathBuf,
     objcopy: PathBuf,
 }
 
@@ -138,6 +139,7 @@ impl<'a> BuildPass<'a> {
         // Determine the release directory which elf files will be placed by `rustc` and where we
         // wish to place binaries.
         let binary_dir = common.release_dir()?;
+        let target_dir = common.target_dir()?;
 
         let objcopy = match &build_args.objcopy {
             Some(o) => o.clone(),
@@ -149,6 +151,7 @@ impl<'a> BuildPass<'a> {
             build_definition,
             build_args,
             binary_dir,
+            target_dir,
             objcopy,
         })
     }
@@ -234,6 +237,8 @@ impl<'a> BuildPass<'a> {
             .arg(&app.name)
             .arg("--target")
             .arg(&self.manifest.platform.tuple)
+            .arg("--target-dir")
+            .arg(&self.target_dir)
             .arg("--release");
 
         if let Some(f) = features {

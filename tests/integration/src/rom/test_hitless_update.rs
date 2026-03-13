@@ -17,7 +17,7 @@ fn test_hitless_update_flow() -> Result<()> {
             binaries.test_rom(mcu_rom_id)?,
         )
     } else {
-        let rom_file = mcu_builder::test_rom_build(Some(platform()), mcu_rom_id)?;
+        let rom_file = mcu_builder::test_rom_build(Some(platform()), mcu_rom_id, None)?;
         (
             caliptra_builder::build_firmware_rom(cptra_rom_id).unwrap(),
             std::fs::read(&rom_file)?,

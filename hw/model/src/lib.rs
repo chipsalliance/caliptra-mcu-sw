@@ -888,6 +888,7 @@ mod tests {
             let rom_file = mcu_builder::test_rom_build(
                 Some(platform()),
                 &firmware::hw_model_tests::MAILBOX_RESPONDER,
+                None,
             )?;
             std::fs::read(&rom_file)?
         };

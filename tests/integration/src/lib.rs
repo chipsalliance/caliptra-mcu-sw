@@ -131,9 +131,12 @@ mod test {
         } else {
             feature
         };
-        let output: PathBuf =
-            mcu_builder::rom_build(Some(platform().to_string()), Some(feature.to_string()))
-                .expect("ROM build failed");
+        let output: PathBuf = mcu_builder::rom_build(
+            Some(platform().to_string()),
+            Some(feature.to_string()),
+            None,
+        )
+        .expect("ROM build failed");
         assert!(output.exists());
         output
     }
@@ -156,6 +159,7 @@ mod test {
             Some(name),
             example_app,
             Some(platform),
+            None,
             None,
         )
         .expect("Runtime failed to compile");
@@ -886,8 +890,15 @@ mod test {
         let test_runtime = target_binary(&name);
 
         println!("Compiling test firmware {}", &feature);
-        mcu_builder::runtime_build_with_apps(&[feature], Some(name), true, None, Some(image_svn))
-            .expect("Runtime build failed");
+        mcu_builder::runtime_build_with_apps(
+            &[feature],
+            Some(name),
+            true,
+            None,
+            Some(image_svn),
+            None,
+        )
+        .expect("Runtime build failed");
         assert!(test_runtime.exists());
 
         let fuse_vendor_hashes_prod_partition = {

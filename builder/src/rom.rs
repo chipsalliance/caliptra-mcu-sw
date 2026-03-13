@@ -10,7 +10,11 @@ use crate::PROJECT_ROOT;
 use caliptra_builder::FwId;
 use mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 
-pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<PathBuf> {
+pub fn rom_build(
+    platform: Option<String>,
+    features: Option<String>,
+    target_dir: Option<PathBuf>,
+) -> Result<PathBuf> {
     let feature_suffix = match &features {
         Some(f) => format!("-{f}"),
         None => String::new(),
@@ -24,6 +28,7 @@ pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<P
     let manifest = manifest_file(platform.as_deref(), false)?;
     let common = Common {
         manifest,
+        target_dir,
         ..Default::default()
     };
     let rom_binary = common.release_dir().map(|t| t.join(format!("{rom}.bin")))?;
@@ -46,7 +51,11 @@ pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<P
     Ok(rom_binary)
 }
 
-pub fn test_rom_build(platform: Option<&str>, fwid: &FwId) -> Result<String> {
+pub fn test_rom_build(
+    platform: Option<&str>,
+    fwid: &FwId,
+    target_dir: Option<PathBuf>,
+) -> Result<String> {
     let platform = platform.unwrap_or("emulator");
 
     let template_name = if platform == "fpga" {
@@ -66,6 +75,7 @@ pub fn test_rom_build(platform: Option<&str>, fwid: &FwId) -> Result<String> {
 
     let common = Common {
         manifest: manifest_file.path().to_path_buf(),
+        target_dir,
         ..Default::default()
     };
 
