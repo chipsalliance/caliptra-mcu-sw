@@ -14,9 +14,10 @@ jobs:
 
     env:
       CARGO_INCREMENTAL: 0
-      SCCACHE_VERSION: 0.8.2
+      SCCACHE_VERSION: 0.10.0
       SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
       SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
+      SCCACHE_GHA_ENABLED: "on"
 
       # Change this to a new random value if you suspect the cache is corrupted
       SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b42a6e70ec4
@@ -53,12 +54,13 @@ jobs:
           key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
 
       - name: Configure sccache
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RESULTS_URL', process.env.ACTIONS_RESULTS_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+            core.exportVariable('ACTIONS_CACHE_SERVICE_V2', 'on');
 
       - name: Install cocli
         run: |
