@@ -27,12 +27,15 @@ mod tests;
 #[cfg(target_arch = "riscv32")]
 pub use board::*;
 
-use mcu_config::McuMemoryMap;
+use mcu_config::{McuMemoryMap, McuStraps};
 
 // re-export this so the common runtime code can use it
 #[no_mangle]
 #[used]
 pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_emulator::EMULATOR_MEMORY_MAP;
+#[no_mangle]
+#[used]
+pub static MCU_STRAPS: McuStraps = mcu_config_emulator::EMULATOR_MCU_STRAPS;
 
 // Define the timer frequency for the emulator. This is roughly the emulation speed
 // for a reasonable processor and does not have to be exact.

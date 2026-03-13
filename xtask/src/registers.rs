@@ -264,6 +264,9 @@ fn generate_emulator_types(
         if block.name == "I3CCSR" {
             block.name = "i3c".to_string();
         }
+        if block.name == "I3CCSR1" {
+            block.name = "i3c1".to_string();
+        }
         if SKIP_TYPES.contains(block.name.as_str()) {
             continue;
         }
@@ -1269,6 +1272,12 @@ fn generate_fw_registers(
         }
         if block.name == "I3CCSR" {
             block.name = "i3c".to_string();
+        }
+        if block.name == "I3CCSR1" {
+            // The firmware driver handles I3C1 by parameterizing the base
+            // address via McuMemoryMap, so no separate codegen is needed.
+            // The emulator path still generates I3c1Peripheral for the root bus.
+            continue;
         }
         if SKIP_TYPES.contains(block.name.as_str()) {
             continue;
