@@ -112,6 +112,9 @@ impl Default for McuMemoryMap {
 pub struct McuStraps {
     pub i3c_static_addr: u8,
     pub i3c1_static_addr: u8,
+    /// Selects which I3C core is used for MCTP transport.
+    /// 0 = i3c0 (default), 1 = i3c1.
+    pub active_i3c: u8,
     pub cptra_wdt_cfg0: u32,
     pub cptra_wdt_cfg1: u32,
     pub mcu_wdt_cfg0: u32,
@@ -127,6 +130,7 @@ impl McuStraps {
         McuStraps {
             i3c_static_addr: 0x3a,
             i3c1_static_addr: 0x3c,
+            active_i3c: 0,
             cptra_wdt_cfg0: 100_000_000,
             cptra_wdt_cfg1: 100_000_000,
             mcu_wdt_cfg0: 20_000_000,
