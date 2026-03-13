@@ -821,7 +821,7 @@ impl Emulator {
             delegates,
             Some(auto_root_bus_offsets),
             Some(Box::new(i3c)),
-            None, // i3c1 - second I3C core (not yet implemented in emulator)
+            Some(Box::new(emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
             Some(Box::new(secondary_flash_controller)),
             Some(Box::new(mci)),

@@ -317,7 +317,7 @@ impl McuHwModel for ModelEmulated {
             delegates,
             None,
             Some(Box::new(i3c)),
-            None, // i3c1
+            Some(Box::new(emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
             Some(Box::new(secondary_flash_controller)),
             Some(Box::new(mci)),

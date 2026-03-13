@@ -52,7 +52,12 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     lc_properties: MemoryRegionType::MMIO,
 };
 
-pub const EMULATOR_MCU_STRAPS: McuStraps = McuStraps::default();
+const ACTIVE_I3C: u8 = if cfg!(feature = "active-i3c1") { 1 } else { 0 };
+
+pub const EMULATOR_MCU_STRAPS: McuStraps = McuStraps {
+    active_i3c: ACTIVE_I3C,
+    ..McuStraps::default()
+};
 
 /// The MRAC value which should be populated for this memory map.  This corresponds to a value
 /// utilized within the global start assembly and thus must be unmangled.
