@@ -101,9 +101,8 @@ impl RecoveryStatus {
     }
 
     /// Byte 0, bits 0-3: Device recovery status.
-    pub fn status(&self) -> DeviceRecoveryStatus {
+    pub fn status(&self) -> Result<DeviceRecoveryStatus, OcpError> {
         DeviceRecoveryStatus::try_from(self.byte0.status())
-            .expect("constructed with a valid status")
     }
 
     /// Byte 0, bits 4-7: Recovery image index (0-15).
@@ -140,7 +139,7 @@ mod tests {
     #[test]
     fn success_with_image_index_to_message() {
         let resp = RecoveryStatus::new(DeviceRecoveryStatus::Success, 2, 0x00).unwrap();
-        assert_eq!(resp.status(), DeviceRecoveryStatus::Success);
+        assert_eq!(resp.status().unwrap(), DeviceRecoveryStatus::Success);
         assert_eq!(resp.image_index(), 2);
 
         let mut buf = [0u8; MESSAGE_LEN];
