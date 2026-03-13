@@ -48,7 +48,7 @@ mod mcu_mgr;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
 mod model_fpga_realtime;
-mod otp_provision;
+pub mod otp_provision;
 mod vmem;
 
 pub enum ShaAccMode {

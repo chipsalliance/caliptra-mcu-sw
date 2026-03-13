@@ -1670,6 +1670,7 @@ dependencies = [
  "log",
  "mcu-mbox-common",
  "mcu-testing-common",
+ "otp-lifecycle",
  "p384",
  "pldm-common",
  "pldm-fw-pkg",
@@ -1771,6 +1772,7 @@ dependencies = [
  "mcu-testing-common",
  "num_enum",
  "otp-digest",
+ "otp-lifecycle",
  "registers-generated",
  "semver",
  "serde",
@@ -3013,6 +3015,7 @@ dependencies = [
  "mcu-rom-common",
  "mcu-testing-common",
  "nix 0.26.4",
+ "otp-lifecycle",
  "p384",
  "poll-common",
  "rand 0.8.5",
@@ -3540,6 +3543,13 @@ checksum = "e2355d85b9a3786f481747ced0e0ff2ba35213a1f9bd406ed906554d7af805a1"
 [[package]]
 name = "otp-digest"
 version = "0.1.0"
+
+[[package]]
+name = "otp-lifecycle"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
 
 [[package]]
 name = "p384"
