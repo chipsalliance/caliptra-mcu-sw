@@ -12,13 +12,15 @@ pub mod hw_model_tests {
     };
 
     pub const MAILBOX_RESPONDER: FwId = FwId {
-        bin_name: "mailbox_responder",
-        ..BASE_FWID
+        crate_name: "mcu-test-fw-mailbox-responder",
+        bin_name: "mcu-test-fw-mailbox-responder",
+        features: &["emu"],
     };
 
     pub const HITLESS_UPDATE_FLOW: FwId = FwId {
-        bin_name: "hitless_update_flow",
-        ..BASE_FWID
+        crate_name: "mcu-test-fw-hitless-update-flow",
+        bin_name: "mcu-test-fw-hitless-update-flow",
+        features: &["emu"],
     };
 
     pub const AXI_BYPASS: FwId = FwId {
@@ -27,8 +29,9 @@ pub mod hw_model_tests {
     };
 
     pub const EXCEPTION_HANDLER: FwId = FwId {
-        bin_name: "exception_handler",
-        ..BASE_FWID
+        crate_name: "mcu-test-fw-exception-handler",
+        bin_name: "mcu-test-fw-exception-handler",
+        features: &["emu"],
     };
 
     pub const USB_RESPONDER: FwId = FwId {
@@ -42,8 +45,9 @@ pub mod hw_model_tests {
     };
 
     pub const SW_DIGEST_LOCK: FwId = FwId {
-        bin_name: "sw_digest_lock",
-        ..BASE_FWID
+        crate_name: "mcu-test-fw-sw-digest-lock",
+        bin_name: "mcu-test-fw-sw-digest-lock",
+        features: &["emu"],
     };
 
     pub const OTP_BLANK_CHECK: FwId = FwId {

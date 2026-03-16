@@ -14,10 +14,6 @@
 use mcu_rom_common::{fatal_error, RomEnv};
 use registers_generated::fuses;
 use romtime::otp::Otp;
-use tock_registers::interfaces::Readable;
-
-#[allow(unused)]
-use mcu_test_harness;
 
 const DIGEST_IV: u64 = 0x90C7_F21F_6224_F027;
 const DIGEST_CONST: u128 = 0xF98C_48B1_F937_7284_4A22_D4B7_8FE0_266F;
@@ -55,6 +51,7 @@ fn write_phase(env: &RomEnv) -> ! {
     }
 
     romtime::println!("[sw-digest-lock] DONE");
+    #[allow(clippy::empty_loop)]
     loop {}
 }
 
@@ -93,6 +90,7 @@ fn verify_phase(env: &RomEnv) -> ! {
     }
 
     romtime::println!("[sw-digest-lock] PASS");
+    #[allow(clippy::empty_loop)]
     loop {}
 }
 

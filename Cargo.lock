@@ -3392,29 +3392,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-hw-model-test-fw"
-version = "0.1.0"
-dependencies = [
- "caliptra-api",
- "caliptra-registers",
- "mcu-builder",
- "mcu-config",
- "mcu-config-emulator",
- "mcu-config-fpga",
- "mcu-error",
- "mcu-rom-common",
- "mcu-test-harness",
- "mcu-usb-emulator",
- "ocp",
- "registers-generated",
- "riscv-csr",
- "romtime",
- "rv32i",
- "tock-registers",
- "zerocopy",
-]
-
-[[package]]
 name = "mcu-image-header"
 version = "0.1.0"
 dependencies = [
@@ -3618,6 +3595,49 @@ dependencies = [
  "riscv-csr",
  "romtime",
  "rv32i",
+ "tock-registers",
+]
+
+[[package]]
+name = "mcu-test-fw-exception-handler"
+version = "0.1.0"
+dependencies = [
+ "mcu-rom-common",
+ "mcu-test-harness",
+]
+
+[[package]]
+name = "mcu-test-fw-hitless-update-flow"
+version = "0.1.0"
+dependencies = [
+ "mcu-error",
+ "mcu-rom-common",
+ "mcu-test-harness",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
+name = "mcu-test-fw-mailbox-responder"
+version = "0.1.0"
+dependencies = [
+ "mcu-rom-common",
+ "mcu-test-harness",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
+name = "mcu-test-fw-sw-digest-lock"
+version = "0.1.0"
+dependencies = [
+ "mcu-error",
+ "mcu-rom-common",
+ "mcu-test-harness",
+ "registers-generated",
+ "romtime",
  "tock-registers",
 ]
 

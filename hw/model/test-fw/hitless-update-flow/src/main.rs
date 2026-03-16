@@ -13,10 +13,6 @@ use romtime::McuBootMilestones;
 use romtime::McuResetReason;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
-// Needed to bring in startup code
-#[allow(unused)]
-use mcu_test_harness;
-
 fn wait_for_firmware_ready(mci: &romtime::Mci, cptra: &mcu_rom_common::Soc) {
     let notif0 = &mci.registers.intr_block_rf_notif0_internal_intr_r;
     // Wait for a reset request from Caliptra
@@ -67,6 +63,7 @@ fn cold_boot(env: &mut RomEnv) -> ! {
     romtime::println!("[mcu-rom] hitless update ready");
     mci.set_flow_milestone(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE.into());
     mci.trigger_warm_reset();
+    #[allow(clippy::empty_loop)] // Ok to waste CPU cycles waiting for test to end
     loop {}
 }
 
@@ -82,6 +79,7 @@ fn hitless_update(env: &mut RomEnv) -> ! {
         fatal_error(HitlessUpdateError::InvalidAfterValue.into());
     }
     mci.set_flow_milestone(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE.into());
+    #[allow(clippy::empty_loop)] // Ok to waste CPU cycles waiting for test to end
     loop {}
 }
 

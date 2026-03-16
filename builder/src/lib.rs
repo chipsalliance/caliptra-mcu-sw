@@ -14,7 +14,7 @@ pub use all::{
 };
 pub use caliptra::{AuthManifestOwnerConfig, CaliptraBuilder, ImageCfg};
 pub use network_rom::network_rom_build;
-pub use rom::{append_rom_digest, rom_build, rom_ld_script, rom_size_for_platform, test_rom_build};
+pub use rom::{rom_build, test_rom_build};
 pub use runtime::{bare_metal_build, runtime_build_with_apps};
 
 use anyhow::{anyhow, Result};
