@@ -5,12 +5,13 @@
 #![no_main]
 #![no_std]
 
-#[allow(unused)]
-use mcu_rom_common;
-use mcu_test_harness;
+extern crate mcu_rom_common;
 
 #[no_mangle]
 pub extern "C" fn main() {
     mcu_test_harness::set_printer();
-    unsafe { core::arch::asm!("unimp") };
+    #[cfg(target_arch = "riscv32")]
+    {
+        unsafe { core::arch::asm!("unimp") };
+    }
 }

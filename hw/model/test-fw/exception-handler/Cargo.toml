@@ -11,11 +11,6 @@ riscv = []
 emu = []
 fpga_realtime = ["mcu-test-harness/fpga_realtime"]
 
-[build-dependencies]
-mcu-builder.workspace = true
-mcu-config-emulator.workspace = true
-mcu-config-fpga.workspace = true
-
 [dependencies]
 mcu-rom-common.workspace = true
 mcu-test-harness.workspace = true
