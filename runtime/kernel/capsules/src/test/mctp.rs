@@ -11,9 +11,8 @@ use kernel::ErrorCode;
 use romtime::println;
 
 pub const MCTP_TEST_REMOTE_EID: u8 = 0x20;
-pub const MCTP_TEST_MSG_SIZE: usize = 1000;
 
-static TEST_MSG_LEN_ARR: [usize; 4] = [64, 63, 256, 1000];
+static TEST_MSG_LEN_ARR: [usize; 7] = [1, 5, 32, 63, 64, 128, 250];
 
 pub trait TestClient {
     fn test_result(&self, passed: bool, npassed: usize, ntotal: usize);
