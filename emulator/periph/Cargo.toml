@@ -24,6 +24,7 @@ mcu-testing-common.workspace = true
 network-config.workspace = true
 num_enum.workspace = true
 otp-digest.workspace = true
+otp-lifecycle.workspace = true
 registers-generated.workspace = true
 semver.workspace = true
 serde_json.workspace = true

@@ -5,306 +5,16 @@ use emulator_periph::{otp_digest, otp_scramble, otp_unscramble};
 use romtime::LifecycleControllerState;
 use sha3::{digest::ExtendableOutput, digest::Update, CShake128, CShake128Core};
 
-// These are the default lifecycle controller constants from the
-// standard Caliptra RTL. These can be overridden by vendors.
-
-// from caliptra-rtl/src/lc_ctrl/rtl/lc_ctrl_state_pkg.sv
-const _A0: u16 = 0b0110010010101110; // ECC: 6'b001010
-const B0: u16 = 0b0111010111101110; // ECC: 6'b111110
-const A1: u16 = 0b0000011110110100; // ECC: 6'b100101
-const B1: u16 = 0b0000111111111110; // ECC: 6'b111101
-const A2: u16 = 0b0011000111010010; // ECC: 6'b000111
-const B2: u16 = 0b0111101111111110; // ECC: 6'b000111
-const A3: u16 = 0b0010111001001101; // ECC: 6'b001010
-const B3: u16 = 0b0011111101101111; // ECC: 6'b111010
-const A4: u16 = 0b0100000111111000; // ECC: 6'b011010
-const B4: u16 = 0b0101111111111100; // ECC: 6'b011110
-const A5: u16 = 0b1010110010000101; // ECC: 6'b110001
-const B5: u16 = 0b1111110110011111; // ECC: 6'b110001
-const A6: u16 = 0b1001100110001100; // ECC: 6'b010110
-const B6: u16 = 0b1111100110011111; // ECC: 6'b011110
-const A7: u16 = 0b0101001100001111; // ECC: 6'b100010
-const B7: u16 = 0b1101101101101111; // ECC: 6'b100111
-const A8: u16 = 0b0111000101100000; // ECC: 6'b111001
-const B8: u16 = 0b0111001101111111; // ECC: 6'b111001
-const A9: u16 = 0b0010110001100011; // ECC: 6'b101010
-const B9: u16 = 0b0110110001101111; // ECC: 6'b111111
-const A10: u16 = 0b0110110100001000; // ECC: 6'b110011
-const B10: u16 = 0b0110111110011110; // ECC: 6'b111011
-const A11: u16 = 0b1001001001001100; // ECC: 6'b000011
-const B11: u16 = 0b1101001111011100; // ECC: 6'b111111
-const A12: u16 = 0b0111000001000000; // ECC: 6'b011110
-const B12: u16 = 0b0111011101010010; // ECC: 6'b111110
-const A13: u16 = 0b1001001010111110; // ECC: 6'b000010
-const B13: u16 = 0b1111001011111110; // ECC: 6'b101110
-const A14: u16 = 0b1001010011010010; // ECC: 6'b100011
-const B14: u16 = 0b1011110111010011; // ECC: 6'b101111
-const A15: u16 = 0b0110001010001101; // ECC: 6'b000111
-const B15: u16 = 0b0110111111001101; // ECC: 6'b011111
-const A16: u16 = 0b1011001000101000; // ECC: 6'b010111
-const B16: u16 = 0b1011001011111011; // ECC: 6'b011111
-const A17: u16 = 0b0001111001110001; // ECC: 6'b001001
-const B17: u16 = 0b1001111111110101; // ECC: 6'b011011
-const A18: u16 = 0b0010110110011011; // ECC: 6'b000100
-const B18: u16 = 0b0011111111011111; // ECC: 6'b010101
-const A19: u16 = 0b0100110110001100; // ECC: 6'b101010
-const B19: u16 = 0b1101110110111110; // ECC: 6'b101011
-
-// The C/D values are used for the encoded LC transition counter.
-
-const _C0: u16 = 0b0001010010011110; // ECC: 6'b011100
-const D0: u16 = 0b1011011011011111; // ECC: 6'b111100
-const C1: u16 = 0b0101101011000100; // ECC: 6'b111000
-const D1: u16 = 0b1111101011110100; // ECC: 6'b111101
-const C2: u16 = 0b0001111100100100; // ECC: 6'b100011
-const D2: u16 = 0b0001111110111111; // ECC: 6'b100111
-const C3: u16 = 0b1100111010000101; // ECC: 6'b011000
-const D3: u16 = 0b1100111011101111; // ECC: 6'b011011
-const C4: u16 = 0b0100001010011111; // ECC: 6'b011000
-const D4: u16 = 0b0101101110111111; // ECC: 6'b111100
-const C5: u16 = 0b1001111000100010; // ECC: 6'b111000
-const D5: u16 = 0b1111111110100010; // ECC: 6'b111110
-const C6: u16 = 0b0010011110000110; // ECC: 6'b010000
-const D6: u16 = 0b0111011111000110; // ECC: 6'b011101
-const C7: u16 = 0b0010111101000110; // ECC: 6'b000110
-const D7: u16 = 0b1010111111000110; // ECC: 6'b111111
-const C8: u16 = 0b0000001011011011; // ECC: 6'b000001
-const D8: u16 = 0b1010101111011011; // ECC: 6'b111011
-const C9: u16 = 0b0111000011000110; // ECC: 6'b110001
-const D9: u16 = 0b1111111011001110; // ECC: 6'b110011
-const C10: u16 = 0b0100001000010010; // ECC: 6'b110110
-const D10: u16 = 0b0111001010110110; // ECC: 6'b110111
-const C11: u16 = 0b0100101111110001; // ECC: 6'b000001
-const D11: u16 = 0b0110101111110011; // ECC: 6'b110111
-const C12: u16 = 0b1000100101000001; // ECC: 6'b000001
-const D12: u16 = 0b1011110101001111; // ECC: 6'b001011
-const C13: u16 = 0b1000000000010001; // ECC: 6'b011111
-const D13: u16 = 0b1001100010110011; // ECC: 6'b111111
-const C14: u16 = 0b0101110000000100; // ECC: 6'b111110
-const D14: u16 = 0b1111111010001101; // ECC: 6'b111110
-const C15: u16 = 0b1100001000001001; // ECC: 6'b001011
-const D15: u16 = 0b1110011000011011; // ECC: 6'b111011
-const C16: u16 = 0b0101001001101100; // ECC: 6'b001000
-const D16: u16 = 0b0111111001111110; // ECC: 6'b001001
-const C17: u16 = 0b0100001001110100; // ECC: 6'b010100
-const D17: u16 = 0b1100101001110111; // ECC: 6'b110110
-const C18: u16 = 0b1100000001100111; // ECC: 6'b100000
-const D18: u16 = 0b1100011101110111; // ECC: 6'b100101
-const C19: u16 = 0b1010000001001010; // ECC: 6'b101111
-const D19: u16 = 0b1111011101101010; // ECC: 6'b101111
-const C20: u16 = 0b1001001001010101; // ECC: 6'b001110
-const D20: u16 = 0b1101111011011101; // ECC: 6'b001111
-const C21: u16 = 0b1001010000011011; // ECC: 6'b100000
-const D21: u16 = 0b1001111000111011; // ECC: 6'b110101
-const C22: u16 = 0b1011101101100001; // ECC: 6'b000100
-const D22: u16 = 0b1011111101111111; // ECC: 6'b000110
-const C23: u16 = 0b1101101000000111; // ECC: 6'b001100
-const D23: u16 = 0b1101111011100111; // ECC: 6'b101110
-const ZRO: u16 = 0b0000000000000000; // ECC: 6'b000000
-
-const COUNTS: [[u16; 24]; 25] = [
-    [
-        ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO,
-        ZRO, ZRO, ZRO, ZRO, ZRO, ZRO,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, C13, C12, C11, C10, C9, C8, C7, C6, C5,
-        C4, C3, C2, C1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, C13, C12, C11, C10, C9, C8, C7, C6, C5,
-        C4, C3, C2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, C13, C12, C11, C10, C9, C8, C7, C6, C5,
-        C4, C3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, C13, C12, C11, C10, C9, C8, C7, C6, C5,
-        C4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, C13, C12, C11, C10, C9, C8, C7, C6, C5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, C13, C12, C11, C10, C9, C8, C7, C6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, C13, C12, C11, C10, C9, C8, C7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, C13, C12, C11, C10, C9, C8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, C13, C12, C11, C10, C9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, C13, C12, C11, C10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, C13, C12, C11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, C13, C12, D11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, C13, D12, D11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, C14, D13, D12, D11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, C15, D14, D13, D12, D11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, C16, D15, D14, D13, D12, D11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, C17, D16, D15, D14, D13, D12, D11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, C18, D17, D16, D15, D14, D13, D12, D11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, C19, D18, D17, D16, D15, D14, D13, D12, D11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, C20, D19, D18, D17, D16, D15, D14, D13, D12, D11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, C21, D20, D19, D18, D17, D16, D15, D14, D13, D12, D11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, C22, D21, D20, D19, D18, D17, D16, D15, D14, D13, D12, D11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        C23, D22, D21, D20, D19, D18, D17, D16, D15, D14, D13, D12, D11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-    [
-        D23, D22, D21, D20, D19, D18, D17, D16, D15, D14, D13, D12, D11, D10, D9, D8, D7, D6, D5,
-        D4, D3, D2, D1, D0,
-    ],
-];
-
-const STATES: [[u16; 20]; 21] = [
-    [
-        ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO, ZRO,
-        ZRO, ZRO,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, A13, A12, A11, A10, A9, A8, A7, A6, A5, A4, A3, A2, A1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, A13, A12, A11, A10, A9, A8, A7, A6, A5, A4, A3, A2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, A13, A12, A11, A10, A9, A8, A7, A6, A5, A4, A3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, A13, A12, A11, A10, A9, A8, A7, A6, A5, A4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, A13, A12, A11, A10, A9, A8, A7, A6, A5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, A13, A12, A11, A10, A9, A8, A7, A6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, A13, A12, A11, A10, A9, A8, A7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, A13, A12, A11, A10, A9, A8, B7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, A13, A12, A11, A10, A9, B8, B7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, A13, A12, A11, A10, B9, B8, B7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, A13, A12, A11, B10, B9, B8, B7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, A13, A12, B11, B10, B9, B8, B7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, A13, B12, B11, B10, B9, B8, B7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, A14, B13, B12, B11, B10, B9, B8, B7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, A15, B14, B13, B12, B11, B10, B9, B8, B7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, A16, B15, B14, B13, B12, B11, B10, B9, B8, B7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, A17, B16, B15, B14, B13, B12, B11, B10, B9, B8, B7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, A18, B17, B16, B15, B14, B13, B12, B11, B10, B9, B8, B7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        A19, B18, B17, B16, B15, B14, B13, B12, B11, B10, B9, B8, B7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-    [
-        B19, B18, B17, B16, B15, B14, B13, B12, B11, B10, B9, B8, B7, B6, B5, B4, B3, B2, B1, B0,
-    ],
-];
-
-pub const LIFECYCLE_STATE_SIZE: usize = 40;
-pub const LIFECYCLE_COUNT_SIZE: usize = 48;
-pub const LIFECYCLE_MEM_SIZE: usize = LIFECYCLE_STATE_SIZE + LIFECYCLE_COUNT_SIZE;
+// Re-export lifecycle ECC encode/decode from the common crate.
+pub use otp_lifecycle::{
+    lc_generate_count_mem, LIFECYCLE_COUNT_SIZE, LIFECYCLE_MEM_SIZE, LIFECYCLE_STATE_SIZE,
+};
 
 /// Generate the OTP memory contents associated with the lifecycle state.
 pub fn lc_generate_state_mem(
     state: LifecycleControllerState,
 ) -> Result<[u8; LIFECYCLE_STATE_SIZE]> {
-    let state = u8::from(state);
-    if state >= STATES.len() as u8 {
-        bail!("Invalid lifecycle state: {:?}", state);
-    }
-    let mut result = [0u8; 40];
-    let state_data = STATES[state as usize];
-    for (i, &value) in state_data.iter().enumerate() {
-        result[i * 2] = (value >> 8) as u8;
-        result[i * 2 + 1] = (value & 0xFF) as u8;
-    }
-    Ok(result)
-}
-
-/// Generate the OTP memory contents associated with the lifecycle transition count.
-pub fn lc_generate_count_mem(count: u8) -> Result<[u8; LIFECYCLE_COUNT_SIZE]> {
-    if count >= COUNTS.len() as u8 {
-        bail!("Invalid lifecycle count: {:?}", count);
-    }
-    let mut result = [0u8; 48];
-    let count_data = COUNTS[count as usize];
-    for (i, &value) in count_data.iter().enumerate() {
-        result[i * 2] = (value >> 8) as u8;
-        result[i * 2 + 1] = (value & 0xFF) as u8;
-    }
-    Ok(result)
+    otp_lifecycle::lc_generate_state_mem(u8::from(state))
 }
 
 /// Generate the OTP memory contents associated with the lifecycle state and transition count.
@@ -312,14 +22,24 @@ pub fn lc_generate_memory(
     state: LifecycleControllerState,
     transition_count: u8,
 ) -> Result<[u8; LIFECYCLE_MEM_SIZE]> {
-    let mut result = [0u8; LIFECYCLE_MEM_SIZE];
-    let state = lc_generate_state_mem(state)?;
-    result[..state.len()].copy_from_slice(&state);
-    let count = lc_generate_count_mem(transition_count)?;
-    result[state.len()..state.len() + count.len()].copy_from_slice(&count);
-    result.reverse();
+    otp_lifecycle::lc_generate_memory(u8::from(state), transition_count)
+}
 
-    Ok(result)
+/// Decode the lifecycle state and transition count from OTP memory (as stored, i.e., reversed).
+pub fn lc_decode_memory(mem: &[u8; LIFECYCLE_MEM_SIZE]) -> Result<(LifecycleControllerState, u8)> {
+    let (state_idx, count) = otp_lifecycle::lc_decode_memory(mem)?;
+    Ok((LifecycleControllerState::from(state_idx), count))
+}
+
+/// Decode the lifecycle state from OTP memory (pre-reversal format).
+pub fn lc_decode_state_mem(mem: &[u8; LIFECYCLE_STATE_SIZE]) -> Result<LifecycleControllerState> {
+    let state_idx = otp_lifecycle::lc_decode_state_mem(mem)?;
+    Ok(LifecycleControllerState::from(state_idx))
+}
+
+/// Decode the lifecycle transition count from OTP memory (pre-reversal format).
+pub fn lc_decode_count_mem(mem: &[u8; LIFECYCLE_COUNT_SIZE]) -> Result<u8> {
+    otp_lifecycle::lc_decode_count_mem(mem)
 }
 
 /// Hash a token using cSHAKE128 for the lifecycle controller.
@@ -499,5 +219,43 @@ mod tests {
             0x9b, 0x2d, 0x8c, 0x4d,
         ];
         assert_eq!(memory, expected);
+    }
+
+    #[test]
+    fn test_decode_roundtrip_all_states() {
+        for state_val in 0..=20u8 {
+            let state = LifecycleControllerState::from(state_val);
+            let memory = lc_generate_memory(state, 1).unwrap();
+            let (decoded_state, decoded_count) = lc_decode_memory(&memory).unwrap();
+            assert_eq!(
+                decoded_state, state,
+                "state roundtrip failed for {state_val}"
+            );
+            assert_eq!(
+                decoded_count, 1,
+                "count roundtrip failed for state {state_val}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_decode_roundtrip_all_counts() {
+        for count in 0..=24u8 {
+            let memory = lc_generate_memory(LifecycleControllerState::Prod, count).unwrap();
+            let (decoded_state, decoded_count) = lc_decode_memory(&memory).unwrap();
+            assert_eq!(decoded_state, LifecycleControllerState::Prod);
+            assert_eq!(
+                decoded_count, count,
+                "count roundtrip failed for count {count}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_decode_raw_state() {
+        let memory = lc_generate_memory(LifecycleControllerState::Raw, 0).unwrap();
+        let (state, count) = lc_decode_memory(&memory).unwrap();
+        assert_eq!(state, LifecycleControllerState::Raw);
+        assert_eq!(count, 0);
     }
 }

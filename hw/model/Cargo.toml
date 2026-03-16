@@ -45,6 +45,7 @@ mcu-rom-common.workspace = true
 mcu-testing-common.workspace = true
 ocp.workspace = true
 network-config.workspace = true
+otp-lifecycle.workspace = true
 p384.workspace = true
 poll-common.workspace = true
 rand.workspace = true

@@ -82,6 +82,19 @@ fn parse_vendor_pqc_type(s: &str) -> Result<FwVerificationPqcKeyType, String> {
     }
 }
 
+/// Map an LC state index (0–20) to the Caliptra device lifecycle string per the HW spec.
+/// TestUnlocked* → "unprovisioned", Dev → "manufacturing", all others → "production".
+fn lc_state_to_device_lifecycle_str(lc_state_index: u32) -> &'static str {
+    match lc_state_index {
+        // TestUnlocked0..TestUnlocked7 = indices 1,3,5,7,9,11,13,15
+        1 | 3 | 5 | 7 | 9 | 11 | 13 | 15 => "unprovisioned",
+        // Dev = index 16
+        16 => "manufacturing",
+        // Raw, TestLocked*, Prod, ProdEnd, Rma, Scrap, PostTransition → production
+        _ => "production",
+    }
+}
+
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None, name = "Caliptra MCU Emulator")]
 pub struct EmulatorArgs {
@@ -346,20 +359,58 @@ impl Emulator {
                 ),
             )
         })?;
+        if device_lifecycle == DeviceLifecycle::Reserved2 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Reserved device lifecycle value (2) is not supported by the emulator",
+            ));
+        }
 
-        let device_lifecycle_str: Option<String> = match device_lifecycle {
-            DeviceLifecycle::Manufacturing => Some("manufacturing".into()),
-            DeviceLifecycle::Production => Some("production".into()),
-            DeviceLifecycle::Unprovisioned => Some("unprovisioned".into()),
-            DeviceLifecycle::Reserved2 => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Reserved device lifecycle value (2) is not supported by the emulator",
-                ))
-            }
+        // Determine lifecycle state from OTP fuses (source of truth) or CLI arg.
+        // If OTP file has lifecycle fuses, decode the state from them.
+        // Otherwise, generate fuse data from the --device-security-state CLI arg.
+        let (lc_state_index, lc_transition_cnt, lifecycle_fuse_data) = if let Some(lc_bytes) = cli
+            .otp
+            .as_ref()
+            .and_then(|p| Otp::read_lifecycle_from_file(p))
+        {
+            let mem: [u8; otp_lifecycle::LIFECYCLE_MEM_SIZE] =
+                lc_bytes.try_into().map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "OTP lifecycle partition has wrong size",
+                    )
+                })?;
+            let (state, count) = otp_lifecycle::lc_decode_memory(&mem).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Failed to decode lifecycle from OTP fuses: {e}"),
+                )
+            })?;
+            (state as u32, count as u32, None)
+        } else {
+            // No existing fuses — generate from CLI arg.
+            let (idx, cnt) = match device_lifecycle {
+                DeviceLifecycle::Unprovisioned => (1u8, 1u8), // TestUnlocked0
+                DeviceLifecycle::Manufacturing => (16u8, 1u8), // Dev
+                DeviceLifecycle::Production => (17u8, 1u8),   // Prod
+                _ => (17u8, 1u8),
+            };
+            let fuse_data = otp_lifecycle::lc_generate_memory(idx, cnt).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Failed to generate lifecycle fuses: {e}"),
+                )
+            })?;
+            (idx as u32, cnt as u32, Some(fuse_data.to_vec()))
         };
 
-        let req_idevid_csr: Option<bool> = if device_lifecycle == DeviceLifecycle::Manufacturing {
+        // Map LC state index to Caliptra device lifecycle string per the HW spec.
+        let device_lifecycle_str: Option<String> =
+            Some(lc_state_to_device_lifecycle_str(lc_state_index).into());
+
+        let req_idevid_csr: Option<bool> = if lc_state_index == 16 {
+            // Dev state → manufacturing
             Some(true)
         } else {
             None
@@ -780,7 +831,10 @@ impl Emulator {
             .fuse_vendor_test_partition
             .map(|fuse| hex::decode(fuse).expect("Invalid hex in vendor_test_partition"));
 
-        let lc = LcCtrl::new();
+        // Map DeviceLifecycle to LC state index per the Caliptra SS HW spec
+        // (caliptra-ss docs/CaliptraSSHardwareSpecification.md, LCC state table).
+        // The lifecycle state was already resolved above from fuses or CLI arg.
+        let lc = LcCtrl::with_state(lc_state_index, lc_transition_cnt);
 
         let otp = Otp::new(
             &clock.clone(),
@@ -793,6 +847,7 @@ impl Emulator {
                 soc_manifest_max_svn: cli.fuse_soc_manifest_max_svn.map(|v| v as u8),
                 vendor_hashes_prod_partition: fuse_vendor_hashes_prod_partition,
                 vendor_test_partition: fuse_vendor_test_partition,
+                lifecycle_state: lifecycle_fuse_data,
                 ..Default::default()
             },
         )?;
