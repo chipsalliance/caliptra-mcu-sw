@@ -19,7 +19,7 @@ use crate::tests;
 use crate::tests::spdm_responder_validator::SpdmTestType;
 use caliptra_api_types::DeviceLifecycle;
 use caliptra_emu_bus::BusMmio;
-use caliptra_emu_bus::{Bus, Clock, Ram, Timer};
+use caliptra_emu_bus::{Bus, Clock, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::MailboxRequester;
@@ -824,7 +824,7 @@ impl Emulator {
             )
         };
 
-        let mut mci = Mci::new(
+        let mci = Mci::new(
             &clock.clone(),
             ext_mci,
             mci_irq,
