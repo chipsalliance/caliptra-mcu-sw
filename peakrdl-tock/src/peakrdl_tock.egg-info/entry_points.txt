@@ -1,0 +1,2 @@
+[peakrdl.exporters]
+tock = peakrdl_tock.__peakrdl__:Exporter
