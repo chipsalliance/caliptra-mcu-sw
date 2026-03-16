@@ -7,6 +7,8 @@ mod jtag;
 mod network;
 #[cfg(test)]
 mod rom;
+#[cfg(test)]
+mod runtime;
 mod test_dot;
 mod test_exception_handler;
 mod test_fips_zeroization;
