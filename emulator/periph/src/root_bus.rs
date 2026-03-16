@@ -40,8 +40,6 @@ pub struct McuRootBusOffsets {
     pub ctrl_size: u32,
     pub ram_offset: u32,
     pub ram_size: u32,
-    pub mcu_sram_sideload_offset: u32,
-    pub mcu_sram_sideload_size: u32,
     pub rom_dedicated_ram_offset: u32,
     pub rom_dedicated_ram_size: u32,
     pub pic_offset: u32,
@@ -63,8 +61,6 @@ impl Default for McuRootBusOffsets {
             ctrl_offset: 0x1000_2000,
             ctrl_size: 0x4,
             ram_offset: 0x4000_0000,
-            mcu_sram_sideload_offset: 0,
-            mcu_sram_sideload_size: 0,
             ram_size: RAM_SIZE,
             rom_dedicated_ram_offset: ROM_DEDICATED_RAM_ORG,
             rom_dedicated_ram_size: ROM_DEDICATED_RAM_SIZE,
@@ -91,7 +87,6 @@ pub struct McuRootBusArgs {
     pub uart_output: Option<Rc<RefCell<Vec<u8>>>>,
     pub uart_rx: Option<Arc<Mutex<Option<u8>>>>,
     pub offsets: McuRootBusOffsets,
-    pub mcu_sram_sideload: Option<Rc<RefCell<Ram>>>,
     pub allow_sideloaded_rom: bool,
 }
 
@@ -101,7 +96,6 @@ pub struct McuRootBus {
     pub ctrl: EmuCtrl,
     pub ram: Rc<RefCell<Ram>>,
     pub rom_sram: Rc<RefCell<Ram>>,
-    pub mcu_sram_sideload: Option<Rc<RefCell<Ram>>>,
     pub pic_regs: PicMmioRegisters,
     pub external_test_sram: Rc<RefCell<Ram>>,
     pub mcu_mailbox0: McuMailbox0Internal,
@@ -137,15 +131,6 @@ impl McuRootBus {
         let direct_read_flash = Ram::new(vec![0; DIRECT_READ_FLASH_SIZE as usize]);
         let dot_flash = Ram::new(vec![0; DOT_FLASH_SIZE as usize]);
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
-        let mcu_sram_sideload = args.mcu_sram_sideload.take().or_else(|| {
-            (args.offsets.mcu_sram_sideload_size > 0).then(|| {
-                Rc::new(RefCell::new(Ram::new(vec![
-                    0;
-                    args.offsets.mcu_sram_sideload_size
-                        as usize
-                ])))
-            })
-        });
         let mcu_mailbox0 = McuMailbox0Internal::new(&clock.clone());
         let mcu_mailbox1 = McuMailbox0Internal::new(&clock.clone());
 
@@ -153,7 +138,6 @@ impl McuRootBus {
             rom,
             ram: Rc::new(RefCell::new(ram)),
             rom_sram: Rc::new(RefCell::new(rom_sram)),
-            mcu_sram_sideload,
             uart: Uart::new(args.uart_output, args.uart_rx, uart_irq, &clock.clone()),
             ctrl: EmuCtrl::new(),
             pic_regs: pic.mmio_regs(clock.clone()),
@@ -249,16 +233,6 @@ impl Bus for McuRootBus {
                 .borrow_mut()
                 .read(size, addr - self.offsets.ram_offset);
         }
-        if addr >= self.offsets.mcu_sram_sideload_offset
-            && addr < self.offsets.mcu_sram_sideload_offset + self.offsets.mcu_sram_sideload_size
-        {
-            if let Some(mcu_sram_sideload) = self.mcu_sram_sideload.as_ref() {
-                return mcu_sram_sideload
-                    .borrow_mut()
-                    .read(size, addr - self.offsets.mcu_sram_sideload_offset);
-            }
-            return Err(BusError::LoadAccessFault);
-        }
         if addr >= self.offsets.rom_dedicated_ram_offset
             && addr < self.offsets.rom_dedicated_ram_offset + self.offsets.rom_dedicated_ram_size
         {
@@ -324,18 +298,6 @@ impl Bus for McuRootBus {
                 .borrow_mut()
                 .write(size, addr - self.offsets.ram_offset, val);
         }
-        if addr >= self.offsets.mcu_sram_sideload_offset
-            && addr < self.offsets.mcu_sram_sideload_offset + self.offsets.mcu_sram_sideload_size
-        {
-            if let Some(mcu_sram_sideload) = self.mcu_sram_sideload.as_ref() {
-                return mcu_sram_sideload.borrow_mut().write(
-                    size,
-                    addr - self.offsets.mcu_sram_sideload_offset,
-                    val,
-                );
-            }
-            return Err(BusError::StoreAccessFault);
-        }
         if addr >= self.offsets.rom_dedicated_ram_offset
             && addr < self.offsets.rom_dedicated_ram_offset + self.offsets.rom_dedicated_ram_size
         {
@@ -377,9 +339,6 @@ impl Bus for McuRootBus {
         self.ctrl.poll();
         self.ram.borrow_mut().poll();
         self.rom_sram.borrow_mut().poll();
-        if let Some(mcu_sram_sideload) = self.mcu_sram_sideload.as_ref() {
-            mcu_sram_sideload.borrow_mut().poll();
-        }
         self.pic_regs.poll();
         self.external_test_sram.borrow_mut().poll();
         self.direct_read_flash.borrow_mut().poll();
@@ -391,9 +350,6 @@ impl Bus for McuRootBus {
         self.ctrl.warm_reset();
         self.ram.borrow_mut().warm_reset();
         self.rom_sram.borrow_mut().warm_reset();
-        if let Some(mcu_sram_sideload) = self.mcu_sram_sideload.as_ref() {
-            mcu_sram_sideload.borrow_mut().warm_reset();
-        }
         self.pic_regs.warm_reset();
         self.external_test_sram.borrow_mut().warm_reset();
         self.direct_read_flash.borrow_mut().warm_reset();
@@ -405,9 +361,6 @@ impl Bus for McuRootBus {
         self.ctrl.update_reset();
         self.ram.borrow_mut().update_reset();
         self.rom_sram.borrow_mut().update_reset();
-        if let Some(mcu_sram_sideload) = self.mcu_sram_sideload.as_ref() {
-            mcu_sram_sideload.borrow_mut().update_reset();
-        }
         self.pic_regs.update_reset();
         self.external_test_sram.borrow_mut().update_reset();
         self.direct_read_flash.borrow_mut().update_reset();
@@ -420,11 +373,6 @@ impl Bus for McuRootBus {
         self.ram
             .borrow_mut()
             .register_outgoing_events(sender.clone());
-        if let Some(mcu_sram_sideload) = self.mcu_sram_sideload.as_ref() {
-            mcu_sram_sideload
-                .borrow_mut()
-                .register_outgoing_events(sender.clone());
-        }
         self.pic_regs.register_outgoing_events(sender.clone());
         self.event_sender = Some(sender);
     }

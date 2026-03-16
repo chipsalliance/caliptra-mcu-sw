@@ -64,8 +64,6 @@ fn test_emulator_args_creation() {
         ctrl_size: None,
         sram_offset: None,
         sram_size: None,
-        mcu_sram_sideload_offset: None,
-        mcu_sram_sideload_size: None,
         pic_offset: None,
         external_test_sram_offset: None,
         external_test_sram_size: None,
