@@ -61,6 +61,7 @@ pub struct ModelFpgaRealtime {
     // queue of IBIs to handle, in order
     pending_ibi: VecDeque<u16>,
     flash_boot: bool,
+    check_booted_to_runtime: bool,
     caliptra_firmware: Option<Vec<u8>>,
     soc_manifest: Option<Vec<u8>>,
     mcu_firmware: Option<Vec<u8>>,
@@ -68,6 +69,26 @@ pub struct ModelFpgaRealtime {
 }
 
 impl ModelFpgaRealtime {
+    /// Set or clear the FIPS zeroization PPD signal in the FPGA wrapper
+    /// control register (bit 20).
+    fn set_fips_zeroization_ppd(&mut self, val: bool) {
+        let ctrl = self.base.wrapper.regs().control.get();
+        const FIPS_ZEROIZATION_PPD_BIT: u32 = 1 << 20;
+        if val {
+            self.base
+                .wrapper
+                .regs()
+                .control
+                .set(ctrl | FIPS_ZEROIZATION_PPD_BIT);
+        } else {
+            self.base
+                .wrapper
+                .regs()
+                .control
+                .set(ctrl & !FIPS_ZEROIZATION_PPD_BIT);
+        }
+    }
+
     pub fn set_subsystem_reset(&mut self, reset: bool) {
         self.base.set_subsystem_reset(reset);
     }
@@ -356,7 +377,7 @@ impl McuHwModel for ModelFpgaRealtime {
         let usb_periph = emulator_periph::UsbDevPeriph::new();
         let usb_host_controller = usb_periph.host_controller();
 
-        let m = Self {
+        let mut m = Self {
             base,
 
             openocd: None,
@@ -367,11 +388,18 @@ impl McuHwModel for ModelFpgaRealtime {
             i3c_next_private_read_len: None,
             pending_ibi: VecDeque::new(),
             flash_boot: params.flash_boot,
+            check_booted_to_runtime: params.check_booted_to_runtime,
             caliptra_firmware: Some(params.caliptra_firmware.to_vec()).filter(|f| !f.is_empty()),
             soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
             mcu_firmware: Some(params.mcu_firmware.to_vec()).filter(|f| !f.is_empty()),
             usb_host_controller,
         };
+
+        // Set the FIPS zeroization PPD signal in the FPGA wrapper control
+        // register before the SoC boots, so MCI latches the request.
+        if params.fips_zeroization {
+            m.set_fips_zeroization_ppd(true);
+        }
 
         Ok(m)
     }
@@ -414,32 +442,37 @@ impl McuHwModel for ModelFpgaRealtime {
                 .unwrap();
         }
 
-        // wait until firmware is booted
-        const BOOT_CYCLES: u64 = 800_000_000;
-        self.step_until(|hw| {
-            hw.cycle_count() >= BOOT_CYCLES
-                || hw
-                    .mci_boot_milestones()
-                    .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-        });
-        println!(
-            "Boot completed at cycle count {}, flow status {}",
-            self.cycle_count(),
-            u32::from(self.mci_flow_status())
-        );
-        assert!(self
-            .mci_boot_milestones()
-            .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
-        MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
+        if self.check_booted_to_runtime {
+            // wait until firmware is booted
+            const BOOT_CYCLES: u64 = 800_000_000;
+            self.step_until(|hw| {
+                hw.cycle_count() >= BOOT_CYCLES
+                    || hw
+                        .mci_boot_milestones()
+                        .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+            });
+            println!(
+                "Boot completed at cycle count {}, flow status {}",
+                self.cycle_count(),
+                u32::from(self.mci_flow_status())
+            );
+            assert!(self
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
+            MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
+        }
+
         // turn off recovery
         self.base.recovery_started = false;
-        println!("Resetting I3C controller");
-        {
-            let i3c_ctrl = self.base.i3c_controller().unwrap();
-            let ctrl = i3c_ctrl.controller.lock().unwrap();
-            ctrl.ready.set(false);
+        if self.check_booted_to_runtime {
+            println!("Resetting I3C controller");
+            {
+                let i3c_ctrl = self.base.i3c_controller().unwrap();
+                let ctrl = i3c_ctrl.controller.lock().unwrap();
+                ctrl.ready.set(false);
+            }
+            self.base.i3c_controller().unwrap().configure();
         }
-        self.base.i3c_controller().unwrap().configure();
 
         Ok(())
     }

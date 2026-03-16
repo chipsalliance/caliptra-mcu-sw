@@ -433,18 +433,20 @@ impl ColdBoot {
         }
     }
 
-    /// Execute the FIPS zeroization flow.
+    /// Execute the FIPS zeroization flow (continued).
     ///
     /// Per the Caliptra SS Hardware Specification, when the PPD signal is
     /// asserted the MCU ROM must:
-    ///   1. Command Caliptra to zeroize UDS and field entropy via
+    ///   1. Write 0xFFFF_FFFF to FC_FIPS_ZEROZATION mask to authorize the
+    ///      fuse controller to zeroize non-secret fuses.  (**Done earlier in
+    ///      `ColdBoot::run`, before `SS_CONFIG_DONE_STICKY` locks the
+    ///      register.**)
+    ///   2. Command Caliptra to zeroize UDS and field entropy via
     ///      ZEROIZE_UDS_FE (secret fuses can only be zeroized by Caliptra).
-    ///   2. Write 0xFFFF_FFFF to FC_FIPS_ZEROZATION mask to authorize the
-    ///      fuse controller to zeroize non-secret fuses.
     ///   3. Request an LC transition to SCRAP (no token required).
     ///   4. Halt, waiting for the SoC to issue a cold reset.
     ///
-    /// This function never returns.
+    /// This function handles steps 2-4 and never returns.
     fn handle_fips_zeroization(
         mci: &romtime::Mci,
         lc: &romtime::Lifecycle,
@@ -494,11 +496,11 @@ impl ColdBoot {
         romtime::println!("[mcu-rom] ZEROIZE_UDS_FE completed successfully");
         mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationUdsFeComplete.into());
 
-        // Step 2: Authorize fuse controller zeroization of non-secret fuses.
-        mci.set_fips_zeroization_mask();
-        mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationMaskSet.into());
+        // Note: FC_FIPS_ZEROZATION mask was already set before
+        // SS_CONFIG_DONE_STICKY (in ColdBoot::run) because the register is
+        // locked once SS_CONFIG_DONE is asserted.
 
-        // Step 3: Request LC transition to SCRAP. The transition is recorded
+        // Step 2: Request LC transition to SCRAP. The transition is recorded
         // in OTP and takes effect permanently after the next cold reset.
         romtime::println!("[mcu-rom] Requesting LC transition to SCRAP for FIPS zeroization");
         mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationScrapTransitionStarted.into());
@@ -511,7 +513,7 @@ impl ColdBoot {
             fatal_error(McuError::ROM_FIPS_ZEROIZATION_LC_TRANSITION_ERROR);
         }
 
-        // Step 4: Halt. The SoC must issue a cold reset for the SCRAP
+        // Step 3: Halt. The SoC must issue a cold reset for the SCRAP
         // transition and fuse zeroization to take effect.
         romtime::println!("[mcu-rom] FIPS zeroization complete; halting for cold reset");
         mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationComplete.into());
@@ -603,6 +605,10 @@ impl BootFlow for ColdBoot {
         // Check for FIPS zeroization PPD signal early. The full zeroization
         // flow (including the Caliptra ZEROIZE_UDS_FE command) runs later,
         // after Caliptra is ready for mailbox commands.
+        //
+        // The FC_FIPS_ZEROZATION mask register must be written here, before
+        // SS_CONFIG_DONE_STICKY is set, because that lock makes the register
+        // read-only.
         let fips_zeroization = mci.fips_zeroization_requested();
         if fips_zeroization {
             romtime::println!(
@@ -610,6 +616,8 @@ impl BootFlow for ColdBoot {
                  will execute zeroization after Caliptra boot"
             );
             mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationDetected.into());
+            mci.set_fips_zeroization_mask();
+            mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationMaskSet.into());
         }
 
         if let Some((state, token)) = params.lifecycle_transition {
