@@ -28,6 +28,12 @@ pub mod hw_model_tests {
         bin_name: "mcu-test-fw-sw-digest-lock",
         features: &["emu"],
     };
+
+    pub const OTP_BLANK_CHECK: FwId = FwId {
+        crate_name: "mcu-test-fw-otp-blank-check",
+        bin_name: "mcu-test-fw-otp-blank-check",
+        features: &["emu"],
+    };
 }
 
 pub const REGISTERED_FW: &[&FwId] = &[
@@ -35,6 +41,7 @@ pub const REGISTERED_FW: &[&FwId] = &[
     &hw_model_tests::HITLESS_UPDATE_FLOW,
     &hw_model_tests::EXCEPTION_HANDLER,
     &hw_model_tests::SW_DIGEST_LOCK,
+    &hw_model_tests::OTP_BLANK_CHECK,
 ];
 
 pub const CPTRA_REGISTERED_FW: &[&FwId] =
