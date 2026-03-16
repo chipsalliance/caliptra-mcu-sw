@@ -70,3 +70,8 @@ required-features = ["riscv"]
 name = "sw_digest_lock"
 path = "sw_digest_lock.rs"
 required-features = ["riscv"]
+
+[[bin]]
+name = "otp_blank_check"
+path = "otp_blank_check.rs"
+required-features = ["riscv"]

@@ -45,6 +45,11 @@ pub mod hw_model_tests {
         bin_name: "sw_digest_lock",
         ..BASE_FWID
     };
+
+    pub const OTP_BLANK_CHECK: FwId = FwId {
+        bin_name: "otp_blank_check",
+        ..BASE_FWID
+    };
 }
 
 pub const REGISTERED_FW: &[&FwId] = &[
@@ -55,6 +60,7 @@ pub const REGISTERED_FW: &[&FwId] = &[
     &hw_model_tests::USB_RESPONDER,
     &hw_model_tests::USB_OCP_RECOVERY,
     &hw_model_tests::SW_DIGEST_LOCK,
+    &hw_model_tests::OTP_BLANK_CHECK,
 ];
 
 pub const CPTRA_REGISTERED_FW: &[&FwId] = &[

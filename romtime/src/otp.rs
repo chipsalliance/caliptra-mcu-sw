@@ -12,7 +12,8 @@ use crate::{FuseLayout, LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_O
 // TODO: use the Lifecycle controller to read the Lifecycle state
 
 // TODO: this error mask is dependent on the specific fuse map
-const OTP_STATUS_ERROR_MASK: u32 = (1 << 22) - 1;
+// Mask covering bits 0-29 (all error bits, excluding DaiIdle bit 30 and CheckPending bit 31).
+const OTP_STATUS_ERROR_MASK: u32 = (1 << 30) - 1;
 const OTP_CONSISTENCY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_INTEGRITY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_CHECK_TIMEOUT: u32 = 0x10_0000;
