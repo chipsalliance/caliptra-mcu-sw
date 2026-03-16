@@ -3228,9 +3228,6 @@ dependencies = [
 name = "mcu-test-fw-exception-handler"
 version = "0.1.0"
 dependencies = [
- "mcu-builder",
- "mcu-config-emulator",
- "mcu-config-fpga",
  "mcu-rom-common",
  "mcu-test-harness",
 ]
@@ -3239,9 +3236,6 @@ dependencies = [
 name = "mcu-test-fw-hitless-update-flow"
 version = "0.1.0"
 dependencies = [
- "mcu-builder",
- "mcu-config-emulator",
- "mcu-config-fpga",
  "mcu-error",
  "mcu-rom-common",
  "mcu-test-harness",
@@ -3254,9 +3248,6 @@ dependencies = [
 name = "mcu-test-fw-mailbox-responder"
 version = "0.1.0"
 dependencies = [
- "mcu-builder",
- "mcu-config-emulator",
- "mcu-config-fpga",
  "mcu-rom-common",
  "mcu-test-harness",
  "registers-generated",
@@ -3267,9 +3258,6 @@ dependencies = [
 name = "mcu-test-fw-sw-digest-lock"
 version = "0.1.0"
 dependencies = [
- "mcu-builder",
- "mcu-config-emulator",
- "mcu-config-fpga",
  "mcu-error",
  "mcu-rom-common",
  "mcu-test-harness",
