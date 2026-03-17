@@ -695,6 +695,9 @@ int main(int argc, char *argv[]) {
         .hw_revision_major = 2,
         .hw_revision_minor = 0,
         .hw_revision_patch = 0,
+        .flash_based_boot = 0,
+        .allow_sideloaded_rom = 0,
+        .active_i3c1 = 0,
         // Initialize all memory layout overrides to -1 (use defaults)
         .rom_offset = -1,
         .rom_size = -1,
@@ -779,6 +782,9 @@ int main(int argc, char *argv[]) {
         {"lc-size", required_argument, 0, 162},
         {"mbox-offset", required_argument, 0, 163},
         {"mbox-size", required_argument, 0, 164},
+        {"flash-based-boot", no_argument, 0, 166},
+        {"allow-sideloaded-rom", no_argument, 0, 167},
+        {"active-i3c1", no_argument, 0, 168},
         {"stub-warnings", no_argument, 0, 172},
         {"help", no_argument, 0, 'h'},
         {"version", no_argument, 0, 'V'},
@@ -926,6 +932,15 @@ int main(int argc, char *argv[]) {
                 break;
             case 164: // --mbox-size
                 config.mbox_size = parse_hex_or_decimal(optarg);
+                break;
+            case 166: // --flash-based-boot
+                config.flash_based_boot = 1;
+                break;
+            case 167: // --allow-sideloaded-rom
+                config.allow_sideloaded_rom = 1;
+                break;
+            case 168: // --active-i3c1
+                config.active_i3c1 = 1;
                 break;
             case 172: // --stub-warnings
                 config.stub_warnings = 1;

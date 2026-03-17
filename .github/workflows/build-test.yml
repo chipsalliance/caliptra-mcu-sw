@@ -101,7 +101,7 @@ jobs:
           path: target/all-fw.zip
           retention-days: 1
 
-  build-emulators:
+  build-emulator:
     runs-on: e2-standard-16
     timeout-minutes: 60
 
@@ -153,10 +153,9 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Build emulator binaries
+      - name: Build emulator binary
         run: |
-          # Build emulators for all features that the emulator supports
-          # Features not supported by emulator (e.g., test-i3c-simple) are automatically skipped
+          # Build a single emulator that supports all test features via runtime flags
           cargo xtask emulator-build
           sccache --show-stats
 
@@ -242,7 +241,7 @@ jobs:
 
   test_emulator:
     runs-on: ubuntu-latest
-    needs: [precheckin, build-firmware, build-emulators, build-tests]
+    needs: [precheckin, build-firmware, build-emulator, build-tests]
     timeout-minutes: 90
     strategy:
       fail-fast: false

@@ -125,6 +125,9 @@ pub struct MciMailboxImpl {
 
     /// Timer for scheduling poll actions
     timer: Timer,
+
+    /// Workaround: temporarily lift the check for mailbox requester to support integration tests
+    pub test_mcu_mbox_driver: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -188,6 +191,7 @@ impl MciMailboxImpl {
             last_irq_event: None,
             timer: Timer::new(clock),
             max_dlen_in_lock_session: 0,
+            test_mcu_mbox_driver: false,
         }
     }
 
@@ -387,8 +391,7 @@ impl MciMailboxImpl {
         let new_val = val.reg.get();
         self.execute.reg.set(new_val);
         if new_val == MboxExecute::Execute::SET.value {
-            // Workaround: temporarily lift the check for mailbox requester to support integration tests
-            if cfg!(feature = "test-mcu-mbox-driver")
+            if self.test_mcu_mbox_driver
                 || matches!(self.user.reg.get().into(), MciMailboxRequester::SocAgent(_))
             {
                 self.irq = true;

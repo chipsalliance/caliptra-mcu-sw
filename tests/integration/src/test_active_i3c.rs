@@ -29,6 +29,7 @@ mod test {
         let _hw = start_runtime_hw_model(TestParams {
             feature: Some("active-i3c1"),
             rom_feature: Some("active-i3c1"),
+            active_i3c1: true,
             ..Default::default()
         });
 

@@ -164,6 +164,7 @@ pub struct CEmulatorConfig {
     pub hw_revision_patch: c_uint,
     pub flash_based_boot: c_uchar,
     pub allow_sideloaded_rom: c_uchar,
+    pub active_i3c1: c_uchar,
 
     // Memory layout override parameters (-1 means use default)
     pub rom_offset: c_longlong,
@@ -318,6 +319,7 @@ pub unsafe extern "C" fn emulator_init(
         },
         device_security_state: DeviceLifecycle::try_from(config.device_security_state)
             .unwrap_or(DeviceLifecycle::Production) as u32,
+        test_feature: None,
         vendor_pk_hash: convert_optional_c_string(config.vendor_pk_hash),
         vendor_pqc_type: caliptra_image_types::FwVerificationPqcKeyType::from_u8(
             config.vendor_pqc_type,
@@ -375,6 +377,7 @@ pub unsafe extern "C" fn emulator_init(
         ),
         fuse_vendor_test_partition: convert_optional_c_string(config.fuse_vendor_test_partition),
         stub_warnings: config.stub_warnings != 0,
+        active_i3c1: config.active_i3c1 != 0,
     };
 
     // Convert C callbacks to Rust callbacks if provided

@@ -127,12 +127,18 @@ impl McuHwModel for ModelEmulated {
 
         let mcu_uart_output = Rc::new(RefCell::new(Vec::new()));
 
+        let mut straps = mcu_config::McuStraps::default();
+        if params.active_i3c1 {
+            straps.active_i3c = 1;
+        }
+
         let bus_args = McuRootBusArgs {
             rom: params.mcu_rom.into(),
             pic: pic.clone(),
             clock: clock.clone(),
             offsets,
             uart_output: Some(mcu_uart_output.clone()),
+            straps,
             ..Default::default()
         };
         let mcu_root_bus = McuRootBus::new(bus_args).unwrap();
@@ -164,7 +170,7 @@ impl McuHwModel for ModelEmulated {
             &clock.clone(),
             &mut i3c_controller,
             i3c_irq,
-            hw_version,
+            hw_version.clone(),
             step_lock.clone(),
         );
 

@@ -143,6 +143,12 @@ impl McuStraps {
     }
 }
 
+impl Default for McuStraps {
+    fn default() -> Self {
+        Self::default()
+    }
+}
+
 /// Represents the properties of a memory region for MRAC computation
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

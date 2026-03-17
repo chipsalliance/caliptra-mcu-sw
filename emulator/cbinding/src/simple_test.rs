@@ -49,6 +49,7 @@ fn test_emulator_args_creation() {
         flash_based_boot: false,
         i3c_port: None,
         device_security_state: DeviceLifecycle::Production as u32,
+        test_feature: None,
         vendor_pk_hash: None,
         vendor_pqc_type: FwVerificationPqcKeyType::LMS,
         owner_pk_hash: None,
@@ -92,6 +93,7 @@ fn test_emulator_args_creation() {
         fuse_vendor_hashes_prod_partition: None,
         fuse_vendor_test_partition: None,
         stub_warnings: false,
+        active_i3c1: false,
     };
 
     println!("EmulatorArgs created successfully");
