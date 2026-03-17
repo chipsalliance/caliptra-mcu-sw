@@ -13,7 +13,7 @@ pub use all::{
     all_build, emulator_build, AllBuildArgs, EmulatorBinaries, EmulatorBuildArgs, FirmwareBinaries,
 };
 pub use caliptra::{AuthManifestOwnerConfig, CaliptraBuilder, ImageCfg};
-pub use rom::{rom_build, rom_ld_script, test_rom_build};
+pub use rom::{rom_build, test_rom_build};
 pub use runtime::{bare_metal_build, runtime_build_with_apps};
 
 use anyhow::{anyhow, Result};

@@ -9,10 +9,6 @@ use mcu_rom_common::{McuBootMilestones, RomEnv};
 use registers_generated::mci;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
-// Needed to bring in startup code
-#[allow(unused)]
-use mcu_test_harness;
-
 fn run() -> ! {
     let env = RomEnv::new();
     let mci = &env.mci;
