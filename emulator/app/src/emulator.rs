@@ -809,10 +809,13 @@ impl Emulator {
             false,
         );
 
+        let usb_periph = emulator_periph::UsbDevPeriph::new();
+        let _usb_host_controller = usb_periph.host_controller();
+
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
             Some(auto_root_bus_offsets),
-            None,
+            Some(Box::new(usb_periph)),
             Some(Box::new(i3c)),
             Some(Box::new(primary_flash_controller)),
             Some(Box::new(secondary_flash_controller)),
