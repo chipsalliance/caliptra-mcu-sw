@@ -105,12 +105,6 @@ test-mbox-sram = []
 test-mci = []
 test-mctp-ctrl-cmds = ["caliptra-mcu-emulator-periph/test-mctp-ctrl-cmds"]
 test-mctp-user-loopback = ["caliptra-mcu-emulator-periph/test-mctp-user-loopback"]
-test-mctp-spdm-responder-conformance = [
-    "caliptra-mcu-emulator-periph/test-mctp-spdm-responder-conformance",
-]
-test-mctp-spdm-attestation = [
-    "caliptra-mcu-emulator-periph/test-mctp-spdm-attestation",
-]
 test-mcu-mbox-driver = ["caliptra-mcu-emulator-periph/test-mcu-mbox-driver"]
 test-mcu-mbox-soc-requester-loopback = []
 test-mcu-mbox-usermode = []

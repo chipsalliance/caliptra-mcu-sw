@@ -1,5 +1,8 @@
 // Licensed under the Apache-2.0 license
 
+// TODO: should we remove this in favor of EAT?
+#![allow(unused)]
+
 extern crate alloc;
 
 use alloc::boxed::Box;
