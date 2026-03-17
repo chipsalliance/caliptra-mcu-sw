@@ -436,7 +436,14 @@ impl UsbdevPeripheral for UsbDevPeriph {
 
     delegate_write!(write_alert_test, AlertTest);
     delegate_read!(read_usbctrl, Usbctrl);
-    delegate_write!(write_usbctrl, Usbctrl);
+
+    fn write_usbctrl(&mut self, val: ReadWriteRegister<u32, Usbctrl::Register>) {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.generated.write_usbctrl(val);
+        }
+        self.update_irq();
+    }
     delegate_read!(read_ep_out_enable, EpOutEnable);
     delegate_write!(write_ep_out_enable, EpOutEnable);
     delegate_read!(read_ep_in_enable, EpInEnable);
@@ -1321,5 +1328,53 @@ mod tests {
         // Frame interrupt should be set
         let intr = read_intr_state(&mut bus);
         assert_ne!(intr & IntrState::Frame::SET.value, 0);
+    }
+
+    // --- Phase 5: USBCTRL register tests ---
+
+    #[test]
+    fn test_usbctrl_enable_triggers_av_empty_interrupts() {
+        let (mut bus, _host) = setup();
+
+        // With device disabled, av_empty interrupts should not fire
+        let intr = read_intr_state(&mut bus);
+        assert_eq!(intr & IntrState::AvOutEmpty::SET.value, 0);
+        assert_eq!(intr & IntrState::AvSetupEmpty::SET.value, 0);
+
+        // Enable the device — av_empty should now fire (FIFOs are empty)
+        bus.write(
+            RvSize::Word,
+            USBDEV_BASE + USBCTRL_OFFSET,
+            Usbctrl::Enable::SET.value,
+        )
+        .unwrap();
+
+        let intr = read_intr_state(&mut bus);
+        assert_ne!(intr & IntrState::AvOutEmpty::SET.value, 0);
+        assert_ne!(intr & IntrState::AvSetupEmpty::SET.value, 0);
+
+        // Disable the device — av_empty should stop
+        bus.write(RvSize::Word, USBDEV_BASE + USBCTRL_OFFSET, 0)
+            .unwrap();
+
+        let intr = read_intr_state(&mut bus);
+        assert_eq!(intr & IntrState::AvOutEmpty::SET.value, 0);
+        assert_eq!(intr & IntrState::AvSetupEmpty::SET.value, 0);
+    }
+
+    #[test]
+    fn test_usbctrl_device_address_preserved() {
+        let (mut bus, _host) = setup();
+
+        let val = (Usbctrl::Enable::SET + Usbctrl::DeviceAddress.val(0x2A)).value;
+        bus.write(RvSize::Word, USBDEV_BASE + USBCTRL_OFFSET, val)
+            .unwrap();
+
+        let readback = bus
+            .read(RvSize::Word, USBDEV_BASE + USBCTRL_OFFSET)
+            .unwrap();
+        let reg = ReadWriteRegister::<u32, Usbctrl::Register>::new(readback);
+        assert!(reg.reg.is_set(Usbctrl::Enable));
+        assert_eq!(reg.reg.read(Usbctrl::DeviceAddress), 0x2A);
     }
 }
