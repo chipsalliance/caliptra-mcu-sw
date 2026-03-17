@@ -5,7 +5,12 @@ use std::sync::{Arc, Mutex};
 
 use tock_registers::interfaces::Readable;
 
+use caliptra_emu_bus::ReadWriteRegister;
 use emulator_registers_generated::usbdev::{UsbdevGenerated, UsbdevPeripheral};
+use registers_generated::usbdev::bits::*;
+
+const AV_SETUP_FIFO_DEPTH: usize = 4;
+const AV_OUT_FIFO_DEPTH: usize = 8;
 
 #[allow(dead_code)]
 pub struct UsbDevState {
@@ -105,14 +110,13 @@ impl UsbDevPeriph {
 /// 3. Assert expected responses.
 #[derive(Clone)]
 pub struct UsbHostController {
-    state: Arc<Mutex<UsbDevState>>,
+    pub(crate) state: Arc<Mutex<UsbDevState>>,
 }
 
 impl UsbHostController {
     /// Returns `true` if firmware has set the `enable` bit in the `usbctrl` register,
     /// indicating the device is initialized and ready to communicate.
     pub fn device_enabled(&self) -> bool {
-        use registers_generated::usbdev::bits::Usbctrl;
         let mut state = self.state.lock().unwrap();
         let usbctrl = state.generated.read_usbctrl();
         usbctrl.reg.is_set(Usbctrl::Enable)
@@ -125,12 +129,7 @@ impl UsbHostController {
 // to the inner `UsbdevGenerated`, avoiding the lifetime issue.
 macro_rules! delegate_read {
     ($method:ident, $reg:ident) => {
-        fn $method(
-            &mut self,
-        ) -> caliptra_emu_bus::ReadWriteRegister<
-            u32,
-            registers_generated::usbdev::bits::$reg::Register,
-        > {
+        fn $method(&mut self) -> ReadWriteRegister<u32, $reg::Register> {
             let mut state = self.state.lock().unwrap();
             state.generated.$method()
         }
@@ -139,13 +138,7 @@ macro_rules! delegate_read {
 
 macro_rules! delegate_write {
     ($method:ident, $reg:ident) => {
-        fn $method(
-            &mut self,
-            val: caliptra_emu_bus::ReadWriteRegister<
-                u32,
-                registers_generated::usbdev::bits::$reg::Register,
-            >,
-        ) {
+        fn $method(&mut self, val: ReadWriteRegister<u32, $reg::Register>) {
             let mut state = self.state.lock().unwrap();
             state.generated.$method(val);
         }
@@ -175,10 +168,53 @@ impl UsbdevPeripheral for UsbDevPeriph {
     delegate_write!(write_ep_out_enable, EpOutEnable);
     delegate_read!(read_ep_in_enable, EpInEnable);
     delegate_write!(write_ep_in_enable, EpInEnable);
-    delegate_read!(read_usbstat, Usbstat);
-    delegate_write!(write_avoutbuffer, Avoutbuffer);
-    delegate_write!(write_avsetupbuffer, Avsetupbuffer);
-    delegate_read!(read_rxfifo, Rxfifo);
+
+    fn read_usbstat(&mut self) -> ReadWriteRegister<u32, Usbstat::Register> {
+        let state = self.state.lock().unwrap();
+        let val = Usbstat::Frame.val(state.frame as u32)
+            + Usbstat::AvOutDepth.val(state.av_out_fifo.len() as u32)
+            + Usbstat::AvSetupDepth.val(state.av_setup_fifo.len() as u32)
+            + Usbstat::AvOutFull.val(u32::from(state.av_out_fifo.len() >= AV_OUT_FIFO_DEPTH))
+            + Usbstat::RxDepth.val(state.rx_fifo.len() as u32)
+            + Usbstat::AvSetupFull.val(u32::from(state.av_setup_fifo.len() >= AV_SETUP_FIFO_DEPTH))
+            + Usbstat::RxEmpty.val(u32::from(state.rx_fifo.is_empty()));
+        ReadWriteRegister::new(val.value)
+    }
+
+    fn write_avoutbuffer(&mut self, val: ReadWriteRegister<u32, Avoutbuffer::Register>) {
+        let mut state = self.state.lock().unwrap();
+        let buffer_id = val.reg.read(Avoutbuffer::Buffer) as u8;
+        if state.av_out_fifo.len() >= AV_OUT_FIFO_DEPTH {
+            state.hw_intr_state |= IntrState::AvOverflow::SET.value;
+        } else {
+            state.av_out_fifo.push_back(buffer_id);
+        }
+    }
+
+    fn write_avsetupbuffer(&mut self, val: ReadWriteRegister<u32, Avsetupbuffer::Register>) {
+        let mut state = self.state.lock().unwrap();
+        let buffer_id = val.reg.read(Avsetupbuffer::Buffer) as u8;
+        if state.av_setup_fifo.len() >= AV_SETUP_FIFO_DEPTH {
+            state.hw_intr_state |= IntrState::AvOverflow::SET.value;
+        } else {
+            state.av_setup_fifo.push_back(buffer_id);
+        }
+    }
+
+    fn read_rxfifo(&mut self) -> ReadWriteRegister<u32, Rxfifo::Register> {
+        let mut state = self.state.lock().unwrap();
+        let val = match state.rx_fifo.pop_front() {
+            Some(entry) => {
+                (Rxfifo::Buffer.val(entry.buffer as u32)
+                    + Rxfifo::Size.val(entry.size as u32)
+                    + Rxfifo::Setup.val(u32::from(entry.setup))
+                    + Rxfifo::Ep.val(entry.ep as u32))
+                .value
+            }
+            None => 0,
+        };
+        ReadWriteRegister::new(val)
+    }
     delegate_read!(read_rxenable_setup, RxenableSetup);
     delegate_write!(write_rxenable_setup, RxenableSetup);
     delegate_read!(read_rxenable_out, RxenableOut);
@@ -192,24 +228,11 @@ impl UsbdevPeripheral for UsbDevPeriph {
     delegate_read!(read_in_stall, InStall);
     delegate_write!(write_in_stall, InStall);
 
-    fn read_configin_0(
-        &mut self,
-        index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        registers_generated::usbdev::bits::Configin0::Register,
-    > {
+    fn read_configin_0(&mut self, index: usize) -> ReadWriteRegister<u32, Configin0::Register> {
         let mut state = self.state.lock().unwrap();
         state.generated.read_configin_0(index)
     }
-    fn write_configin_0(
-        &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
-            u32,
-            registers_generated::usbdev::bits::Configin0::Register,
-        >,
-        index: usize,
-    ) {
+    fn write_configin_0(&mut self, val: ReadWriteRegister<u32, Configin0::Register>, index: usize) {
         let mut state = self.state.lock().unwrap();
         state.generated.write_configin_0(val, index);
     }
@@ -229,7 +252,20 @@ impl UsbdevPeripheral for UsbDevPeriph {
     delegate_write!(write_phy_config, PhyConfig);
     delegate_write!(write_wake_control, WakeControl);
     delegate_read!(read_wake_events, WakeEvents);
-    delegate_write!(write_fifo_ctrl, FifoCtrl);
+
+    fn write_fifo_ctrl(&mut self, val: ReadWriteRegister<u32, FifoCtrl::Register>) {
+        let mut state = self.state.lock().unwrap();
+        if val.reg.is_set(FifoCtrl::AvoutRst) {
+            state.av_out_fifo.clear();
+        }
+        if val.reg.is_set(FifoCtrl::AvsetupRst) {
+            state.av_setup_fifo.clear();
+        }
+        if val.reg.is_set(FifoCtrl::RxRst) {
+            state.rx_fifo.clear();
+        }
+    }
+
     delegate_read!(read_count_out, CountOut);
     delegate_write!(write_count_out, CountOut);
     delegate_read!(read_count_in, CountIn);
@@ -255,13 +291,17 @@ mod tests {
     use caliptra_emu_bus::Bus;
     use caliptra_emu_types::RvSize;
     use emulator_registers_generated::root_bus::AutoRootBus;
-    use registers_generated::usbdev::bits::Usbctrl;
     use tock_registers::interfaces::Writeable;
 
     const USBDEV_BASE: u32 = registers_generated::usbdev::USBDEV_ADDR;
     const USBCTRL_OFFSET: u32 = 0x10;
     const EP_OUT_ENABLE_OFFSET: u32 = 0x14;
     const EP_IN_ENABLE_OFFSET: u32 = 0x18;
+    const USBSTAT_OFFSET: u32 = 0x1c;
+    const AVOUTBUFFER_OFFSET: u32 = 0x20;
+    const AVSETUPBUFFER_OFFSET: u32 = 0x24;
+    const RXFIFO_OFFSET: u32 = 0x28;
+    const FIFO_CTRL_OFFSET: u32 = 0x98;
     const BUFFER_OFFSET: u32 = 0x800;
 
     fn setup() -> (AutoRootBus, UsbHostController) {
@@ -296,7 +336,7 @@ mod tests {
             .unwrap();
         assert_eq!(val, 0);
 
-        let reg = caliptra_emu_bus::ReadWriteRegister::<u32, Usbctrl::Register>::new(0);
+        let reg = ReadWriteRegister::<u32, Usbctrl::Register>::new(0);
         reg.reg
             .write(Usbctrl::Enable::SET + Usbctrl::DeviceAddress.val(0x42));
         let write_val = reg.reg.get();
@@ -361,5 +401,188 @@ mod tests {
         bus.write(RvSize::Word, USBDEV_BASE + USBCTRL_OFFSET, 0)
             .unwrap();
         assert!(!host.device_enabled());
+    }
+
+    #[test]
+    fn test_av_setup_fifo_push_and_usbstat() {
+        let (mut bus, _host) = setup();
+
+        for i in 0..AV_SETUP_FIFO_DEPTH as u32 {
+            bus.write(RvSize::Word, USBDEV_BASE + AVSETUPBUFFER_OFFSET, i)
+                .unwrap();
+        }
+
+        let stat = bus
+            .read(RvSize::Word, USBDEV_BASE + USBSTAT_OFFSET)
+            .unwrap();
+        let stat_reg = ReadWriteRegister::<u32, Usbstat::Register>::new(stat);
+        assert_eq!(
+            stat_reg.reg.read(Usbstat::AvSetupDepth),
+            AV_SETUP_FIFO_DEPTH as u32
+        );
+        assert!(stat_reg.reg.is_set(Usbstat::AvSetupFull));
+    }
+
+    #[test]
+    fn test_av_out_fifo_push_and_usbstat() {
+        let (mut bus, _host) = setup();
+
+        for i in 0..AV_OUT_FIFO_DEPTH as u32 {
+            bus.write(RvSize::Word, USBDEV_BASE + AVOUTBUFFER_OFFSET, i)
+                .unwrap();
+        }
+
+        let stat = bus
+            .read(RvSize::Word, USBDEV_BASE + USBSTAT_OFFSET)
+            .unwrap();
+        let stat_reg = ReadWriteRegister::<u32, Usbstat::Register>::new(stat);
+        assert_eq!(
+            stat_reg.reg.read(Usbstat::AvOutDepth),
+            AV_OUT_FIFO_DEPTH as u32
+        );
+        assert!(stat_reg.reg.is_set(Usbstat::AvOutFull));
+    }
+
+    #[test]
+    fn test_av_setup_fifo_overflow_sets_interrupt() {
+        let (mut bus, host) = setup();
+
+        // Fill the FIFO to capacity, then write one more
+        for i in 0..=AV_SETUP_FIFO_DEPTH as u32 {
+            bus.write(RvSize::Word, USBDEV_BASE + AVSETUPBUFFER_OFFSET, i)
+                .unwrap();
+        }
+
+        // Depth should not exceed capacity (overflow write was discarded)
+        let stat = bus
+            .read(RvSize::Word, USBDEV_BASE + USBSTAT_OFFSET)
+            .unwrap();
+        let stat_reg = ReadWriteRegister::<u32, Usbstat::Register>::new(stat);
+        assert_eq!(
+            stat_reg.reg.read(Usbstat::AvSetupDepth),
+            AV_SETUP_FIFO_DEPTH as u32
+        );
+
+        let hw_intr = host.state.lock().unwrap().hw_intr_state;
+        assert_ne!(hw_intr & IntrState::AvOverflow::SET.value, 0);
+    }
+
+    #[test]
+    fn test_av_out_fifo_overflow_sets_interrupt() {
+        let (mut bus, host) = setup();
+
+        for i in 0..=AV_OUT_FIFO_DEPTH as u32 {
+            bus.write(RvSize::Word, USBDEV_BASE + AVOUTBUFFER_OFFSET, i)
+                .unwrap();
+        }
+
+        let stat = bus
+            .read(RvSize::Word, USBDEV_BASE + USBSTAT_OFFSET)
+            .unwrap();
+        let stat_reg = ReadWriteRegister::<u32, Usbstat::Register>::new(stat);
+        assert_eq!(
+            stat_reg.reg.read(Usbstat::AvOutDepth),
+            AV_OUT_FIFO_DEPTH as u32
+        );
+
+        let hw_intr = host.state.lock().unwrap().hw_intr_state;
+        assert_ne!(hw_intr & IntrState::AvOverflow::SET.value, 0);
+    }
+
+    #[test]
+    fn test_rx_fifo_pop() {
+        let (mut bus, host) = setup();
+
+        {
+            let mut state = host.state.lock().unwrap();
+            state.rx_fifo.push_back(RxFifoEntry {
+                buffer: 3,
+                size: 64,
+                setup: true,
+                ep: 0,
+            });
+            state.rx_fifo.push_back(RxFifoEntry {
+                buffer: 7,
+                size: 8,
+                setup: false,
+                ep: 2,
+            });
+        }
+
+        let val1 = bus.read(RvSize::Word, USBDEV_BASE + RXFIFO_OFFSET).unwrap();
+        let reg1 = ReadWriteRegister::<u32, Rxfifo::Register>::new(val1);
+        assert_eq!(reg1.reg.read(Rxfifo::Buffer), 3);
+        assert_eq!(reg1.reg.read(Rxfifo::Size), 64);
+        assert!(reg1.reg.is_set(Rxfifo::Setup));
+        assert_eq!(reg1.reg.read(Rxfifo::Ep), 0);
+
+        let val2 = bus.read(RvSize::Word, USBDEV_BASE + RXFIFO_OFFSET).unwrap();
+        let reg2 = ReadWriteRegister::<u32, Rxfifo::Register>::new(val2);
+        assert_eq!(reg2.reg.read(Rxfifo::Buffer), 7);
+        assert_eq!(reg2.reg.read(Rxfifo::Size), 8);
+        assert!(!reg2.reg.is_set(Rxfifo::Setup));
+        assert_eq!(reg2.reg.read(Rxfifo::Ep), 2);
+
+        let val3 = bus.read(RvSize::Word, USBDEV_BASE + RXFIFO_OFFSET).unwrap();
+        assert_eq!(val3, 0);
+    }
+
+    #[test]
+    fn test_usbstat_rx_empty_when_fifo_empty() {
+        let (mut bus, _host) = setup();
+
+        let stat = bus
+            .read(RvSize::Word, USBDEV_BASE + USBSTAT_OFFSET)
+            .unwrap();
+        let stat_reg = ReadWriteRegister::<u32, Usbstat::Register>::new(stat);
+        assert!(stat_reg.reg.is_set(Usbstat::RxEmpty));
+        assert_eq!(stat_reg.reg.read(Usbstat::RxDepth), 0);
+    }
+
+    #[test]
+    fn test_fifo_ctrl_reset() {
+        let (mut bus, host) = setup();
+
+        for i in 0..3u32 {
+            bus.write(RvSize::Word, USBDEV_BASE + AVSETUPBUFFER_OFFSET, i)
+                .unwrap();
+        }
+        for i in 0..5u32 {
+            bus.write(RvSize::Word, USBDEV_BASE + AVOUTBUFFER_OFFSET, i)
+                .unwrap();
+        }
+        {
+            let mut state = host.state.lock().unwrap();
+            state.rx_fifo.push_back(RxFifoEntry {
+                buffer: 1,
+                size: 8,
+                setup: false,
+                ep: 0,
+            });
+        }
+
+        let stat = bus
+            .read(RvSize::Word, USBDEV_BASE + USBSTAT_OFFSET)
+            .unwrap();
+        let stat_reg = ReadWriteRegister::<u32, Usbstat::Register>::new(stat);
+        assert_eq!(stat_reg.reg.read(Usbstat::AvSetupDepth), 3);
+        assert_eq!(stat_reg.reg.read(Usbstat::AvOutDepth), 5);
+        assert_eq!(stat_reg.reg.read(Usbstat::RxDepth), 1);
+
+        bus.write(
+            RvSize::Word,
+            USBDEV_BASE + FIFO_CTRL_OFFSET,
+            (FifoCtrl::AvsetupRst::SET + FifoCtrl::AvoutRst::SET + FifoCtrl::RxRst::SET).value,
+        )
+        .unwrap();
+
+        let stat = bus
+            .read(RvSize::Word, USBDEV_BASE + USBSTAT_OFFSET)
+            .unwrap();
+        let stat_reg = ReadWriteRegister::<u32, Usbstat::Register>::new(stat);
+        assert_eq!(stat_reg.reg.read(Usbstat::AvSetupDepth), 0);
+        assert_eq!(stat_reg.reg.read(Usbstat::AvOutDepth), 0);
+        assert_eq!(stat_reg.reg.read(Usbstat::RxDepth), 0);
+        assert!(stat_reg.reg.is_set(Usbstat::RxEmpty));
     }
 }
