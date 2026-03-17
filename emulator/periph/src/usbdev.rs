@@ -24,24 +24,31 @@ pub struct UsbDevState {
     pub(crate) frame: u16,
 
     #[allow(dead_code)]
-    pub(crate) out_data_toggle: u16,
-    #[allow(dead_code)]
-    pub(crate) in_data_toggle: u16,
-
-    #[allow(dead_code)]
     pub(crate) in_sending: u16,
 
     pub(crate) hw_intr_state: u32,
 }
 
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
 pub(crate) struct RxFifoEntry {
     pub buffer: u8,
     pub size: u8,
     pub setup: bool,
     pub ep: u8,
 }
+
+#[derive(Debug)]
+pub enum UsbTransactionError {
+    EndpointDisabled,
+    Nak,
+    Stall,
+    NoBuffer,
+    FifoFull,
+    DataTooLong,
+}
+
+const MAX_PACKET_SIZE: usize = 64;
+const WORDS_PER_BUFFER: usize = 16;
 
 impl UsbDevState {
     fn new() -> Self {
@@ -51,8 +58,6 @@ impl UsbDevState {
             av_out_fifo: VecDeque::new(),
             rx_fifo: VecDeque::new(),
             frame: 0,
-            out_data_toggle: 0,
-            in_data_toggle: 0,
             in_sending: 0,
             hw_intr_state: 0,
         }
@@ -91,6 +96,163 @@ impl UsbDevState {
 
     fn effective_intr_state(&mut self) -> u32 {
         self.hw_intr_state | self.level_sensitive_bits()
+    }
+
+    fn ep_bit(reg_val: u32, ep: u8) -> bool {
+        reg_val & (1 << ep) != 0
+    }
+
+    fn write_data_to_buffer(&mut self, buffer_id: u8, data: &[u8]) {
+        let base = usize::from(buffer_id) * WORDS_PER_BUFFER;
+        for (i, chunk) in data.chunks(4).enumerate() {
+            let mut buf = [0u8; 4];
+            buf[..chunk.len()].copy_from_slice(chunk);
+            self.generated
+                .write_buffer(u32::from_le_bytes(buf), base + i);
+        }
+    }
+
+    fn read_data_from_buffer(&mut self, buffer_id: u8, size: usize) -> Vec<u8> {
+        let base = usize::from(buffer_id) * WORDS_PER_BUFFER;
+        let num_words = (size + 3) / 4;
+        let mut data = Vec::with_capacity(num_words * 4);
+        for i in 0..num_words {
+            data.extend_from_slice(&self.generated.read_buffer(base + i).to_le_bytes());
+        }
+        data.truncate(size);
+        data
+    }
+
+    pub(crate) fn do_host_setup(&mut self, ep: u8, data: &[u8]) -> Result<(), UsbTransactionError> {
+        let ep_out = self.generated.read_ep_out_enable().reg.get();
+        let rx_setup = self.generated.read_rxenable_setup().reg.get();
+        if !Self::ep_bit(ep_out, ep) || !Self::ep_bit(rx_setup, ep) {
+            return Err(UsbTransactionError::EndpointDisabled);
+        }
+
+        if self.rx_fifo.len() >= RX_FIFO_DEPTH {
+            return Err(UsbTransactionError::FifoFull);
+        }
+
+        let buffer_id = self
+            .av_setup_fifo
+            .pop_front()
+            .ok_or(UsbTransactionError::NoBuffer)?;
+
+        if data.len() > MAX_PACKET_SIZE {
+            return Err(UsbTransactionError::DataTooLong);
+        }
+        self.write_data_to_buffer(buffer_id, data);
+
+        self.rx_fifo.push_back(RxFifoEntry {
+            buffer: buffer_id,
+            size: data.len() as u8,
+            setup: true,
+            ep,
+        });
+
+        // SETUP clears stall on both directions
+        let out_stall = self.generated.read_out_stall().reg.get() & !(1 << ep);
+        self.generated
+            .write_out_stall(ReadWriteRegister::new(out_stall));
+        let in_stall = self.generated.read_in_stall().reg.get() & !(1 << ep);
+        self.generated
+            .write_in_stall(ReadWriteRegister::new(in_stall));
+
+        // Cancel any pending IN on this endpoint
+        let configin = self.generated.read_configin_0(ep as usize);
+        let raw = (configin.reg.get() & !Configin0::Rdy0::SET.value) | Configin0::Pend0::SET.value;
+        self.generated
+            .write_configin_0(ReadWriteRegister::new(raw), ep as usize);
+
+        Ok(())
+    }
+
+    pub(crate) fn do_host_out(&mut self, ep: u8, data: &[u8]) -> Result<(), UsbTransactionError> {
+        let ep_out = self.generated.read_ep_out_enable().reg.get();
+        if !Self::ep_bit(ep_out, ep) {
+            return Err(UsbTransactionError::EndpointDisabled);
+        }
+
+        let out_stall = self.generated.read_out_stall().reg.get();
+        if Self::ep_bit(out_stall, ep) {
+            return Err(UsbTransactionError::Stall);
+        }
+
+        let rxenable_out = self.generated.read_rxenable_out().reg.get();
+        if !Self::ep_bit(rxenable_out, ep) {
+            return Err(UsbTransactionError::Nak);
+        }
+
+        if self.rx_fifo.len() >= RX_FIFO_DEPTH {
+            return Err(UsbTransactionError::FifoFull);
+        }
+
+        let buffer_id = self
+            .av_out_fifo
+            .pop_front()
+            .ok_or(UsbTransactionError::NoBuffer)?;
+
+        if data.len() > MAX_PACKET_SIZE {
+            return Err(UsbTransactionError::DataTooLong);
+        }
+        self.write_data_to_buffer(buffer_id, data);
+
+        self.rx_fifo.push_back(RxFifoEntry {
+            buffer: buffer_id,
+            size: data.len() as u8,
+            setup: false,
+            ep,
+        });
+
+        // If set_nak_out is set for this endpoint, clear rxenable_out
+        let set_nak = self.generated.read_set_nak_out().reg.get();
+        if Self::ep_bit(set_nak, ep) {
+            let rxenable = rxenable_out & !(1 << ep);
+            self.generated
+                .write_rxenable_out(ReadWriteRegister::new(rxenable));
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn do_host_in(&mut self, ep: u8) -> Result<Vec<u8>, UsbTransactionError> {
+        let ep_in = self.generated.read_ep_in_enable().reg.get();
+        if !Self::ep_bit(ep_in, ep) {
+            return Err(UsbTransactionError::EndpointDisabled);
+        }
+
+        let in_stall = self.generated.read_in_stall().reg.get();
+        if Self::ep_bit(in_stall, ep) {
+            return Err(UsbTransactionError::Stall);
+        }
+
+        let configin = self.generated.read_configin_0(ep as usize);
+        if !configin.reg.is_set(Configin0::Rdy0) {
+            return Err(UsbTransactionError::Nak);
+        }
+
+        let buffer_id = configin.reg.read(Configin0::Buffer0) as u8;
+        let size = configin.reg.read(Configin0::Size0) as usize;
+        let size = size.min(MAX_PACKET_SIZE);
+
+        let data = self.read_data_from_buffer(buffer_id, size);
+
+        // Clear rdy for this endpoint
+        let raw = configin.reg.get() & !Configin0::Rdy0::SET.value;
+        self.generated
+            .write_configin_0(ReadWriteRegister::new(raw), ep as usize);
+
+        let in_sent = self.generated.read_in_sent().reg.get() | (1 << ep);
+        self.generated
+            .write_in_sent(ReadWriteRegister::new(in_sent));
+
+        Ok(data)
+    }
+
+    pub(crate) fn do_host_sof(&mut self, frame_number: u16) {
+        self.frame = frame_number;
+        self.hw_intr_state |= IntrState::Frame::SET.value;
     }
 }
 
@@ -177,6 +339,30 @@ impl UsbHostController {
         let mut state = self.state.lock().unwrap();
         let usbctrl = state.generated.read_usbctrl();
         usbctrl.reg.is_set(Usbctrl::Enable)
+    }
+
+    /// Simulate the host sending a SETUP packet to an endpoint.
+    pub fn host_setup(&self, ep: u8, data: &[u8]) -> Result<(), UsbTransactionError> {
+        let mut state = self.state.lock().unwrap();
+        state.do_host_setup(ep, data)
+    }
+
+    /// Simulate the host sending an OUT packet to an endpoint.
+    pub fn host_out(&self, ep: u8, data: &[u8]) -> Result<(), UsbTransactionError> {
+        let mut state = self.state.lock().unwrap();
+        state.do_host_out(ep, data)
+    }
+
+    /// Simulate the host performing an IN transaction on an endpoint.
+    pub fn host_in(&self, ep: u8) -> Result<Vec<u8>, UsbTransactionError> {
+        let mut state = self.state.lock().unwrap();
+        state.do_host_in(ep)
+    }
+
+    /// Send a SOF token (advances frame counter).
+    pub fn host_sof(&self, frame_number: u16) {
+        let mut state = self.state.lock().unwrap();
+        state.do_host_sof(frame_number);
     }
 }
 
@@ -404,6 +590,13 @@ mod tests {
     const AVOUTBUFFER_OFFSET: u32 = 0x20;
     const AVSETUPBUFFER_OFFSET: u32 = 0x24;
     const RXFIFO_OFFSET: u32 = 0x28;
+    const RXENABLE_SETUP_OFFSET: u32 = 0x2c;
+    const RXENABLE_OUT_OFFSET: u32 = 0x30;
+    const SET_NAK_OUT_OFFSET: u32 = 0x34;
+    const IN_SENT_OFFSET: u32 = 0x38;
+    const OUT_STALL_OFFSET: u32 = 0x3c;
+    const IN_STALL_OFFSET: u32 = 0x40;
+    const CONFIGIN_BASE_OFFSET: u32 = 0x44;
     const FIFO_CTRL_OFFSET: u32 = 0x98;
     const BUFFER_OFFSET: u32 = 0x800;
 
@@ -881,5 +1074,252 @@ mod tests {
             .read(RvSize::Word, USBDEV_BASE + INTR_ENABLE_OFFSET)
             .unwrap();
         assert_eq!(enable, IntrState::AvOutEmpty::SET.value);
+    }
+
+    // --- Phase 4: Host transaction API tests ---
+
+    /// Configure endpoint 0 for SETUP/OUT reception and IN transmission.
+    fn enable_ep0(bus: &mut AutoRootBus) {
+        bus.write(RvSize::Word, USBDEV_BASE + EP_OUT_ENABLE_OFFSET, 0x001)
+            .unwrap();
+        bus.write(RvSize::Word, USBDEV_BASE + EP_IN_ENABLE_OFFSET, 0x001)
+            .unwrap();
+        bus.write(RvSize::Word, USBDEV_BASE + RXENABLE_SETUP_OFFSET, 0x001)
+            .unwrap();
+        bus.write(RvSize::Word, USBDEV_BASE + RXENABLE_OUT_OFFSET, 0x001)
+            .unwrap();
+    }
+
+    #[test]
+    fn test_host_setup_success() {
+        let (mut bus, host) = setup();
+        enable_ep0(&mut bus);
+
+        // Provide a setup buffer
+        bus.write(RvSize::Word, USBDEV_BASE + AVSETUPBUFFER_OFFSET, 0)
+            .unwrap();
+
+        let setup_data = [0x80, 0x06, 0x00, 0x01, 0x00, 0x00, 0x40, 0x00];
+        host.host_setup(0, &setup_data).unwrap();
+
+        // Read the RX FIFO entry
+        let rxfifo = bus.read(RvSize::Word, USBDEV_BASE + RXFIFO_OFFSET).unwrap();
+        let reg = ReadWriteRegister::<u32, Rxfifo::Register>::new(rxfifo);
+        assert_eq!(reg.reg.read(Rxfifo::Buffer), 0);
+        assert_eq!(reg.reg.read(Rxfifo::Size), 8);
+        assert!(reg.reg.is_set(Rxfifo::Setup));
+        assert_eq!(reg.reg.read(Rxfifo::Ep), 0);
+
+        // Verify data in buffer 0
+        for (i, &byte) in setup_data.iter().enumerate() {
+            let word_idx = i / 4;
+            let byte_idx = i % 4;
+            let word = bus
+                .read(
+                    RvSize::Word,
+                    USBDEV_BASE + BUFFER_OFFSET + (word_idx as u32) * 4,
+                )
+                .unwrap();
+            assert_eq!((word >> (byte_idx * 8)) as u8, byte);
+        }
+    }
+
+    #[test]
+    fn test_host_setup_no_buffer() {
+        let (mut bus, host) = setup();
+        enable_ep0(&mut bus);
+        // Don't provide any setup buffer
+        let result = host.host_setup(0, &[0; 8]);
+        assert!(matches!(result, Err(UsbTransactionError::NoBuffer)));
+    }
+
+    #[test]
+    fn test_host_setup_endpoint_disabled() {
+        let (_bus, host) = setup();
+        // Don't enable any endpoints
+        let result = host.host_setup(0, &[0; 8]);
+        assert!(matches!(result, Err(UsbTransactionError::EndpointDisabled)));
+    }
+
+    #[test]
+    fn test_host_setup_clears_stall() {
+        let (mut bus, host) = setup();
+        enable_ep0(&mut bus);
+
+        // Set stall on ep0
+        bus.write(RvSize::Word, USBDEV_BASE + OUT_STALL_OFFSET, 0x001)
+            .unwrap();
+        bus.write(RvSize::Word, USBDEV_BASE + IN_STALL_OFFSET, 0x001)
+            .unwrap();
+
+        bus.write(RvSize::Word, USBDEV_BASE + AVSETUPBUFFER_OFFSET, 0)
+            .unwrap();
+        host.host_setup(0, &[0; 8]).unwrap();
+
+        // Stall should be cleared
+        let out_stall = bus
+            .read(RvSize::Word, USBDEV_BASE + OUT_STALL_OFFSET)
+            .unwrap();
+        let in_stall = bus
+            .read(RvSize::Word, USBDEV_BASE + IN_STALL_OFFSET)
+            .unwrap();
+        assert_eq!(out_stall & 1, 0);
+        assert_eq!(in_stall & 1, 0);
+    }
+
+    #[test]
+    fn test_host_out_success() {
+        let (mut bus, host) = setup();
+        enable_ep0(&mut bus);
+
+        bus.write(RvSize::Word, USBDEV_BASE + AVOUTBUFFER_OFFSET, 1)
+            .unwrap();
+
+        let out_data = [0xDE, 0xAD, 0xBE, 0xEF];
+        host.host_out(0, &out_data).unwrap();
+
+        let rxfifo = bus.read(RvSize::Word, USBDEV_BASE + RXFIFO_OFFSET).unwrap();
+        let reg = ReadWriteRegister::<u32, Rxfifo::Register>::new(rxfifo);
+        assert_eq!(reg.reg.read(Rxfifo::Buffer), 1);
+        assert_eq!(reg.reg.read(Rxfifo::Size), 4);
+        assert!(!reg.reg.is_set(Rxfifo::Setup));
+        assert_eq!(reg.reg.read(Rxfifo::Ep), 0);
+
+        // Verify data in buffer 1 (word offset = 1 * 16 = 16)
+        let word = bus
+            .read(RvSize::Word, USBDEV_BASE + BUFFER_OFFSET + 16 * 4)
+            .unwrap();
+        assert_eq!(word, 0xEFBEADDE);
+    }
+
+    #[test]
+    fn test_host_out_stall() {
+        let (mut bus, host) = setup();
+        enable_ep0(&mut bus);
+
+        bus.write(RvSize::Word, USBDEV_BASE + OUT_STALL_OFFSET, 0x001)
+            .unwrap();
+
+        let result = host.host_out(0, &[0; 4]);
+        assert!(matches!(result, Err(UsbTransactionError::Stall)));
+    }
+
+    #[test]
+    fn test_host_out_nak_rxenable_cleared() {
+        let (mut bus, host) = setup();
+
+        // Enable ep0 but clear rxenable_out
+        bus.write(RvSize::Word, USBDEV_BASE + EP_OUT_ENABLE_OFFSET, 0x001)
+            .unwrap();
+        bus.write(RvSize::Word, USBDEV_BASE + RXENABLE_OUT_OFFSET, 0x000)
+            .unwrap();
+
+        let result = host.host_out(0, &[0; 4]);
+        assert!(matches!(result, Err(UsbTransactionError::Nak)));
+    }
+
+    #[test]
+    fn test_host_out_set_nak_out_clears_rxenable() {
+        let (mut bus, host) = setup();
+        enable_ep0(&mut bus);
+
+        // Enable set_nak_out for ep0
+        bus.write(RvSize::Word, USBDEV_BASE + SET_NAK_OUT_OFFSET, 0x001)
+            .unwrap();
+
+        bus.write(RvSize::Word, USBDEV_BASE + AVOUTBUFFER_OFFSET, 0)
+            .unwrap();
+        host.host_out(0, &[0; 4]).unwrap();
+
+        // rxenable_out should now be cleared for ep0
+        let rxenable = bus
+            .read(RvSize::Word, USBDEV_BASE + RXENABLE_OUT_OFFSET)
+            .unwrap();
+        assert_eq!(rxenable & 1, 0);
+
+        // Next OUT should NAK
+        bus.write(RvSize::Word, USBDEV_BASE + AVOUTBUFFER_OFFSET, 1)
+            .unwrap();
+        let result = host.host_out(0, &[0; 4]);
+        assert!(matches!(result, Err(UsbTransactionError::Nak)));
+    }
+
+    #[test]
+    fn test_host_in_success() {
+        let (mut bus, host) = setup();
+        enable_ep0(&mut bus);
+
+        // Write data into buffer 2
+        let payload = [0x01, 0x02, 0x03, 0x04, 0x05];
+        let base_addr = USBDEV_BASE + BUFFER_OFFSET + 2 * 16 * 4;
+        let word0 = 0x04030201u32;
+        let word1 = 0x00000005u32;
+        bus.write(RvSize::Word, base_addr, word0).unwrap();
+        bus.write(RvSize::Word, base_addr + 4, word1).unwrap();
+
+        // Configure configin[0]: buffer=2, size=5, rdy=1
+        let configin_val =
+            (Configin0::Buffer0.val(2) + Configin0::Size0.val(5) + Configin0::Rdy0::SET).value;
+        bus.write(
+            RvSize::Word,
+            USBDEV_BASE + CONFIGIN_BASE_OFFSET,
+            configin_val,
+        )
+        .unwrap();
+
+        let data = host.host_in(0).unwrap();
+        assert_eq!(data, payload);
+
+        // configin[0].rdy should be cleared
+        let configin_readback = bus
+            .read(RvSize::Word, USBDEV_BASE + CONFIGIN_BASE_OFFSET)
+            .unwrap();
+        let reg = ReadWriteRegister::<u32, Configin0::Register>::new(configin_readback);
+        assert!(!reg.reg.is_set(Configin0::Rdy0));
+
+        // in_sent[0] should be set
+        let in_sent = bus
+            .read(RvSize::Word, USBDEV_BASE + IN_SENT_OFFSET)
+            .unwrap();
+        assert_ne!(in_sent & 1, 0);
+    }
+
+    #[test]
+    fn test_host_in_nak_not_ready() {
+        let (mut bus, host) = setup();
+        enable_ep0(&mut bus);
+
+        // configin[0] defaults to 0 (rdy not set)
+        let result = host.host_in(0);
+        assert!(matches!(result, Err(UsbTransactionError::Nak)));
+    }
+
+    #[test]
+    fn test_host_in_stall() {
+        let (mut bus, host) = setup();
+        enable_ep0(&mut bus);
+
+        bus.write(RvSize::Word, USBDEV_BASE + IN_STALL_OFFSET, 0x001)
+            .unwrap();
+
+        let result = host.host_in(0);
+        assert!(matches!(result, Err(UsbTransactionError::Stall)));
+    }
+
+    #[test]
+    fn test_host_sof_updates_frame() {
+        let (mut bus, host) = setup();
+
+        host.host_sof(42);
+
+        let stat = bus
+            .read(RvSize::Word, USBDEV_BASE + USBSTAT_OFFSET)
+            .unwrap();
+        let stat_reg = ReadWriteRegister::<u32, Usbstat::Register>::new(stat);
+        assert_eq!(stat_reg.reg.read(Usbstat::Frame), 42);
+
+        // Frame interrupt should be set
+        let intr = read_intr_state(&mut bus);
+        assert_ne!(intr & IntrState::Frame::SET.value, 0);
     }
 }

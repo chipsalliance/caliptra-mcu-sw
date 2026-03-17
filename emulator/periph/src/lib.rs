@@ -46,4 +46,4 @@ pub use otp_digest::{otp_digest, otp_scramble, otp_unscramble};
 pub use reset_reason::ResetReasonEmulator;
 pub use root_bus::{McuRootBus, McuRootBusArgs, McuRootBusOffsets};
 pub use uart::Uart;
-pub use usbdev::{UsbDevPeriph, UsbHostController};
+pub use usbdev::{UsbDevPeriph, UsbHostController, UsbTransactionError};
