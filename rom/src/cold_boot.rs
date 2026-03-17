@@ -775,8 +775,24 @@ impl BootFlow for ColdBoot {
         let lc = &env.lc;
         let otp = &mut env.otp;
         let i3c = &mut env.i3c;
-        let i3c_base = env.i3c_base;
+        let i3c1 = &mut env.i3c1;
         let straps = env.straps.deref();
+        if straps.active_i3c > 1 {
+            romtime::println!(
+                "[mcu-rom] WARNING: invalid active_i3c value {}, falling back to 0",
+                straps.active_i3c
+            );
+        }
+        // Select which I3C core to use for recovery based on platform strap.
+        let i3c_base = if straps.active_i3c == 1 {
+            env.i3c1_base
+        } else {
+            env.i3c_base
+        };
+        romtime::println!(
+            "[mcu-rom] Active I3C core for recovery: {}",
+            straps.active_i3c
+        );
 
         romtime::println!("[mcu-rom] Setting Caliptra boot go");
 
@@ -912,7 +928,12 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::WatchdogConfigured.into());
 
         romtime::println!("[mcu-rom] Initializing I3C");
-        i3c.configure(straps.i3c_static_addr, true);
+        if straps.active_i3c == 1 {
+            romtime::println!("[mcu-rom] Initializing I3C1 (active)");
+            i3c1.configure(straps.i3c1_static_addr, true);
+        } else {
+            i3c.configure(straps.i3c_static_addr, true);
+        }
         mci.set_flow_checkpoint(McuRomBootStatus::I3cInitialized.into());
 
         romtime::println!(
@@ -1294,10 +1315,18 @@ impl BootFlow for ColdBoot {
 
         if params.recovery_status_open {
             romtime::println!("[mcu-rom] Leaving recovery interface open");
-            env.i3c.set_recovery_status_open();
+            if env.straps.active_i3c == 1 {
+                env.i3c1.set_recovery_status_open();
+            } else {
+                env.i3c.set_recovery_status_open();
+            }
         } else {
             romtime::println!("[mcu-rom] Disabling recovery interface");
-            env.i3c.disable_recovery();
+            if env.straps.active_i3c == 1 {
+                env.i3c1.disable_recovery();
+            } else {
+                env.i3c.disable_recovery();
+            }
         }
 
         // Reset so FirmwareBootReset can jump to firmware

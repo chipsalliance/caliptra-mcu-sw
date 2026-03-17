@@ -341,6 +341,7 @@ impl McuHwModel for ModelEmulated {
             None,
             Some(Box::new(usb_periph)),
             Some(Box::new(i3c)),
+            Some(Box::new(emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
             Some(Box::new(secondary_flash_controller)),
             Some(Box::new(mci)),

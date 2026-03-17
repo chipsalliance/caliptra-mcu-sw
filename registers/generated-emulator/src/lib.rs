@@ -7,6 +7,7 @@ pub mod doe_mbox;
 pub mod el2_pic;
 pub mod ethernet;
 pub mod i3c;
+pub mod i3c1;
 pub mod lc;
 pub mod mbox;
 pub mod mci;

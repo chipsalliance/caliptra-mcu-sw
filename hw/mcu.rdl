@@ -11,4 +11,5 @@ addrmap mcu {
     usbdev usbdev @ 0x9000_000;
     axicdma axicdma @ 0xa408_1000;
     doe_mbox doe_mbox @ 0x2F00_0000;
+    I3CCSR I3CCSR1 @ 0x2000_5000;
 };

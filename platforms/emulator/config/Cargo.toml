@@ -9,3 +9,7 @@ edition.workspace = true
 [dependencies]
 mcu-config.workspace = true
 zerocopy.workspace = true
+
+[features]
+default = []
+active-i3c1 = []

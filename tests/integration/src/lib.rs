@@ -9,6 +9,7 @@ mod network;
 mod rom;
 #[cfg(test)]
 mod runtime;
+mod test_active_i3c;
 mod test_bare_metal;
 mod test_dot;
 mod test_exception_handler;
