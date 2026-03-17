@@ -810,7 +810,6 @@ impl Emulator {
         );
 
         let usb_periph = emulator_periph::UsbDevPeriph::new();
-        let _usb_host_controller = usb_periph.host_controller();
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
