@@ -18,7 +18,7 @@ pub const DESCRIPTOR_DATA_LEN: usize = 22;
 pub const MIN_MESSAGE_LEN: usize = 24;
 
 // Assure the spec size matches the size of the structure.
-// const _: () = assert!(MIN_MESSAGE_LEN == size_of::<DeviceIdInner>());
+const _: () = assert!(MIN_MESSAGE_LEN == size_of::<DeviceIdInner>());
 
 /// Maximum wire size of a DEVICE_ID message (full vendor string).
 pub const MAX_MESSAGE_LEN: usize = 255;
