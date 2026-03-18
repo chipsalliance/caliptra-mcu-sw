@@ -242,6 +242,8 @@ pub struct InitParams<'a> {
 
     /// Override the default AXI user that the model uses to access the Caliptra SoC interface.
     pub caliptra_soc_axi_user: Option<u32>,
+
+    pub active_i3c1: bool,
 }
 
 impl InitParams<'_> {
@@ -319,6 +321,7 @@ impl Default for InitParams<'_> {
             flash_boot: false,
             fips_zeroization: false,
             caliptra_soc_axi_user: None,
+            active_i3c1: false,
         }
     }
 }

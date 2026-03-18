@@ -590,6 +590,7 @@ mod test {
                 .iter()
                 .map(|(ecc, mldsa)| (ecc as &[u8; 96], mldsa as &[u8; 2592]))
                 .collect(),
+            active_i3c1: params.active_i3c1,
             ..Default::default()
         })
         .unwrap()
@@ -613,6 +614,7 @@ mod test {
         i3c_port: String,
         active_mode: bool,
         device_security_state: DeviceLifecycle,
+
         soc_images: Option<Vec<ImageCfg>>,
         streaming_boot_package_path: Option<PathBuf>,
         primary_flash_image_path: Option<PathBuf>,
@@ -636,6 +638,8 @@ mod test {
             runtime_path_str,
             "--i3c-port".to_string(),
             i3c_port.clone(),
+            "--test-feature".to_string(),
+            feature.to_string(),
         ];
 
         // map the memory map to the emulator
@@ -855,8 +859,6 @@ mod test {
                 "caliptra-mcu-emulator".to_string(),
                 "--profile".to_string(),
                 "test".to_string(),
-                "--features".to_string(),
-                feature.to_string(),
                 "--".to_string(),
             ];
             cargo_args.extend(emulator_args);
@@ -871,10 +873,10 @@ mod test {
     /// Uses the CPTRA_EMULATOR_BUNDLE environment variable.
     fn get_prebuilt_emulator(feature: &str) -> Option<PathBuf> {
         let binaries = EmulatorBinaries::from_env().ok()?;
-        let emulator_bytes = binaries.emulator(feature).ok()?;
+        let emulator_bytes = binaries.emulator().ok()?;
 
         // Write prebuilt emulator to target directory
-        let output = target_binary(&format!("emulator-{}", feature));
+        let output = target_binary("emulator");
         if let Some(parent) = output.parent() {
             std::fs::create_dir_all(parent).ok()?;
         }
