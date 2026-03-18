@@ -987,6 +987,7 @@ mod tests {
             let rom_file = caliptra_mcu_builder::test_rom_build(
                 Some(platform()),
                 &firmware::hw_model_tests::MAILBOX_RESPONDER,
+                None,
             )?;
             std::fs::read(&rom_file)?
         };
@@ -1053,6 +1054,7 @@ mod tests {
             let rom_file = caliptra_mcu_builder::test_rom_build(
                 Some(platform()),
                 &firmware::hw_model_tests::USB_RESPONDER,
+                None,
             )?;
             std::fs::read(&rom_file)?
         };
@@ -1125,6 +1127,7 @@ mod tests {
             let rom_file = caliptra_mcu_builder::test_rom_build(
                 Some(platform()),
                 &firmware::hw_model_tests::USB_OCP_RECOVERY,
+                None,
             )?;
             std::fs::read(&rom_file)?
         };

@@ -229,7 +229,7 @@ pub(crate) fn test_panic_missing() -> Result<()> {
     ];
 
     for test_feature in test_features.into_iter() {
-        rom_build(None, test_feature)?;
+        rom_build(None, test_feature, None)?;
         let rom_elf = PROJECT_ROOT
             .join("target")
             .join(TARGET)

@@ -26,6 +26,7 @@ mod test {
             let rom_file = caliptra_mcu_builder::test_rom_build(
                 Some(platform()),
                 &firmware::hw_model_tests::SW_DIGEST_LOCK,
+                None,
             )
             .unwrap();
             (vec![], std::fs::read(&rom_file).unwrap())

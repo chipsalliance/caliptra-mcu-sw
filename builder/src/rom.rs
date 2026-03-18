@@ -12,7 +12,11 @@ use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
 use caliptra_mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 
-pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<PathBuf> {
+pub fn rom_build(
+    platform: Option<String>,
+    features: Option<String>,
+    target_dir: Option<PathBuf>,
+) -> Result<PathBuf> {
     let feature_suffix = match &features {
         Some(f) => format!("-{f}"),
         None => String::new(),
@@ -26,6 +30,7 @@ pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<P
     let manifest = manifest_file(platform.as_deref(), false)?;
     let common = Common {
         manifest,
+        target_dir,
         ..Default::default()
     };
     let rom_size = rom_size_for_platform(platform.as_deref().unwrap_or("emulator"));
@@ -86,7 +91,11 @@ pub fn append_rom_digest(binary: &PathBuf, rom_size: usize) -> Result<()> {
     Ok(())
 }
 
-pub fn test_rom_build(platform: Option<&str>, fwid: &FwId) -> Result<String> {
+pub fn test_rom_build(
+    platform: Option<&str>,
+    fwid: &FwId,
+    target_dir: Option<PathBuf>,
+) -> Result<String> {
     let platform = platform.unwrap_or("emulator");
 
     let template_name = if platform == "fpga" {
@@ -106,6 +115,7 @@ pub fn test_rom_build(platform: Option<&str>, fwid: &FwId) -> Result<String> {
 
     let common = Common {
         manifest: manifest_file.path().to_path_buf(),
+        target_dir,
         ..Default::default()
     };
 

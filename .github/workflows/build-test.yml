@@ -95,7 +95,7 @@ jobs:
         run: |
           # Build all test runtime features used by integration tests
           # Note: nightly tests (test-*-spdm-*, test-caliptra-util-host-validator) are excluded
-          cargo xtask all-build --platform emulator \
+          cargo run -p caliptra-mcu-xtask --features parallel-build -- all-build --platform emulator \
             --rom-features "hw-2-1" \
             --test-rom-features "ocp-lock,stable-owner-key" \
             --separate-runtimes

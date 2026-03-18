@@ -534,13 +534,14 @@ fn main() {
                     false,
                     platform.as_deref(),
                     None,
+                    None,
                 )
                 .map(|_| ())
             }
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild { platform, features } => {
-            caliptra_mcu_builder::rom_build(platform.clone(), features.clone()).map(|_| ())
+            caliptra_mcu_builder::rom_build(platform.clone(), features.clone(), None).map(|_| ())
         }
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {

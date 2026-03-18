@@ -492,7 +492,11 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     // TODO: use temp files
     let platform = platform.unwrap_or("emulator");
     let rom_features = rom_features.unwrap_or_default();
-    let mcu_rom = crate::rom_build(Some(platform.to_string()), Some(rom_features.to_string()))?;
+    let mcu_rom = crate::rom_build(
+        Some(platform.to_string()),
+        Some(rom_features.to_string()),
+        None,
+    )?;
 
     // Build base network ROM (without features)
     let network_rom = crate::network_rom_build(None)?;
@@ -506,7 +510,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let mut used_filenames = std::collections::HashSet::new();
     let mut test_roms = vec![];
     for fwid in firmware::REGISTERED_FW {
-        let bin_path = PathBuf::from(crate::test_rom_build(Some(platform), fwid)?);
+        let bin_path = PathBuf::from(crate::test_rom_build(Some(platform), fwid, None)?);
         let filename = bin_path.file_name().unwrap().to_str().unwrap().to_string();
         if !used_filenames.insert(filename.clone()) {
             panic!("Multiple fwids with filename {filename}")
@@ -568,6 +572,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         Some(base_runtime_path.to_string()),
         false,
         Some(platform),
+        None,
         None,
     )?;
 
@@ -652,7 +657,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         }
     }
     for &feature in feature_roms_to_build.iter() {
-        match crate::rom_build(Some(platform.to_string()), Some(feature.to_string())) {
+        match crate::rom_build(Some(platform.to_string()), Some(feature.to_string()), None) {
             Ok(rom_path) => {
                 let rom_name = format!("mcu-test-rom-feature-{}.bin", feature);
                 println!("Built feature ROM: {rom_path:?} -> {}", rom_name);
@@ -707,6 +712,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             Some(feature_runtime_path),
             include_example_app,
             Some(platform),
+            None,
             None,
         )?;
 

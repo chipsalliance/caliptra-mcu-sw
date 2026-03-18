@@ -792,9 +792,10 @@ mod test {
 
     #[test]
     fn test_new_unbooted() {
-        let mcu_rom = caliptra_mcu_builder::rom_build(None, None).expect("Could not build MCU ROM");
+        let mcu_rom =
+            caliptra_mcu_builder::rom_build(None, None, None).expect("Could not build MCU ROM");
         let mcu_runtime =
-            &caliptra_mcu_builder::runtime_build_with_apps(&[], None, false, None, None)
+            &caliptra_mcu_builder::runtime_build_with_apps(&[], None, false, None, None, None)
                 .expect("Could not build MCU runtime");
         let mut caliptra_builder = CaliptraBuilder::new(
             false,
