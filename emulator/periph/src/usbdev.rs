@@ -508,11 +508,35 @@ impl UsbdevPeripheral for UsbDevPeriph {
     delegate_read!(read_rxenable_setup, RxenableSetup);
     delegate_write!(write_rxenable_setup, RxenableSetup);
     delegate_read!(read_rxenable_out, RxenableOut);
-    delegate_write!(write_rxenable_out, RxenableOut);
+
+    fn write_rxenable_out(&mut self, val: ReadWriteRegister<u32, RxenableOut::Register>) {
+        let mut state = self.state.lock().unwrap();
+        let preserve = val.reg.read(RxenableOut::Preserve);
+        let written_out = val.reg.read(RxenableOut::Out);
+        let current_out = state
+            .generated
+            .read_rxenable_out()
+            .reg
+            .read(RxenableOut::Out);
+        let new_out = (current_out & preserve) | (written_out & !preserve);
+        state
+            .generated
+            .write_rxenable_out(ReadWriteRegister::new(new_out));
+    }
     delegate_read!(read_set_nak_out, SetNakOut);
     delegate_write!(write_set_nak_out, SetNakOut);
     delegate_read!(read_in_sent, InSent);
-    delegate_write!(write_in_sent, InSent);
+
+    fn write_in_sent(&mut self, val: ReadWriteRegister<u32, InSent::Register>) {
+        {
+            let mut state = self.state.lock().unwrap();
+            let current = state.generated.read_in_sent().reg.get();
+            state
+                .generated
+                .write_in_sent(ReadWriteRegister::new(current & !val.reg.get()));
+        }
+        self.update_irq();
+    }
     delegate_read!(read_out_stall, OutStall);
     delegate_write!(write_out_stall, OutStall);
     delegate_read!(read_in_stall, InStall);
@@ -520,11 +544,31 @@ impl UsbdevPeripheral for UsbDevPeriph {
 
     fn read_configin_0(&mut self, index: usize) -> ReadWriteRegister<u32, Configin0::Register> {
         let mut state = self.state.lock().unwrap();
-        state.generated.read_configin_0(index)
+        let stored = state.generated.read_configin_0(index).reg.get();
+        let sending_bit = if state.in_sending & (1 << index) != 0 {
+            Configin0::Sending0::SET.value
+        } else {
+            0
+        };
+        ReadWriteRegister::new((stored & !Configin0::Sending0::SET.value) | sending_bit)
     }
+
     fn write_configin_0(&mut self, val: ReadWriteRegister<u32, Configin0::Register>, index: usize) {
         let mut state = self.state.lock().unwrap();
-        state.generated.write_configin_0(val, index);
+        let current = state.generated.read_configin_0(index).reg.get();
+
+        // pend is W1C: writing 1 clears it
+        let pend_clear = val.reg.get() & Configin0::Pend0::SET.value;
+        // sending is read-only from software: preserve hardware value
+        let sending = current & Configin0::Sending0::SET.value;
+
+        let writable_mask = !(Configin0::Pend0::SET.value | Configin0::Sending0::SET.value);
+        let new_val = (val.reg.get() & writable_mask)
+            | ((current & Configin0::Pend0::SET.value) & !pend_clear)
+            | sending;
+        state
+            .generated
+            .write_configin_0(ReadWriteRegister::new(new_val), index);
     }
 
     delegate_read!(read_out_iso, OutIso);
@@ -1376,5 +1420,296 @@ mod tests {
         let reg = ReadWriteRegister::<u32, Usbctrl::Register>::new(readback);
         assert!(reg.reg.is_set(Usbctrl::Enable));
         assert_eq!(reg.reg.read(Usbctrl::DeviceAddress), 0x2A);
+    }
+
+    // --- Phase 6: Special register semantics tests ---
+
+    #[test]
+    fn test_in_sent_w1c() {
+        let (mut bus, host) = setup();
+        enable_ep0(&mut bus);
+
+        // Set up a successful IN so that in_sent[0] gets set by hardware
+        let configin_val =
+            (Configin0::Buffer0.val(0) + Configin0::Size0.val(1) + Configin0::Rdy0::SET).value;
+        bus.write(
+            RvSize::Word,
+            USBDEV_BASE + CONFIGIN_BASE_OFFSET,
+            configin_val,
+        )
+        .unwrap();
+        host.host_in(0).unwrap();
+
+        let in_sent = bus
+            .read(RvSize::Word, USBDEV_BASE + IN_SENT_OFFSET)
+            .unwrap();
+        assert_ne!(in_sent & 1, 0, "in_sent[0] should be set after IN ACK");
+
+        // W1C: write 1 to bit 0 to clear it
+        bus.write(RvSize::Word, USBDEV_BASE + IN_SENT_OFFSET, 1)
+            .unwrap();
+
+        let in_sent = bus
+            .read(RvSize::Word, USBDEV_BASE + IN_SENT_OFFSET)
+            .unwrap();
+        assert_eq!(in_sent & 1, 0, "in_sent[0] should be cleared by W1C");
+    }
+
+    #[test]
+    fn test_in_sent_w1c_preserves_other_bits() {
+        let (mut bus, host) = setup();
+
+        // Enable ep0 and ep1 for IN
+        bus.write(RvSize::Word, USBDEV_BASE + EP_IN_ENABLE_OFFSET, 0x003)
+            .unwrap();
+
+        // Trigger in_sent on both ep0 and ep1
+        for ep in 0u32..2 {
+            let offset = CONFIGIN_BASE_OFFSET + ep * 4;
+            let configin_val =
+                (Configin0::Buffer0.val(ep) + Configin0::Size0.val(1) + Configin0::Rdy0::SET).value;
+            bus.write(RvSize::Word, USBDEV_BASE + offset, configin_val)
+                .unwrap();
+            host.host_in(ep as u8).unwrap();
+        }
+
+        let in_sent = bus
+            .read(RvSize::Word, USBDEV_BASE + IN_SENT_OFFSET)
+            .unwrap();
+        assert_ne!(in_sent & 0x3, 0);
+
+        // Clear only ep0's bit
+        bus.write(RvSize::Word, USBDEV_BASE + IN_SENT_OFFSET, 0x1)
+            .unwrap();
+
+        let in_sent = bus
+            .read(RvSize::Word, USBDEV_BASE + IN_SENT_OFFSET)
+            .unwrap();
+        assert_eq!(in_sent & 1, 0, "ep0 should be cleared");
+        assert_ne!(in_sent & 2, 0, "ep1 should still be set");
+    }
+
+    #[test]
+    fn test_in_sent_w1c_clears_pkt_sent_interrupt() {
+        let (mut bus, host) = setup();
+        enable_ep0(&mut bus);
+
+        let configin_val =
+            (Configin0::Buffer0.val(0) + Configin0::Size0.val(1) + Configin0::Rdy0::SET).value;
+        bus.write(
+            RvSize::Word,
+            USBDEV_BASE + CONFIGIN_BASE_OFFSET,
+            configin_val,
+        )
+        .unwrap();
+        host.host_in(0).unwrap();
+
+        // pkt_sent should be asserted (level-sensitive, tied to in_sent != 0)
+        let intr = read_intr_state(&mut bus);
+        assert_ne!(intr & IntrState::PktSent::SET.value, 0);
+
+        // Clear in_sent[0] via W1C
+        bus.write(RvSize::Word, USBDEV_BASE + IN_SENT_OFFSET, 1)
+            .unwrap();
+
+        // pkt_sent should now be deasserted
+        let intr = read_intr_state(&mut bus);
+        assert_eq!(intr & IntrState::PktSent::SET.value, 0);
+    }
+
+    #[test]
+    fn test_rxenable_out_preserve_masked_write() {
+        let (mut bus, _host) = setup();
+
+        // Set ep0 and ep1 enabled
+        bus.write(RvSize::Word, USBDEV_BASE + RXENABLE_OUT_OFFSET, 0x003)
+            .unwrap();
+
+        let val = bus
+            .read(RvSize::Word, USBDEV_BASE + RXENABLE_OUT_OFFSET)
+            .unwrap();
+        assert_eq!(val & 0xFFF, 0x003);
+
+        // Masked write: preserve ep0 (bit 0 of preserve field), set ep2, clear ep1
+        // preserve = 0x001 (protect bit 0), out = 0x004 (set bit 2, clear bit 1)
+        let masked_val = (RxenableOut::Preserve.val(0x001) + RxenableOut::Out.val(0x004)).value;
+        bus.write(RvSize::Word, USBDEV_BASE + RXENABLE_OUT_OFFSET, masked_val)
+            .unwrap();
+
+        let readback = bus
+            .read(RvSize::Word, USBDEV_BASE + RXENABLE_OUT_OFFSET)
+            .unwrap();
+        // ep0 preserved (was 1, stays 1), ep1 not preserved (new val 0), ep2 not preserved (new val 1)
+        assert_eq!(readback & 0xFFF, 0x005);
+    }
+
+    #[test]
+    fn test_rxenable_out_preserve_all() {
+        let (mut bus, _host) = setup();
+
+        bus.write(RvSize::Word, USBDEV_BASE + RXENABLE_OUT_OFFSET, 0x00A)
+            .unwrap();
+
+        // Preserve all bits (preserve = 0xFFF)
+        let masked_val = (RxenableOut::Preserve.val(0xFFF) + RxenableOut::Out.val(0x000)).value;
+        bus.write(RvSize::Word, USBDEV_BASE + RXENABLE_OUT_OFFSET, masked_val)
+            .unwrap();
+
+        let readback = bus
+            .read(RvSize::Word, USBDEV_BASE + RXENABLE_OUT_OFFSET)
+            .unwrap();
+        assert_eq!(readback & 0xFFF, 0x00A, "all bits should be preserved");
+    }
+
+    #[test]
+    fn test_configin_pend_w1c() {
+        let (mut bus, host) = setup();
+        enable_ep0(&mut bus);
+
+        // Configure a ready IN buffer, then send a SETUP to cancel it (sets pend)
+        let configin_val =
+            (Configin0::Buffer0.val(0) + Configin0::Size0.val(4) + Configin0::Rdy0::SET).value;
+        bus.write(
+            RvSize::Word,
+            USBDEV_BASE + CONFIGIN_BASE_OFFSET,
+            configin_val,
+        )
+        .unwrap();
+
+        bus.write(RvSize::Word, USBDEV_BASE + AVSETUPBUFFER_OFFSET, 1)
+            .unwrap();
+        host.host_setup(0, &[0; 8]).unwrap();
+
+        // pend should be set, rdy cleared
+        let readback = bus
+            .read(RvSize::Word, USBDEV_BASE + CONFIGIN_BASE_OFFSET)
+            .unwrap();
+        let reg = ReadWriteRegister::<u32, Configin0::Register>::new(readback);
+        assert!(reg.reg.is_set(Configin0::Pend0), "pend should be set");
+        assert!(!reg.reg.is_set(Configin0::Rdy0), "rdy should be cleared");
+
+        // W1C: write 1 to pend to clear it
+        bus.write(
+            RvSize::Word,
+            USBDEV_BASE + CONFIGIN_BASE_OFFSET,
+            Configin0::Pend0::SET.value,
+        )
+        .unwrap();
+
+        let readback = bus
+            .read(RvSize::Word, USBDEV_BASE + CONFIGIN_BASE_OFFSET)
+            .unwrap();
+        let reg = ReadWriteRegister::<u32, Configin0::Register>::new(readback);
+        assert!(
+            !reg.reg.is_set(Configin0::Pend0),
+            "pend should be cleared by W1C"
+        );
+    }
+
+    #[test]
+    fn test_configin_sending_read_only() {
+        let (mut bus, host) = setup();
+
+        // Directly set in_sending for ep0 via the shared state
+        {
+            let mut state = host.state.lock().unwrap();
+            state.in_sending |= 1;
+        }
+
+        // Read configin[0] — sending bit should be set
+        let readback = bus
+            .read(RvSize::Word, USBDEV_BASE + CONFIGIN_BASE_OFFSET)
+            .unwrap();
+        let reg = ReadWriteRegister::<u32, Configin0::Register>::new(readback);
+        assert!(reg.reg.is_set(Configin0::Sending0));
+
+        // Try to clear sending by writing 0 — it should remain set (read-only)
+        bus.write(RvSize::Word, USBDEV_BASE + CONFIGIN_BASE_OFFSET, 0)
+            .unwrap();
+
+        let readback = bus
+            .read(RvSize::Word, USBDEV_BASE + CONFIGIN_BASE_OFFSET)
+            .unwrap();
+        let reg = ReadWriteRegister::<u32, Configin0::Register>::new(readback);
+        assert!(
+            reg.reg.is_set(Configin0::Sending0),
+            "sending should be read-only from software"
+        );
+    }
+
+    #[test]
+    fn test_configin_rdy_writable() {
+        let (mut bus, _host) = setup();
+
+        // Write rdy=1 with buffer and size
+        let configin_val =
+            (Configin0::Buffer0.val(3) + Configin0::Size0.val(10) + Configin0::Rdy0::SET).value;
+        bus.write(
+            RvSize::Word,
+            USBDEV_BASE + CONFIGIN_BASE_OFFSET,
+            configin_val,
+        )
+        .unwrap();
+
+        let readback = bus
+            .read(RvSize::Word, USBDEV_BASE + CONFIGIN_BASE_OFFSET)
+            .unwrap();
+        let reg = ReadWriteRegister::<u32, Configin0::Register>::new(readback);
+        assert!(reg.reg.is_set(Configin0::Rdy0));
+        assert_eq!(reg.reg.read(Configin0::Buffer0), 3);
+        assert_eq!(reg.reg.read(Configin0::Size0), 10);
+
+        // Clear rdy by writing without it
+        bus.write(
+            RvSize::Word,
+            USBDEV_BASE + CONFIGIN_BASE_OFFSET,
+            (Configin0::Buffer0.val(3) + Configin0::Size0.val(10)).value,
+        )
+        .unwrap();
+
+        let readback = bus
+            .read(RvSize::Word, USBDEV_BASE + CONFIGIN_BASE_OFFSET)
+            .unwrap();
+        let reg = ReadWriteRegister::<u32, Configin0::Register>::new(readback);
+        assert!(!reg.reg.is_set(Configin0::Rdy0));
+    }
+
+    #[test]
+    fn test_configin_end_to_end_in_transfer() {
+        let (mut bus, host) = setup();
+        enable_ep0(&mut bus);
+
+        // Firmware writes a payload into buffer 5
+        let payload = [0xCA, 0xFE, 0x7A, 0x8E, 0xDE, 0xAD];
+        let buf5_base = USBDEV_BASE + BUFFER_OFFSET + 5 * 16 * 4;
+        // Pack bytes into little-endian words
+        bus.write(RvSize::Word, buf5_base, 0x8E7AFECA).unwrap();
+        bus.write(RvSize::Word, buf5_base + 4, 0x0000ADDE).unwrap();
+
+        // Firmware marks buffer 5 as ready on ep0: buffer=5, size=6, rdy=1
+        let configin_val =
+            (Configin0::Buffer0.val(5) + Configin0::Size0.val(6) + Configin0::Rdy0::SET).value;
+        bus.write(
+            RvSize::Word,
+            USBDEV_BASE + CONFIGIN_BASE_OFFSET,
+            configin_val,
+        )
+        .unwrap();
+
+        // Host performs an IN transaction and retrieves the data
+        let data = host.host_in(0).unwrap();
+        assert_eq!(data, payload);
+
+        // configin[0].rdy should be cleared, in_sent[0] should be set
+        let configin_readback = bus
+            .read(RvSize::Word, USBDEV_BASE + CONFIGIN_BASE_OFFSET)
+            .unwrap();
+        let reg = ReadWriteRegister::<u32, Configin0::Register>::new(configin_readback);
+        assert!(!reg.reg.is_set(Configin0::Rdy0));
+
+        let in_sent = bus
+            .read(RvSize::Word, USBDEV_BASE + IN_SENT_OFFSET)
+            .unwrap();
+        assert_ne!(in_sent & 1, 0);
     }
 }
