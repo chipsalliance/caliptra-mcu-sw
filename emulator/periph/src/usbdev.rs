@@ -269,37 +269,47 @@ impl UsbdevPeripheral for UsbDevPeriph {
     }
 
     fn write_avoutbuffer(&mut self, val: ReadWriteRegister<u32, Avoutbuffer::Register>) {
-        let mut state = self.state.lock().unwrap();
-        let buffer_id = val.reg.read(Avoutbuffer::Buffer) as u8;
-        if state.av_out_fifo.len() >= AV_OUT_FIFO_DEPTH {
-            state.hw_intr_state |= IntrState::AvOverflow::SET.value;
-        } else {
-            state.av_out_fifo.push_back(buffer_id);
+        {
+            let mut state = self.state.lock().unwrap();
+            let buffer_id = val.reg.read(Avoutbuffer::Buffer) as u8;
+            if state.av_out_fifo.len() >= AV_OUT_FIFO_DEPTH {
+                state.hw_intr_state |= IntrState::AvOverflow::SET.value;
+            } else {
+                state.av_out_fifo.push_back(buffer_id);
+            }
         }
+        self.update_irq();
     }
 
     fn write_avsetupbuffer(&mut self, val: ReadWriteRegister<u32, Avsetupbuffer::Register>) {
-        let mut state = self.state.lock().unwrap();
-        let buffer_id = val.reg.read(Avsetupbuffer::Buffer) as u8;
-        if state.av_setup_fifo.len() >= AV_SETUP_FIFO_DEPTH {
-            state.hw_intr_state |= IntrState::AvOverflow::SET.value;
-        } else {
-            state.av_setup_fifo.push_back(buffer_id);
+        {
+            let mut state = self.state.lock().unwrap();
+            let buffer_id = val.reg.read(Avsetupbuffer::Buffer) as u8;
+            if state.av_setup_fifo.len() >= AV_SETUP_FIFO_DEPTH {
+                state.hw_intr_state |= IntrState::AvOverflow::SET.value;
+            } else {
+                state.av_setup_fifo.push_back(buffer_id);
+            }
         }
+        self.update_irq();
     }
 
     fn read_rxfifo(&mut self) -> ReadWriteRegister<u32, Rxfifo::Register> {
-        let mut state = self.state.lock().unwrap();
-        let val = match state.rx_fifo.pop_front() {
-            Some(entry) => {
-                (Rxfifo::Buffer.val(entry.buffer as u32)
-                    + Rxfifo::Size.val(entry.size as u32)
-                    + Rxfifo::Setup.val(u32::from(entry.setup))
-                    + Rxfifo::Ep.val(entry.ep as u32))
-                .value
-            }
-            None => 0,
-        };
+        let val;
+        {
+            let mut state = self.state.lock().unwrap();
+            val = match state.rx_fifo.pop_front() {
+                Some(entry) => {
+                    (Rxfifo::Buffer.val(entry.buffer as u32)
+                        + Rxfifo::Size.val(entry.size as u32)
+                        + Rxfifo::Setup.val(u32::from(entry.setup))
+                        + Rxfifo::Ep.val(entry.ep as u32))
+                    .value
+                }
+                None => 0,
+            };
+        }
+        self.update_irq();
         ReadWriteRegister::new(val)
     }
     delegate_read!(read_rxenable_setup, RxenableSetup);
