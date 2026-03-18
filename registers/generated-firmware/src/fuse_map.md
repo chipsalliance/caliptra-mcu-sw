@@ -267,4 +267,7 @@
 |------|------|-----------|----------|--------|-------------|
 | dot_initialized | 1 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_0 | LinearMajorityVote(3x) | DOT is enabled and initialized for this part. |
 | dot_fuse_array | 256 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_1 | OneHot | One-time programmable state counter for DOT transitions. Each bit represents one state change. Increments from 0 to 255. |
+| cptra_itrng_health_test_window_size | 16 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2 | Single | Health test window size for FIPS mode. See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers) for details. |
+| cptra_itrng_entropy_config_0 | 32 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3 | Single | Entropy config 0: Low threshold (bits 15:0), High threshold (bits 31:16) |
+| cptra_itrng_entropy_config_1 | 32 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4 | Single | Entropy config 1: Repetition count (bits 15:0), Alert threshold (bits 31:16). See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers) for details. |
 | vendor_recovery_pk_hash | 384 | VENDOR_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0 | Single | Vendor recovery key for DOT_OVERRIDE catastrophic recovery operations |

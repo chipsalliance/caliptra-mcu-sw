@@ -18,6 +18,9 @@
     // Supporting 128 lock/unlock cycles (256 total state transitions)
     {"dot_initialized": 1}, // 1 bit used to indicate that DOT is enabled and blob is written
     {"dot_fuse_array": 32},  // 256 bits = 128 complete lock/unlock cycles
+    {"trng_health_test_window_size": 2},
+    {"cptra_itrng_entropy_config_0": 4},
+    {"cptra_itrng_entropy_config_1": 4},
   ],
 
   // Field definitions specify bit-level details within fuse bytes
@@ -38,6 +41,30 @@
       partition: "VENDOR_NON_SECRET_PROD_PARTITION",
       otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_1",
       layout: {type: "OneHot"},
+    },
+    {
+      name: "cptra_itrng_health_test_window_size",
+      bits: 16,
+      description: "Health test window size for FIPS mode. See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers) for details.",
+      partition: "VENDOR_NON_SECRET_PROD_PARTITION",
+      otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2",
+      layout: {type: "Single"},
+    },
+    {
+      name: "cptra_itrng_entropy_config_0",
+      bits: 32,
+      description: "Entropy config 0: Low threshold (bits 15:0), High threshold (bits 31:16)",
+      partition: "VENDOR_NON_SECRET_PROD_PARTITION",
+      otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3",
+      layout: {type: "Single"},
+    },
+    {
+      name: "cptra_itrng_entropy_config_1",
+      bits: 32,
+      description: "Entropy config 1: Repetition count (bits 15:0), Alert threshold (bits 31:16). See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers) for details.",
+      partition: "VENDOR_NON_SECRET_PROD_PARTITION",
+      otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4",
+      layout: {type: "Single"},
     },
     {
       name: "vendor_recovery_pk_hash",

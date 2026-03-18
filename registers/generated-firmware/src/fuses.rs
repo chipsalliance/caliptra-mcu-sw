@@ -340,6 +340,18 @@ pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
         name: "dot_fuse_array",
         size: Bytes(32),
     },
+    Fuse {
+        name: "trng_health_test_window_size",
+        size: Bytes(2),
+    },
+    Fuse {
+        name: "cptra_itrng_entropy_config_0",
+        size: Bytes(4),
+    },
+    Fuse {
+        name: "cptra_itrng_entropy_config_1",
+        size: Bytes(4),
+    },
 ];
 pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
@@ -349,6 +361,18 @@ pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
         name: "dot_fuse_array",
         bits: Bits(256),
+    },
+    FuseField {
+        name: "cptra_itrng_health_test_window_size",
+        bits: Bits(16),
+    },
+    FuseField {
+        name: "cptra_itrng_entropy_config_0",
+        bits: Bits(32),
+    },
+    FuseField {
+        name: "cptra_itrng_entropy_config_1",
+        bits: Bits(32),
     },
     FuseField {
         name: "vendor_recovery_pk_hash",
@@ -378,6 +402,30 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         layout: FuseLayoutType::OneHot { bits: 256 },
     },
     FuseEntryInfo {
+        partition_num: 14,
+        entry_num: 2,
+        byte_offset: 0xab8,
+        byte_size: 32,
+        name: "cptra_itrng_health_test_window_size",
+        layout: FuseLayoutType::Single { bits: 16 },
+    },
+    FuseEntryInfo {
+        partition_num: 14,
+        entry_num: 3,
+        byte_offset: 0xad8,
+        byte_size: 32,
+        name: "cptra_itrng_entropy_config_0",
+        layout: FuseLayoutType::Single { bits: 32 },
+    },
+    FuseEntryInfo {
+        partition_num: 14,
+        entry_num: 4,
+        byte_offset: 0xaf8,
+        byte_size: 32,
+        name: "cptra_itrng_entropy_config_1",
+        layout: FuseLayoutType::Single { bits: 32 },
+    },
+    FuseEntryInfo {
         partition_num: 13,
         entry_num: 0,
         byte_offset: 0x870,
@@ -390,8 +438,14 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
 pub const DOT_INITIALIZED: &FuseEntryInfo = &FUSE_ENTRY_TABLE[0];
 /// Fuse entry for `dot_fuse_array`.
 pub const DOT_FUSE_ARRAY: &FuseEntryInfo = &FUSE_ENTRY_TABLE[1];
+/// Fuse entry for `cptra_itrng_health_test_window_size`.
+pub const CPTRA_ITRNG_HEALTH_TEST_WINDOW_SIZE: &FuseEntryInfo = &FUSE_ENTRY_TABLE[2];
+/// Fuse entry for `cptra_itrng_entropy_config_0`.
+pub const CPTRA_ITRNG_ENTROPY_CONFIG_0: &FuseEntryInfo = &FUSE_ENTRY_TABLE[3];
+/// Fuse entry for `cptra_itrng_entropy_config_1`.
+pub const CPTRA_ITRNG_ENTROPY_CONFIG_1: &FuseEntryInfo = &FUSE_ENTRY_TABLE[4];
 /// Fuse entry for `vendor_recovery_pk_hash`.
-pub const VENDOR_RECOVERY_PK_HASH: &FuseEntryInfo = &FUSE_ENTRY_TABLE[2];
+pub const VENDOR_RECOVERY_PK_HASH: &FuseEntryInfo = &FUSE_ENTRY_TABLE[5];
 /// OTP item entry for `CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN`.
 pub const OTP_CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 0,
@@ -1610,32 +1664,32 @@ pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_1: &FuseEntryInfo = &Fuse
     name: "dot_fuse_array",
     layout: FuseLayoutType::OneHot { bits: 256 },
 };
-/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2`.
+/// OTP item entry for `cptra_itrng_health_test_window_size`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 2,
     byte_offset: 0xab8,
     byte_size: 32,
-    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2",
-    layout: FuseLayoutType::Single { bits: 256 },
+    name: "cptra_itrng_health_test_window_size",
+    layout: FuseLayoutType::Single { bits: 16 },
 };
-/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3`.
+/// OTP item entry for `cptra_itrng_entropy_config_0`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 3,
     byte_offset: 0xad8,
     byte_size: 32,
-    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3",
-    layout: FuseLayoutType::Single { bits: 256 },
+    name: "cptra_itrng_entropy_config_0",
+    layout: FuseLayoutType::Single { bits: 32 },
 };
-/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4`.
+/// OTP item entry for `cptra_itrng_entropy_config_1`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 4,
     byte_offset: 0xaf8,
     byte_size: 32,
-    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4",
-    layout: FuseLayoutType::Single { bits: 256 },
+    name: "cptra_itrng_entropy_config_1",
+    layout: FuseLayoutType::Single { bits: 32 },
 };
 /// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5: &FuseEntryInfo = &FuseEntryInfo {

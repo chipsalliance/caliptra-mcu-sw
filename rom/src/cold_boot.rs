@@ -27,6 +27,7 @@ use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use core::fmt::Write;
 use core::ops::Deref;
 use mcu_error::McuError;
+use registers_generated::fuses;
 use romtime::{CaliptraSoC, HexWord};
 use tock_registers::interfaces::Readable;
 use zerocopy::{transmute, IntoBytes};
@@ -381,6 +382,26 @@ impl BootFlow for ColdBoot {
             dma_user: params.cptra_dma_axi_user,
         });
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
+
+        // Configure iTRNG
+        let Ok(window_size) = otp.read_entry(fuses::CPTRA_ITRNG_HEALTH_TEST_WINDOW_SIZE) else {
+            romtime::println!("[mcu-rom] Error reading CPTRA_ITRNG_WINDOW_SIZE");
+            fatal_error(McuError::ROM_OTP_READ_CPTRA_ITRNG_WINDOW_SIZE_ERROR);
+        };
+        let Ok(config0) = otp.read_entry(fuses::CPTRA_ITRNG_ENTROPY_CONFIG_0) else {
+            romtime::println!("[mcu-rom] Error reading CPTRA_ITRNG_ENTROPY_CONFIG_0");
+            fatal_error(McuError::ROM_OTP_READ_CPTRA_ITRNG_CONFIG0_ERROR);
+        };
+        let Ok(config1) = otp.read_entry(fuses::CPTRA_ITRNG_ENTROPY_CONFIG_1) else {
+            romtime::println!("[mcu-rom] Error reading CPTRA_ITRNG_ENTROPY_CONFIG_1");
+            fatal_error(McuError::ROM_OTP_READ_CPTRA_ITRNG_CONFIG1_ERROR);
+        };
+        soc.configure_itrng(crate::CptraItrngArgs {
+            bypass_mode: params.itrng_entropy_bypass_mode,
+            window_size: window_size as u16,
+            config0,
+            config1,
+        });
 
         romtime::println!("[mcu-rom] Populating fuses");
         soc.populate_fuses(otp, mci);

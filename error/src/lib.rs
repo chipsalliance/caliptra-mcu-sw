@@ -258,6 +258,21 @@ impl McuError {
             "OTP SW digest readback verification failed"
         ),
         (
+            ROM_OTP_READ_CPTRA_ITRNG_WINDOW_SIZE_ERROR,
+            0x3_000d,
+            "Failed to read CPTRA_ITRNG_WINDOW_SIZE from OTP"
+        ),
+        (
+            ROM_OTP_READ_CPTRA_ITRNG_CONFIG0_ERROR,
+            0x3_000e,
+            "Failed to read CPTRA_ITRNG_ENTROPY_CONFIG_0 from OTP"
+        ),
+        (
+            ROM_OTP_READ_CPTRA_ITRNG_CONFIG1_ERROR,
+            0x3_000f,
+            "Failed to read CPTRA_ITRNG_ENTROPY_CONFIG_1 from OTP"
+        ),
+        (
             ROM_I3C_CONFIG_RING_HEADER_ERROR,
             0x4_0000,
             "I3C config ring header error"
