@@ -52,3 +52,8 @@ required-features = ["riscv"]
 name = "exception_handler"
 path = "exception_handler.rs"
 required-features = ["riscv"]
+
+[[bin]]
+name = "usb_responder"
+path = "usb_responder.rs"
+required-features = ["riscv"]

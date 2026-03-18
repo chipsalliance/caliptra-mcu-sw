@@ -967,4 +967,76 @@ mod tests {
         assert!(model.mailbox_execute(0x4000_0000, &message).is_err());
         Ok(())
     }
+
+    #[cfg(not(feature = "fpga_realtime"))]
+    #[test]
+    pub fn test_usb_loopback() -> Result<()> {
+        let mcu_rom = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+            binaries.test_rom(&firmware::hw_model_tests::USB_RESPONDER)?
+        } else {
+            let rom_file = mcu_builder::test_rom_build(
+                Some(platform()),
+                &firmware::hw_model_tests::USB_RESPONDER,
+            )?;
+            std::fs::read(&rom_file)?
+        };
+
+        let mut model = new(InitParams {
+            mcu_rom: &mcu_rom,
+            check_booted_to_runtime: false,
+            ..Default::default()
+        })?;
+
+        let host = model.usb_host_controller.clone();
+
+        // Run the CPU until the firmware sets usbctrl.enable
+        for _ in 0..10_000_000 {
+            model.step();
+            if host.device_enabled() {
+                break;
+            }
+        }
+        assert!(host.device_enabled(), "firmware did not enable USB device");
+
+        // Test 1: SETUP echo
+        let setup_data = [0x80, 0x06, 0x00, 0x01, 0x00, 0x00, 0x40, 0x00];
+        host.host_setup(0, &setup_data).unwrap();
+
+        // Step the CPU until it processes the packet and prepares a response
+        let mut in_data = None;
+        for _ in 0..1_000_000 {
+            model.step();
+            match host.host_in(0) {
+                Ok(data) => {
+                    in_data = Some(data);
+                    break;
+                }
+                Err(emulator_periph::UsbTransactionError::Nak) => continue,
+                Err(e) => panic!("unexpected error from host_in: {:?}", e),
+            }
+        }
+        let in_data = in_data.expect("firmware did not respond to SETUP with IN data");
+        assert_eq!(in_data, setup_data, "SETUP echo mismatch");
+
+        // Test 2: OUT echo with a different payload
+        let out_payload = [0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE];
+        host.host_out(0, &out_payload).unwrap();
+
+        let mut in_data = None;
+        for _ in 0..1_000_000 {
+            model.step();
+            match host.host_in(0) {
+                Ok(data) => {
+                    in_data = Some(data);
+                    break;
+                }
+                Err(emulator_periph::UsbTransactionError::Nak) => continue,
+                Err(e) => panic!("unexpected error from host_in: {:?}", e),
+            }
+        }
+        let in_data = in_data.expect("firmware did not respond to OUT with IN data");
+        assert_eq!(in_data, out_payload, "OUT echo mismatch");
+
+        Ok(())
+    }
 }
