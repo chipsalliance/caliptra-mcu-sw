@@ -317,12 +317,17 @@ fn read_evidence_components(
         }
         let metadata = &auth_manifest.image_metadata_col.image_metadata_list[i];
 
-        // For MCU runtime, compute digest from the raw binary in the ZIP
-        // (allows using the configured hash algorithm).
+        // For MCU runtime, compute digest from the binary in the ZIP,
+        // padded to match the flash image alignment used at runtime.
+        // The flash image builder pads images to 256-byte boundaries, and
+        // Caliptra's AUTHORIZE_AND_STASH hashes the padded data.
         // For other SoC images, use the SHA-384 digest from the manifest metadata.
         let digest = if metadata.fw_id == MCU_RT_FW_ID {
             if let Some(ref mcu_rt) = mcu_runtime_data {
-                compute_digest(mcu_rt, &config.hash_algo)
+                let padded_len = mcu_rt.len().next_multiple_of(256);
+                let mut padded = mcu_rt.clone();
+                padded.resize(padded_len, 0);
+                compute_digest(&padded, &config.hash_algo)
             } else {
                 sha384_raw_to_digest_str(&metadata.digest)
             }
@@ -466,7 +471,10 @@ fn generate_test_keys(
 
     // Skip regeneration if both key and certificate already exist
     if jwk_path.exists() && cert_path.exists() {
-        println!("  Reusing existing test signing keys in {}", keys_dir.display());
+        println!(
+            "  Reusing existing test signing keys in {}",
+            keys_dir.display()
+        );
         return Ok((jwk_path, cert_path));
     }
 
@@ -688,7 +696,9 @@ pub fn generate_test_safe_report(
     println!("  FMC_INFO: \x1b[36m{}\x1b[0m", fmc_path.display());
     println!("  RT_INFO:  \x1b[36m{}\x1b[0m", rt_path.display());
     println!();
-    println!("Target environment (matches evidence class-ids):");
+    println!("Target environment:");
+    println!("  Vendor:       {}", config.vendor);
+    println!("  Device:       {}", config.model);
     println!("  FMC class-id: {}", CLASS_ID_FMC);
     println!("  RT  class-id: {}", CLASS_ID_RT);
 

@@ -49,7 +49,6 @@ phase_banner() {
     echo -e "${C_BOLD}╔══════════════════════════════════════════════════════════════════════╗${C_RESET}"
     echo -e "${C_BOLD}║  ${phase_label}${phase_label:+: }${phase_title}${C_RESET}"
     echo -e "${C_BOLD}╚══════════════════════════════════════════════════════════════════════╝${C_RESET}"
-    echo ""
 }
 
 substage_banner() {
@@ -76,7 +75,7 @@ for cmd in git cargo openssl cocli; do
 done
 
 if [ -z "${SPDM_VALIDATOR_DIR:-}" ]; then
-    error "SPDM_VALIDATOR_DIR environment variable is not set. Set it to the spdm-emu bin directory."
+    SPDM_VALIDATOR_DIR="/home/pbhogaraju/Caliptra/Caliptra_subsystem/SPDM_module/SPDM_validator/spdm-emu-custom/spdm-emu/build/bin"
 fi
 
 if [ ! -d "$SPDM_VALIDATOR_DIR" ]; then
@@ -85,7 +84,15 @@ fi
 
 export SPDM_VALIDATOR_DIR
 
+if [ -z "${SAFE_REPORT_GEN_DIR:-}" ]; then
+    SAFE_REPORT_GEN_DIR="/home/pbhogaraju/Caliptra/OCP_SAFE/OCP-Security-SAFE/shortform_report-main"
+fi
+
 CORIM_DIR="$WORKSPACE/attestation-artifacts/refval-corim"
+
+# ── Vendor / Device identity (used across build, CoRIM, integration test, and SAFE report) ─────
+export ATTESTATION_VENDOR="ACME Corp"
+export ATTESTATION_MODEL="DeviceX"
 
 if [[ "$SKIP_BUILD" != "1" ]]; then
 # ══════════════════════════════════════════════════════════════════════════════
@@ -93,17 +100,21 @@ if [[ "$SKIP_BUILD" != "1" ]]; then
 # ══════════════════════════════════════════════════════════════════════════════
 phase_banner "Pre-Stage" "Prerequisites & Firmware Build"
 
+# info "Vendor: ${C_CYAN}${ATTESTATION_VENDOR}${C_RESET}  Device: ${C_CYAN}${ATTESTATION_MODEL}${C_RESET}"
+
 FEATURE="test-mctp-spdm-attestation"
 BUILD_LOG="/tmp/attestation-build.log"
 info "Building firmware with feature '${FEATURE}'..."
 info "  (full log: $BUILD_LOG)"
 pushd "$WORKSPACE" >/dev/null
-cargo xtask all-build --runtime-features "$FEATURE" 2>&1 | tee "$BUILD_LOG" | grep -E '(Compiling|error\[)' || true
+cargo xtask all-build --runtime-features "$FEATURE" --vendor "$ATTESTATION_VENDOR" --model "$ATTESTATION_MODEL" 2>&1 | tee "$BUILD_LOG" | grep -E '(Compiling|error\[)' || true
 popd >/dev/null
 
 CORIM_CONFIG="/tmp/corim-config.json"
-cat > "$CORIM_CONFIG" << 'EOF'
+cat > "$CORIM_CONFIG" << EOF
 {
+  "vendor": "${ATTESTATION_VENDOR}",
+  "model": "${ATTESTATION_MODEL}",
   "output_dir": "attestation-artifacts/refval-corim",
   "signing": {
     "test_key": "caliptra-corim-test-signing-key"
@@ -117,20 +128,35 @@ pushd "$WORKSPACE" >/dev/null
 cargo xtask corim gen-refval --bundle target/all-fw.zip --config "$CORIM_CONFIG" 2>&1 | tee "$CORIM_LOG" | grep -E '(error|warning\[)' || true
 popd >/dev/null
 
-# Generate SAFE endorsement CoRIMs (if SAFE_REPORT_GEN_DIR is set)
+# ── Generate SAFE report JSONs and endorsement CoRIMs ──────────────────────
 ENDORSEMENT_SRC_DIR="$WORKSPACE/attestation-artifacts/safe_endorsements"
+mkdir -p "$ENDORSEMENT_SRC_DIR"
 SAFE_LOG="/tmp/attestation-safe-gen.log"
+
+# Step 1: Generate SAFE report JSONs from the firmware bundle
+info "Generating SAFE report JSONs from firmware bundle..."
+pushd "$WORKSPACE" >/dev/null
+cargo xtask corim gen-safe-report --bundle target/all-fw.zip --output-dir target/safe-reports 2>&1 | tee -a "$SAFE_LOG" | grep -E '(error|Generated)' || true
+popd >/dev/null
+
+# Step 2: Copy SAFE report JSONs into endorsement source directory
+if ls "$WORKSPACE/target/safe-reports"/OCP_SAFE_-_caliptra_-* >/dev/null 2>&1; then
+    cp "$WORKSPACE/target/safe-reports"/OCP_SAFE_-_caliptra_-* "$ENDORSEMENT_SRC_DIR/"
+    info "Copied SAFE report JSONs to ${ENDORSEMENT_SRC_DIR#$WORKSPACE/}"
+fi
+
+# Step 3: Generate signed endorsement CoRIM CBORs (if SAFE_REPORT_GEN_DIR is set)
 if [ -n "${SAFE_REPORT_GEN_DIR:-}" ]; then
     SAFE_SCRIPT="$SAFE_REPORT_GEN_DIR/gen_endorsement_corim.sh"
     if [ -x "$SAFE_SCRIPT" ]; then
         info "Generating SAFE endorsement CoRIMs via ${C_CYAN}${SAFE_SCRIPT}${C_RESET}..."
-        "$SAFE_SCRIPT" "$ENDORSEMENT_SRC_DIR" > "$SAFE_LOG" 2>&1 || true
+        "$SAFE_SCRIPT" "$ENDORSEMENT_SRC_DIR" 2>&1 | tee -a "$SAFE_LOG" || true
     else
         info "${C_YELLOW}⚠${C_RESET} gen_endorsement_corim.sh not found — using pre-existing endorsement artifacts."
     fi
+else
+    info "${C_YELLOW}⚠${C_RESET} SAFE_REPORT_GEN_DIR not set — skipping endorsement CoRIM generation."
 fi
-
-
 
 info "${C_GREEN}✔${C_RESET} Pre-Stage complete: firmware built, CoRIMs generated."
 demo_pause
@@ -150,13 +176,13 @@ rm -rf "$WORKSPACE/attestation-artifacts/ta_store"
 TA_STORE_DIR="$WORKSPACE/attestation-artifacts/ta_store"
 mkdir -p "$TA_STORE_DIR/roots" "$TA_STORE_DIR/signing-certs"
 
-info "Set up roots/ — trusted CA certificates for authenticating device identity..."
+info "Set up ${C_GREEN}Trusted Root CA certificates${C_RESET} for Authentication..."
 # Copy the test root CA cert which endorsed the device ID cert into roots/
 cp "$WORKSPACE/ocp-eat-verifier/ocptoken-rs/test-data/ta-store/roots/slot0_ecc_test_root_ca.der" \
   "$TA_STORE_DIR/roots/slot0_ecc_test_root_ca.der"
 cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/roots/refval_corim_signing_cert.der"
 
-info "Set up signing-certs/ — CoRIM signing certificates for verifying reference value integrity..."
+info "Set up ${C_GREEN}Endorsement Certificates${C_RESET} — CoRIM signing certificates for verifying integrity of Reference Values and Endorsements..."
 # Copy the CoRIM signing certificate into signing-certs/
 cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/signing-certs/refval_corim_signing_cert.der"
 
@@ -241,7 +267,7 @@ demo_pause
 # Stage 2: Acquire Evidence from Attester (SPDM Attestation)
 #   — The verifier challenges the attester and collects fresh evidence.
 # ══════════════════════════════════════════════════════════════════════════════
-phase_banner "Stage 2" "Acquire Evidence from Attester"
+phase_banner "Stage 2" "Evidence Acquisition from Attester (SPDM Attestation)"
 
 info "Generating SPDM nonce..."
 export SPDM_NONCE
@@ -250,9 +276,14 @@ echo -e "SPDM_NONCE: \033[1;38;2;178;34;34m${SPDM_NONCE}\033[0m"
 
 SPDM_TEST_LOG="/tmp/attestation-spdm-test.log"
 info "Running SPDM attestation on MCTP transport..."
+# info "  Vendor: ${C_CYAN}${ATTESTATION_VENDOR}${C_RESET}  Model: ${C_CYAN}${ATTESTATION_MODEL}${C_RESET}"
 info "  (full log: $SPDM_TEST_LOG)"
 pushd "$WORKSPACE" >/dev/null
-cargo t -p tests-integration -- --test test_mctp_spdm_attestation --nocapture --include-ignored 2>&1 | tee "$SPDM_TEST_LOG" | grep -Ev 'no prebuilt available|process binary in flash|caliptra-okref|MCTP-SPDM-RESPONDER-VALIDATOR' | grep -E '(ok|FAILED|PASS|verify_measurement|SPDM_TASK|SPDM main)' || true
+# Use the all-build ZIP as prebuilt firmware bundle so the integration test
+# does not recompile the runtime (Rust builds are not reproducible).
+CPTRA_FIRMWARE_BUNDLE="$WORKSPACE/target/all-fw.zip" \
+ATTESTATION_VENDOR="$ATTESTATION_VENDOR" ATTESTATION_MODEL="$ATTESTATION_MODEL" \
+  cargo t -p tests-integration -- --test test_mctp_spdm_attestation --nocapture --include-ignored 2>&1 | tee "$SPDM_TEST_LOG" | grep -Ev 'no prebuilt available|process binary in flash|caliptra-okref|MCTP-SPDM-RESPONDER-VALIDATOR' | grep -E '(ok|FAILED|PASS|verify_measurement|SPDM_TASK|SPDM main)' || true
 popd >/dev/null
 
 info "Attestation artifacts available:"
@@ -266,7 +297,7 @@ done
 
 demo_pause
 
-SPDM_DUMP_DIR="${SPDM_DUMP_DIR:-$SPDM_VALIDATOR_DIR}"
+SPDM_DUMP_DIR="${SPDM_DUMP_DIR:-/home/pbhogaraju/Caliptra/Caliptra_subsystem/SPDM_module/SPDM_validator/spdm-emu-custom/spdm-dump-custom/spdm-dump/build/bin}"
 if [ -f "$SPDM_VALIDATOR_DIR/caliptra-evidence.pcap" ]; then
     info "Dumping SPDM transaction log (caliptra-evidence.pcap)..."
     if [ -x "$SPDM_DUMP_DIR/spdm_dump" ]; then
@@ -325,18 +356,18 @@ echo -e "${C_BOLD}${C_MAGENTA}║  Execute OCP EAT Verifier Algorithm ${C_RESET}
 echo -e "${C_BOLD}${C_MAGENTA}╚══════════════════════════════════════════════════════════════════════╝${C_RESET}"
 echo ""
 
-info "Building OCP EAT Verifier (ocptoken)..."
+# info "Building OCP EAT Verifier (ocptoken)..."
+info "Running appraisal pipeline..."
 pushd "$WORKSPACE/ocp-eat-verifier" >/dev/null
 cargo build --release -p ocptoken 2>&1 | grep -E '(error\[)' || true
 popd >/dev/null
 
-info "Running appraisal pipeline..."
 export TA_STORE_PATH="$TA_STORE_DIR"
 export SIGNED_REFVAL_CORIM_PATH="$SIGNED_CORIM_DIR"
 
 if [ -d "$SIGNED_ENDORSEMENT_DIR" ] && ls "$SIGNED_ENDORSEMENT_DIR"/*.cbor >/dev/null 2>&1; then
     export SIGNED_ENDORSEMENT_CORIM_PATH="$SIGNED_ENDORSEMENT_DIR"
-    info "Endorsement CoRIMs: ${C_CYAN}${SIGNED_ENDORSEMENT_DIR}${C_RESET}"
+    # info "Endorsement CoRIMs: ${C_CYAN}${SIGNED_ENDORSEMENT_DIR}${C_RESET}"
 fi
 
 DEMO_FLAG=""

@@ -228,6 +228,8 @@ mod test {
 
     fn build_test_binaries(feature: Option<&str>, rom_feature: Option<&str>) -> TestBinaries {
         let mcu_runtime = compile_runtime(feature, false);
+        let env_vendor = std::env::var("ATTESTATION_VENDOR").ok();
+        let env_model = std::env::var("ATTESTATION_MODEL").ok();
         let mut builder = CaliptraBuilder::new(
             cfg!(feature = "fpga_realtime"),
             None,
@@ -238,8 +240,8 @@ mod test {
             None,
             None,
             None,
-            None,
-            None,
+            env_vendor,
+            env_model,
         );
         let caliptra_rom = std::fs::read(
             builder
@@ -499,6 +501,8 @@ mod test {
         let mut caliptra_builder = if let Some(caliptra_builder) = caliptra_builder {
             caliptra_builder
         } else {
+            let env_vendor = std::env::var("ATTESTATION_VENDOR").ok();
+            let env_model = std::env::var("ATTESTATION_MODEL").ok();
             CaliptraBuilder::new(
                 false,
                 None,
@@ -509,8 +513,8 @@ mod test {
                 soc_images,
                 None,
                 None,
-                None,
-                None,
+                env_vendor,
+                env_model,
             )
         };
 
@@ -697,6 +701,8 @@ mod test {
 
         let vendor_pk_hash = binaries.vendor_pk_hash().map(|h| hex::encode(h));
 
+        let env_vendor = std::env::var("ATTESTATION_VENDOR").ok();
+        let env_model = std::env::var("ATTESTATION_MODEL").ok();
         Some(CaliptraBuilder::new(
             false,
             Some(caliptra_rom_path),
@@ -707,8 +713,8 @@ mod test {
             None,
             None,
             None,
-            None,
-            None,
+            env_vendor,
+            env_model,
         ))
     }
 

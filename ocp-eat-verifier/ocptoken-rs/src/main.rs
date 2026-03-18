@@ -214,9 +214,10 @@ fn authenticate_pipeline<'a>(
             Ok(b) => {
                 println!("Loaded evidence:");
                 println!(
-                    "  - certificate chain: '{}' ({} bytes)",
-                    path.display(),
-                    b.len()
+                    "  - certificate chain: '{}'",
+                    path.file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_else(|| path.to_string_lossy())
                 );
                 b
             }
@@ -280,7 +281,7 @@ fn authenticate_pipeline<'a>(
         match RefValCorims::decode_and_verify(&corims_dir, ta_store, &verifier) {
             Ok(rv) => {
                 for (name, _) in rv.iter() {
-                    println!("  \x1b[32m✓\x1b[0m \x1b[36m{}\x1b[0m: signature verified, signer authenticated", name);
+                    println!("  \x1b[32m✓\x1b[0m \x1b[36m{}\x1b[0m: signer authenticated, signature verified", name);
                 }
                 println!("\x1b[32m✓\x1b[0m All signed CoRIM files verified successfully.");
                 rv
@@ -303,9 +304,11 @@ fn authenticate_pipeline<'a>(
         match EndorsementCorims::decode_and_verify(&corims_dir, ta_store, &verifier) {
             Ok(ec) => {
                 for entry in ec.iter() {
-                    println!("  \x1b[32m✓\x1b[0m \x1b[35m{}\x1b[0m: signature verified, signer authenticated", entry.file_name);
+                    println!("  \x1b[32m✓\x1b[0m \x1b[35m{}\x1b[0m: signer authenticated, signature verified", entry.file_name);
                 }
-                println!("\x1b[32m✓\x1b[0m All signed endorsement CoRIM files verified successfully.");
+                println!(
+                    "\x1b[32m✓\x1b[0m All signed endorsement CoRIM files verified successfully."
+                );
                 ec
             }
             Err(e) => {
@@ -319,7 +322,11 @@ fn authenticate_pipeline<'a>(
         }
     };
 
-    AuthenticatedContext { ev, refval_corims, endorsement_corims }
+    AuthenticatedContext {
+        ev,
+        refval_corims,
+        endorsement_corims,
+    }
 }
 
 /// Load the Trust Anchor Store from the TA_STORE_PATH environment variable.
@@ -341,7 +348,10 @@ fn load_ta_store() -> FsTrustAnchorStore {
         Ok(s) => {
             println!(
                 "Loaded trust anchor store from '{}'",
-                ta_store_path.display()
+                ta_store_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy())
+                    .unwrap_or_else(|| ta_store_path.to_string_lossy())
             );
             s
         }
@@ -399,12 +409,12 @@ fn run_appraise(args: &AppraiseArgs) {
     println!("All inputs validated and authenticated.");
     demo_pause(demo);
 
-    // ── Phase 2: Evidence Augmentation (Evidence Claimset Initialization) ─────────
+    // ── Phase 2: Evidence Augmentation (Appraisal Claim Set Initialization) ─────────
     phase_banner(
         "2",
-        "Evidence Augmentation (Evidence Claimset Initialization)",
+        "Evidence Augmentation (Appraisal Claim Set Initialization)",
     );
-    println!("Initializing Evidence Claim with evidence claims...");
+    println!("Initializing Appraisal Claims Set with evidence claims...");
     print_claims(ctx.ev.claims(), &env_colors);
     demo_pause(demo);
 
@@ -506,9 +516,10 @@ fn run_appraise(args: &AppraiseArgs) {
             .flatten()
             .flat_map(|triple| {
                 triple.ref_claims.iter().filter_map(|meas| {
-                    meas.mval.digests.as_ref().map(|digests| {
-                        digests.iter().map(|d| hex::encode(&d.val))
-                    })
+                    meas.mval
+                        .digests
+                        .as_ref()
+                        .map(|digests| digests.iter().map(|d| hex::encode(&d.val)))
                 })
             })
             .flatten()
@@ -528,27 +539,25 @@ fn run_appraise(args: &AppraiseArgs) {
                         .unwrap_or("unknown");
                     // Check if ALL condition digests appear in the corroborated ACS
                     let condition_met = !cond.digests.is_empty()
-                        && cond.digests.iter().all(|(_, hash)| {
-                            corroborated_digests.contains(hash)
-                        });
+                        && cond
+                            .digests
+                            .iter()
+                            .all(|(_, hash)| corroborated_digests.contains(hash));
                     if condition_met {
-                        println!(
-                            "  \x1b[32m✓\x1b[0m Condition satisfied: {}",
-                            cond_label
-                        );
+                        println!("  \x1b[32m✓\x1b[0m Condition satisfied: {}", cond_label);
                         for (alg, hash) in &cond.digests {
                             let short = if hash.len() > 16 {
-                                format!("{}…{}", &hash[..8], &hash[hash.len()-8..])
+                                format!("{}…{}", &hash[..8], &hash[hash.len() - 8..])
                             } else {
                                 hash.clone()
                             };
-                            println!("      digest({})={} — found in Appraisal Claim Set", alg, short);
+                            println!(
+                                "      digest({})={} — found in Appraisal Claim Set",
+                                alg, short
+                            );
                         }
                     } else {
-                        println!(
-                            "  \x1b[31m✗\x1b[0m Condition not satisfied: {}",
-                            cond_label
-                        );
+                        println!("  \x1b[31m✗\x1b[0m Condition not satisfied: {}", cond_label);
                         all_conditions_met = false;
                     }
                 }
@@ -570,9 +579,11 @@ fn run_appraise(args: &AppraiseArgs) {
                         report_version: sfr.report_version.clone(),
                         completion_date: sfr.completion_date.clone(),
                         scope_number: sfr.scope_number,
-                        fw_identifiers: sfr.fw_identifiers.iter().map(|fw| {
-                            (fw.fw_version.clone(), fw.repo_tag.clone())
-                        }).collect(),
+                        fw_identifiers: sfr
+                            .fw_identifiers
+                            .iter()
+                            .map(|fw| (fw.fw_version.clone(), fw.repo_tag.clone()))
+                            .collect(),
                         issues_count: sfr.issues.len(),
                         issue_titles: sfr.issues.iter().map(|i| i.title.clone()).collect(),
                     });
@@ -587,9 +598,11 @@ fn run_appraise(args: &AppraiseArgs) {
                         report_version: sfr.report_version.clone(),
                         completion_date: sfr.completion_date.clone(),
                         scope_number: sfr.scope_number,
-                        fw_identifiers: sfr.fw_identifiers.iter().map(|fw| {
-                            (fw.fw_version.clone(), fw.repo_tag.clone())
-                        }).collect(),
+                        fw_identifiers: sfr
+                            .fw_identifiers
+                            .iter()
+                            .map(|fw| (fw.fw_version.clone(), fw.repo_tag.clone()))
+                            .collect(),
                         issues_count: sfr.issues.len(),
                         issue_titles: sfr.issues.iter().map(|i| i.title.clone()).collect(),
                     });
@@ -613,6 +626,9 @@ fn run_appraise(args: &AppraiseArgs) {
     }
     demo_pause(demo);
 
+    // ── Phase 6: Attestation Result & Appraisal Claims Set ──────────
+    phase_banner("6", "Attestation Result & Appraisal Claims Set");
+
     // ── Verdict ─────────────────────────────────────────────────────
     println!();
     println!("═══════════════════════════════════════════════════════════════════════");
@@ -631,7 +647,7 @@ fn run_appraise(args: &AppraiseArgs) {
     println!("  ─────────────────────────────────────────────────────────────────");
 
     // Per-environment: evidence claims + corroboration status + endorsements
-    for result in &report.results {
+    for (claim_idx, result) in report.results.iter().enumerate() {
         let color = env_colors.get(&result.env_label).copied().unwrap_or("");
         let status = if result.passed() {
             "\x1b[32m✓ corroborated\x1b[0m"
@@ -642,19 +658,23 @@ fn run_appraise(args: &AppraiseArgs) {
         };
         println!();
         println!(
-            "  {}{}{}  [{}]",
-            color, result.env_label, C_RESET, status
+            "  Claim[{}]: {}{}{}  [{}]",
+            claim_idx, color, result.env_label, C_RESET, status
         );
         // Evidence measurements & corroboration
         for m in &result.measurements {
-            let mark = if m.matched { "\x1b[32m✓\x1b[0m" } else { "\x1b[31m✗\x1b[0m" };
+            let mark = if m.matched {
+                "\x1b[32m✓\x1b[0m"
+            } else {
+                "\x1b[31m✗\x1b[0m"
+            };
             println!("    {} {}: {}", mark, m.label, m.detail);
         }
 
         // Endorsement augmentations for this environment
         for aug in &augmented_endorsements {
             if result.env_label.contains(&aug.env_label) {
-                println!("    \x1b[35m● SAFE SFR Endorsement:\x1b[0m");
+                println!("    ● SAFE SFR Endorsement:");
                 if let Some(ref fv) = aug.framework_version {
                     println!("        Framework:       {}", fv);
                 }
@@ -680,11 +700,11 @@ fn run_appraise(args: &AppraiseArgs) {
                     }
                 }
                 if aug.issues_count == 0 {
-                    println!("        Issues:          \x1b[32mnone reported\x1b[0m");
+                    println!("        Issues:          none reported");
                 } else {
                     println!("        Issues:          {} found", aug.issues_count);
                     for title in &aug.issue_titles {
-                        println!("          \x1b[33m• {}\x1b[0m", title);
+                        println!("          • {}", title);
                     }
                 }
             }
@@ -693,7 +713,10 @@ fn run_appraise(args: &AppraiseArgs) {
 
     // Show endorsements that didn't match any reference environment
     for aug in &augmented_endorsements {
-        let matched = report.results.iter().any(|r| r.env_label.contains(&aug.env_label));
+        let matched = report
+            .results
+            .iter()
+            .any(|r| r.env_label.contains(&aug.env_label));
         if !matched {
             println!();
             println!(
@@ -725,7 +748,11 @@ fn run_appraise(args: &AppraiseArgs) {
     println!();
     println!("  \x1b[1mVerifier Augmentation\x1b[0m");
     for check in &report.verifier_checks {
-        let mark = if check.passed { "\x1b[32m✓\x1b[0m" } else { "\x1b[31m✗\x1b[0m" };
+        let mark = if check.passed {
+            "\x1b[32m✓\x1b[0m"
+        } else {
+            "\x1b[31m✗\x1b[0m"
+        };
         println!("    {} {}: {}", mark, check.name, check.detail);
     }
 
@@ -741,11 +768,11 @@ fn run_appraise(args: &AppraiseArgs) {
 fn load_evidence(path: &PathBuf) -> Vec<u8> {
     match fs::read(path) {
         Ok(b) => {
-            println!(
-                "  - measurement block: '{}' ({} bytes)",
-                path.display(),
-                b.len()
-            );
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy())
+                .unwrap_or_else(|| path.to_string_lossy());
+            println!("  - measurement block: '{}'", name);
             b
         }
         Err(e) => {
@@ -990,7 +1017,10 @@ fn print_comid_triples(triples: &corim_rs::TriplesMap, env_colors: &HashMap<Stri
         }
     }
     if let Some(ref cond_triples) = triples.conditional_endorsement_triples {
-        println!("      Conditional Endorsement Triples ({}):", cond_triples.len());
+        println!(
+            "      Conditional Endorsement Triples ({}):",
+            cond_triples.len()
+        );
         for (i, cond) in cond_triples.iter().enumerate() {
             println!("        [{}] Conditions ({}):", i, cond.conditions.len());
             for (j, cond_env) in cond.conditions.iter().enumerate() {
@@ -1000,7 +1030,10 @@ fn print_comid_triples(triples: &corim_rs::TriplesMap, env_colors: &HashMap<Stri
                     .unwrap_or("");
                 println!("            [{}] Environment:", j);
                 print_environment(&cond_env.environment, color);
-                println!("                Condition Measurements ({}):", cond_env.claims_list.len());
+                println!(
+                    "                Condition Measurements ({}):",
+                    cond_env.claims_list.len()
+                );
                 for (k, meas) in cond_env.claims_list.iter().enumerate() {
                     print_measurement(k, meas);
                 }
@@ -1015,15 +1048,35 @@ fn print_comid_triples(triples: &corim_rs::TriplesMap, env_colors: &HashMap<Stri
                 print_environment(&endorsed.condition, color);
                 for (k, meas) in endorsed.endorsement.iter().enumerate() {
                     // Try to extract OCP SAFE SFR from the measurement-values-map extensions
-                    match corim_rs::profiles::ocp_safe::OcpSafeSfrMap::from_measurement_values(&meas.mval) {
+                    match corim_rs::profiles::ocp_safe::OcpSafeSfrMap::from_measurement_values(
+                        &meas.mval,
+                    ) {
                         Ok(sfr) => {
-                            println!("                [{}] \x1b[35mOCP SAFE SFR Extension:\x1b[0m", k);
-                            println!("                    Framework Version: {}", sfr.review_framework_version);
-                            println!("                    Report Version:    {}", sfr.report_version);
-                            println!("                    Completion Date:   {}", format_unix_timestamp(sfr.completion_date.as_i128()));
-                            println!("                    Scope Number:      {}", sfr.scope_number);
+                            println!(
+                                "                [{}] \x1b[35mOCP SAFE SFR Extension:\x1b[0m",
+                                k
+                            );
+                            println!(
+                                "                    Framework Version: {}",
+                                sfr.review_framework_version
+                            );
+                            println!(
+                                "                    Report Version:    {}",
+                                sfr.report_version
+                            );
+                            println!(
+                                "                    Completion Date:   {}",
+                                format_unix_timestamp(sfr.completion_date.as_i128())
+                            );
+                            println!(
+                                "                    Scope Number:      {}",
+                                sfr.scope_number
+                            );
                             if let Some(ref fw_ids) = sfr.fw_identifiers {
-                                println!("                    Firmware Identifiers ({}):", fw_ids.len());
+                                println!(
+                                    "                    Firmware Identifiers ({}):",
+                                    fw_ids.len()
+                                );
                                 for (fi, fw) in fw_ids.iter().enumerate() {
                                     print!("                      [{}]", fi);
                                     if let Some(ref ver) = fw.fw_version {
@@ -1035,7 +1088,11 @@ fn print_comid_triples(triples: &corim_rs::TriplesMap, env_colors: &HashMap<Stri
                                     println!();
                                     if let Some(ref digests) = fw.fw_file_digests {
                                         for d in digests.iter() {
-                                            println!("                          Digest: {:?}: {}", d.alg, hex::encode(&d.val));
+                                            println!(
+                                                "                          Digest: {:?}: {}",
+                                                d.alg,
+                                                hex::encode(&d.val)
+                                            );
                                         }
                                     }
                                 }
@@ -1043,14 +1100,29 @@ fn print_comid_triples(triples: &corim_rs::TriplesMap, env_colors: &HashMap<Stri
                             if let Some(ref issues) = sfr.issues {
                                 println!("                    Issues ({}):", issues.len());
                                 for (ii, issue) in issues.iter().enumerate() {
-                                    println!("                      [{}] \x1b[33m{}\x1b[0m", ii, issue.title);
-                                    println!("                          Description: {}", issue.description);
+                                    println!(
+                                        "                      [{}] \x1b[33m{}\x1b[0m",
+                                        ii, issue.title
+                                    );
+                                    println!(
+                                        "                          Description: {}",
+                                        issue.description
+                                    );
                                     match &issue.assessment {
                                         corim_rs::profiles::ocp_safe::Assessment::Cvss(cvss) => {
-                                            println!("                          CVSS Score:   {}", cvss.score);
-                                            println!("                          CVSS Vector:  {}", cvss.vector);
+                                            println!(
+                                                "                          CVSS Score:   {}",
+                                                cvss.score
+                                            );
+                                            println!(
+                                                "                          CVSS Vector:  {}",
+                                                cvss.vector
+                                            );
                                             if let Some(ref ver) = cvss.version {
-                                                println!("                          CVSS Version: {}", ver);
+                                                println!(
+                                                    "                          CVSS Version: {}",
+                                                    ver
+                                                );
                                             }
                                         }
                                     }
@@ -1062,7 +1134,9 @@ fn print_comid_triples(triples: &corim_rs::TriplesMap, env_colors: &HashMap<Stri
                                     }
                                 }
                             } else {
-                                println!("                    Issues: \x1b[32mnone reported\x1b[0m");
+                                println!(
+                                    "                    Issues: \x1b[32mnone reported\x1b[0m"
+                                );
                             }
                         }
                         Err(_) => {
@@ -1077,9 +1151,7 @@ fn print_comid_triples(triples: &corim_rs::TriplesMap, env_colors: &HashMap<Stri
 }
 
 /// Build an env_colors-compatible label from an EndorsementEnvironment.
-fn endorsement_env_label(
-    env: &ocptoken::corim::endorsement::EndorsementEnvironment,
-) -> String {
+fn endorsement_env_label(env: &ocptoken::corim::endorsement::EndorsementEnvironment) -> String {
     let mut parts = Vec::new();
     if let Some(ref vendor) = env.vendor {
         parts.push(format!("vendor={}", vendor));
@@ -1105,10 +1177,7 @@ fn print_endorsement_environment(
     indent: &str,
 ) {
     if let Some(ref class_id) = env.class_id {
-        println!(
-            "{}{}Class ID:  \"{}\"{}",
-            indent, color, class_id, C_RESET
-        );
+        println!("{}{}Class ID:  \"{}\"{}", indent, color, class_id, C_RESET);
     }
     if let Some(ref vendor) = env.vendor {
         println!("{}{}Vendor:    {}{}", indent, color, vendor, C_RESET);
@@ -1149,13 +1218,13 @@ fn print_endorsement_corim(
     );
     for (i, sfr) in entry.sfr_entries.iter().enumerate() {
         if entry.sfr_entries.len() > 1 {
-            println!("    \x1b[35m[{}] OCP SAFE SFR Entry:\x1b[0m", i);
+            println!("    [{}] OCP SAFE SFR Entry:", i);
         } else {
-            println!("    \x1b[35m[{}] OCP SAFE SFR Extension:\x1b[0m", i);
+            println!("    [{}] OCP SAFE SFR Extension:", i);
         }
         // Conditions
         if !sfr.conditions.is_empty() {
-            println!("      \x1b[36mConditions ({}):\x1b[0m", sfr.conditions.len());
+            println!("      Conditions ({}):", sfr.conditions.len());
             for (ci, cond) in sfr.conditions.iter().enumerate() {
                 let cenv = &cond.environment;
                 let cond_color = env_colors
@@ -1173,7 +1242,7 @@ fn print_endorsement_corim(
             }
         }
         // Endorsed Triple (per CDDL: endorsements: [ + endorsed-triple-record ])
-        println!("      \x1b[36mEndorsed Triple:\x1b[0m");
+        println!("      Endorsed Triple:");
         let env = &sfr.environment;
         let env_color = env_colors
             .get(&endorsement_env_label(env))
@@ -1194,7 +1263,10 @@ fn print_endorsement_corim(
             println!("        Scope Number:        {}", n);
         }
         if !sfr.fw_identifiers.is_empty() {
-            println!("        Firmware Identifiers ({}):", sfr.fw_identifiers.len());
+            println!(
+                "        Firmware Identifiers ({}):",
+                sfr.fw_identifiers.len()
+            );
             for (fi, fw) in sfr.fw_identifiers.iter().enumerate() {
                 print!("          [{}]", fi);
                 if let Some(ref ver) = fw.fw_version {
@@ -1348,11 +1420,11 @@ fn print_environment(env: &corim_rs::EnvironmentMap, color: &str) {
 }
 
 fn print_measurement(idx: usize, meas: &corim_rs::MeasurementMap) {
-    if let Some(ref mkey) = meas.mkey {
-        println!("                [{}] Key:  {:?}", idx, mkey);
-    } else {
-        println!("                [{}]", idx);
-    }
+    // if let Some(ref mkey) = meas.mkey {
+    //     println!("                [{}] Key:  {:?}", idx, mkey);
+    // } else {
+    //     println!("                [{}]", idx);
+    // }
     let mval = &meas.mval;
     if let Some(ref ver) = mval.version {
         println!("                    Version:  {:?}", ver);
