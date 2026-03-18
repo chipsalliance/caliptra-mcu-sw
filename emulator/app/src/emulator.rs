@@ -295,6 +295,8 @@ pub struct Emulator {
     pub doe_mbox_fsm: doe_mbox_fsm::DoeMboxFsm,
     pub i3c_address: Option<u8>,
     pub i3c_controller_join_handle: Option<JoinHandle<()>>,
+    #[allow(dead_code)]
+    pub usb_host_controller: emulator_periph::UsbHostController,
 }
 
 impl Emulator {
@@ -809,7 +811,9 @@ impl Emulator {
             false,
         );
 
-        let usb_periph = emulator_periph::UsbDevPeriph::new();
+        let usb_irq = pic.register_irq(McuRootBus::USB_IRQ);
+        let usb_periph = emulator_periph::UsbDevPeriph::new_with_irq(usb_irq);
+        let usb_host_controller = usb_periph.host_controller();
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
@@ -1054,6 +1058,7 @@ impl Emulator {
             doe_mbox_fsm,
             Some(i3c_dynamic_address.into()),
             i3c_controller_join_handle,
+            usb_host_controller,
         ))
     }
 
@@ -1073,6 +1078,7 @@ impl Emulator {
         doe_mbox_fsm: doe_mbox_fsm::DoeMboxFsm,
         i3c_address: Option<u8>,
         i3c_controller_join_handle: Option<JoinHandle<()>>,
+        usb_host_controller: emulator_periph::UsbHostController,
     ) -> Self {
         // read from the console in a separate thread to prevent blocking
         let stdin_uart_clone = stdin_uart.clone();
@@ -1097,6 +1103,7 @@ impl Emulator {
             doe_mbox_fsm,
             i3c_address,
             i3c_controller_join_handle,
+            usb_host_controller,
         }
     }
 

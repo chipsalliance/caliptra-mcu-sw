@@ -117,6 +117,7 @@ impl McuRootBus {
     pub const DMA_ERROR_IRQ: u8 = 23;
     pub const DMA_EVENT_IRQ: u8 = 24;
     pub const DOE_MBOX_EVENT_IRQ: u8 = 25;
+    pub const USB_IRQ: u8 = 26;
 
     pub fn new(mut args: McuRootBusArgs) -> Result<Self, std::io::Error> {
         let clock = args.clock;
