@@ -224,7 +224,7 @@ mod test {
         // intermediate mcu-rom-<platform>.bin (without the appended ROM
         // digest), which would silently clobber the copy.
         let output: PathBuf =
-            caliptra_mcu_builder::rom_build(Some(platform().to_string()), Some(feature))
+            caliptra_mcu_builder::rom_build(Some(platform().to_string()), Some(feature), None)
                 .expect("ROM build failed");
         assert!(output.exists());
         output
@@ -251,6 +251,7 @@ mod test {
             Some(name),
             example_app,
             Some(platform),
+            None,
             None,
         )
         .expect("Runtime failed to compile");
@@ -1155,6 +1156,7 @@ mod test {
             true,
             None,
             Some(image_svn),
+            None,
         )
         .expect("Runtime build failed");
         assert!(test_runtime.exists());

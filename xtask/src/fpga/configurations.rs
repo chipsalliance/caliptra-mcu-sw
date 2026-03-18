@@ -290,6 +290,7 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
         let rom_path = caliptra_mcu_builder::rom_build(
             Some("fpga".to_string()),
             Some("core_test".to_string()),
+            None,
         )?;
         if !args.mcu {
             build_caliptra_firmware(&caliptra_sw, args.fw_id.as_deref())?;
