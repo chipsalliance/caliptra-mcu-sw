@@ -1032,6 +1032,7 @@ impl BootFlow for ColdBoot {
                 romtime::println!("[mcu-rom] Caliptra reported a fatal error");
                 fatal_error(McuError::ROM_COLD_BOOT_CALIPTRA_FATAL_ERROR_BEFORE_MB_READY);
             }
+            soc.check_hw_errors();
         }
 
         romtime::println!("[mcu-rom] Caliptra is ready for mailbox commands",);
@@ -1207,7 +1208,9 @@ impl BootFlow for ColdBoot {
             // and instead wait for Caliptra RT to be ready for runtime commands, then
             // decrypt the firmware ourselves.
             romtime::println!("[mcu-rom] Encrypted boot: waiting for Caliptra RT to be ready");
-            while !soc.ready_for_runtime() {}
+            while !soc.ready_for_runtime() {
+                soc.check_hw_errors();
+            }
             mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
 
             // Query ciphertext size and SHA-384 digest via GET_MCU_FW_SIZE.
@@ -1260,7 +1263,9 @@ impl BootFlow for ColdBoot {
             romtime::println!(
                 "[mcu-rom] Waiting for Caliptra RT to be ready for runtime mailbox commands"
             );
-            while !soc.ready_for_runtime() {}
+            while !soc.ready_for_runtime() {
+                soc.check_hw_errors();
+            }
             mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
         }
 

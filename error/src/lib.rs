@@ -523,6 +523,16 @@ impl McuError {
             "Failed to select a valid and functional vendor PK slot"
         ),
         (
+            ROM_SOC_ICCM_ECC_UNC,
+            0x5_0016,
+            "ICCM uncorrectable ECC error"
+        ),
+        (
+            ROM_SOC_DCCM_ECC_UNC,
+            0x5_0017,
+            "DCCM uncorrectable ECC error"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"
