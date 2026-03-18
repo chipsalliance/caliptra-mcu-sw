@@ -31,10 +31,10 @@ pub struct PldmExpectedMessagePair {
 }
 
 impl PldmRequestResponseTest {
-    fn new(socket: MctpPldmSocket) -> Self {
+    fn new(socket: MctpPldmSocket, test_feature: &str) -> Self {
         let mut test_messages: Vec<PldmExpectedMessagePair> = Vec::new();
 
-        if cfg!(feature = "test-pldm-request-response") {
+        if test_feature == "test-pldm-request-response" {
             println!("Emulator: Running PLDM Request Response Test");
             // Add the PLDM requests to send, and the expected responses
             Self::add_test_message(
@@ -48,10 +48,10 @@ impl PldmRequestResponseTest {
                 SetTidRequest::new(2u8, PldmMsgType::Request, 2u8),
                 SetTidResponse::new(2u8, 0u8),
             );
-        } else if cfg!(feature = "test-pldm-discovery") {
+        } else if test_feature == "test-pldm-discovery" {
             println!("Emulator: Running PLDM discovery Test");
             Self::add_pldm_discovery_test_message(&mut test_messages);
-        } else if cfg!(feature = "test-pldm-fw-update") {
+        } else if test_feature == "test-pldm-fw-update" {
             println!("Emulator: Running PLDM Firmware Update Test");
             Self::add_pldm_fw_update_test_message(&mut test_messages);
         }
@@ -89,14 +89,14 @@ impl PldmRequestResponseTest {
         Ok(())
     }
 
-    pub fn run(socket: MctpPldmSocket) {
+    pub fn run(socket: MctpPldmSocket, test_feature: String) {
         std::thread::spawn(move || {
             wait_for_runtime_start();
             if !MCU_RUNNING.load(Ordering::Relaxed) {
                 exit(-1);
             }
             print!("Emulator: Running PLDM Loopback Test: ",);
-            let mut test = PldmRequestResponseTest::new(socket);
+            let mut test = PldmRequestResponseTest::new(socket, &test_feature);
             if test.test_send_receive().is_err() {
                 println!("Failed");
                 exit(-1);
