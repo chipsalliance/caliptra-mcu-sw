@@ -42,7 +42,7 @@ mcu-config-emulator.workspace = true
 mcu-mbox-common.workspace = true
 
 mcu-testing-common.workspace = true
-otp-lifecycle.workspace = true
+mcu-otp-lifecycle.workspace = true
 p384.workspace = true
 pldm-common.workspace = true
 pldm-fw-pkg.workspace = true
