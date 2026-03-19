@@ -33,8 +33,19 @@ mod test {
     }
 
     fn set_hek_perma(otp: &mut [u8]) {
-        let offset = fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + (15 * 32);
-        otp[offset] |= 1;
+        let offset = fuses::PERMA_HEK_EN.byte_offset;
+        // For a 1-bit LinearMajorityVote with duplication 3, setting the bit to 1 means
+        // setting all 3 physical bits to 1. Since the layout is word-sized, we write 0x1
+        // into the appropriate word in the OTP memory.
+        let word_offset = offset / 4;
+        let byte_offset_start = word_offset * 4;
+        let current_word = u32::from_le_bytes(
+            otp[byte_offset_start..byte_offset_start + 4]
+                .try_into()
+                .unwrap(),
+        );
+        let new_word = current_word | 0x7; // Set all 3 physical bits for logical 1
+        otp[byte_offset_start..byte_offset_start + 4].copy_from_slice(&new_word.to_le_bytes());
     }
 
     #[test]

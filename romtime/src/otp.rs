@@ -26,8 +26,6 @@ pub const HEK_ZER_MARKER_SIZE: usize = 8;
 pub const HEK_SEED_SIZE: usize = 32;
 
 // VENDOR_NON_SECRET_PROD_PARTITION offsets
-pub const HEK_PERMA_ADDR: usize = fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + (15 * 32);
-pub const HEK_PERMA_BIT_MASK: u32 = 1;
 
 pub const HEK_OFFSETS: [usize; 8] = [
     fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET,
@@ -751,15 +749,12 @@ impl Otp {
     /// Check if the HEK perma bit is set in the last non-secret vendor fuse (Slot 15).
     /// NOTE: Integrators should consider a dedicated fuse.
     pub fn is_hek_perma_set(&self) -> McuResult<bool> {
-        let word = self.read_u32_at(HEK_PERMA_ADDR)?;
-        Ok((word & HEK_PERMA_BIT_MASK) != 0)
+        Ok(self.read_entry(fuses::PERMA_HEK_EN)? != 0)
     }
 
     /// Sets the HEK perma bit.
     pub fn set_hek_perma(&self) -> McuResult<()> {
-        let mut val = self.read_u32_at(HEK_PERMA_ADDR)?;
-        val |= HEK_PERMA_BIT_MASK;
-        self.write_word(HEK_PERMA_ADDR, val)?;
+        self.write_entry(fuses::PERMA_HEK_EN, 1)?;
         Ok(())
     }
 

@@ -683,6 +683,10 @@ pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
         name: "dot_fuse_array",
         size: Bytes(32),
     },
+    Fuse {
+        name: "perma_hek_en",
+        size: Bytes(1),
+    },
 ];
 pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
@@ -692,6 +696,10 @@ pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
         name: "dot_fuse_array",
         bits: Bits(256),
+    },
+    FuseField {
+        name: "perma_hek_en",
+        bits: Bits(1),
     },
     FuseField {
         name: "vendor_recovery_pk_hash",
@@ -721,6 +729,17 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         layout: FuseLayoutType::OneHot { bits: 256 },
     },
     FuseEntryInfo {
+        partition_num: 14,
+        entry_num: 2,
+        byte_offset: 0xae8,
+        byte_size: 32,
+        name: "perma_hek_en",
+        layout: FuseLayoutType::LinearMajorityVote {
+            bits: 1,
+            duplication: 3,
+        },
+    },
+    FuseEntryInfo {
         partition_num: 13,
         entry_num: 0,
         byte_offset: 0x898,
@@ -733,5 +752,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
 pub const DOT_INITIALIZED: &FuseEntryInfo = &FUSE_ENTRY_TABLE[0];
 /// Fuse entry for `dot_fuse_array`.
 pub const DOT_FUSE_ARRAY: &FuseEntryInfo = &FUSE_ENTRY_TABLE[1];
+/// Fuse entry for `perma_hek_en`.
+pub const PERMA_HEK_EN: &FuseEntryInfo = &FUSE_ENTRY_TABLE[2];
 /// Fuse entry for `vendor_recovery_pk_hash`.
-pub const VENDOR_RECOVERY_PK_HASH: &FuseEntryInfo = &FUSE_ENTRY_TABLE[2];
+pub const VENDOR_RECOVERY_PK_HASH: &FuseEntryInfo = &FUSE_ENTRY_TABLE[3];

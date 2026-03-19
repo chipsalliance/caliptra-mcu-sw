@@ -15,6 +15,7 @@
     // Supporting 128 lock/unlock cycles (256 total state transitions)
     {"dot_initialized": 1}, // 1 bit used to indicate that DOT is enabled and blob is written
     {"dot_fuse_array": 32},  // 256 bits = 128 complete lock/unlock cycles
+    {"perma_hek_en": 1},
   ],
 
   // Field definitions specify bit-level details within fuse bytes
@@ -35,6 +36,14 @@
       partition: "VENDOR_NON_SECRET_PROD_PARTITION",
       otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_1",
       layout: {type: "OneHot"},
+    },
+    {
+      name: "perma_hek_en",
+      bits: 1,
+      description: "Sets the PERMANENT HEK bit. Once set MCU will always provision a sanitized HEK to Caliptra.",
+      partition: "VENDOR_NON_SECRET_PROD_PARTITION",
+      otp_item: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2",
+      layout: {type: "LinearMajorityVote", duplication: 3},
     },
     {
       name: "vendor_recovery_pk_hash",
