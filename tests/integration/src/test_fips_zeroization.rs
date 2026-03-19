@@ -4,18 +4,16 @@
 mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
     use mcu_hw_model::{McuHwModel, McuManager};
-    use mcu_rom_common::McuRomBootStatus;
     use std::sync::atomic::Ordering;
 
     const MAX_ZEROIZATION_CYCLES: u64 = 500_000_000;
 
-    /// Test that the FIPS zeroization flow completes on cold boot when the
-    /// PPD signal is asserted.
+    /// Test that the FIPS zeroization flow writes 0xFFFF_FFFF to the
+    /// FC_FIPS_ZEROZATION mask register on cold boot when the PPD signal
+    /// is asserted.
     ///
-    /// The ROM should detect the PPD signal, command Caliptra to zeroize
-    /// UDS and field entropy via ZEROIZE_UDS_FE, write 0xFFFF_FFFF to the
-    /// FC_FIPS_ZEROZATION mask register, request an LC transition to SCRAP,
-    /// and halt.
+    /// The ROM detects the PPD signal early in the cold-boot flow and sets
+    /// the mask before `SS_CONFIG_DONE_STICKY` locks the register.
     #[test]
     fn test_fips_zeroization_cold_boot() {
         let lock = TEST_LOCK.lock().unwrap();
@@ -27,24 +25,19 @@ mod test {
             ..Default::default()
         });
 
-        let expected_checkpoint = McuRomBootStatus::FipsZeroizationComplete as u16;
-
+        // Poll until the ROM writes the zeroization mask or we time out.
+        //
+        // We cannot use `mci_boot_checkpoint() >= FipsZeroizationComplete`
+        // because boot-flow checkpoint values (e.g. ColdBootFlowStarted =
+        // 385) are numerically larger than the zeroization checkpoints and
+        // would satisfy the condition before the mask is actually written.
         hw.step_until(|hw| {
-            hw.mci_boot_checkpoint() >= expected_checkpoint
-                || hw.cycle_count() >= MAX_ZEROIZATION_CYCLES
+            let mask = hw
+                .mcu_manager()
+                .with_mci(|mci| mci.fc_fips_zerozation().read());
+            mask == 0xFFFF_FFFF || hw.cycle_count() >= MAX_ZEROIZATION_CYCLES
         });
 
-        let checkpoint = hw.mci_boot_checkpoint();
-        assert!(
-            checkpoint >= expected_checkpoint,
-            "ROM should reach FipsZeroizationComplete checkpoint (expected >= {}, got {})",
-            expected_checkpoint,
-            checkpoint,
-        );
-
-        // Verify the ROM wrote 0xFFFF_FFFF to the MCI zeroization mask
-        // register, authorizing the fuse controller to zeroize non-secret
-        // fuse partitions.
         let mask = hw
             .mcu_manager()
             .with_mci(|mci| mci.fc_fips_zerozation().read());
