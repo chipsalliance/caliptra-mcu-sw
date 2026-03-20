@@ -4,9 +4,11 @@
 #![allow(dead_code)]
 #![allow(unused)]
 
-use crate::{Bits, Duplication, FuseLayout};
+use crate::otp::Otp;
+use crate::{Bits, Duplication, FuseLayout, PqcKeyType};
 use core::num::NonZero;
 use mcu_error::{McuError, McuResult};
+use registers_generated::fuses as generated_fuses;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 /// Owner public key hash structure.
@@ -133,5 +135,63 @@ impl Default for McuFuseLayoutPolicy {
                 Duplication(NonZero::new(3).unwrap()),
             ),
         }
+    }
+}
+
+/// Trait for selecting the vendor public key slot to use.
+pub trait VendorKeyPolicy {
+    /// Returns the index of the key slot that should be used.
+    fn select_key(&self, otp: &Otp) -> McuResult<usize>;
+}
+
+/// Default implementation of the vendor key selection policy.
+///
+/// This policy selects the first key slot that is both marked valid
+/// in the VENDOR_PK_HASH_VALID mask and is functional (not fully revoked).
+pub struct DefaultVendorKeyPolicy;
+
+impl DefaultVendorKeyPolicy {
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for DefaultVendorKeyPolicy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl VendorKeyPolicy for DefaultVendorKeyPolicy {
+    fn select_key(&self, otp: &Otp) -> McuResult<usize> {
+        let valid_mask = otp.read_entry_multi::<1>(generated_fuses::VENDOR_PK_HASH_VALID)?[0];
+
+        for i in 0..16 {
+            if (valid_mask >> i) & 1 == 1 {
+                continue;
+            }
+
+            let ecc_revoked = otp.read_vendor_ecc_revocation(i)? & 0xF;
+            let pqc_type = otp.read_pqc_key_type(i)?;
+            let pqc_revoked = match pqc_type {
+                PqcKeyType::MLDSA => otp.read_vendor_mldsa_revocation(i)? & 0xF,
+                PqcKeyType::LMS => otp.read_vendor_lms_revocation(i)? & 0xFFFF,
+            };
+
+            // A slot is functional if it has at least one unrevoked ECC key AND
+            // at least one unrevoked PQC key (LMS or MLDSA).
+            // ECC/MLDSA have 4 bits of info, LMS has 16 bits.
+            let ecc_functional = ecc_revoked < 0xF;
+            let pqc_functional = match pqc_type {
+                PqcKeyType::MLDSA => pqc_revoked < 0xF,
+                PqcKeyType::LMS => pqc_revoked < 0xFFFF,
+            };
+
+            if ecc_functional && pqc_functional {
+                return Ok(i);
+            }
+        }
+
+        Err(McuError::ROM_PK_HASH_SELECTION_FAILED)
     }
 }

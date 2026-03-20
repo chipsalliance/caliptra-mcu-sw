@@ -473,7 +473,7 @@ impl BootFlow for ColdBoot {
         });
 
         romtime::println!("[mcu-rom] Populating fuses");
-        soc.populate_fuses(otp, mci);
+        soc.populate_fuses(otp, mci, &params);
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
         // Configure MCU mailbox AXI users before locking

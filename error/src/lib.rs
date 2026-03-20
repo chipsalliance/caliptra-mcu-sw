@@ -169,6 +169,11 @@ impl McuError {
             "DOT recovery transport error"
         ),
         (
+            ROM_COLD_BOOT_ROM_DIGEST_MISMATCH,
+            0x1_0018,
+            "Cold boot ROM integrity check failed"
+        ),
+        (
             ROM_LC_TRANSITION_ERROR,
             0x2_0000,
             "Lifecycle transition error"
@@ -378,19 +383,19 @@ impl McuError {
             "DCCM uncorrectable ECC error"
         ),
         (
+            ROM_SOC_WDT_CFG_OUT_OF_RANGE,
+            0x5_0013,
+            "Caliptra WDT config index out of range"
+        ),
+        (
             ROM_BOOTFSM_TIMEOUT,
             0x5_0014,
             "Caliptra Core boot FSM timed out"
         ),
         (
-            ROM_COLD_BOOT_ROM_DIGEST_MISMATCH,
-            0x1_0018,
-            "Cold boot ROM integrity check failed"
-        ),
-        (
-            ROM_SOC_WDT_CFG_OUT_OF_RANGE,
-            0x5_0013,
-            "Caliptra WDT config index out of range"
+            ROM_PK_HASH_SELECTION_FAILED,
+            0x5_0015,
+            "Failed to select a valid and functional vendor PK slot"
         ),
         (
             GENERIC_EXCEPTION,
