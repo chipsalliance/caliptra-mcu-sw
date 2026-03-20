@@ -137,7 +137,10 @@ impl BootFlow for WarmBoot {
         mci.set_flow_milestone(McuBootMilestones::CPTRA_FUSES_WRITTEN.into());
         crate::call_hook(params.hooks, |h| h.post_populate_fuses_to_caliptra());
 
+        romtime::println!("[mcu-rom] Waiting for Caliptra Core boot FSM to be DONE");
+        soc.wait_for_bootfsm_done(10_000_000);
         crate::call_hook(params.hooks, |h| h.post_caliptra_boot());
+
         romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
         soc.wait_for_firmware_ready(mci);
         romtime::println!("[mcu-rom] Firmware is ready");
