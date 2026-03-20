@@ -115,7 +115,7 @@
 | Entry | Name | Offset | Size (bytes) | Layout |
 |-------|------|--------|-------------|--------|
 | 0 | CPTRA_CORE_VENDOR_PK_HASH_0 | 0x03f8 | 48 | Single |
-| 1 | CPTRA_CORE_PQC_KEY_TYPE_0 | 0x0428 | 4 | Single |
+| 1 | CPTRA_CORE_PQC_KEY_TYPE_0 | 0x0428 | 4 | OneHotLinearMajorityVote(3x) |
 
 ### vendor_hashes_prod_partition (partition 11)
 
@@ -125,36 +125,36 @@
 | 1 | CPTRA_SS_OWNER_PQC_KEY_TYPE | 0x0468 | 4 | Single |
 | 2 | CPTRA_SS_OWNER_PK_HASH_VALID | 0x046c | 4 | Single |
 | 3 | CPTRA_CORE_VENDOR_PK_HASH_1 | 0x0470 | 48 | Single |
-| 4 | CPTRA_CORE_PQC_KEY_TYPE_1 | 0x04a0 | 4 | Single |
+| 4 | CPTRA_CORE_PQC_KEY_TYPE_1 | 0x04a0 | 4 | OneHotLinearMajorityVote(3x) |
 | 5 | CPTRA_CORE_VENDOR_PK_HASH_2 | 0x04a4 | 48 | Single |
-| 6 | CPTRA_CORE_PQC_KEY_TYPE_2 | 0x04d4 | 4 | Single |
+| 6 | CPTRA_CORE_PQC_KEY_TYPE_2 | 0x04d4 | 4 | OneHotLinearMajorityVote(3x) |
 | 7 | CPTRA_CORE_VENDOR_PK_HASH_3 | 0x04d8 | 48 | Single |
-| 8 | CPTRA_CORE_PQC_KEY_TYPE_3 | 0x0508 | 4 | Single |
+| 8 | CPTRA_CORE_PQC_KEY_TYPE_3 | 0x0508 | 4 | OneHotLinearMajorityVote(3x) |
 | 9 | CPTRA_CORE_VENDOR_PK_HASH_4 | 0x050c | 48 | Single |
-| 10 | CPTRA_CORE_PQC_KEY_TYPE_4 | 0x053c | 4 | Single |
+| 10 | CPTRA_CORE_PQC_KEY_TYPE_4 | 0x053c | 4 | OneHotLinearMajorityVote(3x) |
 | 11 | CPTRA_CORE_VENDOR_PK_HASH_5 | 0x0540 | 48 | Single |
-| 12 | CPTRA_CORE_PQC_KEY_TYPE_5 | 0x0570 | 4 | Single |
+| 12 | CPTRA_CORE_PQC_KEY_TYPE_5 | 0x0570 | 4 | OneHotLinearMajorityVote(3x) |
 | 13 | CPTRA_CORE_VENDOR_PK_HASH_6 | 0x0574 | 48 | Single |
-| 14 | CPTRA_CORE_PQC_KEY_TYPE_6 | 0x05a4 | 4 | Single |
+| 14 | CPTRA_CORE_PQC_KEY_TYPE_6 | 0x05a4 | 4 | OneHotLinearMajorityVote(3x) |
 | 15 | CPTRA_CORE_VENDOR_PK_HASH_7 | 0x05a8 | 48 | Single |
-| 16 | CPTRA_CORE_PQC_KEY_TYPE_7 | 0x05d8 | 4 | Single |
+| 16 | CPTRA_CORE_PQC_KEY_TYPE_7 | 0x05d8 | 4 | OneHotLinearMajorityVote(3x) |
 | 17 | CPTRA_CORE_VENDOR_PK_HASH_8 | 0x05dc | 48 | Single |
-| 18 | CPTRA_CORE_PQC_KEY_TYPE_8 | 0x060c | 4 | Single |
+| 18 | CPTRA_CORE_PQC_KEY_TYPE_8 | 0x060c | 4 | OneHotLinearMajorityVote(3x) |
 | 19 | CPTRA_CORE_VENDOR_PK_HASH_9 | 0x0610 | 48 | Single |
-| 20 | CPTRA_CORE_PQC_KEY_TYPE_9 | 0x0640 | 4 | Single |
+| 20 | CPTRA_CORE_PQC_KEY_TYPE_9 | 0x0640 | 4 | OneHotLinearMajorityVote(3x) |
 | 21 | CPTRA_CORE_VENDOR_PK_HASH_10 | 0x0644 | 48 | Single |
-| 22 | CPTRA_CORE_PQC_KEY_TYPE_10 | 0x0674 | 4 | Single |
+| 22 | CPTRA_CORE_PQC_KEY_TYPE_10 | 0x0674 | 4 | OneHotLinearMajorityVote(3x) |
 | 23 | CPTRA_CORE_VENDOR_PK_HASH_11 | 0x0678 | 48 | Single |
-| 24 | CPTRA_CORE_PQC_KEY_TYPE_11 | 0x06a8 | 4 | Single |
+| 24 | CPTRA_CORE_PQC_KEY_TYPE_11 | 0x06a8 | 4 | OneHotLinearMajorityVote(3x) |
 | 25 | CPTRA_CORE_VENDOR_PK_HASH_12 | 0x06ac | 48 | Single |
-| 26 | CPTRA_CORE_PQC_KEY_TYPE_12 | 0x06dc | 4 | Single |
+| 26 | CPTRA_CORE_PQC_KEY_TYPE_12 | 0x06dc | 4 | OneHotLinearMajorityVote(3x) |
 | 27 | CPTRA_CORE_VENDOR_PK_HASH_13 | 0x06e0 | 48 | Single |
-| 28 | CPTRA_CORE_PQC_KEY_TYPE_13 | 0x0710 | 4 | Single |
+| 28 | CPTRA_CORE_PQC_KEY_TYPE_13 | 0x0710 | 4 | OneHotLinearMajorityVote(3x) |
 | 29 | CPTRA_CORE_VENDOR_PK_HASH_14 | 0x0714 | 48 | Single |
-| 30 | CPTRA_CORE_PQC_KEY_TYPE_14 | 0x0744 | 4 | Single |
+| 30 | CPTRA_CORE_PQC_KEY_TYPE_14 | 0x0744 | 4 | OneHotLinearMajorityVote(3x) |
 | 31 | CPTRA_CORE_VENDOR_PK_HASH_15 | 0x0748 | 48 | Single |
-| 32 | CPTRA_CORE_PQC_KEY_TYPE_15 | 0x0778 | 4 | Single |
-| 33 | CPTRA_CORE_VENDOR_PK_HASH_VALID | 0x077c | 16 | Single |
+| 32 | CPTRA_CORE_PQC_KEY_TYPE_15 | 0x0778 | 4 | OneHotLinearMajorityVote(3x) |
+| 33 | CPTRA_CORE_VENDOR_PK_HASH_VALID | 0x077c | 16 | LinearMajorityVote(8x) |
 
 ### vendor_revocations_prod_partition (partition 12)
 
@@ -163,54 +163,54 @@
 | 0 | CPTRA_SS_OWNER_ECC_REVOCATION | 0x0798 | 4 | Single |
 | 1 | CPTRA_SS_OWNER_LMS_REVOCATION | 0x079c | 4 | Single |
 | 2 | CPTRA_SS_OWNER_MLDSA_REVOCATION | 0x07a0 | 4 | Single |
-| 3 | CPTRA_CORE_ECC_REVOCATION_0 | 0x07a4 | 4 | Single |
-| 4 | CPTRA_CORE_LMS_REVOCATION_0 | 0x07a8 | 4 | Single |
-| 5 | CPTRA_CORE_MLDSA_REVOCATION_0 | 0x07ac | 4 | Single |
-| 6 | CPTRA_CORE_ECC_REVOCATION_1 | 0x07b0 | 4 | Single |
-| 7 | CPTRA_CORE_LMS_REVOCATION_1 | 0x07b4 | 4 | Single |
-| 8 | CPTRA_CORE_MLDSA_REVOCATION_1 | 0x07b8 | 4 | Single |
-| 9 | CPTRA_CORE_ECC_REVOCATION_2 | 0x07bc | 4 | Single |
-| 10 | CPTRA_CORE_LMS_REVOCATION_2 | 0x07c0 | 4 | Single |
-| 11 | CPTRA_CORE_MLDSA_REVOCATION_2 | 0x07c4 | 4 | Single |
-| 12 | CPTRA_CORE_ECC_REVOCATION_3 | 0x07c8 | 4 | Single |
-| 13 | CPTRA_CORE_LMS_REVOCATION_3 | 0x07cc | 4 | Single |
-| 14 | CPTRA_CORE_MLDSA_REVOCATION_3 | 0x07d0 | 4 | Single |
-| 15 | CPTRA_CORE_ECC_REVOCATION_4 | 0x07d4 | 4 | Single |
-| 16 | CPTRA_CORE_LMS_REVOCATION_4 | 0x07d8 | 4 | Single |
-| 17 | CPTRA_CORE_MLDSA_REVOCATION_4 | 0x07dc | 4 | Single |
-| 18 | CPTRA_CORE_ECC_REVOCATION_5 | 0x07e0 | 4 | Single |
-| 19 | CPTRA_CORE_LMS_REVOCATION_5 | 0x07e4 | 4 | Single |
-| 20 | CPTRA_CORE_MLDSA_REVOCATION_5 | 0x07e8 | 4 | Single |
-| 21 | CPTRA_CORE_ECC_REVOCATION_6 | 0x07ec | 4 | Single |
-| 22 | CPTRA_CORE_LMS_REVOCATION_6 | 0x07f0 | 4 | Single |
-| 23 | CPTRA_CORE_MLDSA_REVOCATION_6 | 0x07f4 | 4 | Single |
-| 24 | CPTRA_CORE_ECC_REVOCATION_7 | 0x07f8 | 4 | Single |
-| 25 | CPTRA_CORE_LMS_REVOCATION_7 | 0x07fc | 4 | Single |
-| 26 | CPTRA_CORE_MLDSA_REVOCATION_7 | 0x0800 | 4 | Single |
-| 27 | CPTRA_CORE_ECC_REVOCATION_8 | 0x0804 | 4 | Single |
-| 28 | CPTRA_CORE_LMS_REVOCATION_8 | 0x0808 | 4 | Single |
-| 29 | CPTRA_CORE_MLDSA_REVOCATION_8 | 0x080c | 4 | Single |
-| 30 | CPTRA_CORE_ECC_REVOCATION_9 | 0x0810 | 4 | Single |
-| 31 | CPTRA_CORE_LMS_REVOCATION_9 | 0x0814 | 4 | Single |
-| 32 | CPTRA_CORE_MLDSA_REVOCATION_9 | 0x0818 | 4 | Single |
-| 33 | CPTRA_CORE_ECC_REVOCATION_10 | 0x081c | 4 | Single |
-| 34 | CPTRA_CORE_LMS_REVOCATION_10 | 0x0820 | 4 | Single |
-| 35 | CPTRA_CORE_MLDSA_REVOCATION_10 | 0x0824 | 4 | Single |
-| 36 | CPTRA_CORE_ECC_REVOCATION_11 | 0x0828 | 4 | Single |
-| 37 | CPTRA_CORE_LMS_REVOCATION_11 | 0x082c | 4 | Single |
-| 38 | CPTRA_CORE_MLDSA_REVOCATION_11 | 0x0830 | 4 | Single |
-| 39 | CPTRA_CORE_ECC_REVOCATION_12 | 0x0834 | 4 | Single |
-| 40 | CPTRA_CORE_LMS_REVOCATION_12 | 0x0838 | 4 | Single |
-| 41 | CPTRA_CORE_MLDSA_REVOCATION_12 | 0x083c | 4 | Single |
-| 42 | CPTRA_CORE_ECC_REVOCATION_13 | 0x0840 | 4 | Single |
-| 43 | CPTRA_CORE_LMS_REVOCATION_13 | 0x0844 | 4 | Single |
-| 44 | CPTRA_CORE_MLDSA_REVOCATION_13 | 0x0848 | 4 | Single |
-| 45 | CPTRA_CORE_ECC_REVOCATION_14 | 0x084c | 4 | Single |
-| 46 | CPTRA_CORE_LMS_REVOCATION_14 | 0x0850 | 4 | Single |
-| 47 | CPTRA_CORE_MLDSA_REVOCATION_14 | 0x0854 | 4 | Single |
-| 48 | CPTRA_CORE_ECC_REVOCATION_15 | 0x0858 | 4 | Single |
-| 49 | CPTRA_CORE_LMS_REVOCATION_15 | 0x085c | 4 | Single |
-| 50 | CPTRA_CORE_MLDSA_REVOCATION_15 | 0x0860 | 4 | Single |
+| 3 | CPTRA_CORE_ECC_REVOCATION_0 | 0x07a4 | 4 | LinearMajorityVote(3x) |
+| 4 | CPTRA_CORE_LMS_REVOCATION_0 | 0x07a8 | 4 | LinearMajorityVote(2x) |
+| 5 | CPTRA_CORE_MLDSA_REVOCATION_0 | 0x07ac | 4 | LinearMajorityVote(3x) |
+| 6 | CPTRA_CORE_ECC_REVOCATION_1 | 0x07b0 | 4 | LinearMajorityVote(3x) |
+| 7 | CPTRA_CORE_LMS_REVOCATION_1 | 0x07b4 | 4 | LinearMajorityVote(2x) |
+| 8 | CPTRA_CORE_MLDSA_REVOCATION_1 | 0x07b8 | 4 | LinearMajorityVote(3x) |
+| 9 | CPTRA_CORE_ECC_REVOCATION_2 | 0x07bc | 4 | LinearMajorityVote(3x) |
+| 10 | CPTRA_CORE_LMS_REVOCATION_2 | 0x07c0 | 4 | LinearMajorityVote(2x) |
+| 11 | CPTRA_CORE_MLDSA_REVOCATION_2 | 0x07c4 | 4 | LinearMajorityVote(3x) |
+| 12 | CPTRA_CORE_ECC_REVOCATION_3 | 0x07c8 | 4 | LinearMajorityVote(3x) |
+| 13 | CPTRA_CORE_LMS_REVOCATION_3 | 0x07cc | 4 | LinearMajorityVote(2x) |
+| 14 | CPTRA_CORE_MLDSA_REVOCATION_3 | 0x07d0 | 4 | LinearMajorityVote(3x) |
+| 15 | CPTRA_CORE_ECC_REVOCATION_4 | 0x07d4 | 4 | LinearMajorityVote(3x) |
+| 16 | CPTRA_CORE_LMS_REVOCATION_4 | 0x07d8 | 4 | LinearMajorityVote(2x) |
+| 17 | CPTRA_CORE_MLDSA_REVOCATION_4 | 0x07dc | 4 | LinearMajorityVote(3x) |
+| 18 | CPTRA_CORE_ECC_REVOCATION_5 | 0x07e0 | 4 | LinearMajorityVote(3x) |
+| 19 | CPTRA_CORE_LMS_REVOCATION_5 | 0x07e4 | 4 | LinearMajorityVote(2x) |
+| 20 | CPTRA_CORE_MLDSA_REVOCATION_5 | 0x07e8 | 4 | LinearMajorityVote(3x) |
+| 21 | CPTRA_CORE_ECC_REVOCATION_6 | 0x07ec | 4 | LinearMajorityVote(3x) |
+| 22 | CPTRA_CORE_LMS_REVOCATION_6 | 0x07f0 | 4 | LinearMajorityVote(2x) |
+| 23 | CPTRA_CORE_MLDSA_REVOCATION_6 | 0x07f4 | 4 | LinearMajorityVote(3x) |
+| 24 | CPTRA_CORE_ECC_REVOCATION_7 | 0x07f8 | 4 | LinearMajorityVote(3x) |
+| 25 | CPTRA_CORE_LMS_REVOCATION_7 | 0x07fc | 4 | LinearMajorityVote(2x) |
+| 26 | CPTRA_CORE_MLDSA_REVOCATION_7 | 0x0800 | 4 | LinearMajorityVote(3x) |
+| 27 | CPTRA_CORE_ECC_REVOCATION_8 | 0x0804 | 4 | LinearMajorityVote(3x) |
+| 28 | CPTRA_CORE_LMS_REVOCATION_8 | 0x0808 | 4 | LinearMajorityVote(2x) |
+| 29 | CPTRA_CORE_MLDSA_REVOCATION_8 | 0x080c | 4 | LinearMajorityVote(3x) |
+| 30 | CPTRA_CORE_ECC_REVOCATION_9 | 0x0810 | 4 | LinearMajorityVote(3x) |
+| 31 | CPTRA_CORE_LMS_REVOCATION_9 | 0x0814 | 4 | LinearMajorityVote(2x) |
+| 32 | CPTRA_CORE_MLDSA_REVOCATION_9 | 0x0818 | 4 | LinearMajorityVote(3x) |
+| 33 | CPTRA_CORE_ECC_REVOCATION_10 | 0x081c | 4 | LinearMajorityVote(3x) |
+| 34 | CPTRA_CORE_LMS_REVOCATION_10 | 0x0820 | 4 | LinearMajorityVote(2x) |
+| 35 | CPTRA_CORE_MLDSA_REVOCATION_10 | 0x0824 | 4 | LinearMajorityVote(3x) |
+| 36 | CPTRA_CORE_ECC_REVOCATION_11 | 0x0828 | 4 | LinearMajorityVote(3x) |
+| 37 | CPTRA_CORE_LMS_REVOCATION_11 | 0x082c | 4 | LinearMajorityVote(2x) |
+| 38 | CPTRA_CORE_MLDSA_REVOCATION_11 | 0x0830 | 4 | LinearMajorityVote(3x) |
+| 39 | CPTRA_CORE_ECC_REVOCATION_12 | 0x0834 | 4 | LinearMajorityVote(3x) |
+| 40 | CPTRA_CORE_LMS_REVOCATION_12 | 0x0838 | 4 | LinearMajorityVote(2x) |
+| 41 | CPTRA_CORE_MLDSA_REVOCATION_12 | 0x083c | 4 | LinearMajorityVote(3x) |
+| 42 | CPTRA_CORE_ECC_REVOCATION_13 | 0x0840 | 4 | LinearMajorityVote(3x) |
+| 43 | CPTRA_CORE_LMS_REVOCATION_13 | 0x0844 | 4 | LinearMajorityVote(2x) |
+| 44 | CPTRA_CORE_MLDSA_REVOCATION_13 | 0x0848 | 4 | LinearMajorityVote(3x) |
+| 45 | CPTRA_CORE_ECC_REVOCATION_14 | 0x084c | 4 | LinearMajorityVote(3x) |
+| 46 | CPTRA_CORE_LMS_REVOCATION_14 | 0x0850 | 4 | LinearMajorityVote(2x) |
+| 47 | CPTRA_CORE_MLDSA_REVOCATION_14 | 0x0854 | 4 | LinearMajorityVote(3x) |
+| 48 | CPTRA_CORE_ECC_REVOCATION_15 | 0x0858 | 4 | LinearMajorityVote(3x) |
+| 49 | CPTRA_CORE_LMS_REVOCATION_15 | 0x085c | 4 | LinearMajorityVote(2x) |
+| 50 | CPTRA_CORE_MLDSA_REVOCATION_15 | 0x0860 | 4 | LinearMajorityVote(3x) |
 
 ### vendor_secret_prod_partition (partition 13)
 
@@ -271,3 +271,68 @@
 | cptra_itrng_entropy_config_0 | 32 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3 | Single | Entropy config 0: Low threshold (bits 15:0), High threshold (bits 31:16) |
 | cptra_itrng_entropy_config_1 | 32 | VENDOR_NON_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4 | Single | Entropy config 1: Repetition count (bits 15:0), Alert threshold (bits 31:16). See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers) for details. |
 | vendor_recovery_pk_hash | 384 | VENDOR_SECRET_PROD_PARTITION | CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0 | Single | Vendor recovery key for DOT_OVERRIDE catastrophic recovery operations |
+| vendor_pk_hash_valid | 16 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_VENDOR_PK_HASH_VALID | LinearMajorityVote(8x) | Bitmask of valid vendor PK hash slots. |
+| vendor_ecc_revocation_0 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_0 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 0. |
+| vendor_mldsa_revocation_0 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_0 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 0. |
+| vendor_lms_revocation_0 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_0 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 0. |
+| vendor_ecc_revocation_1 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_1 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 1. |
+| vendor_mldsa_revocation_1 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_1 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 1. |
+| vendor_lms_revocation_1 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_1 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 1. |
+| vendor_ecc_revocation_2 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_2 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 2. |
+| vendor_mldsa_revocation_2 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_2 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 2. |
+| vendor_lms_revocation_2 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_2 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 2. |
+| vendor_ecc_revocation_3 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_3 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 3. |
+| vendor_mldsa_revocation_3 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_3 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 3. |
+| vendor_lms_revocation_3 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_3 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 3. |
+| vendor_ecc_revocation_4 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_4 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 4. |
+| vendor_mldsa_revocation_4 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_4 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 4. |
+| vendor_lms_revocation_4 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_4 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 4. |
+| vendor_ecc_revocation_5 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_5 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 5. |
+| vendor_mldsa_revocation_5 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_5 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 5. |
+| vendor_lms_revocation_5 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_5 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 5. |
+| vendor_ecc_revocation_6 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_6 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 6. |
+| vendor_mldsa_revocation_6 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_6 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 6. |
+| vendor_lms_revocation_6 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_6 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 6. |
+| vendor_ecc_revocation_7 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_7 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 7. |
+| vendor_mldsa_revocation_7 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_7 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 7. |
+| vendor_lms_revocation_7 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_7 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 7. |
+| vendor_ecc_revocation_8 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_8 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 8. |
+| vendor_mldsa_revocation_8 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_8 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 8. |
+| vendor_lms_revocation_8 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_8 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 8. |
+| vendor_ecc_revocation_9 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_9 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 9. |
+| vendor_mldsa_revocation_9 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_9 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 9. |
+| vendor_lms_revocation_9 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_9 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 9. |
+| vendor_ecc_revocation_10 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_10 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 10. |
+| vendor_mldsa_revocation_10 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_10 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 10. |
+| vendor_lms_revocation_10 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_10 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 10. |
+| vendor_ecc_revocation_11 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_11 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 11. |
+| vendor_mldsa_revocation_11 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_11 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 11. |
+| vendor_lms_revocation_11 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_11 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 11. |
+| vendor_ecc_revocation_12 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_12 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 12. |
+| vendor_mldsa_revocation_12 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_12 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 12. |
+| vendor_lms_revocation_12 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_12 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 12. |
+| vendor_ecc_revocation_13 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_13 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 13. |
+| vendor_mldsa_revocation_13 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_13 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 13. |
+| vendor_lms_revocation_13 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_13 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 13. |
+| vendor_ecc_revocation_14 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_14 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 14. |
+| vendor_mldsa_revocation_14 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_14 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 14. |
+| vendor_lms_revocation_14 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_14 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 14. |
+| vendor_ecc_revocation_15 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_15 | LinearMajorityVote(3x) | Revocation bits for ECC keys in slot 15. |
+| vendor_mldsa_revocation_15 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_15 | LinearMajorityVote(3x) | Revocation bits for MLDSA keys in slot 15. |
+| vendor_lms_revocation_15 | 16 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_LMS_REVOCATION_15 | LinearMajorityVote(2x) | Revocation bits for LMS keys in slot 15. |
+| vendor_pqc_key_type_0 | 2 | VENDOR_HASHES_MANUF_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_0 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 0 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_1 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_1 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 1 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_2 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_2 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 2 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_3 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_3 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 3 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_4 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_4 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 4 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_5 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_5 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 5 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_6 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_6 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 6 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_7 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_7 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 7 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_8 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_8 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 8 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_9 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_9 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 9 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_10 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_10 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 10 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_11 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_11 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 11 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_12 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_12 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 12 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_13 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_13 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 13 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_14 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_14 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 14 (1: MLDSA, 2: LMS). |
+| vendor_pqc_key_type_15 | 2 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_PQC_KEY_TYPE_15 | OneHotLinearMajorityVote(3x) | One-hot encoded PQC key type for slot 15 (1: MLDSA, 2: LMS). |
