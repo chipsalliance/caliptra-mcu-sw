@@ -34,9 +34,9 @@ use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use core::fmt::Write;
 use core::ops::Deref;
 use mcu_error::McuError;
+use registers_generated::fuses;
 #[cfg(feature = "ocp-lock")]
 use romtime::ocp_lock::HekState;
-use registers_generated::fuses;
 use romtime::{
     CaliptraSoC, HexBytes, HexWord, LifecycleControllerState, LifecycleToken, McuBootMilestones,
     McuRomBootStatus,

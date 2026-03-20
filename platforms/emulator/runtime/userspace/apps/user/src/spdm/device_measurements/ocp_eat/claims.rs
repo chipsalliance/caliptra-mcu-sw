@@ -204,7 +204,10 @@ pub async fn generate_claims(claims_buf: &mut [u8], nonce: &[u8]) -> Measurement
         measurement_maps[i] = MeasurementMap {
             key: i as u64,
             mval: MeasurementValue {
-                version: Some(&version_fields[i].buf),
+                version: Some(VersionMap {
+                    version: &version_fields[i].buf,
+                    version_scheme: None,
+                }),
                 svn: Some(svns[i] as u64),
                 digests: Some(&digest_entries_arr[i]),
                 integrity_registers: Some(&integrity_registers_arr[i]),

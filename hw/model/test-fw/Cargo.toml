@@ -75,3 +75,8 @@ required-features = ["riscv"]
 name = "otp_blank_check"
 path = "otp_blank_check.rs"
 required-features = ["riscv"]
+
+[[bin]]
+name = "lc_ctrl"
+path = "lc_ctrl.rs"
+required-features = ["riscv"]

@@ -374,14 +374,14 @@ impl Emulator {
             .as_ref()
             .and_then(|p| Otp::read_lifecycle_from_file(p))
         {
-            let mem: [u8; otp_lifecycle::LIFECYCLE_MEM_SIZE] =
+            let mem: [u8; mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE] =
                 lc_bytes.try_into().map_err(|_| {
                     io::Error::new(
                         io::ErrorKind::InvalidData,
                         "OTP lifecycle partition has wrong size",
                     )
                 })?;
-            let (state, count) = otp_lifecycle::lc_decode_memory(&mem).map_err(|e| {
+            let (state, count) = mcu_otp_lifecycle::lc_decode_memory(&mem).map_err(|e| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("Failed to decode lifecycle from OTP fuses: {e}"),
@@ -396,7 +396,7 @@ impl Emulator {
                 DeviceLifecycle::Production => (17u8, 1u8),   // Prod
                 _ => (17u8, 1u8),
             };
-            let fuse_data = otp_lifecycle::lc_generate_memory(idx, cnt).map_err(|e| {
+            let fuse_data = mcu_otp_lifecycle::lc_generate_memory(idx, cnt).map_err(|e| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("Failed to generate lifecycle fuses: {e}"),
@@ -851,6 +851,11 @@ impl Emulator {
                 ..Default::default()
             },
         )?;
+
+        // Share OTP partition data with the LC controller for transitions.
+        let mut lc = lc;
+        lc.set_otp_partitions(otp.partitions_ref());
+
         #[cfg(any(
             feature = "test-mcu-mbox-soc-requester-loopback",
             feature = "test-caliptra-util-host-validator",

@@ -1807,8 +1807,8 @@ dependencies = [
  "lazy_static",
  "log",
  "mcu-mbox-common",
+ "mcu-otp-lifecycle",
  "mcu-testing-common",
- "otp-lifecycle",
  "p384",
  "pldm-common",
  "pldm-fw-pkg",
@@ -1910,11 +1910,11 @@ dependencies = [
  "lazy_static",
  "libc",
  "mcu-config-emulator",
+ "mcu-otp-lifecycle",
  "mcu-testing-common",
  "network-config",
  "num_enum",
  "otp-digest",
- "otp-lifecycle",
  "registers-generated",
  "semver",
  "serde",
@@ -3289,12 +3289,12 @@ dependencies = [
  "mcu-config",
  "mcu-config-fpga",
  "mcu-mbox-common",
+ "mcu-otp-lifecycle",
  "mcu-rom-common",
  "mcu-testing-common",
  "network-config",
  "nix 0.26.4",
  "ocp",
- "otp-lifecycle",
  "p384",
  "poll-common",
  "rand 0.8.5",
@@ -3386,6 +3386,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-otp-lifecycle"
+version = "0.1.0"
+dependencies = [
+ "sha3 0.10.8",
+]
+
+[[package]]
 name = "mcu-platforms-common"
 version = "0.1.0"
 dependencies = [
@@ -3419,6 +3426,7 @@ dependencies = [
  "flash-image",
  "mcu-config",
  "mcu-error",
+ "mcu-otp-lifecycle",
  "otp-digest",
  "registers-generated",
  "riscv-csr",
@@ -3927,13 +3935,6 @@ checksum = "e2355d85b9a3786f481747ced0e0ff2ba35213a1f9bd406ed906554d7af805a1"
 [[package]]
 name = "otp-digest"
 version = "0.1.0"
-
-[[package]]
-name = "otp-lifecycle"
-version = "0.1.0"
-dependencies = [
- "anyhow",
-]
 
 [[package]]
 name = "p256"
@@ -4559,6 +4560,7 @@ dependencies = [
  "caliptra-registers",
  "mcu-error",
  "mcu-mbox-common",
+ "mcu-otp-lifecycle",
  "otp-digest",
  "registers-generated",
  "riscv-csr",
