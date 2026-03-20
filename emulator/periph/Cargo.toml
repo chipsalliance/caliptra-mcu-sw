@@ -23,7 +23,7 @@ mcu-config.workspace = true
 mcu-testing-common.workspace = true
 num_enum.workspace = true
 otp-digest.workspace = true
-otp-lifecycle.workspace = true
+mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
 registers-generated.workspace = true
 semver.workspace = true
 serde_json.workspace = true

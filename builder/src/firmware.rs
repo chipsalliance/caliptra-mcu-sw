@@ -34,6 +34,12 @@ pub mod hw_model_tests {
         bin_name: "mcu-test-fw-otp-blank-check",
         features: &["emu"],
     };
+
+    pub const LC_CTRL: FwId = FwId {
+        crate_name: "mcu-test-fw-lc-ctrl",
+        bin_name: "mcu-test-fw-lc-ctrl",
+        features: &["emu"],
+    };
 }
 
 pub const REGISTERED_FW: &[&FwId] = &[
@@ -42,6 +48,7 @@ pub const REGISTERED_FW: &[&FwId] = &[
     &hw_model_tests::EXCEPTION_HANDLER,
     &hw_model_tests::SW_DIGEST_LOCK,
     &hw_model_tests::OTP_BLANK_CHECK,
+    &hw_model_tests::LC_CTRL,
 ];
 
 pub const CPTRA_REGISTERED_FW: &[&FwId] =

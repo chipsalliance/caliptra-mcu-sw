@@ -1,12 +1,34 @@
 // Licensed under the Apache-2.0 license
 
-//! OTP lifecycle state ECC encoding/decoding for the OpenTitan lifecycle controller.
+//! OTP lifecycle state ECC encoding/decoding for the lifecycle controller.
 //!
 //! Encodes and decodes the SECDED-protected lifecycle state and transition count
-//! stored in the OTP LIFE_CYCLE partition. Uses raw `u8` state indices (0–20)
-//! to avoid pulling in ROM crate dependencies.
+//! stored in the OTP LIFE_CYCLE partition.
 
-use anyhow::{bail, Result};
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
+
+/// Errors from OTP lifecycle encoding/decoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Error {
+    InvalidState,
+    InvalidCount,
+    DecodeFailed,
+}
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::InvalidState => write!(f, "invalid lifecycle state"),
+            Error::InvalidCount => write!(f, "invalid lifecycle count"),
+            Error::DecodeFailed => write!(f, "unable to decode lifecycle data"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for Error {}
+
+pub type Result<T> = core::result::Result<T, Error>;
 
 // These are the default lifecycle controller constants from the
 // standard Caliptra RTL. These can be overridden by vendors.
@@ -279,10 +301,152 @@ pub const LIFECYCLE_STATE_SIZE: usize = 40;
 pub const LIFECYCLE_COUNT_SIZE: usize = 48;
 pub const LIFECYCLE_MEM_SIZE: usize = LIFECYCLE_STATE_SIZE + LIFECYCLE_COUNT_SIZE;
 
+/// Lifecycle controller state, matching the OpenTitan LC controller encoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum LifecycleControllerState {
+    Raw = 0,
+    TestUnlocked0 = 1,
+    TestLocked0 = 2,
+    TestUnlocked1 = 3,
+    TestLocked1 = 4,
+    TestUnlocked2 = 5,
+    TestLocked2 = 6,
+    TestUnlocked3 = 7,
+    TestLocked3 = 8,
+    TestUnlocked4 = 9,
+    TestLocked4 = 10,
+    TestUnlocked5 = 11,
+    TestLocked5 = 12,
+    TestUnlocked6 = 13,
+    TestLocked6 = 14,
+    TestUnlocked7 = 15,
+    Dev = 16,
+    Prod = 17,
+    ProdEnd = 18,
+    Rma = 19,
+    Scrap = 20,
+    PostTransition = 21,
+}
+
+impl core::fmt::Display for LifecycleControllerState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Raw => write!(f, "raw"),
+            Self::TestUnlocked0 => write!(f, "test_unlocked0"),
+            Self::TestLocked0 => write!(f, "test_locked0"),
+            Self::TestUnlocked1 => write!(f, "test_unlocked1"),
+            Self::TestLocked1 => write!(f, "test_locked1"),
+            Self::TestUnlocked2 => write!(f, "test_unlocked2"),
+            Self::TestLocked2 => write!(f, "test_locked2"),
+            Self::TestUnlocked3 => write!(f, "test_unlocked3"),
+            Self::TestLocked3 => write!(f, "test_locked3"),
+            Self::TestUnlocked4 => write!(f, "test_unlocked4"),
+            Self::TestLocked4 => write!(f, "test_locked4"),
+            Self::TestUnlocked5 => write!(f, "test_unlocked5"),
+            Self::TestLocked5 => write!(f, "test_locked5"),
+            Self::TestUnlocked6 => write!(f, "test_unlocked6"),
+            Self::TestLocked6 => write!(f, "test_locked6"),
+            Self::TestUnlocked7 => write!(f, "test_unlocked7"),
+            Self::Dev => write!(f, "dev"),
+            Self::Prod => write!(f, "prod"),
+            Self::ProdEnd => write!(f, "prod_end"),
+            Self::Rma => write!(f, "rma"),
+            Self::Scrap => write!(f, "scrap"),
+            Self::PostTransition => write!(f, "post_transition"),
+        }
+    }
+}
+
+impl core::str::FromStr for LifecycleControllerState {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> core::result::Result<Self, Self::Err> {
+        match s {
+            "raw" => Ok(Self::Raw),
+            "test_unlocked0" => Ok(Self::TestUnlocked0),
+            "test_locked0" => Ok(Self::TestLocked0),
+            "test_unlocked1" => Ok(Self::TestUnlocked1),
+            "test_locked1" => Ok(Self::TestLocked1),
+            "test_unlocked2" => Ok(Self::TestUnlocked2),
+            "test_locked2" => Ok(Self::TestLocked2),
+            "test_unlocked3" => Ok(Self::TestUnlocked3),
+            "test_locked3" => Ok(Self::TestLocked3),
+            "test_unlocked4" => Ok(Self::TestUnlocked4),
+            "test_locked4" => Ok(Self::TestLocked4),
+            "test_unlocked5" => Ok(Self::TestUnlocked5),
+            "test_locked5" => Ok(Self::TestLocked5),
+            "test_unlocked6" => Ok(Self::TestUnlocked6),
+            "test_locked6" => Ok(Self::TestLocked6),
+            "test_unlocked7" => Ok(Self::TestUnlocked7),
+            "dev" | "manuf" | "manufacturing" => Ok(Self::Dev),
+            "production" | "prod" => Ok(Self::Prod),
+            "prod_end" => Ok(Self::ProdEnd),
+            "rma" => Ok(Self::Rma),
+            "scrap" => Ok(Self::Scrap),
+            "post_transition" => Ok(Self::PostTransition),
+            _ => Err("invalid lifecycle state"),
+        }
+    }
+}
+
+impl From<LifecycleControllerState> for u8 {
+    fn from(value: LifecycleControllerState) -> Self {
+        value as u8
+    }
+}
+
+impl From<u8> for LifecycleControllerState {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => Self::Raw,
+            1 => Self::TestUnlocked0,
+            2 => Self::TestLocked0,
+            3 => Self::TestUnlocked1,
+            4 => Self::TestLocked1,
+            5 => Self::TestUnlocked2,
+            6 => Self::TestLocked2,
+            7 => Self::TestUnlocked3,
+            8 => Self::TestLocked3,
+            9 => Self::TestUnlocked4,
+            10 => Self::TestLocked4,
+            11 => Self::TestUnlocked5,
+            12 => Self::TestLocked5,
+            13 => Self::TestUnlocked6,
+            14 => Self::TestLocked6,
+            15 => Self::TestUnlocked7,
+            16 => Self::Dev,
+            17 => Self::Prod,
+            18 => Self::ProdEnd,
+            19 => Self::Rma,
+            20 => Self::Scrap,
+            21 => Self::PostTransition,
+            _ => Self::Raw,
+        }
+    }
+}
+
+impl From<u32> for LifecycleControllerState {
+    fn from(value: u32) -> Self {
+        ((value & 0x1f) as u8).into()
+    }
+}
+
+/// Hash a raw LC token using cSHAKE128 with customization string "LC_CTRL".
+#[cfg(feature = "sha3")]
+pub fn hash_lc_token(raw_token: &[u8; 16]) -> [u8; 16] {
+    use sha3::{digest::ExtendableOutput, digest::Update, CShake128, CShake128Core};
+    let mut hasher: CShake128 = CShake128::from_core(CShake128Core::new(b"LC_CTRL"));
+    hasher.update(raw_token);
+    let mut output = [0u8; 16];
+    hasher.finalize_xof_into(&mut output);
+    output
+}
+
 /// Generate the OTP memory contents associated with the lifecycle state.
 pub fn lc_generate_state_mem(state: u8) -> Result<[u8; LIFECYCLE_STATE_SIZE]> {
     if state as usize >= STATES.len() {
-        bail!("Invalid lifecycle state: {:?}", state);
+        return Err(Error::InvalidState);
     }
     let mut result = [0u8; 40];
     let state_data = STATES[state as usize];
@@ -296,7 +460,7 @@ pub fn lc_generate_state_mem(state: u8) -> Result<[u8; LIFECYCLE_STATE_SIZE]> {
 /// Generate the OTP memory contents associated with the lifecycle transition count.
 pub fn lc_generate_count_mem(count: u8) -> Result<[u8; LIFECYCLE_COUNT_SIZE]> {
     if count >= COUNTS.len() as u8 {
-        bail!("Invalid lifecycle count: {:?}", count);
+        return Err(Error::InvalidCount);
     }
     let mut result = [0u8; 48];
     let count_data = COUNTS[count as usize];
@@ -331,7 +495,7 @@ pub fn lc_decode_state_mem(mem: &[u8; LIFECYCLE_STATE_SIZE]) -> Result<u8> {
             return Ok(state_idx as u8);
         }
     }
-    bail!("Unable to decode lifecycle state from OTP memory")
+    Err(Error::DecodeFailed)
 }
 
 /// Decode the lifecycle transition count from OTP memory (pre-reversal format).
@@ -345,7 +509,7 @@ pub fn lc_decode_count_mem(mem: &[u8; LIFECYCLE_COUNT_SIZE]) -> Result<u8> {
             return Ok(count_idx as u8);
         }
     }
-    bail!("Unable to decode lifecycle transition count from OTP memory")
+    Err(Error::DecodeFailed)
 }
 
 /// Decode the lifecycle state and transition count from OTP memory (as stored, i.e., reversed).
@@ -404,5 +568,13 @@ mod tests {
         let (state, count) = lc_decode_memory(&memory).unwrap();
         assert_eq!(state, 0);
         assert_eq!(count, 0);
+    }
+
+    #[cfg(feature = "sha3")]
+    #[test]
+    fn test_hash_lc_token() {
+        let raw_token: [u8; 16] = 0x05edb8c608fcc830de181732cfd65e57u128.to_le_bytes();
+        let expected: [u8; 16] = 0x9c5f6f5060437af930d06d56630a536bu128.to_le_bytes();
+        assert_eq!(hash_lc_token(&raw_token), expected);
     }
 }

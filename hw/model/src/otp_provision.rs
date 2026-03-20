@@ -2,11 +2,11 @@
 
 use anyhow::{bail, Result};
 use emulator_periph::{otp_digest, otp_scramble, otp_unscramble};
+use mcu_otp_lifecycle::hash_lc_token;
 use mcu_rom_common::LifecycleControllerState;
-use sha3::{digest::ExtendableOutput, digest::Update, CShake128, CShake128Core};
 
 // Re-export lifecycle ECC encode/decode from the common crate.
-pub use otp_lifecycle::{
+pub use mcu_otp_lifecycle::{
     lc_generate_count_mem, LIFECYCLE_COUNT_SIZE, LIFECYCLE_MEM_SIZE, LIFECYCLE_STATE_SIZE,
 };
 
@@ -14,7 +14,7 @@ pub use otp_lifecycle::{
 pub fn lc_generate_state_mem(
     state: LifecycleControllerState,
 ) -> Result<[u8; LIFECYCLE_STATE_SIZE]> {
-    otp_lifecycle::lc_generate_state_mem(u8::from(state))
+    Ok(mcu_otp_lifecycle::lc_generate_state_mem(u8::from(state))?)
 }
 
 /// Generate the OTP memory contents associated with the lifecycle state and transition count.
@@ -22,33 +22,27 @@ pub fn lc_generate_memory(
     state: LifecycleControllerState,
     transition_count: u8,
 ) -> Result<[u8; LIFECYCLE_MEM_SIZE]> {
-    otp_lifecycle::lc_generate_memory(u8::from(state), transition_count)
+    Ok(mcu_otp_lifecycle::lc_generate_memory(
+        u8::from(state),
+        transition_count,
+    )?)
 }
 
 /// Decode the lifecycle state and transition count from OTP memory (as stored, i.e., reversed).
 pub fn lc_decode_memory(mem: &[u8; LIFECYCLE_MEM_SIZE]) -> Result<(LifecycleControllerState, u8)> {
-    let (state_idx, count) = otp_lifecycle::lc_decode_memory(mem)?;
+    let (state_idx, count) = mcu_otp_lifecycle::lc_decode_memory(mem)?;
     Ok((LifecycleControllerState::from(state_idx), count))
 }
 
 /// Decode the lifecycle state from OTP memory (pre-reversal format).
 pub fn lc_decode_state_mem(mem: &[u8; LIFECYCLE_STATE_SIZE]) -> Result<LifecycleControllerState> {
-    let state_idx = otp_lifecycle::lc_decode_state_mem(mem)?;
+    let state_idx = mcu_otp_lifecycle::lc_decode_state_mem(mem)?;
     Ok(LifecycleControllerState::from(state_idx))
 }
 
 /// Decode the lifecycle transition count from OTP memory (pre-reversal format).
 pub fn lc_decode_count_mem(mem: &[u8; LIFECYCLE_COUNT_SIZE]) -> Result<u8> {
-    otp_lifecycle::lc_decode_count_mem(mem)
-}
-
-/// Hash a token using cSHAKE128 for the lifecycle controller.
-fn hash_token(raw_token: &[u8; 16]) -> [u8; 16] {
-    let mut hasher: CShake128 = CShake128::from_core(CShake128Core::new(b"LC_CTRL"));
-    hasher.update(raw_token);
-    let mut output = [0u8; 16];
-    hasher.finalize_xof_into(&mut output);
-    output
+    Ok(mcu_otp_lifecycle::lc_decode_count_mem(mem)?)
 }
 
 pub const DIGEST_SIZE: usize = 8;
@@ -108,13 +102,13 @@ pub fn otp_generate_lifecycle_tokens_mem(
 ) -> Result<[u8; LIFECYCLE_TOKENS_MEM_SIZE]> {
     let mut output = [0u8; LIFECYCLE_TOKENS_MEM_SIZE];
     for (i, token) in tokens.test_unlock.iter().enumerate() {
-        let hashed_token = hash_token(&token.0);
+        let hashed_token = hash_lc_token(&token.0);
         output[i * 16..(i + 1) * 16].copy_from_slice(&hashed_token);
     }
-    output[7 * 16..8 * 16].copy_from_slice(&hash_token(&tokens.manuf.0));
-    output[8 * 16..9 * 16].copy_from_slice(&hash_token(&tokens.manuf_to_prod.0));
-    output[9 * 16..10 * 16].copy_from_slice(&hash_token(&tokens.prod_to_prod_end.0));
-    output[10 * 16..11 * 16].copy_from_slice(&hash_token(&tokens.rma.0));
+    output[7 * 16..8 * 16].copy_from_slice(&hash_lc_token(&tokens.manuf.0));
+    output[8 * 16..9 * 16].copy_from_slice(&hash_lc_token(&tokens.manuf_to_prod.0));
+    output[9 * 16..10 * 16].copy_from_slice(&hash_lc_token(&tokens.prod_to_prod_end.0));
+    output[10 * 16..11 * 16].copy_from_slice(&hash_lc_token(&tokens.rma.0));
 
     otp_scramble_data(
         &mut output[..LIFECYCLE_TOKENS_MEM_SIZE - DIGEST_SIZE],
@@ -182,13 +176,6 @@ mod tests {
         ];
 
         assert_eq!(memory, expected);
-    }
-
-    #[test]
-    fn test_hash_token() {
-        let raw_token: [u8; 16] = 0x05edb8c608fcc830de181732cfd65e57u128.to_le_bytes();
-        let expected_hashed_token: [u8; 16] = 0x9c5f6f5060437af930d06d56630a536bu128.to_le_bytes();
-        assert_eq!(hash_token(&raw_token), expected_hashed_token);
     }
 
     #[test]

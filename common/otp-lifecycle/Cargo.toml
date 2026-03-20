@@ -1,10 +1,15 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "otp-lifecycle"
+name = "mcu-otp-lifecycle"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-anyhow.workspace = true
+sha3 = { workspace = true, optional = true }
+
+[features]
+default = []
+sha3 = ["dep:sha3"]
+std = []

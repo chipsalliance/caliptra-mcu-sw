@@ -317,6 +317,9 @@ impl McuHwModel for ModelFpgaRealtime {
                 num_prod_dbg_unlock_pk_hashes: params.num_prod_dbg_unlock_pk_hashes,
                 prod_dbg_unlock_pk_hashes_offset: params.prod_dbg_unlock_pk_hashes_offset,
                 primary_flash_initial_contents: params.primary_flash_initial_contents.as_deref(),
+                lc_state: params
+                    .lifecycle_controller_state
+                    .map(|s| caliptra_hw_model::LifecycleControllerState::from(u8::from(s))),
                 ..Default::default()
             },
         };
