@@ -571,6 +571,30 @@ impl Soc {
         // Clear the reset request interrupt
         notif0.modify(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
     }
+
+    /// Configure the Caliptra iTRNG parameters.
+    pub fn configure_itrng(&self, args: CptraItrngArgs) {
+        let bypass_mode = u32::from(args.bypass_mode) << 31;
+        let window_size = u32::from(args.window_size);
+        self.registers.ss_strap_generic[2].set(bypass_mode | window_size);
+        self.registers
+            .cptra_i_trng_entropy_config_0
+            .set(args.config0);
+        self.registers
+            .cptra_i_trng_entropy_config_1
+            .set(args.config1);
+    }
+}
+
+/// Caliptra iTRNG configuration parameters.
+///
+/// See the [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers)
+/// for more details.
+pub struct CptraItrngArgs {
+    pub bypass_mode: bool,
+    pub window_size: u16,
+    pub config0: u32,
+    pub config1: u32,
 }
 
 /// Number of users supported by the MCU MBOX ACL mechanism.
@@ -834,6 +858,9 @@ pub struct RomParameters<'a> {
     /// Required to use `Otp::compute_sw_digest` and `Otp::write_sw_digest_and_lock`.
     pub otp_digest_iv: Option<u64>,
     pub otp_digest_const: Option<u128>,
+    /// Caliptra entropy bypass mode. See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers)
+    /// for more details.
+    pub itrng_entropy_bypass_mode: bool,
 }
 
 pub fn rom_start(params: RomParameters) {

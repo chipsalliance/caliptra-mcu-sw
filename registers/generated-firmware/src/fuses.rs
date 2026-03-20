@@ -472,6 +472,18 @@ pub const NON_SECRET_VENDOR_FUSES: &[Fuse] = &[
         name: "perma_hek_en",
         size: Bytes(1),
     },
+    Fuse {
+        name: "trng_health_test_window_size",
+        size: Bytes(2),
+    },
+    Fuse {
+        name: "cptra_itrng_entropy_config_0",
+        size: Bytes(4),
+    },
+    Fuse {
+        name: "cptra_itrng_entropy_config_1",
+        size: Bytes(4),
+    },
 ];
 pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
@@ -485,6 +497,18 @@ pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
         name: "perma_hek_en",
         bits: Bits(1),
+    },
+    FuseField {
+        name: "cptra_itrng_health_test_window_size",
+        bits: Bits(16),
+    },
+    FuseField {
+        name: "cptra_itrng_entropy_config_0",
+        bits: Bits(32),
+    },
+    FuseField {
+        name: "cptra_itrng_entropy_config_1",
+        bits: Bits(32),
     },
     FuseField {
         name: "vendor_recovery_pk_hash",
@@ -783,6 +807,30 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
             bits: 1,
             duplication: 3,
         },
+    },
+    FuseEntryInfo {
+        partition_num: 14,
+        entry_num: 3,
+        byte_offset: 0xb08,
+        byte_size: 32,
+        name: "cptra_itrng_health_test_window_size",
+        layout: FuseLayoutType::Single { bits: 16 },
+    },
+    FuseEntryInfo {
+        partition_num: 14,
+        entry_num: 4,
+        byte_offset: 0xb28,
+        byte_size: 32,
+        name: "cptra_itrng_entropy_config_0",
+        layout: FuseLayoutType::Single { bits: 32 },
+    },
+    FuseEntryInfo {
+        partition_num: 14,
+        entry_num: 5,
+        byte_offset: 0xb48,
+        byte_size: 32,
+        name: "cptra_itrng_entropy_config_1",
+        layout: FuseLayoutType::Single { bits: 32 },
     },
     FuseEntryInfo {
         partition_num: 13,
@@ -1514,138 +1562,144 @@ pub const DOT_INITIALIZED: &FuseEntryInfo = &FUSE_ENTRY_TABLE[0];
 pub const DOT_FUSE_ARRAY: &FuseEntryInfo = &FUSE_ENTRY_TABLE[1];
 /// Fuse entry for `perma_hek_en`.
 pub const PERMA_HEK_EN: &FuseEntryInfo = &FUSE_ENTRY_TABLE[2];
+/// Fuse entry for `cptra_itrng_health_test_window_size`.
+pub const CPTRA_ITRNG_HEALTH_TEST_WINDOW_SIZE: &FuseEntryInfo = &FUSE_ENTRY_TABLE[3];
+/// Fuse entry for `cptra_itrng_entropy_config_0`.
+pub const CPTRA_ITRNG_ENTROPY_CONFIG_0: &FuseEntryInfo = &FUSE_ENTRY_TABLE[4];
+/// Fuse entry for `cptra_itrng_entropy_config_1`.
+pub const CPTRA_ITRNG_ENTROPY_CONFIG_1: &FuseEntryInfo = &FUSE_ENTRY_TABLE[5];
 /// Fuse entry for `vendor_recovery_pk_hash`.
-pub const VENDOR_RECOVERY_PK_HASH: &FuseEntryInfo = &FUSE_ENTRY_TABLE[3];
+pub const VENDOR_RECOVERY_PK_HASH: &FuseEntryInfo = &FUSE_ENTRY_TABLE[6];
 /// Fuse entry for `vendor_pk_hash_valid`.
-pub const VENDOR_PK_HASH_VALID: &FuseEntryInfo = &FUSE_ENTRY_TABLE[4];
+pub const VENDOR_PK_HASH_VALID: &FuseEntryInfo = &FUSE_ENTRY_TABLE[7];
 /// Fuse entry for `vendor_ecc_revocation_0`.
-pub const VENDOR_ECC_REVOCATION_0: &FuseEntryInfo = &FUSE_ENTRY_TABLE[5];
+pub const VENDOR_ECC_REVOCATION_0: &FuseEntryInfo = &FUSE_ENTRY_TABLE[8];
 /// Fuse entry for `vendor_mldsa_revocation_0`.
-pub const VENDOR_MLDSA_REVOCATION_0: &FuseEntryInfo = &FUSE_ENTRY_TABLE[6];
+pub const VENDOR_MLDSA_REVOCATION_0: &FuseEntryInfo = &FUSE_ENTRY_TABLE[9];
 /// Fuse entry for `vendor_lms_revocation_0`.
-pub const VENDOR_LMS_REVOCATION_0: &FuseEntryInfo = &FUSE_ENTRY_TABLE[7];
+pub const VENDOR_LMS_REVOCATION_0: &FuseEntryInfo = &FUSE_ENTRY_TABLE[10];
 /// Fuse entry for `vendor_ecc_revocation_1`.
-pub const VENDOR_ECC_REVOCATION_1: &FuseEntryInfo = &FUSE_ENTRY_TABLE[8];
+pub const VENDOR_ECC_REVOCATION_1: &FuseEntryInfo = &FUSE_ENTRY_TABLE[11];
 /// Fuse entry for `vendor_mldsa_revocation_1`.
-pub const VENDOR_MLDSA_REVOCATION_1: &FuseEntryInfo = &FUSE_ENTRY_TABLE[9];
+pub const VENDOR_MLDSA_REVOCATION_1: &FuseEntryInfo = &FUSE_ENTRY_TABLE[12];
 /// Fuse entry for `vendor_lms_revocation_1`.
-pub const VENDOR_LMS_REVOCATION_1: &FuseEntryInfo = &FUSE_ENTRY_TABLE[10];
+pub const VENDOR_LMS_REVOCATION_1: &FuseEntryInfo = &FUSE_ENTRY_TABLE[13];
 /// Fuse entry for `vendor_ecc_revocation_2`.
-pub const VENDOR_ECC_REVOCATION_2: &FuseEntryInfo = &FUSE_ENTRY_TABLE[11];
+pub const VENDOR_ECC_REVOCATION_2: &FuseEntryInfo = &FUSE_ENTRY_TABLE[14];
 /// Fuse entry for `vendor_mldsa_revocation_2`.
-pub const VENDOR_MLDSA_REVOCATION_2: &FuseEntryInfo = &FUSE_ENTRY_TABLE[12];
+pub const VENDOR_MLDSA_REVOCATION_2: &FuseEntryInfo = &FUSE_ENTRY_TABLE[15];
 /// Fuse entry for `vendor_lms_revocation_2`.
-pub const VENDOR_LMS_REVOCATION_2: &FuseEntryInfo = &FUSE_ENTRY_TABLE[13];
+pub const VENDOR_LMS_REVOCATION_2: &FuseEntryInfo = &FUSE_ENTRY_TABLE[16];
 /// Fuse entry for `vendor_ecc_revocation_3`.
-pub const VENDOR_ECC_REVOCATION_3: &FuseEntryInfo = &FUSE_ENTRY_TABLE[14];
+pub const VENDOR_ECC_REVOCATION_3: &FuseEntryInfo = &FUSE_ENTRY_TABLE[17];
 /// Fuse entry for `vendor_mldsa_revocation_3`.
-pub const VENDOR_MLDSA_REVOCATION_3: &FuseEntryInfo = &FUSE_ENTRY_TABLE[15];
+pub const VENDOR_MLDSA_REVOCATION_3: &FuseEntryInfo = &FUSE_ENTRY_TABLE[18];
 /// Fuse entry for `vendor_lms_revocation_3`.
-pub const VENDOR_LMS_REVOCATION_3: &FuseEntryInfo = &FUSE_ENTRY_TABLE[16];
+pub const VENDOR_LMS_REVOCATION_3: &FuseEntryInfo = &FUSE_ENTRY_TABLE[19];
 /// Fuse entry for `vendor_ecc_revocation_4`.
-pub const VENDOR_ECC_REVOCATION_4: &FuseEntryInfo = &FUSE_ENTRY_TABLE[17];
+pub const VENDOR_ECC_REVOCATION_4: &FuseEntryInfo = &FUSE_ENTRY_TABLE[20];
 /// Fuse entry for `vendor_mldsa_revocation_4`.
-pub const VENDOR_MLDSA_REVOCATION_4: &FuseEntryInfo = &FUSE_ENTRY_TABLE[18];
+pub const VENDOR_MLDSA_REVOCATION_4: &FuseEntryInfo = &FUSE_ENTRY_TABLE[21];
 /// Fuse entry for `vendor_lms_revocation_4`.
-pub const VENDOR_LMS_REVOCATION_4: &FuseEntryInfo = &FUSE_ENTRY_TABLE[19];
+pub const VENDOR_LMS_REVOCATION_4: &FuseEntryInfo = &FUSE_ENTRY_TABLE[22];
 /// Fuse entry for `vendor_ecc_revocation_5`.
-pub const VENDOR_ECC_REVOCATION_5: &FuseEntryInfo = &FUSE_ENTRY_TABLE[20];
+pub const VENDOR_ECC_REVOCATION_5: &FuseEntryInfo = &FUSE_ENTRY_TABLE[23];
 /// Fuse entry for `vendor_mldsa_revocation_5`.
-pub const VENDOR_MLDSA_REVOCATION_5: &FuseEntryInfo = &FUSE_ENTRY_TABLE[21];
+pub const VENDOR_MLDSA_REVOCATION_5: &FuseEntryInfo = &FUSE_ENTRY_TABLE[24];
 /// Fuse entry for `vendor_lms_revocation_5`.
-pub const VENDOR_LMS_REVOCATION_5: &FuseEntryInfo = &FUSE_ENTRY_TABLE[22];
+pub const VENDOR_LMS_REVOCATION_5: &FuseEntryInfo = &FUSE_ENTRY_TABLE[25];
 /// Fuse entry for `vendor_ecc_revocation_6`.
-pub const VENDOR_ECC_REVOCATION_6: &FuseEntryInfo = &FUSE_ENTRY_TABLE[23];
+pub const VENDOR_ECC_REVOCATION_6: &FuseEntryInfo = &FUSE_ENTRY_TABLE[26];
 /// Fuse entry for `vendor_mldsa_revocation_6`.
-pub const VENDOR_MLDSA_REVOCATION_6: &FuseEntryInfo = &FUSE_ENTRY_TABLE[24];
+pub const VENDOR_MLDSA_REVOCATION_6: &FuseEntryInfo = &FUSE_ENTRY_TABLE[27];
 /// Fuse entry for `vendor_lms_revocation_6`.
-pub const VENDOR_LMS_REVOCATION_6: &FuseEntryInfo = &FUSE_ENTRY_TABLE[25];
+pub const VENDOR_LMS_REVOCATION_6: &FuseEntryInfo = &FUSE_ENTRY_TABLE[28];
 /// Fuse entry for `vendor_ecc_revocation_7`.
-pub const VENDOR_ECC_REVOCATION_7: &FuseEntryInfo = &FUSE_ENTRY_TABLE[26];
+pub const VENDOR_ECC_REVOCATION_7: &FuseEntryInfo = &FUSE_ENTRY_TABLE[29];
 /// Fuse entry for `vendor_mldsa_revocation_7`.
-pub const VENDOR_MLDSA_REVOCATION_7: &FuseEntryInfo = &FUSE_ENTRY_TABLE[27];
+pub const VENDOR_MLDSA_REVOCATION_7: &FuseEntryInfo = &FUSE_ENTRY_TABLE[30];
 /// Fuse entry for `vendor_lms_revocation_7`.
-pub const VENDOR_LMS_REVOCATION_7: &FuseEntryInfo = &FUSE_ENTRY_TABLE[28];
+pub const VENDOR_LMS_REVOCATION_7: &FuseEntryInfo = &FUSE_ENTRY_TABLE[31];
 /// Fuse entry for `vendor_ecc_revocation_8`.
-pub const VENDOR_ECC_REVOCATION_8: &FuseEntryInfo = &FUSE_ENTRY_TABLE[29];
+pub const VENDOR_ECC_REVOCATION_8: &FuseEntryInfo = &FUSE_ENTRY_TABLE[32];
 /// Fuse entry for `vendor_mldsa_revocation_8`.
-pub const VENDOR_MLDSA_REVOCATION_8: &FuseEntryInfo = &FUSE_ENTRY_TABLE[30];
+pub const VENDOR_MLDSA_REVOCATION_8: &FuseEntryInfo = &FUSE_ENTRY_TABLE[33];
 /// Fuse entry for `vendor_lms_revocation_8`.
-pub const VENDOR_LMS_REVOCATION_8: &FuseEntryInfo = &FUSE_ENTRY_TABLE[31];
+pub const VENDOR_LMS_REVOCATION_8: &FuseEntryInfo = &FUSE_ENTRY_TABLE[34];
 /// Fuse entry for `vendor_ecc_revocation_9`.
-pub const VENDOR_ECC_REVOCATION_9: &FuseEntryInfo = &FUSE_ENTRY_TABLE[32];
+pub const VENDOR_ECC_REVOCATION_9: &FuseEntryInfo = &FUSE_ENTRY_TABLE[35];
 /// Fuse entry for `vendor_mldsa_revocation_9`.
-pub const VENDOR_MLDSA_REVOCATION_9: &FuseEntryInfo = &FUSE_ENTRY_TABLE[33];
+pub const VENDOR_MLDSA_REVOCATION_9: &FuseEntryInfo = &FUSE_ENTRY_TABLE[36];
 /// Fuse entry for `vendor_lms_revocation_9`.
-pub const VENDOR_LMS_REVOCATION_9: &FuseEntryInfo = &FUSE_ENTRY_TABLE[34];
+pub const VENDOR_LMS_REVOCATION_9: &FuseEntryInfo = &FUSE_ENTRY_TABLE[37];
 /// Fuse entry for `vendor_ecc_revocation_10`.
-pub const VENDOR_ECC_REVOCATION_10: &FuseEntryInfo = &FUSE_ENTRY_TABLE[35];
+pub const VENDOR_ECC_REVOCATION_10: &FuseEntryInfo = &FUSE_ENTRY_TABLE[38];
 /// Fuse entry for `vendor_mldsa_revocation_10`.
-pub const VENDOR_MLDSA_REVOCATION_10: &FuseEntryInfo = &FUSE_ENTRY_TABLE[36];
+pub const VENDOR_MLDSA_REVOCATION_10: &FuseEntryInfo = &FUSE_ENTRY_TABLE[39];
 /// Fuse entry for `vendor_lms_revocation_10`.
-pub const VENDOR_LMS_REVOCATION_10: &FuseEntryInfo = &FUSE_ENTRY_TABLE[37];
+pub const VENDOR_LMS_REVOCATION_10: &FuseEntryInfo = &FUSE_ENTRY_TABLE[40];
 /// Fuse entry for `vendor_ecc_revocation_11`.
-pub const VENDOR_ECC_REVOCATION_11: &FuseEntryInfo = &FUSE_ENTRY_TABLE[38];
+pub const VENDOR_ECC_REVOCATION_11: &FuseEntryInfo = &FUSE_ENTRY_TABLE[41];
 /// Fuse entry for `vendor_mldsa_revocation_11`.
-pub const VENDOR_MLDSA_REVOCATION_11: &FuseEntryInfo = &FUSE_ENTRY_TABLE[39];
+pub const VENDOR_MLDSA_REVOCATION_11: &FuseEntryInfo = &FUSE_ENTRY_TABLE[42];
 /// Fuse entry for `vendor_lms_revocation_11`.
-pub const VENDOR_LMS_REVOCATION_11: &FuseEntryInfo = &FUSE_ENTRY_TABLE[40];
+pub const VENDOR_LMS_REVOCATION_11: &FuseEntryInfo = &FUSE_ENTRY_TABLE[43];
 /// Fuse entry for `vendor_ecc_revocation_12`.
-pub const VENDOR_ECC_REVOCATION_12: &FuseEntryInfo = &FUSE_ENTRY_TABLE[41];
+pub const VENDOR_ECC_REVOCATION_12: &FuseEntryInfo = &FUSE_ENTRY_TABLE[44];
 /// Fuse entry for `vendor_mldsa_revocation_12`.
-pub const VENDOR_MLDSA_REVOCATION_12: &FuseEntryInfo = &FUSE_ENTRY_TABLE[42];
+pub const VENDOR_MLDSA_REVOCATION_12: &FuseEntryInfo = &FUSE_ENTRY_TABLE[45];
 /// Fuse entry for `vendor_lms_revocation_12`.
-pub const VENDOR_LMS_REVOCATION_12: &FuseEntryInfo = &FUSE_ENTRY_TABLE[43];
+pub const VENDOR_LMS_REVOCATION_12: &FuseEntryInfo = &FUSE_ENTRY_TABLE[46];
 /// Fuse entry for `vendor_ecc_revocation_13`.
-pub const VENDOR_ECC_REVOCATION_13: &FuseEntryInfo = &FUSE_ENTRY_TABLE[44];
+pub const VENDOR_ECC_REVOCATION_13: &FuseEntryInfo = &FUSE_ENTRY_TABLE[47];
 /// Fuse entry for `vendor_mldsa_revocation_13`.
-pub const VENDOR_MLDSA_REVOCATION_13: &FuseEntryInfo = &FUSE_ENTRY_TABLE[45];
+pub const VENDOR_MLDSA_REVOCATION_13: &FuseEntryInfo = &FUSE_ENTRY_TABLE[48];
 /// Fuse entry for `vendor_lms_revocation_13`.
-pub const VENDOR_LMS_REVOCATION_13: &FuseEntryInfo = &FUSE_ENTRY_TABLE[46];
+pub const VENDOR_LMS_REVOCATION_13: &FuseEntryInfo = &FUSE_ENTRY_TABLE[49];
 /// Fuse entry for `vendor_ecc_revocation_14`.
-pub const VENDOR_ECC_REVOCATION_14: &FuseEntryInfo = &FUSE_ENTRY_TABLE[47];
+pub const VENDOR_ECC_REVOCATION_14: &FuseEntryInfo = &FUSE_ENTRY_TABLE[50];
 /// Fuse entry for `vendor_mldsa_revocation_14`.
-pub const VENDOR_MLDSA_REVOCATION_14: &FuseEntryInfo = &FUSE_ENTRY_TABLE[48];
+pub const VENDOR_MLDSA_REVOCATION_14: &FuseEntryInfo = &FUSE_ENTRY_TABLE[51];
 /// Fuse entry for `vendor_lms_revocation_14`.
-pub const VENDOR_LMS_REVOCATION_14: &FuseEntryInfo = &FUSE_ENTRY_TABLE[49];
+pub const VENDOR_LMS_REVOCATION_14: &FuseEntryInfo = &FUSE_ENTRY_TABLE[52];
 /// Fuse entry for `vendor_ecc_revocation_15`.
-pub const VENDOR_ECC_REVOCATION_15: &FuseEntryInfo = &FUSE_ENTRY_TABLE[50];
+pub const VENDOR_ECC_REVOCATION_15: &FuseEntryInfo = &FUSE_ENTRY_TABLE[53];
 /// Fuse entry for `vendor_mldsa_revocation_15`.
-pub const VENDOR_MLDSA_REVOCATION_15: &FuseEntryInfo = &FUSE_ENTRY_TABLE[51];
+pub const VENDOR_MLDSA_REVOCATION_15: &FuseEntryInfo = &FUSE_ENTRY_TABLE[54];
 /// Fuse entry for `vendor_lms_revocation_15`.
-pub const VENDOR_LMS_REVOCATION_15: &FuseEntryInfo = &FUSE_ENTRY_TABLE[52];
+pub const VENDOR_LMS_REVOCATION_15: &FuseEntryInfo = &FUSE_ENTRY_TABLE[55];
 /// Fuse entry for `vendor_pqc_key_type_0`.
-pub const VENDOR_PQC_KEY_TYPE_0: &FuseEntryInfo = &FUSE_ENTRY_TABLE[53];
+pub const VENDOR_PQC_KEY_TYPE_0: &FuseEntryInfo = &FUSE_ENTRY_TABLE[56];
 /// Fuse entry for `vendor_pqc_key_type_1`.
-pub const VENDOR_PQC_KEY_TYPE_1: &FuseEntryInfo = &FUSE_ENTRY_TABLE[54];
+pub const VENDOR_PQC_KEY_TYPE_1: &FuseEntryInfo = &FUSE_ENTRY_TABLE[57];
 /// Fuse entry for `vendor_pqc_key_type_2`.
-pub const VENDOR_PQC_KEY_TYPE_2: &FuseEntryInfo = &FUSE_ENTRY_TABLE[55];
+pub const VENDOR_PQC_KEY_TYPE_2: &FuseEntryInfo = &FUSE_ENTRY_TABLE[58];
 /// Fuse entry for `vendor_pqc_key_type_3`.
-pub const VENDOR_PQC_KEY_TYPE_3: &FuseEntryInfo = &FUSE_ENTRY_TABLE[56];
+pub const VENDOR_PQC_KEY_TYPE_3: &FuseEntryInfo = &FUSE_ENTRY_TABLE[59];
 /// Fuse entry for `vendor_pqc_key_type_4`.
-pub const VENDOR_PQC_KEY_TYPE_4: &FuseEntryInfo = &FUSE_ENTRY_TABLE[57];
+pub const VENDOR_PQC_KEY_TYPE_4: &FuseEntryInfo = &FUSE_ENTRY_TABLE[60];
 /// Fuse entry for `vendor_pqc_key_type_5`.
-pub const VENDOR_PQC_KEY_TYPE_5: &FuseEntryInfo = &FUSE_ENTRY_TABLE[58];
+pub const VENDOR_PQC_KEY_TYPE_5: &FuseEntryInfo = &FUSE_ENTRY_TABLE[61];
 /// Fuse entry for `vendor_pqc_key_type_6`.
-pub const VENDOR_PQC_KEY_TYPE_6: &FuseEntryInfo = &FUSE_ENTRY_TABLE[59];
+pub const VENDOR_PQC_KEY_TYPE_6: &FuseEntryInfo = &FUSE_ENTRY_TABLE[62];
 /// Fuse entry for `vendor_pqc_key_type_7`.
-pub const VENDOR_PQC_KEY_TYPE_7: &FuseEntryInfo = &FUSE_ENTRY_TABLE[60];
+pub const VENDOR_PQC_KEY_TYPE_7: &FuseEntryInfo = &FUSE_ENTRY_TABLE[63];
 /// Fuse entry for `vendor_pqc_key_type_8`.
-pub const VENDOR_PQC_KEY_TYPE_8: &FuseEntryInfo = &FUSE_ENTRY_TABLE[61];
+pub const VENDOR_PQC_KEY_TYPE_8: &FuseEntryInfo = &FUSE_ENTRY_TABLE[64];
 /// Fuse entry for `vendor_pqc_key_type_9`.
-pub const VENDOR_PQC_KEY_TYPE_9: &FuseEntryInfo = &FUSE_ENTRY_TABLE[62];
+pub const VENDOR_PQC_KEY_TYPE_9: &FuseEntryInfo = &FUSE_ENTRY_TABLE[65];
 /// Fuse entry for `vendor_pqc_key_type_10`.
-pub const VENDOR_PQC_KEY_TYPE_10: &FuseEntryInfo = &FUSE_ENTRY_TABLE[63];
+pub const VENDOR_PQC_KEY_TYPE_10: &FuseEntryInfo = &FUSE_ENTRY_TABLE[66];
 /// Fuse entry for `vendor_pqc_key_type_11`.
-pub const VENDOR_PQC_KEY_TYPE_11: &FuseEntryInfo = &FUSE_ENTRY_TABLE[64];
+pub const VENDOR_PQC_KEY_TYPE_11: &FuseEntryInfo = &FUSE_ENTRY_TABLE[67];
 /// Fuse entry for `vendor_pqc_key_type_12`.
-pub const VENDOR_PQC_KEY_TYPE_12: &FuseEntryInfo = &FUSE_ENTRY_TABLE[65];
+pub const VENDOR_PQC_KEY_TYPE_12: &FuseEntryInfo = &FUSE_ENTRY_TABLE[68];
 /// Fuse entry for `vendor_pqc_key_type_13`.
-pub const VENDOR_PQC_KEY_TYPE_13: &FuseEntryInfo = &FUSE_ENTRY_TABLE[66];
+pub const VENDOR_PQC_KEY_TYPE_13: &FuseEntryInfo = &FUSE_ENTRY_TABLE[69];
 /// Fuse entry for `vendor_pqc_key_type_14`.
-pub const VENDOR_PQC_KEY_TYPE_14: &FuseEntryInfo = &FUSE_ENTRY_TABLE[67];
+pub const VENDOR_PQC_KEY_TYPE_14: &FuseEntryInfo = &FUSE_ENTRY_TABLE[70];
 /// Fuse entry for `vendor_pqc_key_type_15`.
-pub const VENDOR_PQC_KEY_TYPE_15: &FuseEntryInfo = &FUSE_ENTRY_TABLE[68];
+pub const VENDOR_PQC_KEY_TYPE_15: &FuseEntryInfo = &FUSE_ENTRY_TABLE[71];
 /// OTP item entry for `CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN`.
 pub const OTP_CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 0,
@@ -3071,32 +3125,32 @@ pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_2: &FuseEntryInfo = &Fuse
         duplication: 3,
     },
 };
-/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3`.
+/// OTP item entry for `cptra_itrng_health_test_window_size`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 3,
     byte_offset: 0xb08,
     byte_size: 32,
-    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_3",
-    layout: FuseLayoutType::Single { bits: 256 },
+    name: "cptra_itrng_health_test_window_size",
+    layout: FuseLayoutType::Single { bits: 16 },
 };
-/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4`.
+/// OTP item entry for `cptra_itrng_entropy_config_0`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 4,
     byte_offset: 0xb28,
     byte_size: 32,
-    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_4",
-    layout: FuseLayoutType::Single { bits: 256 },
+    name: "cptra_itrng_entropy_config_0",
+    layout: FuseLayoutType::Single { bits: 32 },
 };
-/// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5`.
+/// OTP item entry for `cptra_itrng_entropy_config_1`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5: &FuseEntryInfo = &FuseEntryInfo {
     partition_num: 14,
     entry_num: 5,
     byte_offset: 0xb48,
     byte_size: 32,
-    name: "CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_5",
-    layout: FuseLayoutType::Single { bits: 256 },
+    name: "cptra_itrng_entropy_config_1",
+    layout: FuseLayoutType::Single { bits: 32 },
 };
 /// OTP item entry for `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6`.
 pub const OTP_CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_6: &FuseEntryInfo = &FuseEntryInfo {
