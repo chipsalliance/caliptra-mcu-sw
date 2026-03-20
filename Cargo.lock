@@ -1972,6 +1972,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-network-app-boot-source"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-flash-image",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-network-app-rom-test"
 version = "0.1.0"
 dependencies = [

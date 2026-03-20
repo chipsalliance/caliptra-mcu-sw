@@ -41,6 +41,7 @@ members = [
     "hw/model/test-fw/usb-ocp-recovery",
     "hw/model/test-fw/usb-responder",
     "network/app/example",
+    "network/app/boot-source",
     "network/boot-source-protocol",
     "network/config",
     "network/drivers",
@@ -309,6 +310,7 @@ caliptra-mcu-test-harness = {path = "platforms/test_harness"}
 caliptra-mcu-lwip-rs = { path = "network/net/lwip-rs", default-features = false }
 caliptra-mcu-ocp = { path = "common/ocp" }
 caliptra-mcu-boot-source-protocol = { path = "network/boot-source-protocol", package = "boot-source-protocol" }
+caliptra-mcu-network-app-boot-source = { path = "network/app/boot-source" }
 caliptra-mcu-network-app-rom-test = { path = "network/app/test" }
 caliptra-mcu-network-config = { path = "network/config" }
 caliptra-mcu-network-drivers = { path = "network/drivers" }
