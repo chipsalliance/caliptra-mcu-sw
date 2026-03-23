@@ -12,6 +12,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use crate::error::OcpError;
 use crate::protocol::RecoveryCommand;
+use crate::usb::descriptors::DescriptorType;
 
 /// Wire size of a USB SETUP packet in bytes (USB 2.0 Table 9-2).
 pub const SETUP_PACKET_LEN: usize = 8;
@@ -190,6 +191,16 @@ impl SetupPacket {
         } else {
             None
         }
+    }
+
+    /// For GET_DESCRIPTOR requests, return the descriptor type from `wValue[1]`.
+    pub fn descriptor_type(&self) -> Option<DescriptorType> {
+        DescriptorType::try_from(self.w_value[1]).ok()
+    }
+
+    /// For GET_DESCRIPTOR requests, return the descriptor index from `wValue[0]`.
+    pub fn descriptor_index(&self) -> u8 {
+        self.w_value[0]
     }
 
     /// Returns the RecoveryCommand if this is an OCP Recovery Command, and it contains a valid
