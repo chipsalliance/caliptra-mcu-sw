@@ -9,3 +9,4 @@
 pub mod cms;
 pub mod error;
 pub mod protocol;
+pub mod usb;

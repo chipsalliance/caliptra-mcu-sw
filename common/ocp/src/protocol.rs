@@ -14,6 +14,8 @@ pub mod prot_cap;
 pub mod recovery_ctrl;
 pub mod recovery_status;
 
+use crate::error::OcpError;
+
 /// Recovery interface command codes.
 ///
 /// Each variant corresponds to a block command defined in the Recovery Command
@@ -36,4 +38,28 @@ pub enum RecoveryCommand {
     IndirectFifoCtrl = 0x2D,
     IndirectFifoStatus = 0x2E,
     IndirectFifoData = 0x2F,
+}
+
+impl TryFrom<u8> for RecoveryCommand {
+    type Error = OcpError;
+
+    fn try_from(val: u8) -> Result<Self, OcpError> {
+        match val {
+            0x22 => Ok(RecoveryCommand::ProtCap),
+            0x23 => Ok(RecoveryCommand::DeviceId),
+            0x24 => Ok(RecoveryCommand::DeviceStatus),
+            0x25 => Ok(RecoveryCommand::DeviceReset),
+            0x26 => Ok(RecoveryCommand::RecoveryCtrl),
+            0x27 => Ok(RecoveryCommand::RecoveryStatus),
+            0x28 => Ok(RecoveryCommand::HwStatus),
+            0x29 => Ok(RecoveryCommand::IndirectCtrl),
+            0x2A => Ok(RecoveryCommand::IndirectStatus),
+            0x2B => Ok(RecoveryCommand::IndirectData),
+            0x2C => Ok(RecoveryCommand::Vendor),
+            0x2D => Ok(RecoveryCommand::IndirectFifoCtrl),
+            0x2E => Ok(RecoveryCommand::IndirectFifoStatus),
+            0x2F => Ok(RecoveryCommand::IndirectFifoData),
+            _ => Err(OcpError::InvalidOcpRecoveryCommand),
+        }
+    }
 }
