@@ -217,7 +217,7 @@ enum Commands {
         #[arg(long)]
         emulator_bundle: Option<PathBuf>,
     },
-    /// Autogenerate register files and emulator bus from RDL
+    /// Autogenerate register files, fuse files and emulator bus from RDL
     RegistersAutogen {
         /// Check output only
         #[arg(short, long, default_value_t = false)]
