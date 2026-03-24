@@ -3,4 +3,5 @@
 //! OCP Recovery over USB transport definitions (spec Section 8.5).
 
 pub mod descriptors;
+pub mod driver;
 pub mod setup;

@@ -3456,6 +3456,7 @@ dependencies = [
  "mcu-error",
  "mcu-image-header",
  "mcu-rom-common",
+ "ocp",
  "registers-generated",
  "riscv-csr",
  "romtime",

@@ -217,6 +217,7 @@ mcu-platforms-common = { path = "platforms/common" }
 mcu-rom-common = { path = "rom" }
 mcu-test-harness = {path = "platforms/test_harness"}
 lwip-rs = { path = "network/net/lwip-rs" }
+ocp = { path = "common/ocp" }
 network-config = { path = "network/config" }
 network-rom = { path = "network/rom" }
 mcu-testing-common = { path = "common/testing" }
