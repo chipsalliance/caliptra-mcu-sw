@@ -70,11 +70,11 @@ pub(crate) enum Fpga {
         otp: Option<PathBuf>,
 
         /// Save OTP memory to a file after running.
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         save_otp: bool,
 
         /// Run UDS provisioning flow
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         uds: bool,
 
         /// Number of "steps" to run the FPGA before stopping
@@ -82,7 +82,7 @@ pub(crate) enum Fpga {
         steps: u64,
 
         /// Whether to disable the recovery interface and I3C
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         no_recovery: bool,
 
         /// Lifecycle controller state to set (raw, test_unlocked0, manufacturing, prod, etc.).
@@ -96,7 +96,7 @@ pub(crate) enum Fpga {
         target_host: Option<String>,
 
         /// Only Build MCU binaries
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         mcu: bool,
 
         /// Only build the specified Caliptra Firmware
@@ -125,7 +125,7 @@ pub(crate) enum Fpga {
         #[arg(long)]
         test_filter: Option<String>,
         /// Print test output during execution.
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         test_output: bool,
     },
 }
