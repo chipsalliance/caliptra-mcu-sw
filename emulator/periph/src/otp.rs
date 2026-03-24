@@ -370,7 +370,10 @@ impl Otp {
     }
 
     fn load_state(&mut self, state: &OtpState) {
-        *self.partitions.borrow_mut() = state.partitions.clone();
+        let mut parts = self.partitions.borrow_mut();
+        let copy_len = state.partitions.len().min(parts.len());
+        parts[..copy_len].copy_from_slice(&state.partitions[..copy_len]);
+        drop(parts);
         self.calculate_digests_on_reset = state.calculate_digests_on_reset.clone();
         self.digests.copy_from_slice(&state.digests);
         // Restore ECC RAMs for partitions that are both saved and enabled.
@@ -429,7 +432,7 @@ impl Otp {
 const OTP_ERR_MACRO_WRITE_BLANK: u32 = 4;
 
 /// Number of OTP err_code registers (one per partition + DAI + LCI agents).
-const NUM_ERR_CODE_REGISTERS: usize = 18;
+const NUM_ERR_CODE_REGISTERS: usize = 17;
 
 /// Returns true if `byte_addr` falls within a 64-bit access granule region
 /// (digest field or secret partition data). Non-secret partition data uses
@@ -683,15 +686,6 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[16])
     }
-    fn read_err_code_rf_err_code_17(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
-    > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[17])
-    }
-
     fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> RvData {
         self.direct_access_buffer
     }
