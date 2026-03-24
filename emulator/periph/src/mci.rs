@@ -255,10 +255,15 @@ impl MciPeripheral for Mci {
         // emulator this sets a shared flag that LcCtrl checks on next register
         // read, causing it to reload its state from OTP.
         const CMD_RELEASE_FC_LCC_RESET: u32 = 0x92;
+        const CMD_FC_FORCE_ZEROIZATION: u32 = 0x96;
         if val == CMD_RELEASE_FC_LCC_RESET {
             if let Some(flag) = &self.lc_reload_flag {
                 flag.set(true);
             }
+        } else if val == CMD_FC_FORCE_ZEROIZATION {
+            // Set bit 0 of generic_input_wires so firmware can verify
+            // the zeroization pin is asserted.
+            self.ext_mci_regs.regs.borrow_mut().generic_input_wires[0] |= 0x1;
         }
     }
 
