@@ -31,5 +31,5 @@ rv32i.workspace = true
 default = ["hw-2-1"]              # default is 2.1
 hw-2-1 = []
 core_test = ["romtime/core_test"]
-ocp-lock = []
 fw-manifest-dot = []
+ocp-lock = ["romtime/ocp-lock"]

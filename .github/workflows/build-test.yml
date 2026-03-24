@@ -109,7 +109,7 @@ jobs:
           # Build all test runtime features used by integration tests
           # Note: nightly tests (test-*-spdm-*, test-caliptra-util-host-validator) are excluded
           cargo xtask all-build --platform emulator \
-            --rom-features hw-2-1 \
+            --rom-features "hw-2-1,ocp-lock" \
             --runtime-features "${RUNTIME_FEATURES// /}" \
             --separate-runtimes
           sccache --show-stats
@@ -268,6 +268,7 @@ jobs:
         run: |
           cargo --config "$EXTRA_CARGO_CONFIG" nextest archive \
             --workspace \
+            --features ocp-lock \
             --exclude mcu-rom-emulator \
             --exclude mcu-rom-fpga \
             --exclude mcu-runtime-emulator \

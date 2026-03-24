@@ -47,6 +47,9 @@ pub use fw_hitless_update::FwHitlessUpdate;
 
 use caliptra_api::CaliptraApiError;
 
+#[cfg(feature = "ocp-lock")]
+pub use romtime::ocp_lock;
+
 pub trait FatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> !;
 }

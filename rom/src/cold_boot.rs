@@ -16,12 +16,10 @@ Abstract:
 
 use crate::boot_status::McuRomBootStatus;
 use crate::mailbox;
-#[cfg(feature = "ocp-lock")]
-use crate::HekState;
 use crate::{
     configure_mcu_mbox_axi_users, device_ownership_transfer, fatal_error,
     verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, AxiUsers, BootFlow, DotBlob,
-    McuBootMilestones, RomEnv, RomParameters, MCU_MEMORY_MAP,
+    FuseParams, McuBootMilestones, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api::mailbox::{
     CmImportReq, CmImportResp, CmKeyUsage, CmStableKeyType, Cmk, CommandId, FeProgReq,
@@ -37,6 +35,8 @@ use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use core::fmt::Write;
 use core::ops::Deref;
 use mcu_error::McuError;
+#[cfg(feature = "ocp-lock")]
+use romtime::ocp_lock::HekState;
 use romtime::{CaliptraSoC, HexBytes, HexWord, LifecycleControllerState, LifecycleToken};
 use tock_registers::interfaces::Readable;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
@@ -601,10 +601,17 @@ impl ColdBoot {
 
     /// Report HEK metadata to Caliptra ROM via the REPORT_HEK_METADATA mailbox command.
     #[cfg(feature = "ocp-lock")]
-    fn report_hek_metadata(hek_state: HekState, soc_manager: &mut romtime::CaliptraSoC) {
+    fn report_hek_metadata(hek_state: Option<HekState>, soc_manager: &mut romtime::CaliptraSoC) {
         if cfg!(feature = "core_test") {
             return;
         }
+
+        let Some(hek_state) = hek_state else {
+            romtime::println!(
+                "[mcu-rom] No valid active HEK state. Skipping reporting HEK metadata."
+            );
+            return;
+        };
 
         romtime::println!("[mcu-rom] Reporting HEK metadata");
 
@@ -651,6 +658,9 @@ impl ColdBoot {
 
 impl BootFlow for ColdBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
+        #[cfg(feature = "ocp-lock")]
+        let mut params = params;
+
         romtime::println!(
             "[mcu-rom] Starting cold boot flow at time {}",
             romtime::mcycle()
@@ -821,7 +831,15 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         romtime::println!("[mcu-rom] Populating fuses");
-        let _fuse_state = soc.populate_fuses(otp, mci);
+        let _fuse_state = soc.populate_fuses(
+            otp,
+            mci,
+            &mut FuseParams {
+                #[cfg(feature = "ocp-lock")]
+                ocp_lock_config: Some(&mut params.ocp_lock_config),
+                ..Default::default()
+            },
+        );
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
         // Configure MCU mailbox AXI users before locking

@@ -25,8 +25,8 @@ use crate::McuBootMilestones;
 use crate::RomEnv;
 use crate::WarmBoot;
 use caliptra_api::mailbox::CmStableKeyType;
-use caliptra_drivers::HekSeedState;
 use core::fmt::Write;
+use core::marker::PhantomData;
 use mcu_error::McuError;
 use registers_generated::mci;
 use registers_generated::mci::bits::SecurityState::DeviceLifecycle;
@@ -41,7 +41,6 @@ use romtime::otp::{
 use romtime::LifecycleControllerState;
 use romtime::LifecycleHashedTokens;
 use romtime::LifecycleToken;
-use romtime::HEK_OFFSETS;
 use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
@@ -54,9 +53,6 @@ const MLDSA_CALIPTRA_VALUE: u8 = 1;
 const LMS_CALIPTRA_VALUE: u8 = 3;
 const OTP_DAI_IDLE_BIT_OFFSET: u32 = 30;
 const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x80;
-
-// OCP LOCK v1.0rc2 hard codes this to 64 bytes.
-const OCP_LOCK_KEY_MEK_SIZE: u32 = 64;
 
 /// Trait for different boot flows (cold boot, warm reset, firmware update)
 pub trait BootFlow {
@@ -73,15 +69,18 @@ pub struct Soc {
     registers: StaticRef<soc::regs::Soc>,
 }
 
-/// Reports the state of Fuses back to the caller
-pub struct FuseState {
-    pub hek_state: HekState,
+#[derive(Default)]
+pub struct FuseParams<'a, 'b> {
+    #[cfg(feature = "ocp-lock")]
+    pub ocp_lock_config: Option<&'b mut romtime::ocp_lock::RomConfig<'a>>,
+    // Used to prevent compiler warnings for unused lifetime.
+    pub _inner: PhantomData<(&'a (), &'b ())>,
 }
 
-pub struct HekState {
-    pub active_state: HekSeedState,
-    pub active_slot: usize,
-    pub total_slots: usize,
+/// Reports the state of Fuses back to the caller
+pub struct FuseState {
+    #[cfg(feature = "ocp-lock")]
+    pub hek_state: Option<romtime::ocp_lock::HekState>,
 }
 
 impl Soc {
@@ -162,7 +161,12 @@ impl Soc {
     }
 
     #[inline(never)]
-    pub fn populate_fuses(&self, otp: &Otp, mci: &romtime::Mci) -> FuseState {
+    pub fn populate_fuses(
+        &self,
+        otp: &Otp,
+        mci: &romtime::Mci,
+        _params: &mut FuseParams,
+    ) -> FuseState {
         // secret fuses are populated by a hardware state machine, so we can skip those
 
         // UDS partition base address. (FE offset is calculated automatically by Caliptra ROM.)
@@ -363,8 +367,6 @@ impl Soc {
         mci.registers.mci_reg_soc_prod_debug_state[0].set(0x000000FF);
         mci.registers.mci_reg_soc_prod_debug_state[1].set(0x00000000);
 
-        let hek_state = self.set_ocp_lock_fuses(otp);
-
         // We use non secret production fuses to have caliptra tests pass some initial fuse values
         if cfg!(feature = "core_test") {
             // UDS Seed from vendor_non_secret_prod_partition (first 64 bytes)
@@ -394,97 +396,128 @@ impl Soc {
         }
 
         romtime::println!("");
-        FuseState { hek_state }
+
+        #[cfg(feature = "ocp-lock")]
+        let hek_state = if let Some(ref mut config) = _params.ocp_lock_config {
+            romtime::println!("[mcu-rom] OCP LOCK enabled");
+            // TODO(clundin): Need to communicate HEK availability to firmware.
+            match self.set_ocp_lock_fuses(otp, config) {
+                Ok(state) => Some(state),
+                Err(romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS) => None,
+                Err(_) => fatal_error(McuError::ROM_OTP_OCP_LOCK_FAILURE),
+            }
+        } else {
+            fatal_error(McuError::OCP_LOCK_ROM_MISSING_CONFIG)
+        };
+
+        FuseState {
+            #[cfg(feature = "ocp-lock")]
+            hek_state,
+        }
     }
 
     /// OCP LOCK Fuses.
-    pub fn set_ocp_lock_fuses(&self, otp: &Otp) -> HekState {
+    #[cfg(feature = "ocp-lock")]
+    pub fn set_ocp_lock_fuses(
+        &self,
+        otp: &Otp,
+        config: &mut romtime::ocp_lock::RomConfig,
+    ) -> Result<romtime::ocp_lock::HekState, romtime::ocp_lock::Error> {
         romtime::println!("[mcu-fuse-write] Attempting to write OCP LOCK fuses");
         // Key release is always 64 bytes currently
+        self.registers.ss_key_release_size.set(config.mek_size);
+
         self.registers
-            .ss_key_release_size
-            .set(OCP_LOCK_KEY_MEK_SIZE);
+            .ss_key_release_base_addr_h
+            .set((config.key_release_addr >> 32) as u32);
+        self.registers
+            .ss_key_release_base_addr_l
+            .set(config.key_release_addr as u32);
 
-        // TODO(clundin): We should pass this from OTP or similar so we can configure in
-        // caliptra-sw tests.
-        if cfg!(feature = "core_test") {
-            let key_release_addr: u64 = 0xA4010200;
-            self.registers
-                .ss_key_release_base_addr_h
-                .set((key_release_addr >> 32) as u32);
-            self.registers
-                .ss_key_release_base_addr_l
-                .set(key_release_addr as u32);
-        }
-
-        if otp
+        let perma_status = if otp
             .is_hek_perma_set()
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
         {
-            romtime::println!("[mcu-fuse-write] HEK perma bit set, using sanitized HEK");
-            for i in 0..self.registers.fuse_hek_seed.len() {
-                self.registers.fuse_hek_seed[i].set(0xFFFF_FFFF);
-            }
-            // TODO(clundin): Need to determine how to decide the active HEK.
-            // https://github.com/chipsalliance/caliptra-mcu-sw/issues/1071
-
-            return HekState {
-                active_slot: 0,
-                total_slots: HEK_OFFSETS.len(),
-                active_state: HekSeedState::Permanent,
-            };
-        }
-
-        if HEK_OFFSETS.iter().all(|&offset| {
-            otp.is_hek_unused(offset)
-                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
-        }) {
-            return HekState {
-                active_slot: 0,
-                total_slots: HEK_OFFSETS.len(),
-                active_state: HekSeedState::Unused,
-            };
-        }
-
-        // TODO(clundin): Need to determine how to decide the active HEK.
-        // https://github.com/chipsalliance/caliptra-mcu-sw/issues/1071
-        let hek_slot = HEK_OFFSETS.iter().enumerate().find(|(_slot, &offset)| {
-            !otp.is_hek_sanitized(offset)
-                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR))
-        });
-
-        let hek_state = if let Some((hek_slot, hek_offset)) = hek_slot {
-            romtime::println!(
-                "[mcu-fuse-write] Using HEK ratchet seed from offset {:x}",
-                hek_slot
-            );
-            for i in 0..self.registers.fuse_hek_seed.len() {
-                let word = otp
-                    .read_u32_at(hek_offset + i * 4)
-                    .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-                self.registers.fuse_hek_seed[i].set(word);
-            }
-            // TODO(clundin): Set a real active slot.
-            // https://github.com/chipsalliance/caliptra-mcu-sw/issues/1071
-            HekState {
-                active_slot: hek_slot,
-                total_slots: HEK_OFFSETS.len(),
-                active_state: HekSeedState::Programmed,
-            }
+            romtime::ocp_lock::PermaBitStatus::Set
         } else {
-            // TODO(clundin): Re-work the state selection.
-            // https://github.com/chipsalliance/caliptra-mcu-sw/issues/1071
-            // Didn't find any slots that weren't sanitized.
-            HekState {
-                active_slot: 0,
-                total_slots: HEK_OFFSETS.len(),
-                active_state: HekSeedState::Sanitized,
-            }
+            romtime::ocp_lock::PermaBitStatus::Unset
         };
 
+        let fuses = otp
+            .read_fuses()
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+
+        let seeds = [
+            &fuses.cptra_ss_lock_hek_prod_0,
+            &fuses.cptra_ss_lock_hek_prod_1,
+            &fuses.cptra_ss_lock_hek_prod_2,
+            &fuses.cptra_ss_lock_hek_prod_3,
+            &fuses.cptra_ss_lock_hek_prod_4,
+            &fuses.cptra_ss_lock_hek_prod_5,
+            &fuses.cptra_ss_lock_hek_prod_6,
+            &fuses.cptra_ss_lock_hek_prod_7,
+        ];
+        let total_slots = seeds.len();
+
+        let hek_seeds = romtime::ocp_lock::HekSeeds::new(&seeds[..]);
+        let active_slot = match config.get_active_slot(&perma_status, &hek_seeds) {
+            Ok(slot) => slot,
+            Err(romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS) => {
+                return Err(romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS)
+            }
+            Err(_) => fatal_error(McuError::ROM_OTP_READ_ERROR),
+        };
+
+        let platform = config
+            .platform
+            .as_mut()
+            .ok_or(romtime::ocp_lock::Error::MISSING_PLATFORM_IMPLEMENTATION)?;
+
+        let (active_slot, active_state, seed_buf) = {
+            let buf = hek_seeds
+                .get(active_slot)
+                .ok_or(romtime::ocp_lock::Error::INVALID_HEK_SLOT)?;
+            let state = platform.get_slot_state(&perma_status, active_slot, buf)?;
+            (active_slot, state, buf)
+        };
+
+        match active_state {
+            romtime::ocp_lock::HekSeedState::Permanent
+            | romtime::ocp_lock::HekSeedState::Sanitized => {
+                for word in self.registers.fuse_hek_seed.iter() {
+                    word.set(0xFFFF_FFFF);
+                }
+            }
+            romtime::ocp_lock::HekSeedState::ProgrammedCorrupted
+            | romtime::ocp_lock::HekSeedState::SanitizedPendingReset
+            | romtime::ocp_lock::HekSeedState::ProgrammedPendingReset
+            | romtime::ocp_lock::HekSeedState::SanitizedCorrupted
+            | romtime::ocp_lock::HekSeedState::Unused => {
+                for word in self.registers.fuse_hek_seed.iter() {
+                    word.set(0);
+                }
+            }
+            romtime::ocp_lock::HekSeedState::Programmed => {
+                for (reg, word) in
+                    self.registers.fuse_hek_seed.iter().zip(
+                        seed_buf.chunks_exact(core::mem::size_of::<u32>()).map(|w| {
+                            u32::from_le_bytes(w.try_into().unwrap_or_else(|_| {
+                                fatal_error(McuError::ROM_OTP_WRITE_WORD_ERROR)
+                            }))
+                        }),
+                    )
+                {
+                    reg.set(word);
+                }
+            }
+        };
         romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
 
-        hek_state
+        Ok(romtime::ocp_lock::HekState {
+            active_slot,
+            total_slots,
+            active_state,
+        })
     }
 
     pub fn set_axi_users(&self, users: AxiUsers) {
@@ -789,6 +822,8 @@ pub struct RomParameters<'a> {
     /// Valid AXI users for MCI mailbox 1. 0 values are ignored.
     pub mci_mbox1_axi_users: [u32; 5],
     pub stash_rom_digest: Option<bool>,
+    #[cfg(feature = "ocp-lock")]
+    pub ocp_lock_config: romtime::ocp_lock::RomConfig<'a>,
 }
 
 pub fn rom_start(params: RomParameters) {

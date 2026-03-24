@@ -73,6 +73,71 @@ pub extern "C" fn rom_entry() -> ! {
     let axi_user1 = 0xdddd_ddddu32;
     let mbox_axi_users = [axi_user0, axi_user1, 0, 0, 0];
 
+    #[cfg(feature = "ocp-lock")]
+    struct EmulatorOcpPlatform;
+
+    #[cfg(feature = "ocp-lock")]
+    impl romtime::ocp_lock::Platform for EmulatorOcpPlatform {
+        // This sample implementation hard codes 8 slots.
+        fn get_total_slots(&self) -> usize {
+            8
+        }
+
+        // Sample only supports a subset of `HekSeedState`
+        fn get_slot_state(
+            &mut self,
+            perma_bit: &romtime::ocp_lock::PermaBitStatus,
+            _slot: usize,
+            seed: &[u8; 48],
+        ) -> Result<romtime::ocp_lock::HekSeedState, romtime::ocp_lock::Error> {
+            if *perma_bit == romtime::ocp_lock::PermaBitStatus::Set {
+                return Ok(romtime::ocp_lock::HekSeedState::Permanent);
+            }
+            if seed.iter().all(|&b| b == 0xFF) {
+                return Ok(romtime::ocp_lock::HekSeedState::Sanitized);
+            }
+            if seed.iter().all(|&b| b == 0x0) {
+                return Ok(romtime::ocp_lock::HekSeedState::Unused);
+            }
+            Ok(romtime::ocp_lock::HekSeedState::Programmed)
+        }
+
+        // Simple algorithm to determine the active slot.
+        // Returns the first programmed.
+        fn get_active_slot(
+            &mut self,
+            perma_bit: &romtime::ocp_lock::PermaBitStatus,
+            seeds: &romtime::ocp_lock::HekSeeds,
+        ) -> Result<usize, romtime::ocp_lock::Error> {
+            if *perma_bit == romtime::ocp_lock::PermaBitStatus::Set {
+                // If the permanent bit is set, OCP LOCK spec says the active HEK is fixed.
+                // For this emulator, we'll return the last slot.
+                return Ok(self.get_total_slots() - 1);
+            }
+
+            for i in 0..seeds.len() {
+                let buf = seeds
+                    .get(i)
+                    .ok_or(romtime::ocp_lock::Error::INVALID_HEK_SLOT)?;
+                let state = self.get_slot_state(perma_bit, i, buf)?;
+
+                if state == romtime::ocp_lock::HekSeedState::Programmed {
+                    return Ok(i);
+                }
+            }
+            Err(romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS)
+        }
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    let mut ocp_platform = EmulatorOcpPlatform;
+
+    #[cfg(feature = "ocp-lock")]
+    let ocp_lock_config = romtime::ocp_lock::RomConfig {
+        platform: Some(&mut ocp_platform),
+        ..Default::default()
+    };
+
     if cfg!(feature = "test-flash-based-boot") {
         // Initialize the flash controller for testing purposes
 
@@ -214,6 +279,8 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
+            #[cfg(feature = "ocp-lock")]
+            ocp_lock_config,
             ..Default::default()
         });
     } else {
@@ -225,6 +292,8 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
+            #[cfg(feature = "ocp-lock")]
+            ocp_lock_config,
             ..Default::default()
         });
     }

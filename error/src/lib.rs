@@ -238,6 +238,11 @@ impl McuError {
             "OTP pending check exceeded maximum iterations"
         ),
         (
+            ROM_OTP_OCP_LOCK_FAILURE,
+            0x3_000c,
+            "OTP failure in OCP LOCK"
+        ),
+        (
             ROM_I3C_CONFIG_RING_HEADER_ERROR,
             0x4_0000,
             "I3C config ring header error"
@@ -373,14 +378,19 @@ impl McuError {
             "Cold boot ROM integrity check failed"
         ),
         (
-            ROM_SOC_WDT_CFG_OUT_OF_RANGE,
-            0x5_0013,
-            "Caliptra WDT config index out of range"
-        ),
-        (
             ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR,
             0x1_0018,
             "Firmware manifest DOT command processing error"
+        ),
+        (
+            OCP_LOCK_ROM_MISSING_CONFIG,
+            0x1_0019,
+            "Missing OCP LOCK ROM Config"
+        ),
+        (
+            ROM_SOC_WDT_CFG_OUT_OF_RANGE,
+            0x5_0013,
+            "Caliptra WDT config index out of range"
         ),
         (
             GENERIC_EXCEPTION,
