@@ -54,7 +54,7 @@ pub struct OtpArgs {
     pub raw_memory: Option<Vec<u8>>,
     pub owner_pk_hash: Option<[u8; 48]>,
     pub vendor_pk_hash: Option<[u8; 48]>,
-    pub vendor_pqc_type: FwVerificationPqcKeyType,
+    pub vendor_pqc_type: Option<FwVerificationPqcKeyType>,
     pub soc_manifest_svn: Option<u8>,
     pub soc_manifest_max_svn: Option<u8>,
     pub vendor_hashes_prod_partition: Option<Vec<u8>>,
@@ -181,14 +181,17 @@ impl Otp {
                 ..fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48]
                 .copy_from_slice(&vendor_pk_hash);
         }
-        // encode as a single bit, MLDSA as the default
-        let val = match args.vendor_pqc_type {
-            FwVerificationPqcKeyType::MLDSA => 0,
-            FwVerificationPqcKeyType::LMS => 1,
-        };
+        // encode as a single bit
+        if let Some(pqc_type) = args.vendor_pqc_type {
+            let val = match pqc_type {
+                FwVerificationPqcKeyType::MLDSA => 0,
+                FwVerificationPqcKeyType::LMS => 1,
+            };
+            otp.partitions.borrow_mut()[fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48] =
+                val;
+        }
         {
             let mut partitions = otp.partitions.borrow_mut();
-            partitions[fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET + 48] = val;
             partitions[fuses::SVN_PARTITION_BYTE_OFFSET + 36] =
                 args.soc_manifest_max_svn.unwrap_or(0);
             if let Some(soc_manifest_svn) = args.soc_manifest_svn {
@@ -839,7 +842,7 @@ mod test {
         let mut otp = Otp::new(
             &clock,
             OtpArgs {
-                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
+                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
                 ..Default::default()
             },
         )
@@ -877,7 +880,7 @@ mod test {
         let mut otp = Otp::new(
             &clock,
             OtpArgs {
-                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
+                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
                 ..Default::default()
             },
         )
@@ -936,7 +939,7 @@ mod test {
         let mut otp = Otp::new(
             &clock,
             OtpArgs {
-                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
+                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
                 ..Default::default()
             },
         )
@@ -993,7 +996,7 @@ mod test {
         let mut otp = Otp::new(
             &clock,
             OtpArgs {
-                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
+                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
                 ..Default::default()
             },
         )
@@ -1081,7 +1084,7 @@ mod test {
         let mut otp = Otp::new(
             &clock,
             OtpArgs {
-                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
+                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
                 ..Default::default()
             },
         )
@@ -1101,7 +1104,7 @@ mod test {
         let mut otp = Otp::new(
             &clock,
             OtpArgs {
-                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
+                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
                 ..Default::default()
             },
         )
@@ -1131,7 +1134,7 @@ mod test {
         let mut otp = Otp::new(
             &clock,
             OtpArgs {
-                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
+                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
                 ..Default::default()
             },
         )
@@ -1154,7 +1157,7 @@ mod test {
         let mut otp = Otp::new(
             &clock,
             OtpArgs {
-                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
+                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
                 ..Default::default()
             },
         )
@@ -1195,7 +1198,7 @@ mod test {
         let mut otp = Otp::new(
             &clock,
             OtpArgs {
-                vendor_pqc_type: FwVerificationPqcKeyType::MLDSA,
+                vendor_pqc_type: Some(FwVerificationPqcKeyType::MLDSA),
                 ..Default::default()
             },
         )
