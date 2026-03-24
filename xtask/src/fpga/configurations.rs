@@ -8,7 +8,7 @@ use super::{
     run_command, run_command_with_output,
     utils::{
         build_base_container_command, build_caliptra_firmware, caliptra_sw_workspace_root,
-        check_ssh_access, download_bitstream_pdi, rsync_file, run_test_suite,
+        check_ssh_access, download_bitstream, load_bitstream, rsync_file, run_test_suite,
         NextestArchiveCommand,
     },
     ActionHandler, BuildArgs, BuildTestArgs, TestArgs,
@@ -177,7 +177,8 @@ impl<'a> ActionHandler<'a> for Subsystem {
             .join("fpga")
             .join("bitstream_manifests")
             .join("subsystem.toml");
-        download_bitstream_pdi(self.target_host.as_deref(), &subsystem_bitstream)?;
+        download_bitstream(self.target_host.as_deref(), &subsystem_bitstream)?;
+        load_bitstream(self.target_host.as_deref())?;
         Ok(())
     }
 
@@ -282,7 +283,8 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
             .join("fpga")
             .join("bitstream_manifests")
             .join("subsystem.toml");
-        download_bitstream_pdi(self.target_host.as_deref(), &subsystem_bitstream)?;
+        download_bitstream(self.target_host.as_deref(), &subsystem_bitstream)?;
+        load_bitstream(self.target_host.as_deref())?;
         Ok(())
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
@@ -391,7 +393,8 @@ impl<'a> ActionHandler<'a> for Core {
             .join("fpga")
             .join("bitstream_manifests")
             .join("core.toml");
-        download_bitstream_pdi(self.target_host.as_deref(), &core_bitstream)?;
+        download_bitstream(self.target_host.as_deref(), &core_bitstream)?;
+        load_bitstream(self.target_host.as_deref())?;
         Ok(())
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
