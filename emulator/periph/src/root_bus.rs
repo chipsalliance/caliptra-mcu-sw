@@ -122,7 +122,10 @@ impl McuRootBus {
     pub fn new(mut args: McuRootBusArgs) -> Result<Self, std::io::Error> {
         let clock = args.clock;
         let pic = args.pic;
-        let rom = Rom::new(std::mem::take(&mut args.rom));
+        let mut rom_data = std::mem::take(&mut args.rom);
+        // Pad ROM to its full size.
+        rom_data.resize(args.offsets.rom_size as usize, 0);
+        let rom = Rom::new(rom_data);
         let uart_irq = pic.register_irq(Self::UART_NOTIF_IRQ);
         let ram = Ram::new(vec![0; args.offsets.ram_size as usize]);
         let rom_sram = Ram::new(vec![0; args.offsets.rom_dedicated_ram_size as usize]);

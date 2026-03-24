@@ -15,6 +15,7 @@ Abstract:
 #![allow(clippy::empty_loop)]
 
 use crate::boot_status::McuRomBootStatus;
+use crate::mailbox;
 #[cfg(feature = "ocp-lock")]
 use crate::HekState;
 use crate::{
@@ -24,7 +25,8 @@ use crate::{
 };
 use caliptra_api::mailbox::{
     CmImportReq, CmImportResp, CmKeyUsage, CmStableKeyType, Cmk, CommandId, FeProgReq,
-    MailboxReqHeader, MailboxRespHeader, CMK_SIZE_BYTES, MAX_CMB_DATA_SIZE,
+    MailboxReqHeader, MailboxRespHeader, StashMeasurementReq, StashMeasurementResp, CMK_SIZE_BYTES,
+    MAX_CMB_DATA_SIZE,
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::{
@@ -35,7 +37,7 @@ use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use core::fmt::Write;
 use core::ops::Deref;
 use mcu_error::McuError;
-use romtime::{CaliptraSoC, HexWord, LifecycleControllerState, LifecycleToken};
+use romtime::{CaliptraSoC, HexBytes, HexWord, LifecycleControllerState, LifecycleToken};
 use tock_registers::interfaces::Readable;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -269,6 +271,83 @@ impl ColdBoot {
             sram_axi_addr,
             ciphertext_size,
         );
+    }
+
+    /// Calculate SHA384 hash of ROM and compare it against the stored value. Optionally stash it.
+    fn rom_digest_integrity(soc_manager: &mut CaliptraSoC, stash: bool) {
+        const DIGEST_SIZE: usize = 48;
+        // Safety: MCU_MEMORY_MAP fields are linker-provided constants.
+        let rom_size = unsafe { MCU_MEMORY_MAP.rom_size } as usize;
+        let hashable_len = rom_size - DIGEST_SIZE;
+        let rom = unsafe {
+            core::slice::from_raw_parts(MCU_MEMORY_MAP.rom_offset as *const u32, hashable_len / 4)
+        };
+
+        let digest = mailbox::cm_sha384(soc_manager, rom);
+        romtime::println!("[mcu-rom] MCU ROM digest: {}", HexBytes(&digest));
+
+        let expected_digest: &[u8; DIGEST_SIZE] = unsafe {
+            &*((MCU_MEMORY_MAP.rom_offset as usize + hashable_len) as *const [u8; DIGEST_SIZE])
+        };
+        romtime::println!(
+            "[mcu-rom] MCU ROM expected digest: {}",
+            HexBytes(expected_digest)
+        );
+
+        if digest != *expected_digest {
+            romtime::println!("[mcu-rom] MCU ROM digest mismatch");
+            fatal_error(McuError::ROM_COLD_BOOT_ROM_DIGEST_MISMATCH);
+        }
+
+        if stash {
+            Self::stash_measurement(soc_manager, &digest);
+        }
+    }
+
+    fn stash_measurement(soc_manager: &mut CaliptraSoC, measurement: &[u8; 48]) {
+        let mut req = StashMeasurementReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            metadata: [0u8; 4],
+            measurement: *measurement,
+            context: [0u8; 48],
+            svn: 0,
+        };
+        let cmd: u32 = CommandId::STASH_MEASUREMENT.into();
+        let chksum = calc_checksum(cmd, &req.as_bytes()[4..]);
+        req.hdr.chksum = chksum;
+
+        if let Err(err) = soc_manager.start_mailbox_req_bytes(cmd, req.as_bytes()) {
+            romtime::println!(
+                "[mcu-rom] STASH_MEASUREMENT start error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::GENERIC_EXCEPTION);
+        }
+
+        let mut resp_buf = [0u8; core::mem::size_of::<StashMeasurementResp>()];
+        if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
+            romtime::println!(
+                "[mcu-rom] STASH_MEASUREMENT finish error: {}",
+                HexWord(Self::err_code(&err))
+            );
+            fatal_error(McuError::GENERIC_EXCEPTION);
+        }
+
+        let dpe_result = match resp_buf.get(8..12) {
+            Some(b) => u32::from_le_bytes([b[0], b[1], b[2], b[3]]),
+            None => {
+                romtime::println!("[mcu-rom] STASH_MEASUREMENT response too short");
+                fatal_error(McuError::GENERIC_EXCEPTION);
+            }
+        };
+
+        if dpe_result != 0 {
+            romtime::println!(
+                "[mcu-rom] Stash Measurement failed: dpe_result={}",
+                dpe_result
+            );
+            fatal_error(McuError::GENERIC_EXCEPTION);
+        }
     }
 
     /// Import the test AES key via CM_IMPORT and return the CMK handle.
@@ -1009,6 +1088,9 @@ impl BootFlow for ColdBoot {
             while !soc.ready_for_runtime() {}
             mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
         }
+
+        let stash_rom_digest = params.stash_rom_digest.unwrap_or(true);
+        Self::rom_digest_integrity(soc_manager, stash_rom_digest);
 
         // --- Common tail: field entropy, disable recovery, reset ---
         romtime::println!("[mcu-rom] Finished boot-mode-specific initialization");

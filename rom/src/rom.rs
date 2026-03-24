@@ -782,6 +782,7 @@ pub struct RomParameters<'a> {
     pub mci_mbox0_axi_users: [u32; 5],
     /// Valid AXI users for MCI mailbox 1. 0 values are ignored.
     pub mci_mbox1_axi_users: [u32; 5],
+    pub stash_rom_digest: Option<bool>,
 }
 
 pub fn rom_start(params: RomParameters) {

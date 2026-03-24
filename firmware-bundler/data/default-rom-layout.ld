@@ -25,7 +25,6 @@ SECTIONS
         . = ALIGN(4);
         *(.data*);
         *(.sdata*);
-        KEEP(*(.eh_frame))
         . = ALIGN(4);
         PROVIDE( GLOBAL_POINTER = . + 0x800 );
         . = ALIGN(4);
@@ -57,6 +56,11 @@ SECTIONS
     }
 
     _end = . ;
+
+    /DISCARD/ :
+    {
+        *(.eh_frame*)
+    }
 }
 
 BSS_START = ADDR(.bss);
