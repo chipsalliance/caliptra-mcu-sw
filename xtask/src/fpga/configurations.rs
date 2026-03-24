@@ -251,10 +251,12 @@ impl<'a> ActionHandler<'a> for Subsystem {
             "--test-threads=1"
         };
 
-        let prelude = "CPTRA_FIRMWARE_BUNDLE=$HOME/all-fw.zip";
+        let bundle = std::env::var("CPTRA_FIRMWARE_BUNDLE")
+            .unwrap_or_else(|_| "$HOME/all-fw.zip".to_string());
+        let prelude = format!("CPTRA_FIRMWARE_BUNDLE={bundle}");
         run_test_suite(
             "caliptra-mcu-sw",
-            prelude,
+            &prelude,
             test_filters,
             to,
             self.target_host.as_deref(),
@@ -304,17 +306,6 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
             None,
             &bitstream_manifest_path(&caliptra_sw_workspace_root(), "subsystem.toml"),
         )?;
-        Ok(())
-    }
-
-    fn download_bitstream(&self) -> Result<()> {
-        let caliptra_sw = caliptra_sw_workspace_root();
-        let subsystem_bitstream = caliptra_sw
-            .join("hw")
-            .join("fpga")
-            .join("bitstream_manifests")
-            .join("subsystem.toml");
-        download_bitstream(None, &subsystem_bitstream)?;
         Ok(())
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
@@ -377,10 +368,15 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
             "--test-threads=1"
         };
 
-        let prelude = "CPTRA_MCU_ROM=/home/runner/mcu-rom-fpga.bin CPTRA_UIO_NUM=0 CALIPTRA_PREBUILT_FW_DIR=/tmp/caliptra-test-firmware/caliptra-test-firmware CALIPTRA_IMAGE_NO_GIT_REVISION=1";
+        let mcu_rom = std::env::var("CPTRA_MCU_ROM")
+            .unwrap_or_else(|_| "/home/runner/mcu-rom-fpga.bin".to_string());
+        let uio_num = std::env::var("CPTRA_UIO_NUM").unwrap_or_else(|_| "0".to_string());
+        let fw_dir = std::env::var("CALIPTRA_PREBUILT_FW_DIR")
+            .unwrap_or_else(|_| "/tmp/caliptra-test-firmware/caliptra-test-firmware".to_string());
+        let prelude = format!("CPTRA_MCU_ROM={mcu_rom} CPTRA_UIO_NUM={uio_num} CALIPTRA_PREBUILT_FW_DIR={fw_dir} CALIPTRA_IMAGE_NO_GIT_REVISION=1");
         run_test_suite(
             "caliptra-sw",
-            prelude,
+            &prelude,
             test_filters,
             to,
             self.target_host.as_deref(),
@@ -481,10 +477,13 @@ impl<'a> ActionHandler<'a> for Core {
             "--test-threads=1"
         };
 
-        let prelude = "CPTRA_UIO_NUM=0 CALIPTRA_PREBUILT_FW_DIR=/tmp/caliptra-test-firmware/caliptra-test-firmware CALIPTRA_IMAGE_NO_GIT_REVISION=1";
+        let uio_num = std::env::var("CPTRA_UIO_NUM").unwrap_or_else(|_| "0".to_string());
+        let fw_dir = std::env::var("CALIPTRA_PREBUILT_FW_DIR")
+            .unwrap_or_else(|_| "/tmp/caliptra-test-firmware/caliptra-test-firmware".to_string());
+        let prelude = format!("CPTRA_UIO_NUM={uio_num} CALIPTRA_PREBUILT_FW_DIR={fw_dir} CALIPTRA_IMAGE_NO_GIT_REVISION=1");
         run_test_suite(
             "caliptra-sw",
-            prelude,
+            &prelude,
             test_filters,
             to,
             self.target_host.as_deref(),
