@@ -14,6 +14,7 @@ Abstract:
 
 --*/
 
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -27,12 +28,12 @@ use crate::otp_scramble;
 use crate::otp_unscramble;
 
 // OTP partition offsets (from caliptra_mcu_registers_generated::fuses).
-const SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET: usize = 0x2d8;
-const LIFE_CYCLE_BYTE_OFFSET: usize = 0xc80;
+use caliptra_mcu_registers_generated::fuses::LIFE_CYCLE_BYTE_OFFSET;
+use caliptra_mcu_registers_generated::fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET;
 
 // OTP scramble key for the LC tokens partition (OTP_SCRAMBLE_KEYS[6]).
 // Source: caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson
-const LC_TOKENS_SCRAMBLE_KEY: u128 = 0xB7474D640F8A7F5D60822E1FAEC5C72;
+const LC_TOKENS_SCRAMBLE_KEY: u128 = 0x277195FC471E4B26B6641214B61D1B43;
 
 // Hardcoded raw unlock token matching the caliptra-ss RTL netlist constant.
 // Source: caliptra-ss/src/lc_ctrl/rtl/lc_ctrl_pkg.sv (RndCnstRawUnlockToken)
@@ -120,10 +121,24 @@ fn validate_transition(from: u32, to: u32) -> Option<TokenRequirement> {
             let token_idx = (f - TEST_LOCKED0) / 2;
             Some(TokenRequirement::OtpToken(token_idx as usize))
         }
-        // TestUnlocked7 -> Dev: manuf token (index 7)
-        (TEST_UNLOCKED7, DEV) => Some(TokenRequirement::OtpToken(7)),
+        // Any TestUnlocked/TestLocked -> Dev: test_exit_to_manuf token (index 7)
+        (f, DEV) if is_test_unlocked(f) || is_test_locked(f) => {
+            Some(TokenRequirement::OtpToken(7))
+        }
+        // Any TestUnlocked/TestLocked -> Prod: manuf_to_prod token (index 8)
+        (f, PROD) if is_test_unlocked(f) || is_test_locked(f) => {
+            Some(TokenRequirement::OtpToken(8))
+        }
+        // Any TestUnlocked/TestLocked -> ProdEnd: prod_to_prod_end token (index 9)
+        (f, PROD_END) if is_test_unlocked(f) || is_test_locked(f) => {
+            Some(TokenRequirement::OtpToken(9))
+        }
+        // Any TestUnlocked -> Rma: rma token (index 10)
+        (f, RMA) if is_test_unlocked(f) => Some(TokenRequirement::OtpToken(10)),
         // Dev -> Prod: manuf_to_prod token (index 8)
         (DEV, PROD) => Some(TokenRequirement::OtpToken(8)),
+        // Dev -> ProdEnd: prod_to_prod_end token (index 9)
+        (DEV, PROD_END) => Some(TokenRequirement::OtpToken(9)),
         // Dev -> Rma: rma token (index 10)
         (DEV, RMA) => Some(TokenRequirement::OtpToken(10)),
         // Prod -> ProdEnd: prod_to_prod_end token (index 9)
@@ -154,6 +169,9 @@ pub struct LcCtrl {
 
     /// Shared reference to OTP partition data for token reads and state writes.
     otp_partitions: Option<Rc<RefCell<Vec<u8>>>>,
+    /// Shared flag set by MCI when debug_out CMD_RELEASE_FC_LCC_RESET is received.
+    /// LcCtrl checks this on register reads and reloads from OTP if set.
+    reload_flag: Option<Rc<Cell<bool>>>,
 }
 
 impl Default for LcCtrl {
@@ -185,12 +203,28 @@ impl LcCtrl {
             transition_target: 0,
             token: [0; 4],
             otp_partitions: None,
+            reload_flag: None,
         }
     }
 
     /// Provide OTP partition access after construction.
     pub fn set_otp_partitions(&mut self, otp: Rc<RefCell<Vec<u8>>>) {
         self.otp_partitions = Some(otp);
+    }
+
+    /// Set the shared reload flag (shared with MCI).
+    pub fn set_reload_flag(&mut self, flag: Rc<Cell<bool>>) {
+        self.reload_flag = Some(flag);
+    }
+
+    /// If the reload flag is set, reload from OTP and clear the flag.
+    fn check_reload_flag(&mut self) {
+        if let Some(flag) = &self.reload_flag {
+            if flag.get() {
+                flag.set(false);
+                self.reload_from_otp();
+            }
+        }
     }
 
     /// Re-read lifecycle state from OTP and reset transient state.
@@ -223,8 +257,8 @@ impl LcCtrl {
         bytes
     }
 
-    /// Read a 16-byte hashed token from the OTP LC tokens partition,
-    /// descrambling it in the process.
+    /// Read a 16-byte hashed token from the OTP LC tokens partition.
+    /// Tries both descrambled (fuse-file pre-loaded) and plain (DAI-written) forms.
     fn read_otp_token(&self, token_index: usize) -> Option<[u8; 16]> {
         let otp = self.otp_partitions.as_ref()?;
         let otp = otp.borrow();
@@ -234,7 +268,34 @@ impl LcCtrl {
         }
         let mut token_data = [0u8; 16];
         token_data.copy_from_slice(&otp[base..base + 16]);
-        // Descramble: tokens are stored scrambled in 8-byte blocks.
+
+        // Try descrambled first (tokens from fuse files are PRESENT-scrambled).
+        let mut descrambled = token_data;
+        for chunk in descrambled.chunks_exact_mut(8) {
+            let val = u64::from_le_bytes(chunk.try_into().unwrap());
+            let unscrambled = otp_unscramble(val, LC_TOKENS_SCRAMBLE_KEY);
+            chunk.copy_from_slice(&unscrambled.to_le_bytes());
+        }
+
+        // Check which form matches the supplied token hash.
+        // We return descrambled first; if it doesn't match during verification,
+        // the caller will fail and we won't get here for the plain path.
+        // Instead, store both and let execute_transition try both.
+        // For simplicity: return the raw data and let the caller handle it.
+        // Actually, the simplest approach: try the supplied hash against both forms.
+        Some(token_data) // Return raw (possibly scrambled) data
+    }
+
+    /// Read a descrambled token from OTP (for fuse-file pre-loaded tokens).
+    fn read_otp_token_descrambled(&self, token_index: usize) -> Option<[u8; 16]> {
+        let otp = self.otp_partitions.as_ref()?;
+        let otp = otp.borrow();
+        let base = SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET + token_index * 16;
+        if base + 16 > otp.len() {
+            return None;
+        }
+        let mut token_data = [0u8; 16];
+        token_data.copy_from_slice(&otp[base..base + 16]);
         for chunk in token_data.chunks_exact_mut(8) {
             let val = u64::from_le_bytes(chunk.try_into().unwrap());
             let unscrambled = otp_unscramble(val, LC_TOKENS_SCRAMBLE_KEY);
@@ -298,14 +359,13 @@ impl LcCtrl {
             }
             TokenRequirement::OtpToken(index) => {
                 let supplied_hash = hash_lc_token(&self.token_as_bytes());
-                let expected_hash = match self.read_otp_token(index) {
-                    Some(h) => h,
-                    None => {
-                        self.transition_error(STATUS_OTP_ERROR);
-                        return;
-                    }
-                };
-                if supplied_hash != expected_hash {
+                // Try raw OTP data first (DAI-written tokens are not scrambled),
+                // then descrambled (fuse-file tokens are PRESENT-scrambled).
+                let raw = self.read_otp_token(index);
+                let descrambled = self.read_otp_token_descrambled(index);
+                let matched = raw.map_or(false, |h| supplied_hash == h)
+                    || descrambled.map_or(false, |h| supplied_hash == h);
+                if !matched {
                     self.transition_error(STATUS_TOKEN_ERROR);
                     return;
                 }
@@ -335,10 +395,12 @@ impl caliptra_mcu_emulator_registers_generated::lc::LcPeripheral for LcCtrl {
     }
 
     fn read_status(&mut self) -> ReadWriteRegister<u32, lc_ctrl::bits::Status::Register> {
+        self.check_reload_flag();
         ReadWriteRegister::new(self.status.reg.get())
     }
 
     fn read_lc_state(&mut self) -> ReadWriteRegister<u32, lc_ctrl::bits::LcState::Register> {
+        self.check_reload_flag();
         ReadWriteRegister::new(calc_lc_state_mnemonic(self.lc_state_index))
     }
 

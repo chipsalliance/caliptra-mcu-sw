@@ -892,7 +892,7 @@ impl Emulator {
 
         let cptra_boot_go = Rc::new(Cell::new(false));
 
-        let mci = Mci::new(
+        let mut mci = Mci::new(
             &clock.clone(),
             ext_mci,
             mci_irq,
@@ -902,6 +902,13 @@ impl Emulator {
             [0, 0],
             cptra_boot_go.clone(),
         );
+
+        // Share a reload flag between MCI and LcCtrl so that
+        // CMD_RELEASE_FC_LCC_RESET in debug_out triggers LcCtrl to
+        // reload its lifecycle state from OTP without a full MCU reset.
+        let lc_reload_flag = Rc::new(Cell::new(false));
+        mci.set_lc_reload_flag(lc_reload_flag.clone());
+        lc.set_reload_flag(lc_reload_flag);
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,

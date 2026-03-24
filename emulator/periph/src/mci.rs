@@ -76,6 +76,9 @@ pub struct Mci {
 
     /// Shared flag: Caliptra CPU is held until MCU ROM writes CPTRA_BOOT_GO
     cptra_boot_go: Rc<Cell<bool>>,
+
+    /// Shared flag to signal LcCtrl to reload from OTP on next register access.
+    lc_reload_flag: Option<Rc<Cell<bool>>>,
 }
 
 impl Mci {
@@ -117,6 +120,7 @@ impl Mci {
             irq,
             mcu_mailbox0,
             reset_requested: false,
+            lc_reload_flag: None,
 
             // --- init mtimecmp ---
             mtimecmp: default_mtimecmp,
@@ -141,6 +145,11 @@ impl Mci {
         if let Some(old) = slot.take() {
             timer.cancel(old);
         }
+    }
+
+    /// Set the shared flag used to signal LcCtrl to reload from OTP.
+    pub fn set_lc_reload_flag(&mut self, flag: Rc<Cell<bool>>) {
+        self.lc_reload_flag = Some(flag);
     }
 
     fn arm_mtime_interrupt(&mut self) {
@@ -237,6 +246,20 @@ impl MciPeripheral for Mci {
 
     fn write_mci_reg_fw_flow_status(&mut self, val: caliptra_emu_types::RvData) {
         self.ext_mci_regs.regs.borrow_mut().flow_status = val;
+    }
+
+    fn write_mci_reg_debug_out(&mut self, val: caliptra_emu_types::RvData) {
+        // Handle FC/LCC reset commands from the test firmware.
+        // CMD_RELEASE_FC_LCC_RESET (0x92): after an LC transition the firmware
+        // toggles a reset on the fuse controller and LC controller.  In the
+        // emulator this sets a shared flag that LcCtrl checks on next register
+        // read, causing it to reload its state from OTP.
+        const CMD_RELEASE_FC_LCC_RESET: u32 = 0x92;
+        if val == CMD_RELEASE_FC_LCC_RESET {
+            if let Some(flag) = &self.lc_reload_flag {
+                flag.set(true);
+            }
+        }
     }
 
     fn read_mci_reg_wdt_timer1_en(&mut self) -> ReadWriteRegister<u32, WdtTimer1En::Register> {
