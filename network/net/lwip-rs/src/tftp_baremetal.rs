@@ -24,6 +24,8 @@ pub struct BaremetalTftpOps {
     pub write: fn(data: &[u8]) -> bool,
     /// Called when the TFTP server reports an error.
     pub error: fn(err: i32, msg: &[u8]),
+    /// Called when the transfer is closed (complete or error).
+    pub close: Option<fn()>,
 }
 
 /// Internal state for the bare-metal TFTP client.
@@ -63,6 +65,9 @@ unsafe extern "C" fn tftp_open_cb(
 unsafe extern "C" fn tftp_close_cb(_handle: *mut c_void) {
     if let Some(ref mut s) = STATE {
         s.complete = true;
+        if let Some(close_fn) = s.ops.close {
+            close_fn();
+        }
     }
 }
 
@@ -104,7 +109,7 @@ unsafe extern "C" fn tftp_error_cb(
         } else {
             slice::from_raw_parts(msg as *const u8, size as usize)
         };
-        (s.ops.error)(err as i32, msg_bytes);
+        (s.ops.error)(err, msg_bytes);
         s.has_error = true;
         s.complete = true;
     }
@@ -124,6 +129,12 @@ static TFTP_CONTEXT: ffi::tftp_context = ffi::tftp_context {
 /// Place in a `static mut`; call `init()` then `get()` to download.
 pub struct BaremetalTftpClient {
     initialized: bool,
+}
+
+impl Default for BaremetalTftpClient {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BaremetalTftpClient {
@@ -173,7 +184,7 @@ impl BaremetalTftpClient {
 
         // Call open to get the handle
         let fname_ptr = filename.as_ptr() as *const c_char;
-        let mode_ptr = b"octet\0".as_ptr() as *const c_char;
+        let mode_ptr = c"octet".as_ptr();
         let handle = unsafe { tftp_open_cb(fname_ptr, mode_ptr, 1) };
         if handle.is_null() {
             return Err(LwipError::OutOfMemory);
@@ -230,7 +241,7 @@ impl BaremetalTftpClient {
 
         // Call open to get the handle
         let fname_ptr = filename.as_ptr() as *const c_char;
-        let mode_ptr = b"octet\0".as_ptr() as *const c_char;
+        let mode_ptr = c"octet".as_ptr();
         let handle = unsafe { tftp_open_cb(fname_ptr, mode_ptr, 1) };
         if handle.is_null() {
             return Err(LwipError::OutOfMemory);

@@ -10,8 +10,10 @@ edition.workspace = true
 caliptra-mcu-network-config.workspace = true
 
 [dependencies]
+caliptra-mcu-network-app-boot-source = { workspace = true, optional = true }
 caliptra-mcu-network-app-rom-test = { workspace = true, optional = true }
 caliptra-mcu-network-drivers.workspace = true
+caliptra-mcu-network-hil = { workspace = true, optional = true }
 
 [[bin]]
 name = "caliptra-mcu-network-rom"
@@ -19,6 +21,7 @@ test = false
 
 [features]
 default = []
+network-boot = ["dep:caliptra-mcu-network-app-boot-source", "dep:caliptra-mcu-network-hil"]
 test-network-rom-dhcp-discover = ["caliptra-mcu-network-app-rom-test"]
 test-network-rom-lwip-dhcp = ["caliptra-mcu-network-app-rom-test/lwip-dhcp", "caliptra-mcu-network-app-rom-test"]
 test-network-rom-lwip-dhcp6 = ["caliptra-mcu-network-app-rom-test/lwip-dhcp6", "caliptra-mcu-network-app-rom-test"]

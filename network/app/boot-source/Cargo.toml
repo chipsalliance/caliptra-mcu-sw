@@ -9,3 +9,9 @@ description = "Boot source provider application for the Network Coprocessor"
 [dependencies]
 caliptra-mcu-flash-image.workspace = true
 zerocopy.workspace = true
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+caliptra-mcu-boot-source-protocol.workspace = true
+caliptra-mcu-lwip-rs = { workspace = true, default-features = false, features = ["baremetal-tftp", "baremetal-tftpv6"] }
+caliptra-mcu-network-drivers.workspace = true
+caliptra-mcu-network-hil.workspace = true

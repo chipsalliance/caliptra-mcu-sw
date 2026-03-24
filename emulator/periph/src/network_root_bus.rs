@@ -22,7 +22,7 @@ use caliptra_emu_cpu::{Pic, PicMmioRegisters};
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use caliptra_mcu_emulator_registers_generated::ethernet::EthernetBus;
 use caliptra_mcu_emulator_registers_generated::network_mbox::NetworkMboxBus;
-use caliptra_mcu_network_config::DEFAULT_NETWORK_MEMORY_MAP;
+use caliptra_mcu_network_config::{DEFAULT_NETWORK_MEMORY_MAP, NETWORK_BOOT_ROM_SIZE};
 use std::{
     cell::RefCell,
     path::PathBuf,
@@ -54,7 +54,7 @@ impl Default for NetworkRootBusOffsets {
     fn default() -> Self {
         Self {
             rom_offset: DEFAULT_NETWORK_MEMORY_MAP.rom_offset,
-            rom_size: DEFAULT_NETWORK_MEMORY_MAP.rom_size,
+            rom_size: NETWORK_BOOT_ROM_SIZE,
             uart_offset: DEFAULT_NETWORK_MEMORY_MAP.uart_offset,
             uart_size: DEFAULT_NETWORK_MEMORY_MAP.uart_size,
             ctrl_offset: DEFAULT_NETWORK_MEMORY_MAP.ctrl_offset,

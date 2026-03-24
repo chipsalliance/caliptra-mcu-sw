@@ -10,6 +10,9 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
+/// Maximum ROM size used by Network Coprocessor builds with network boot enabled.
+pub const NETWORK_BOOT_ROM_SIZE: u32 = 128 * 1024;
+
 /// Represents the properties of a memory region for MRAC computation
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

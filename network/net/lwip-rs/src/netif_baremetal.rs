@@ -47,6 +47,12 @@ pub struct BaremetalNetIf {
     initialized: bool,
 }
 
+impl Default for BaremetalNetIf {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BaremetalNetIf {
     /// Create an uninitialized `BaremetalNetIf`.
     pub const fn new() -> Self {
@@ -203,11 +209,19 @@ impl BaremetalNetIf {
 
     /// Poll the network interface: process received packets and lwIP timeouts.
     pub fn poll(&mut self) {
+        self.poll_limited(usize::MAX);
+    }
+
+    /// Poll the network interface, processing at most `max_packets` received
+    /// frames. This prevents a burst of queued RX packets from consuming
+    /// unbounded buffer resources in callbacks (e.g. TFTP write).
+    pub fn poll_limited(&mut self, max_packets: usize) {
         unsafe {
             let netif_ptr = self.netif.as_mut_ptr();
             let callbacks = self.callbacks.as_ref().unwrap();
 
-            while (callbacks.rx_available)() {
+            let mut count = 0usize;
+            while count < max_packets && (callbacks.rx_available)() {
                 let mut buf = [0u8; ETH_FRAME_MAX];
                 let len = (callbacks.receive)(&mut buf);
                 if len == 0 {
@@ -240,6 +254,7 @@ impl BaremetalNetIf {
                 if err != 0 {
                     ffi::pbuf_free(p);
                 }
+                count += 1;
             }
 
             ffi::sys_check_timeouts();
