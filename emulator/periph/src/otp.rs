@@ -35,7 +35,7 @@ const DIGEST_CONST: u128 = 0xF98C48B1F93772844A22D4B78FE0266F;
 /// OTP Digest IV default from caliptra-ss/src/fuse_ctrl/rtl/otp_ctrl_part_pkg.sv
 const DIGEST_IV: u64 = 0x90C7F21F6224F027;
 
-const TOTAL_SIZE: usize = fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE;
+const TOTAL_SIZE: usize = fuses::CSR_PARTITION_BYTE_OFFSET + fuses::CSR_PARTITION_BYTE_SIZE;
 
 /// Used to hold the state that is saved between emulator runs.
 #[derive(Deserialize, Serialize)]
@@ -195,14 +195,15 @@ impl Otp {
         }
         {
             let mut partitions = otp.partitions.borrow_mut();
-            partitions[fuses::SVN_PARTITION_BYTE_OFFSET + 36] =
-                args.soc_manifest_max_svn.unwrap_or(0);
-            if let Some(soc_manifest_svn) = args.soc_manifest_svn {
-                let svn_bitmap = Self::svn_to_bitmap(soc_manifest_svn as u32);
-                partitions
-                    [fuses::SVN_PARTITION_BYTE_OFFSET + 20..fuses::SVN_PARTITION_BYTE_OFFSET + 36]
-                    .copy_from_slice(&svn_bitmap);
-            }
+            // SVN_PARTITION removed from OTP layout (antmicro/caliptra-ss)
+            // partitions[fuses::SVN_PARTITION_BYTE_OFFSET + 36] =
+            //     args.soc_manifest_max_svn.unwrap_or(0);
+            // if let Some(soc_manifest_svn) = args.soc_manifest_svn {
+            //     let svn_bitmap = Self::svn_to_bitmap(soc_manifest_svn as u32);
+            //     partitions
+            //         [fuses::SVN_PARTITION_BYTE_OFFSET + 20..fuses::SVN_PARTITION_BYTE_OFFSET + 36]
+            //         .copy_from_slice(&svn_bitmap);
+            // }
 
             if let Some(vendor_hashes_prod_partition) = args.vendor_hashes_prod_partition {
                 let dst_start = fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET;
@@ -211,13 +212,14 @@ impl Otp {
                 partitions[dst_start..dst_start + copy_len]
                     .copy_from_slice(&vendor_hashes_prod_partition[..copy_len]);
             }
-            if let Some(vendor_test_partition) = args.vendor_test_partition {
-                let dst_start = fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET;
-                let max_len = fuses::VENDOR_TEST_PARTITION_BYTE_SIZE;
-                let copy_len = vendor_test_partition.len().min(max_len);
-                partitions[dst_start..dst_start + copy_len]
-                    .copy_from_slice(&vendor_test_partition[..copy_len]);
-            }
+            // VENDOR_TEST_PARTITION removed from OTP layout (antmicro/caliptra-ss)
+            // if let Some(vendor_test_partition) = args.vendor_test_partition {
+            //     let dst_start = fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET;
+            //     let max_len = fuses::VENDOR_TEST_PARTITION_BYTE_SIZE;
+            //     let copy_len = vendor_test_partition.len().min(max_len);
+            //     partitions[dst_start..dst_start + copy_len]
+            //         .copy_from_slice(&vendor_test_partition[..copy_len]);
+            // }
 
             // Provision lifecycle fuses if provided and current fuses are blank.
             if let Some(lc_data) = args.lifecycle_state {
@@ -928,7 +930,7 @@ mod test {
         // disable integrity checks
         otp.write_check_trigger_regwen(0u32.into());
         // block read access to the SW managed partitions
-        otp.write_vendor_test_partition_read_lock(0u32.into());
+        otp.write_vendor_hashes_manuf_partition_read_lock(0u32.into());
     }
 
     #[test]
@@ -945,14 +947,14 @@ mod test {
 
         // Only write the data portion (32-bit granule). The last 8 bytes are
         // the digest field which uses 64-bit granule and different addressing.
-        let data_words = (fuses::VENDOR_TEST_PARTITION_BYTE_SIZE - 8) / 4;
+        let data_words = (fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE - 8) / 4;
 
         // write the vendor partition data area
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         for i in 0..data_words {
             otp.write_dai_wdata_rf_direct_access_wdata_0(i as u32);
             otp.write_direct_access_address(
-                ((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
+                ((fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
             );
             otp.write_direct_access_cmd(2u32.into());
             // wait for idle
@@ -971,7 +973,7 @@ mod test {
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         for i in 0..data_words {
             otp.write_direct_access_address(
-                ((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
+                ((fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
             );
             otp.write_direct_access_cmd(1u32.into());
             // wait for idle
@@ -1003,12 +1005,12 @@ mod test {
         .unwrap();
 
         // Only write the data portion (exclude the 8-byte digest field)
-        let data_words = (fuses::VENDOR_TEST_PARTITION_BYTE_SIZE - 8) / 4;
+        let data_words = (fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE - 8) / 4;
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
         for i in 0..data_words {
             otp.write_dai_wdata_rf_direct_access_wdata_0(i as u32);
             otp.write_direct_access_address(
-                ((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
+                ((fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET + i * 4) as u32).into(),
             );
             otp.write_direct_access_cmd(2u32.into());
             assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::CLEAR.value);
@@ -1022,7 +1024,7 @@ mod test {
         }
 
         // trigger a digest
-        otp.write_direct_access_address((fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET as u32).into());
+        otp.write_direct_access_address((fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET as u32).into());
         otp.write_direct_access_cmd(4u32.into());
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::CLEAR.value);
         for _ in 0..1000 {
@@ -1032,15 +1034,15 @@ mod test {
             otp.poll();
         }
         assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
-        // Digest should not be updated until warm_reset
-        let old_lo = otp.digests[18];
-        let old_hi = otp.digests[19];
+        // VENDOR_HASHES_PROD_PARTITION is partition index 11
+        let old_lo = otp.digests[22];
+        let old_hi = otp.digests[23];
         otp.warm_reset();
         // After reset the digest should be computed and non-zero
-        assert_ne!(otp.digests[18], 0, "digest lo should be non-zero");
-        assert_ne!(otp.digests[19], 0, "digest hi should be non-zero");
+        assert_ne!(otp.digests[22], 0, "digest lo should be non-zero");
+        assert_ne!(otp.digests[23], 0, "digest hi should be non-zero");
         assert!(
-            otp.digests[18] != old_lo || otp.digests[19] != old_hi,
+            otp.digests[22] != old_lo || otp.digests[23] != old_hi,
             "digest should change after reset"
         );
     }
@@ -1058,7 +1060,7 @@ mod test {
             },
         )
         .unwrap();
-        let addr = fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET as u32;
+        let addr = fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET as u32;
 
         // First write: 0xFF00_FF00 should succeed on blank OTP
         otp.write_dai_wdata_rf_direct_access_wdata_0(0xFF00_FF00);

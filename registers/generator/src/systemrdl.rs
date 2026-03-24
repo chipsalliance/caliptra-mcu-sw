@@ -239,13 +239,21 @@ fn translate_field(iref: systemrdl::InstanceRef) -> Result<RegisterField, Error>
         .unwrap_or_default();
 
     // First try to get the reset value from the "reset" property in the field's scope,
-    // then fall back to the Instance's reset field (used for assignment syntax like FIELD = value)
+    // then fall back to the Instance's reset field (used for assignment syntax like FIELD = value).
+    // When the RDL specifies `reset = 0x1;` (a plain number), the parser stores it as Value::U64
+    // rather than Value::Bits, so we also try reading as u64 when Bits lookup fails.
     let default_val = inst
         .scope
         .property_val_opt::<systemrdl::Bits>("reset")
         .ok()
         .flatten()
         .map(|b| b.val())
+        .or_else(|| {
+            inst.scope
+                .property_val_opt::<u64>("reset")
+                .ok()
+                .flatten()
+        })
         .or_else(|| inst.reset.map(|b| b.val()))
         .unwrap_or_default();
 
