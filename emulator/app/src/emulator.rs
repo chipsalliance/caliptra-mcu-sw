@@ -87,11 +87,11 @@ fn parse_vendor_pqc_type(s: &str) -> Result<FwVerificationPqcKeyType, String> {
 /// TestUnlocked* → "unprovisioned", Dev → "manufacturing", all others → "production".
 fn lc_state_to_device_lifecycle_str(lc_state_index: u32) -> &'static str {
     match lc_state_index {
-        // TestUnlocked0..TestUnlocked7 = indices 1,3,5,7,9,11,13,15
-        1 | 3 | 5 | 7 | 9 | 11 | 13 | 15 => "unprovisioned",
+        // Raw = index 0, TestUnlocked0..TestUnlocked7 = indices 1,3,5,7,9,11,13,15
+        0 | 1 | 3 | 5 | 7 | 9 | 11 | 13 | 15 => "unprovisioned",
         // Dev = index 16
         16 => "manufacturing",
-        // Raw, TestLocked*, Prod, ProdEnd, Rma, Scrap, PostTransition → production
+        // TestLocked*, Prod, ProdEnd, Rma, Scrap, PostTransition → production
         _ => "production",
     }
 }
@@ -395,7 +395,7 @@ impl Emulator {
         } else {
             // No existing fuses — generate from CLI arg.
             let (idx, cnt) = match device_lifecycle {
-                DeviceLifecycle::Unprovisioned => (1u8, 1u8), // TestUnlocked0
+                DeviceLifecycle::Unprovisioned => (0u8, 0u8), // Raw
                 DeviceLifecycle::Manufacturing => (16u8, 1u8), // Dev
                 DeviceLifecycle::Production => (17u8, 1u8),   // Prod
                 _ => (17u8, 1u8),
