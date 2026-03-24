@@ -3,8 +3,8 @@
 use anyhow::{bail, Result};
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine;
-use caliptra_auth_man_types::AuthorizationManifest;
-use caliptra_image_types::{ImageManifest, IMAGE_MANIFEST_BYTE_SIZE};
+use caliptra_core_tools::caliptra_auth_man_types::AuthorizationManifest;
+use caliptra_core_tools::caliptra_image_types::{ImageManifest, IMAGE_MANIFEST_BYTE_SIZE};
 use p384::elliptic_curve::sec1::ToEncodedPoint;
 use p384::pkcs8::EncodePrivateKey;
 use serde::Deserialize;

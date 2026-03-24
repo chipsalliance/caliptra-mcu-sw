@@ -34,14 +34,14 @@
 //! 3. If mci_pwrgood remains high, MCI hardware sets WARM_RESET bit
 //! 4. MCU comes out of reset and reads RESET_REASON to determine boot flow
 
-use caliptra_emu_bus::ReadWriteRegister;
+use caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister;
 use registers_generated::mci::bits::ResetReason;
 use tock_registers::interfaces::{ReadWriteable, Readable};
 
 /// Emulates the MCI RESET_REASON register behavior
 pub struct ResetReasonEmulator {
     /// Reference to the MCI peripheral registers in caliptra-sw
-    ext_mci_regs: caliptra_emu_periph::mci::Mci,
+    ext_mci_regs: caliptra_core_tools::caliptra_emu_periph::mci::Mci,
 
     /// Track power state to properly handle warm reset
     pwrgood: bool,
@@ -49,7 +49,7 @@ pub struct ResetReasonEmulator {
 
 impl ResetReasonEmulator {
     /// Create a new reset reason emulator
-    pub fn new(ext_mci_regs: caliptra_emu_periph::mci::Mci) -> Self {
+    pub fn new(ext_mci_regs: caliptra_core_tools::caliptra_emu_periph::mci::Mci) -> Self {
         Self {
             ext_mci_regs,
             pwrgood: true,
@@ -102,7 +102,7 @@ impl ResetReasonEmulator {
 
 impl Default for ResetReasonEmulator {
     fn default() -> Self {
-        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let ext_mci_regs = caliptra_core_tools::caliptra_emu_periph::mci::Mci::new(vec![]);
         Self::new(ext_mci_regs)
     }
 }

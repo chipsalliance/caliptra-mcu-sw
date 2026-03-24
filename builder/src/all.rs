@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Result};
-use caliptra_builder::FwId;
-use caliptra_image_types::ImageManifest;
+use caliptra_core_tools::caliptra_builder::FwId;
+use caliptra_core_tools::caliptra_image_types::ImageManifest;
 use chrono::{TimeZone, Utc};
 use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
 use mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION};
@@ -505,7 +505,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 
                 std::fs::create_dir_all(&release_dir)?;
                 let bin_path = release_dir.join(&filename);
-                let rom_bytes = caliptra_builder::build_firmware_rom(fwid)?;
+                let rom_bytes = caliptra_core_tools::caliptra_builder::build_firmware_rom(fwid)?;
                 std::fs::write(&bin_path, rom_bytes)?;
                 Ok((bin_path, filename))
             })

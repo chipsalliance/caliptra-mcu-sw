@@ -5,8 +5,8 @@
 //! via the `cptra_hw_error_fatal` register.
 
 use anyhow::Result;
-use caliptra_api::SocManager;
-use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_core_tools::caliptra_api::SocManager;
+use caliptra_core_tools::caliptra_image_types::FwVerificationPqcKeyType;
 use mcu_builder::flash_image::build_flash_image_bytes;
 use mcu_hw_model::McuHwModel;
 use mcu_hw_model::{new, Fuses, InitParams};

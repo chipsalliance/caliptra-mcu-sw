@@ -1,5 +1,5 @@
 // Licensed under the Apache-2.0 license
-use caliptra_api::mailbox::{FwInfoResp, GetImageInfoResp};
+use caliptra_core_firmware::caliptra_api::mailbox::{FwInfoResp, GetImageInfoResp};
 use core::fmt::Write;
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use libapi_caliptra::evidence::device_state::*;

@@ -7,7 +7,7 @@ use anyhow::Result;
 
 use crate::utils::manifest_file;
 use crate::PROJECT_ROOT;
-use caliptra_builder::FwId;
+use caliptra_core_tools::caliptra_builder::FwId;
 use mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 
 pub fn rom_build(

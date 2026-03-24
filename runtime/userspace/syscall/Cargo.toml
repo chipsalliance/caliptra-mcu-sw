@@ -7,8 +7,8 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+caliptra-core-firmware = { workspace = true, default-features = false, features = ["2_0"] }
 async-trait.workspace = true
-caliptra-api.workspace = true
 embassy-sync.workspace = true
 libtock_console.workspace = true
 libtock_platform.workspace = true

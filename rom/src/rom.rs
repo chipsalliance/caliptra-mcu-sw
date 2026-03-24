@@ -28,7 +28,7 @@ use crate::LifecycleToken;
 use crate::McuBootMilestones;
 use crate::RomEnv;
 use crate::WarmBoot;
-use caliptra_api::mailbox::CmStableKeyType;
+use caliptra_core_firmware::caliptra_api::mailbox::CmStableKeyType;
 use core::fmt::Write;
 use mcu_error::McuError;
 use registers_generated::fuses;

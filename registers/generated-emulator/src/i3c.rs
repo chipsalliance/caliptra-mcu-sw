@@ -5,14 +5,24 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait I3cPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
-    fn set_dma_rom_sram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
+    fn set_dma_ram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
+    fn set_dma_rom_sram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
     fn register_event_channels(
         &mut self,
-        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_caliptra: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
-        _events_to_mcu: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
+        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_caliptra: std::sync::mpsc::Receiver<
+            caliptra_core_tools::caliptra_emu_bus::Event,
+        >,
+        _events_to_mcu: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_core_tools::caliptra_emu_bus::Event>,
     ) {
     }
     fn poll(&mut self) {}
@@ -21,7 +31,7 @@ pub trait I3cPeripheral {
     fn generated(&mut self) -> Option<&mut I3cGenerated> {
         None
     }
-    fn read_dat(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_dat(&mut self, index: usize) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::dat[{}]",
@@ -33,7 +43,7 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_dat(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_dat(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData, index: usize) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write i3c::dat[{}] = 0x{:08x}",
@@ -44,7 +54,7 @@ pub trait I3cPeripheral {
             generated.write_dat(val, index);
         }
     }
-    fn read_dct(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_dct(&mut self, index: usize) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::dct[{}]",
@@ -56,7 +66,7 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_dct(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_dct(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData, index: usize) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write i3c::dct[{}] = 0x{:08x}",
@@ -67,7 +77,7 @@ pub trait I3cPeripheral {
             generated.write_dct(val, index);
         }
     }
-    fn read_i3c_base_hci_version(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_base_hci_version(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_hci_version");
         }
@@ -78,19 +88,21 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_hc_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HcControl::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::HcControl::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_hc_control");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_hc_control();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_hc_control(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::HcControl::Register,
         >,
@@ -107,7 +119,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_controller_device_addr(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ControllerDeviceAddr::Register,
     > {
@@ -119,11 +131,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_controller_device_addr();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_controller_device_addr(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::ControllerDeviceAddr::Register,
         >,
@@ -137,7 +149,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_hc_capabilities(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::HcCapabilities::Register,
     > {
@@ -147,11 +159,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_hc_capabilities();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_reset_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ResetControl::Register,
     > {
@@ -161,11 +173,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_reset_control();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_reset_control(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::ResetControl::Register,
         >,
@@ -182,7 +194,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_present_state(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PresentState::Register,
     > {
@@ -192,11 +204,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_present_state();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_intr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IntrStatus::Register,
     > {
@@ -206,11 +218,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_intr_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_intr_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IntrStatus::Register,
         >,
@@ -227,7 +239,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_intr_status_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IntrStatusEnable::Register,
     > {
@@ -237,11 +249,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_intr_status_enable();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_intr_status_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IntrStatusEnable::Register,
         >,
@@ -255,7 +267,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_intr_signal_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IntrSignalEnable::Register,
     > {
@@ -265,11 +277,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_intr_signal_enable();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_intr_signal_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IntrSignalEnable::Register,
         >,
@@ -283,7 +295,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_base_intr_force(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IntrForce::Register,
         >,
@@ -300,7 +312,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_dat_section_offset(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DatSectionOffset::Register,
     > {
@@ -310,11 +322,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_dat_section_offset();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_dct_section_offset(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DctSectionOffset::Register,
     > {
@@ -324,11 +336,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_dct_section_offset();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_dct_section_offset(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DctSectionOffset::Register,
         >,
@@ -342,7 +354,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_ring_headers_section_offset(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::RingHeadersSectionOffset::Register,
     > {
@@ -352,11 +364,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_ring_headers_section_offset();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_pio_section_offset(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PioSectionOffset::Register,
     > {
@@ -366,11 +378,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_pio_section_offset();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_ext_caps_section_offset(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ExtCapsSectionOffset::Register,
     > {
@@ -382,11 +394,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_ext_caps_section_offset();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_int_ctrl_cmds_en(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IntCtrlCmdsEn::Register,
     > {
@@ -396,11 +408,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_int_ctrl_cmds_en();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_base_ibi_notify_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IbiNotifyCtrl::Register,
     > {
@@ -410,11 +422,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_ibi_notify_ctrl();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_ibi_notify_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IbiNotifyCtrl::Register,
         >,
@@ -428,7 +440,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_ibi_data_abort_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
     > {
@@ -438,11 +450,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_ibi_data_abort_ctrl();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_ibi_data_abort_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
         >,
@@ -456,7 +468,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_dev_ctx_base_lo(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DevCtxBaseLo::Register,
     > {
@@ -466,11 +478,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_dev_ctx_base_lo();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_dev_ctx_base_lo(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DevCtxBaseLo::Register,
         >,
@@ -484,7 +496,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_dev_ctx_base_hi(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DevCtxBaseHi::Register,
     > {
@@ -494,11 +506,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_dev_ctx_base_hi();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_base_dev_ctx_base_hi(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DevCtxBaseHi::Register,
         >,
@@ -512,17 +524,22 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_base_dev_ctx_sg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DevCtxSg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::DevCtxSg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::i3c_base_dev_ctx_sg");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_base_dev_ctx_sg();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn write_piocontrol_command_port(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_piocontrol_command_port(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write i3c::piocontrol_command_port = 0x{:08x}",
@@ -533,7 +550,7 @@ pub trait I3cPeripheral {
             generated.write_piocontrol_command_port(val);
         }
     }
-    fn read_piocontrol_response_port(&mut self) -> caliptra_emu_types::RvData {
+    fn read_piocontrol_response_port(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::piocontrol_response_port");
         }
@@ -542,7 +559,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_piocontrol_tx_data_port(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_piocontrol_tx_data_port(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write i3c::piocontrol_tx_data_port = 0x{:08x}",
@@ -553,7 +573,7 @@ pub trait I3cPeripheral {
             generated.write_piocontrol_tx_data_port(val);
         }
     }
-    fn read_piocontrol_rx_data_port(&mut self) -> caliptra_emu_types::RvData {
+    fn read_piocontrol_rx_data_port(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::piocontrol_rx_data_port");
         }
@@ -562,7 +582,7 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn read_piocontrol_ibi_port(&mut self) -> caliptra_emu_types::RvData {
+    fn read_piocontrol_ibi_port(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::piocontrol_ibi_port");
         }
@@ -573,7 +593,7 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_queue_thld_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::QueueThldCtrl::Register,
     > {
@@ -583,11 +603,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_queue_thld_ctrl();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_piocontrol_queue_thld_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::QueueThldCtrl::Register,
         >,
@@ -601,7 +621,7 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_data_buffer_thld_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DataBufferThldCtrl::Register,
     > {
@@ -613,11 +633,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_data_buffer_thld_ctrl();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_piocontrol_data_buffer_thld_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DataBufferThldCtrl::Register,
         >,
@@ -631,19 +651,21 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_queue_size(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::QueueSize::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::QueueSize::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::piocontrol_queue_size");
         }
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_queue_size();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_piocontrol_alt_queue_size(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::AltQueueSize::Register,
     > {
@@ -653,11 +675,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_alt_queue_size();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_piocontrol_pio_intr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PioIntrStatus::Register,
     > {
@@ -667,11 +689,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_pio_intr_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_piocontrol_pio_intr_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioIntrStatus::Register,
         >,
@@ -685,7 +707,7 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_pio_intr_status_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PioIntrStatusEnable::Register,
     > {
@@ -697,11 +719,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_pio_intr_status_enable();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_piocontrol_pio_intr_status_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioIntrStatusEnable::Register,
         >,
@@ -715,7 +737,7 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_pio_intr_signal_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PioIntrSignalEnable::Register,
     > {
@@ -727,11 +749,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_pio_intr_signal_enable();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_piocontrol_pio_intr_signal_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioIntrSignalEnable::Register,
         >,
@@ -745,7 +767,7 @@ pub trait I3cPeripheral {
     }
     fn write_piocontrol_pio_intr_force(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioIntrForce::Register,
         >,
@@ -759,7 +781,7 @@ pub trait I3cPeripheral {
     }
     fn read_piocontrol_pio_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PioControl::Register,
     > {
@@ -769,11 +791,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_piocontrol_pio_control();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_piocontrol_pio_control(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioControl::Register,
         >,
@@ -790,7 +812,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_extcap_header(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
@@ -800,9 +822,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_extcap_header();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_0");
         }
@@ -811,7 +835,9 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_1");
         }
@@ -822,19 +848,21 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_2(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap2::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::ProtCap2::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_2");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_prot_cap_2();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_prot_cap_2(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::ProtCap2::Register,
         >,
@@ -848,19 +876,21 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_3(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap3::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::ProtCap3::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_3");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_prot_cap_3();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_prot_cap_3(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::ProtCap3::Register,
         >,
@@ -874,19 +904,21 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DeviceId0::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::DeviceId0::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_0");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_id_0();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_id_0(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DeviceId0::Register,
         >,
@@ -898,7 +930,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_sec_fw_recovery_if_device_id_0(val);
         }
     }
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_1");
         }
@@ -907,7 +941,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_1(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_1(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_id_1 = 0x{:08x}" , val);
         }
@@ -915,7 +952,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_sec_fw_recovery_if_device_id_1(val);
         }
     }
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_2(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_2(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_2");
         }
@@ -924,7 +963,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_2(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_2(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_id_2 = 0x{:08x}" , val);
         }
@@ -932,7 +974,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_sec_fw_recovery_if_device_id_2(val);
         }
     }
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_3(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_3");
         }
@@ -941,7 +985,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_3(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_3(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_id_3 = 0x{:08x}" , val);
         }
@@ -949,7 +996,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_sec_fw_recovery_if_device_id_3(val);
         }
     }
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_4(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_4(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_4");
         }
@@ -958,7 +1007,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_4(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_4(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_id_4 = 0x{:08x}" , val);
         }
@@ -966,7 +1018,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_sec_fw_recovery_if_device_id_4(val);
         }
     }
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_5(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_5(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_5");
         }
@@ -975,7 +1029,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_5(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_5(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_device_id_5 = 0x{:08x}" , val);
         }
@@ -983,7 +1040,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_sec_fw_recovery_if_device_id_5(val);
         }
     }
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_reserved(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_reserved(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_device_id_reserved");
         }
@@ -994,7 +1053,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_status_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DeviceStatus0::Register,
     > {
@@ -1004,11 +1063,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_status_0();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_status_0(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DeviceStatus0::Register,
         >,
@@ -1022,7 +1081,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_status_1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DeviceStatus1::Register,
     > {
@@ -1032,11 +1091,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_status_1();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_status_1(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DeviceStatus1::Register,
         >,
@@ -1050,7 +1109,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_reset(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DeviceReset::Register,
     > {
@@ -1060,11 +1119,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_device_reset();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_reset(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DeviceReset::Register,
         >,
@@ -1078,7 +1137,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_recovery_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::RecoveryCtrl::Register,
     > {
@@ -1088,11 +1147,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_recovery_ctrl();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_recovery_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::RecoveryCtrl::Register,
         >,
@@ -1106,7 +1165,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_recovery_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::RecoveryStatus::Register,
     > {
@@ -1116,11 +1175,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_recovery_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_recovery_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::RecoveryStatus::Register,
         >,
@@ -1134,8 +1193,10 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_hw_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HwStatus::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::HwStatus::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_hw_status"
@@ -1144,11 +1205,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_hw_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_hw_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::HwStatus::Register,
         >,
@@ -1162,7 +1223,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
     > {
@@ -1172,11 +1233,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
         >,
@@ -1190,7 +1251,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1");
         }
@@ -1201,7 +1262,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1 = 0x{:08x}" , val);
@@ -1212,7 +1273,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IndirectFifoStatus0::Register,
     > {
@@ -1222,11 +1283,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1");
         }
@@ -1237,7 +1298,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2");
         }
@@ -1248,7 +1309,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3");
         }
@@ -1259,7 +1320,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4");
         }
@@ -1270,7 +1331,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved");
         }
@@ -1279,7 +1340,9 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_data");
         }
@@ -1290,7 +1353,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_extcap_header(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
@@ -1300,11 +1363,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_extcap_header();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrControl::Register,
     > {
@@ -1314,11 +1377,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_control();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_control(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrControl::Register,
         >,
@@ -1332,7 +1395,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
     > {
@@ -1342,11 +1405,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
         >,
@@ -1360,7 +1423,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrCapabilities::Register,
     > {
@@ -1370,11 +1433,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
     > {
@@ -1384,11 +1447,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
         >,
@@ -1402,7 +1465,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrStatus::Register,
     > {
@@ -1412,11 +1475,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrStatus::Register,
         >,
@@ -1430,7 +1493,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrDeviceChar::Register,
     > {
@@ -1440,11 +1503,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_device_char();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrDeviceChar::Register,
         >,
@@ -1456,7 +1519,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(val);
         }
     }
-    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo");
         }
@@ -1467,7 +1532,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo = 0x{:08x}" , val);
@@ -1478,7 +1543,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrIntrStatus::Register,
     > {
@@ -1488,11 +1553,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrIntrStatus::Register,
         >,
@@ -1506,7 +1571,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo");
         }
@@ -1517,7 +1582,7 @@ pub trait I3cPeripheral {
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo = 0x{:08x}" , val);
@@ -1528,7 +1593,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
     > {
@@ -1538,11 +1603,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
         >,
@@ -1556,7 +1621,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrIntrForce::Register,
     > {
@@ -1566,11 +1631,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrIntrForce::Register,
         >,
@@ -1584,7 +1649,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
     > {
@@ -1594,11 +1659,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
         >,
@@ -1612,7 +1677,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
     > {
@@ -1622,11 +1687,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
         >,
@@ -1640,7 +1705,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
     > {
@@ -1650,11 +1715,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
         >,
@@ -1666,7 +1731,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr(val);
         }
     }
-    fn read_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_stdby_ctrl_mode_rsvd_3(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_stdby_ctrl_mode_rsvd_3"
@@ -1677,7 +1744,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_stdby_ctrl_mode_rsvd_3(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_stdby_ctrl_mode_rsvd_3 = 0x{:08x}" , val);
         }
@@ -1687,7 +1757,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_extcap_header(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
@@ -1697,23 +1767,25 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_extcap_header();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_tti_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Control::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::Control::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_control");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_control();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_control(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::Control::Register,
         >,
@@ -1730,19 +1802,21 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Status::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::Status::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_status");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_tti_tti_reset_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::TtiResetControl::Register,
     > {
@@ -1752,11 +1826,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_tti_reset_control();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_tti_reset_control(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TtiResetControl::Register,
         >,
@@ -1770,7 +1844,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_interrupt_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::InterruptStatus::Register,
     > {
@@ -1780,11 +1854,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_interrupt_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_interrupt_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::InterruptStatus::Register,
         >,
@@ -1798,7 +1872,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_interrupt_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::InterruptEnable::Register,
     > {
@@ -1808,11 +1882,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_interrupt_enable();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_interrupt_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::InterruptEnable::Register,
         >,
@@ -1826,7 +1900,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_interrupt_force(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::InterruptForce::Register,
     > {
@@ -1836,11 +1910,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_interrupt_force();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_interrupt_force(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::InterruptForce::Register,
         >,
@@ -1852,7 +1926,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_tti_interrupt_force(val);
         }
     }
-    fn read_i3c_ec_tti_rx_desc_queue_port(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_tti_rx_desc_queue_port(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_tti_rx_desc_queue_port"
@@ -1863,7 +1939,7 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn read_i3c_ec_tti_rx_data_port(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_tti_rx_data_port(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_tti_rx_data_port");
         }
@@ -1872,7 +1948,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_tti_tx_desc_queue_port(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_tti_tx_desc_queue_port(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_tti_tx_desc_queue_port = 0x{:08x}" , val);
         }
@@ -1880,7 +1959,10 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_tti_tx_desc_queue_port(val);
         }
     }
-    fn write_i3c_ec_tti_tx_data_port(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_tti_tx_data_port(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write i3c::i3c_ec_tti_tx_data_port = 0x{:08x}",
@@ -1891,7 +1973,10 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_tti_tx_data_port(val);
         }
     }
-    fn write_i3c_ec_tti_tti_ibi_port(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_tti_tti_ibi_port(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write i3c::i3c_ec_tti_tti_ibi_port = 0x{:08x}",
@@ -1904,7 +1989,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_tti_queue_size(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::TtiQueueSize::Register,
     > {
@@ -1914,11 +1999,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_tti_queue_size();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_tti_ibi_tti_queue_size(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IbiTtiQueueSize::Register,
     > {
@@ -1930,11 +2015,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_ibi_tti_queue_size();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_tti_tti_queue_thld_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
     > {
@@ -1946,11 +2031,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_tti_queue_thld_ctrl();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_tti_queue_thld_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
         >,
@@ -1964,7 +2049,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_tti_tti_data_buffer_thld_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
     > {
@@ -1974,11 +2059,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_tti_tti_data_buffer_thld_ctrl();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_tti_tti_data_buffer_thld_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
         >,
@@ -1992,7 +2077,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_extcap_header(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
@@ -2004,9 +2089,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_extcap_header();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_control(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_control"
@@ -2017,7 +2104,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_control(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_control = 0x{:08x}" , val);
         }
@@ -2025,7 +2115,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_soc_mgmt_if_soc_mgmt_control(val);
         }
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_status(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_status"
@@ -2036,7 +2128,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_status(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_status = 0x{:08x}" , val);
         }
@@ -2046,7 +2141,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_rec_intf_cfg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::RecIntfCfg::Register,
     > {
@@ -2058,11 +2153,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_rec_intf_cfg();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_rec_intf_cfg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::RecIntfCfg::Register,
         >,
@@ -2076,7 +2171,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
     > {
@@ -2086,11 +2181,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
         >,
@@ -2102,7 +2197,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(val);
         }
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2"
@@ -2113,7 +2210,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2 = 0x{:08x}" , val);
         }
@@ -2121,7 +2221,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(val);
         }
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3"
@@ -2132,7 +2234,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3 = 0x{:08x}" , val);
         }
@@ -2142,7 +2247,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_soc_pad_conf(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::SocPadConf::Register,
     > {
@@ -2154,11 +2259,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_soc_pad_conf();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_soc_pad_conf(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::SocPadConf::Register,
         >,
@@ -2172,7 +2277,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_soc_pad_attr(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::SocPadAttr::Register,
     > {
@@ -2184,11 +2289,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_soc_pad_attr();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_soc_pad_attr(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::SocPadAttr::Register,
         >,
@@ -2200,7 +2305,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_soc_mgmt_if_soc_pad_attr(val);
         }
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_2");
         }
@@ -2209,7 +2316,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_2 = 0x{:08x}" , val);
         }
@@ -2217,7 +2327,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(val);
         }
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_3");
         }
@@ -2226,7 +2338,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_3 = 0x{:08x}" , val);
         }
@@ -2236,19 +2351,21 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_r_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TRReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::TRReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_r_reg");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_t_r_reg();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_r_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TRReg::Register,
         >,
@@ -2262,19 +2379,21 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_f_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TFReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::TFReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_f_reg");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_t_f_reg();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_f_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TFReg::Register,
         >,
@@ -2288,8 +2407,10 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_dat_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuDatReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::TSuDatReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_su_dat_reg"
@@ -2298,11 +2419,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_t_su_dat_reg();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_su_dat_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TSuDatReg::Register,
         >,
@@ -2316,8 +2437,10 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_hd_dat_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdDatReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::THdDatReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_hd_dat_reg"
@@ -2326,11 +2449,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_t_hd_dat_reg();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_hd_dat_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::THdDatReg::Register,
         >,
@@ -2344,8 +2467,10 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_high_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THighReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::THighReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_high_reg"
@@ -2354,11 +2479,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_t_high_reg();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_high_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::THighReg::Register,
         >,
@@ -2372,19 +2497,21 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_low_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TLowReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::TLowReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_low_reg");
         }
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_t_low_reg();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_low_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TLowReg::Register,
         >,
@@ -2398,8 +2525,10 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_hd_sta_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdStaReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::THdStaReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_hd_sta_reg"
@@ -2408,11 +2537,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_t_hd_sta_reg();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_hd_sta_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::THdStaReg::Register,
         >,
@@ -2426,8 +2555,10 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_sta_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStaReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::TSuStaReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_su_sta_reg"
@@ -2436,11 +2567,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_t_su_sta_reg();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_su_sta_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TSuStaReg::Register,
         >,
@@ -2454,8 +2585,10 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_sto_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStoReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::TSuStoReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_su_sto_reg"
@@ -2464,11 +2597,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_soc_mgmt_if_t_su_sto_reg();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_i3c_ec_soc_mgmt_if_t_su_sto_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TSuStoReg::Register,
         >,
@@ -2480,7 +2613,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_soc_mgmt_if_t_su_sto_reg(val);
         }
     }
-    fn read_i3c_ec_soc_mgmt_if_t_free_reg(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_t_free_reg(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_free_reg"
@@ -2491,7 +2626,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_t_free_reg(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_t_free_reg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_free_reg = 0x{:08x}" , val);
         }
@@ -2499,7 +2637,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_soc_mgmt_if_t_free_reg(val);
         }
     }
-    fn read_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_t_aval_reg(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_aval_reg"
@@ -2510,7 +2650,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_t_aval_reg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_aval_reg = 0x{:08x}" , val);
         }
@@ -2518,7 +2661,9 @@ pub trait I3cPeripheral {
             generated.write_i3c_ec_soc_mgmt_if_t_aval_reg(val);
         }
     }
-    fn read_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_t_idle_reg(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c::i3c_ec_soc_mgmt_if_t_idle_reg"
@@ -2529,7 +2674,10 @@ pub trait I3cPeripheral {
         }
         0
     }
-    fn write_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_t_idle_reg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write i3c::i3c_ec_soc_mgmt_if_t_idle_reg = 0x{:08x}" , val);
         }
@@ -2539,7 +2687,7 @@ pub trait I3cPeripheral {
     }
     fn read_i3c_ec_ctrl_cfg_extcap_header(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
@@ -2551,11 +2699,11 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_ctrl_cfg_extcap_header();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_i3c_ec_ctrl_cfg_controller_config(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ControllerConfig::Register,
     > {
@@ -2567,259 +2715,328 @@ pub trait I3cPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_i3c_ec_ctrl_cfg_controller_config();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
 }
 #[derive(Clone, Debug)]
 pub struct I3cGenerated {
-    dat: Vec<caliptra_emu_types::RvData>,
-    dct: Vec<caliptra_emu_types::RvData>,
-    i3c_base_hci_version: caliptra_emu_types::RvData,
-    i3c_base_hc_control: caliptra_emu_types::RvData,
-    i3c_base_controller_device_addr: caliptra_emu_types::RvData,
-    i3c_base_hc_capabilities: caliptra_emu_types::RvData,
-    i3c_base_reset_control: caliptra_emu_types::RvData,
-    i3c_base_present_state: caliptra_emu_types::RvData,
-    i3c_base_intr_status: caliptra_emu_types::RvData,
-    i3c_base_intr_status_enable: caliptra_emu_types::RvData,
-    i3c_base_intr_signal_enable: caliptra_emu_types::RvData,
-    i3c_base_intr_force: caliptra_emu_types::RvData,
-    i3c_base_dat_section_offset: caliptra_emu_types::RvData,
-    i3c_base_dct_section_offset: caliptra_emu_types::RvData,
-    i3c_base_ring_headers_section_offset: caliptra_emu_types::RvData,
-    i3c_base_pio_section_offset: caliptra_emu_types::RvData,
-    i3c_base_ext_caps_section_offset: caliptra_emu_types::RvData,
-    i3c_base_int_ctrl_cmds_en: caliptra_emu_types::RvData,
-    i3c_base_ibi_notify_ctrl: caliptra_emu_types::RvData,
-    i3c_base_ibi_data_abort_ctrl: caliptra_emu_types::RvData,
-    i3c_base_dev_ctx_base_lo: caliptra_emu_types::RvData,
-    i3c_base_dev_ctx_base_hi: caliptra_emu_types::RvData,
-    i3c_base_dev_ctx_sg: caliptra_emu_types::RvData,
-    piocontrol_command_port: caliptra_emu_types::RvData,
-    piocontrol_response_port: caliptra_emu_types::RvData,
-    piocontrol_tx_data_port: caliptra_emu_types::RvData,
-    piocontrol_rx_data_port: caliptra_emu_types::RvData,
-    piocontrol_ibi_port: caliptra_emu_types::RvData,
-    piocontrol_queue_thld_ctrl: caliptra_emu_types::RvData,
-    piocontrol_data_buffer_thld_ctrl: caliptra_emu_types::RvData,
-    piocontrol_queue_size: caliptra_emu_types::RvData,
-    piocontrol_alt_queue_size: caliptra_emu_types::RvData,
-    piocontrol_pio_intr_status: caliptra_emu_types::RvData,
-    piocontrol_pio_intr_status_enable: caliptra_emu_types::RvData,
-    piocontrol_pio_intr_signal_enable: caliptra_emu_types::RvData,
-    piocontrol_pio_intr_force: caliptra_emu_types::RvData,
-    piocontrol_pio_control: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_extcap_header: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_prot_cap_0: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_prot_cap_1: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_prot_cap_2: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_prot_cap_3: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_device_id_0: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_device_id_1: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_device_id_2: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_device_id_3: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_device_id_4: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_device_id_5: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_device_id_reserved: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_device_status_0: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_device_status_1: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_device_reset: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_recovery_ctrl: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_recovery_status: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_hw_status: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved: caliptra_emu_types::RvData,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_data: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_extcap_header: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_control: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_device_addr: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_capabilities: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_status: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_device_char: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_intr_status: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_intr_force: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr: caliptra_emu_types::RvData,
-    i3c_ec_stdby_ctrl_mode_rsvd_3: caliptra_emu_types::RvData,
-    i3c_ec_tti_extcap_header: caliptra_emu_types::RvData,
-    i3c_ec_tti_control: caliptra_emu_types::RvData,
-    i3c_ec_tti_status: caliptra_emu_types::RvData,
-    i3c_ec_tti_tti_reset_control: caliptra_emu_types::RvData,
-    i3c_ec_tti_interrupt_status: caliptra_emu_types::RvData,
-    i3c_ec_tti_interrupt_enable: caliptra_emu_types::RvData,
-    i3c_ec_tti_interrupt_force: caliptra_emu_types::RvData,
-    i3c_ec_tti_rx_desc_queue_port: caliptra_emu_types::RvData,
-    i3c_ec_tti_rx_data_port: caliptra_emu_types::RvData,
-    i3c_ec_tti_tx_desc_queue_port: caliptra_emu_types::RvData,
-    i3c_ec_tti_tx_data_port: caliptra_emu_types::RvData,
-    i3c_ec_tti_tti_ibi_port: caliptra_emu_types::RvData,
-    i3c_ec_tti_tti_queue_size: caliptra_emu_types::RvData,
-    i3c_ec_tti_ibi_tti_queue_size: caliptra_emu_types::RvData,
-    i3c_ec_tti_tti_queue_thld_ctrl: caliptra_emu_types::RvData,
-    i3c_ec_tti_tti_data_buffer_thld_ctrl: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_extcap_header: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_soc_mgmt_control: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_soc_mgmt_status: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_rec_intf_cfg: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_soc_pad_conf: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_soc_pad_attr: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_soc_mgmt_feature_2: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_soc_mgmt_feature_3: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_t_r_reg: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_t_f_reg: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_t_su_dat_reg: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_t_hd_dat_reg: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_t_high_reg: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_t_low_reg: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_t_hd_sta_reg: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_t_su_sta_reg: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_t_su_sto_reg: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_t_free_reg: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_t_aval_reg: caliptra_emu_types::RvData,
-    i3c_ec_soc_mgmt_if_t_idle_reg: caliptra_emu_types::RvData,
-    i3c_ec_ctrl_cfg_extcap_header: caliptra_emu_types::RvData,
-    i3c_ec_ctrl_cfg_controller_config: caliptra_emu_types::RvData,
+    dat: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    dct: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    i3c_base_hci_version: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_hc_control: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_controller_device_addr: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_hc_capabilities: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_reset_control: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_present_state: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_intr_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_intr_status_enable: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_intr_signal_enable: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_intr_force: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_dat_section_offset: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_dct_section_offset: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_ring_headers_section_offset: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_pio_section_offset: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_ext_caps_section_offset: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_int_ctrl_cmds_en: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_ibi_notify_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_ibi_data_abort_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_dev_ctx_base_lo: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_dev_ctx_base_hi: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_base_dev_ctx_sg: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_command_port: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_response_port: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_tx_data_port: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_rx_data_port: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_ibi_port: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_queue_thld_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_data_buffer_thld_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_queue_size: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_alt_queue_size: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_pio_intr_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_pio_intr_status_enable: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_pio_intr_signal_enable: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_pio_intr_force: caliptra_core_tools::caliptra_emu_types::RvData,
+    piocontrol_pio_control: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_extcap_header: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_prot_cap_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_prot_cap_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_prot_cap_2: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_prot_cap_3: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_device_id_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_device_id_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_device_id_2: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_device_id_3: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_device_id_4: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_device_id_5: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_device_id_reserved: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_device_status_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_device_status_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_device_reset: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_recovery_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_recovery_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_hw_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_sec_fw_recovery_if_indirect_fifo_data: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_extcap_header: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_control: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_device_addr: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_capabilities: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_device_char: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_intr_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_intr_force: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_stdby_ctrl_mode_rsvd_3: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_extcap_header: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_control: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_tti_reset_control: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_interrupt_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_interrupt_enable: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_interrupt_force: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_rx_desc_queue_port: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_rx_data_port: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_tx_desc_queue_port: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_tx_data_port: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_tti_ibi_port: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_tti_queue_size: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_ibi_tti_queue_size: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_tti_queue_thld_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_tti_tti_data_buffer_thld_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_extcap_header: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_soc_mgmt_control: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_soc_mgmt_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_rec_intf_cfg: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_soc_pad_conf: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_soc_pad_attr: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_soc_mgmt_feature_2: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_soc_mgmt_feature_3: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_t_r_reg: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_t_f_reg: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_t_su_dat_reg: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_t_hd_dat_reg: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_t_high_reg: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_t_low_reg: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_t_hd_sta_reg: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_t_su_sta_reg: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_t_su_sto_reg: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_t_free_reg: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_t_aval_reg: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_soc_mgmt_if_t_idle_reg: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_ctrl_cfg_extcap_header: caliptra_core_tools::caliptra_emu_types::RvData,
+    i3c_ec_ctrl_cfg_controller_config: caliptra_core_tools::caliptra_emu_types::RvData,
 }
 impl Default for I3cGenerated {
     fn default() -> Self {
         Self {
-            dat: vec![0 as caliptra_emu_types::RvData; 256],
-            dct: vec![0 as caliptra_emu_types::RvData; 512],
-            i3c_base_hci_version: 0x120 as caliptra_emu_types::RvData,
-            i3c_base_hc_control: 0x40 as caliptra_emu_types::RvData,
-            i3c_base_controller_device_addr: 0 as caliptra_emu_types::RvData,
-            i3c_base_hc_capabilities: 0x400 as caliptra_emu_types::RvData,
-            i3c_base_reset_control: 0 as caliptra_emu_types::RvData,
-            i3c_base_present_state: 0 as caliptra_emu_types::RvData,
-            i3c_base_intr_status: 0 as caliptra_emu_types::RvData,
-            i3c_base_intr_status_enable: 0 as caliptra_emu_types::RvData,
-            i3c_base_intr_signal_enable: 0 as caliptra_emu_types::RvData,
-            i3c_base_intr_force: 0 as caliptra_emu_types::RvData,
-            i3c_base_dat_section_offset: 0x400 as caliptra_emu_types::RvData,
-            i3c_base_dct_section_offset: 0 as caliptra_emu_types::RvData,
-            i3c_base_ring_headers_section_offset: 0 as caliptra_emu_types::RvData,
-            i3c_base_pio_section_offset: 0 as caliptra_emu_types::RvData,
-            i3c_base_ext_caps_section_offset: 0 as caliptra_emu_types::RvData,
-            i3c_base_int_ctrl_cmds_en: 1 as caliptra_emu_types::RvData,
-            i3c_base_ibi_notify_ctrl: 0 as caliptra_emu_types::RvData,
-            i3c_base_ibi_data_abort_ctrl: 0 as caliptra_emu_types::RvData,
-            i3c_base_dev_ctx_base_lo: 0 as caliptra_emu_types::RvData,
-            i3c_base_dev_ctx_base_hi: 0 as caliptra_emu_types::RvData,
-            i3c_base_dev_ctx_sg: 0 as caliptra_emu_types::RvData,
-            piocontrol_command_port: 0 as caliptra_emu_types::RvData,
-            piocontrol_response_port: 0 as caliptra_emu_types::RvData,
-            piocontrol_tx_data_port: 0 as caliptra_emu_types::RvData,
-            piocontrol_rx_data_port: 0 as caliptra_emu_types::RvData,
-            piocontrol_ibi_port: 0 as caliptra_emu_types::RvData,
-            piocontrol_queue_thld_ctrl: 0x101_0101 as caliptra_emu_types::RvData,
-            piocontrol_data_buffer_thld_ctrl: 0x101_0101 as caliptra_emu_types::RvData,
-            piocontrol_queue_size: 0 as caliptra_emu_types::RvData,
-            piocontrol_alt_queue_size: 0 as caliptra_emu_types::RvData,
-            piocontrol_pio_intr_status: 0 as caliptra_emu_types::RvData,
-            piocontrol_pio_intr_status_enable: 0 as caliptra_emu_types::RvData,
-            piocontrol_pio_intr_signal_enable: 0 as caliptra_emu_types::RvData,
-            piocontrol_pio_intr_force: 0 as caliptra_emu_types::RvData,
-            piocontrol_pio_control: 1 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_extcap_header: 0x20c0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_prot_cap_0: 0x2050_434f as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_prot_cap_1: 0x5643_4552 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_prot_cap_2: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_prot_cap_3: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_device_id_0: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_device_id_1: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_device_id_2: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_device_id_3: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_device_id_4: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_device_id_5: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_device_id_reserved: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_device_status_0: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_device_status_1: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_device_reset: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_recovery_ctrl: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_recovery_status: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_hw_status: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0: 1 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3: 0x40 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4: 0x40 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved: 0 as caliptra_emu_types::RvData,
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_data: 0 as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_extcap_header: 0x1012 as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_stby_cr_control: 0x1000 as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_stby_cr_device_addr: 0 as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_stby_cr_capabilities: 0x7000 as caliptra_emu_types::RvData,
+            dat: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 256],
+            dct: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 512],
+            i3c_base_hci_version: 0x120 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_hc_control: 0x40 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_controller_device_addr: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_hc_capabilities: 0x400 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_reset_control: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_present_state: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_intr_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_intr_status_enable: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_intr_signal_enable: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_intr_force: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_dat_section_offset: 0x400 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_dct_section_offset: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_ring_headers_section_offset: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_pio_section_offset: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_ext_caps_section_offset: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_int_ctrl_cmds_en: 1 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_ibi_notify_ctrl: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_ibi_data_abort_ctrl: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_dev_ctx_base_lo: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_dev_ctx_base_hi: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_base_dev_ctx_sg: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_command_port: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_response_port: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_tx_data_port: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_rx_data_port: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_ibi_port: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_queue_thld_ctrl: 0x101_0101
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_data_buffer_thld_ctrl: 0x101_0101
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_queue_size: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_alt_queue_size: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_pio_intr_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_pio_intr_status_enable: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_pio_intr_signal_enable: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_pio_intr_force: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            piocontrol_pio_control: 1 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_extcap_header: 0x20c0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_prot_cap_0: 0x2050_434f
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_prot_cap_1: 0x5643_4552
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_prot_cap_2: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_prot_cap_3: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_device_id_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_device_id_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_device_id_2: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_device_id_3: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_device_id_4: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_device_id_5: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_device_id_reserved: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_device_status_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_device_status_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_device_reset: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_recovery_ctrl: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_recovery_status: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_hw_status: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0: 1
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3: 0x40
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4: 0x40
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_sec_fw_recovery_if_indirect_fifo_data: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_extcap_header: 0x1012
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_stby_cr_control: 0x1000
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_stby_cr_device_addr: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_stby_cr_capabilities: 0x7000
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char: 0x36bd_0000
-                as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_stby_cr_status: 0 as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_stby_cr_device_char: 0x26bd_0000 as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo: 0 as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_stby_cr_intr_status: 0 as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo: 0 as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable: 0 as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_stby_cr_intr_force: 0 as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps: 0 as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_stby_cr_status: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_stby_cr_device_char: 0x26bd_0000
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_stby_cr_intr_status: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_stby_cr_intr_force: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params: 0x8000_0000
-                as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr: 0 as caliptra_emu_types::RvData,
-            i3c_ec_stdby_ctrl_mode_rsvd_3: 0 as caliptra_emu_types::RvData,
-            i3c_ec_tti_extcap_header: 0x10c4 as caliptra_emu_types::RvData,
-            i3c_ec_tti_control: 0x1400 as caliptra_emu_types::RvData,
-            i3c_ec_tti_status: 0 as caliptra_emu_types::RvData,
-            i3c_ec_tti_tti_reset_control: 0 as caliptra_emu_types::RvData,
-            i3c_ec_tti_interrupt_status: 0 as caliptra_emu_types::RvData,
-            i3c_ec_tti_interrupt_enable: 0 as caliptra_emu_types::RvData,
-            i3c_ec_tti_interrupt_force: 0 as caliptra_emu_types::RvData,
-            i3c_ec_tti_rx_desc_queue_port: 0 as caliptra_emu_types::RvData,
-            i3c_ec_tti_rx_data_port: 0 as caliptra_emu_types::RvData,
-            i3c_ec_tti_tx_desc_queue_port: 0 as caliptra_emu_types::RvData,
-            i3c_ec_tti_tx_data_port: 0 as caliptra_emu_types::RvData,
-            i3c_ec_tti_tti_ibi_port: 0 as caliptra_emu_types::RvData,
-            i3c_ec_tti_tti_queue_size: 0 as caliptra_emu_types::RvData,
-            i3c_ec_tti_ibi_tti_queue_size: 0 as caliptra_emu_types::RvData,
-            i3c_ec_tti_tti_queue_thld_ctrl: 0x100_0101 as caliptra_emu_types::RvData,
-            i3c_ec_tti_tti_data_buffer_thld_ctrl: 0x101_0101 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_extcap_header: 0x18c1 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_soc_mgmt_control: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_soc_mgmt_status: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_rec_intf_cfg: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_soc_pad_conf: 0x100_0001 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_soc_pad_attr: 0xf00_0f00 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_soc_mgmt_feature_2: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_soc_mgmt_feature_3: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_t_r_reg: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_t_f_reg: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_t_su_dat_reg: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_t_hd_dat_reg: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_t_high_reg: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_t_low_reg: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_t_hd_sta_reg: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_t_su_sta_reg: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_t_su_sto_reg: 0 as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_t_free_reg: 0xc as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_t_aval_reg: 0x12c as caliptra_emu_types::RvData,
-            i3c_ec_soc_mgmt_if_t_idle_reg: 0xea60 as caliptra_emu_types::RvData,
-            i3c_ec_ctrl_cfg_extcap_header: 0x202 as caliptra_emu_types::RvData,
-            i3c_ec_ctrl_cfg_controller_config: 0x10 as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_stdby_ctrl_mode_rsvd_3: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_extcap_header: 0x10c4 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_control: 0x1400 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_tti_reset_control: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_interrupt_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_interrupt_enable: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_interrupt_force: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_rx_desc_queue_port: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_rx_data_port: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_tx_desc_queue_port: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_tx_data_port: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_tti_ibi_port: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_tti_queue_size: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_ibi_tti_queue_size: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_tti_queue_thld_ctrl: 0x100_0101
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_tti_tti_data_buffer_thld_ctrl: 0x101_0101
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_extcap_header: 0x18c1
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_soc_mgmt_control: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_soc_mgmt_status: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_rec_intf_cfg: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_soc_pad_conf: 0x100_0001
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_soc_pad_attr: 0xf00_0f00
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_soc_mgmt_feature_2: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_soc_mgmt_feature_3: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_t_r_reg: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_t_f_reg: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_t_su_dat_reg: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_t_hd_dat_reg: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_t_high_reg: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_t_low_reg: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_t_hd_sta_reg: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_t_su_sta_reg: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_t_su_sto_reg: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_t_free_reg: 0xc as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_t_aval_reg: 0x12c as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_soc_mgmt_if_t_idle_reg: 0xea60
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_ctrl_cfg_extcap_header: 0x202 as caliptra_core_tools::caliptra_emu_types::RvData,
+            i3c_ec_ctrl_cfg_controller_config: 0x10
+                as caliptra_core_tools::caliptra_emu_types::RvData,
         }
     }
 }
@@ -2841,7 +3058,7 @@ impl I3cPeripheral for I3cGenerated {
     fn update_reset(&mut self) {
         self.reset_state();
     }
-    fn read_dat(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_dat(&mut self, index: usize) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::dat[{}]",
@@ -2850,21 +3067,21 @@ impl I3cPeripheral for I3cGenerated {
         }
         self.dat[index]
     }
-    fn write_dat(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_dat(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData, index: usize) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write i3c::dat[{}] = 0x{:08x}",
                 index, val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.dat[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.dat[index] = new_val;
     }
-    fn read_dct(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_dct(&mut self, index: usize) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::dct[{}]",
@@ -2873,21 +3090,21 @@ impl I3cPeripheral for I3cGenerated {
         }
         self.dct[index]
     }
-    fn write_dct(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_dct(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData, index: usize) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write i3c::dct[{}] = 0x{:08x}",
                 index, val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.dct[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.dct[index] = new_val;
     }
-    fn read_i3c_base_hci_version(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_base_hci_version(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c::i3c_base_hci_version");
         }
@@ -2895,16 +3112,18 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_base_hc_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HcControl::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::HcControl::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c::i3c_base_hc_control");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_hc_control)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_hc_control)
     }
     fn write_i3c_base_hc_control(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::HcControl::Register,
         >,
@@ -2912,39 +3131,41 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_hc_control = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_base_hc_control;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x80 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_base_hc_control = new_val;
     }
     fn read_i3c_base_controller_device_addr(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ControllerDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_base_controller_device_addr");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_controller_device_addr)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_base_controller_device_addr,
+        )
     }
     fn write_i3c_base_controller_device_addr(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::ControllerDeviceAddr::Register,
         >,
@@ -2952,18 +3173,18 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_controller_device_addr = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_base_controller_device_addr;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x7f_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x7f_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x7f_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x7f_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_base_controller_device_addr = new_val;
     }
     fn read_i3c_base_hc_capabilities(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::HcCapabilities::Register,
     > {
@@ -2972,22 +3193,22 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_base_hc_capabilities"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_hc_capabilities)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_hc_capabilities)
     }
     fn read_i3c_base_reset_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ResetControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c::i3c_base_reset_control");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_reset_control)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_reset_control)
     }
     fn write_i3c_base_reset_control(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::ResetControl::Register,
         >,
@@ -2995,48 +3216,48 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_reset_control = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_base_reset_control;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_base_reset_control = new_val;
     }
     fn read_i3c_base_present_state(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PresentState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c::i3c_base_present_state");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_present_state)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_present_state)
     }
     fn read_i3c_base_intr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IntrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c::i3c_base_intr_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_intr_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_intr_status)
     }
     fn write_i3c_base_intr_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IntrStatus::Register,
         >,
@@ -3044,24 +3265,24 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_intr_status = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_base_intr_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_base_intr_status = new_val;
     }
     fn read_i3c_base_intr_status_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IntrStatusEnable::Register,
     > {
@@ -3070,11 +3291,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_base_intr_status_enable"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_intr_status_enable)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_base_intr_status_enable,
+        )
     }
     fn write_i3c_base_intr_status_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IntrStatusEnable::Register,
         >,
@@ -3082,24 +3305,24 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_intr_status_enable = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_base_intr_status_enable;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_base_intr_status_enable = new_val;
     }
     fn read_i3c_base_intr_signal_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IntrSignalEnable::Register,
     > {
@@ -3108,11 +3331,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_base_intr_signal_enable"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_intr_signal_enable)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_base_intr_signal_enable,
+        )
     }
     fn write_i3c_base_intr_signal_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IntrSignalEnable::Register,
         >,
@@ -3120,24 +3345,24 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_intr_signal_enable = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_base_intr_signal_enable;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_base_intr_signal_enable = new_val;
     }
     fn write_i3c_base_intr_force(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IntrForce::Register,
         >,
@@ -3145,24 +3370,24 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_intr_force = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_base_intr_force;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_base_intr_force = new_val;
     }
     fn read_i3c_base_dat_section_offset(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DatSectionOffset::Register,
     > {
@@ -3171,11 +3396,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_base_dat_section_offset"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_dat_section_offset)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_base_dat_section_offset,
+        )
     }
     fn read_i3c_base_dct_section_offset(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DctSectionOffset::Register,
     > {
@@ -3184,11 +3411,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_base_dct_section_offset"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_dct_section_offset)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_base_dct_section_offset,
+        )
     }
     fn write_i3c_base_dct_section_offset(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DctSectionOffset::Register,
         >,
@@ -3196,27 +3425,29 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_dct_section_offset = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_base_dct_section_offset;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xf8_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf8_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf8_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_base_dct_section_offset = new_val;
     }
     fn read_i3c_base_ring_headers_section_offset(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::RingHeadersSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_base_ring_headers_section_offset");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_ring_headers_section_offset)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_base_ring_headers_section_offset,
+        )
     }
     fn read_i3c_base_pio_section_offset(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PioSectionOffset::Register,
     > {
@@ -3225,22 +3456,26 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_base_pio_section_offset"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_pio_section_offset)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_base_pio_section_offset,
+        )
     }
     fn read_i3c_base_ext_caps_section_offset(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ExtCapsSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_base_ext_caps_section_offset");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_ext_caps_section_offset)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_base_ext_caps_section_offset,
+        )
     }
     fn read_i3c_base_int_ctrl_cmds_en(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IntCtrlCmdsEn::Register,
     > {
@@ -3249,11 +3484,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_base_int_ctrl_cmds_en"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_int_ctrl_cmds_en)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_base_int_ctrl_cmds_en,
+        )
     }
     fn read_i3c_base_ibi_notify_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IbiNotifyCtrl::Register,
     > {
@@ -3262,11 +3499,11 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_base_ibi_notify_ctrl"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_ibi_notify_ctrl)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_ibi_notify_ctrl)
     }
     fn write_i3c_base_ibi_notify_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IbiNotifyCtrl::Register,
         >,
@@ -3274,20 +3511,20 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_ibi_notify_ctrl = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_base_ibi_notify_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_base_ibi_notify_ctrl = new_val;
     }
     fn read_i3c_base_ibi_data_abort_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
     > {
@@ -3296,11 +3533,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_base_ibi_data_abort_ctrl"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_ibi_data_abort_ctrl)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_base_ibi_data_abort_ctrl,
+        )
     }
     fn write_i3c_base_ibi_data_abort_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
         >,
@@ -3308,22 +3547,22 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_ibi_data_abort_ctrl = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_base_ibi_data_abort_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1c_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1c_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x3_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x3_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1c_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1c_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x3_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x3_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_base_ibi_data_abort_ctrl = new_val;
     }
     fn read_i3c_base_dev_ctx_base_lo(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DevCtxBaseLo::Register,
     > {
@@ -3332,11 +3571,11 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_base_dev_ctx_base_lo"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_dev_ctx_base_lo)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_dev_ctx_base_lo)
     }
     fn write_i3c_base_dev_ctx_base_lo(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DevCtxBaseLo::Register,
         >,
@@ -3344,16 +3583,16 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_dev_ctx_base_lo = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_base_dev_ctx_base_lo;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_base_dev_ctx_base_lo = new_val;
     }
     fn read_i3c_base_dev_ctx_base_hi(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DevCtxBaseHi::Register,
     > {
@@ -3362,11 +3601,11 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_base_dev_ctx_base_hi"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_dev_ctx_base_hi)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_dev_ctx_base_hi)
     }
     fn write_i3c_base_dev_ctx_base_hi(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DevCtxBaseHi::Register,
         >,
@@ -3374,34 +3613,39 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_base_dev_ctx_base_hi = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_base_dev_ctx_base_hi;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_base_dev_ctx_base_hi = new_val;
     }
     fn read_i3c_base_dev_ctx_sg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DevCtxSg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::DevCtxSg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c::i3c_base_dev_ctx_sg");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_dev_ctx_sg)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.i3c_base_dev_ctx_sg)
     }
-    fn write_piocontrol_command_port(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_piocontrol_command_port(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_command_port = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.piocontrol_command_port;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.piocontrol_command_port = new_val;
     }
-    fn read_piocontrol_response_port(&mut self) -> caliptra_emu_types::RvData {
+    fn read_piocontrol_response_port(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::piocontrol_response_port"
@@ -3409,18 +3653,21 @@ impl I3cPeripheral for I3cGenerated {
         }
         self.piocontrol_response_port
     }
-    fn write_piocontrol_tx_data_port(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_piocontrol_tx_data_port(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_tx_data_port = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.piocontrol_tx_data_port;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.piocontrol_tx_data_port = new_val;
     }
-    fn read_piocontrol_rx_data_port(&mut self) -> caliptra_emu_types::RvData {
+    fn read_piocontrol_rx_data_port(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::piocontrol_rx_data_port"
@@ -3428,7 +3675,7 @@ impl I3cPeripheral for I3cGenerated {
         }
         self.piocontrol_rx_data_port
     }
-    fn read_piocontrol_ibi_port(&mut self) -> caliptra_emu_types::RvData {
+    fn read_piocontrol_ibi_port(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c::piocontrol_ibi_port");
         }
@@ -3436,7 +3683,7 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_piocontrol_queue_thld_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::QueueThldCtrl::Register,
     > {
@@ -3445,11 +3692,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::piocontrol_queue_thld_ctrl"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_queue_thld_ctrl)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.piocontrol_queue_thld_ctrl,
+        )
     }
     fn write_piocontrol_queue_thld_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::QueueThldCtrl::Register,
         >,
@@ -3457,33 +3706,35 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_queue_thld_ctrl = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.piocontrol_queue_thld_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff00_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff as caliptra_emu_types::RvData))
-            | (write_val & (0xff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.piocontrol_queue_thld_ctrl = new_val;
     }
     fn read_piocontrol_data_buffer_thld_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DataBufferThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::piocontrol_data_buffer_thld_ctrl");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_data_buffer_thld_ctrl)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.piocontrol_data_buffer_thld_ctrl,
+        )
     }
     fn write_piocontrol_data_buffer_thld_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DataBufferThldCtrl::Register,
         >,
@@ -3491,31 +3742,33 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_data_buffer_thld_ctrl = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.piocontrol_data_buffer_thld_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x700_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x700_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x7_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x7_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x700 as caliptra_emu_types::RvData))
-            | (write_val & (0x700 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(7 as caliptra_emu_types::RvData))
-            | (write_val & (7 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x700_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x700_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x7_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x7_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x700 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x700 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(7 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (7 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.piocontrol_data_buffer_thld_ctrl = new_val;
     }
     fn read_piocontrol_queue_size(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::QueueSize::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::QueueSize::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c::piocontrol_queue_size");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_queue_size)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_queue_size)
     }
     fn read_piocontrol_alt_queue_size(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::AltQueueSize::Register,
     > {
@@ -3524,11 +3777,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::piocontrol_alt_queue_size"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_alt_queue_size)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.piocontrol_alt_queue_size,
+        )
     }
     fn read_piocontrol_pio_intr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PioIntrStatus::Register,
     > {
@@ -3537,11 +3792,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::piocontrol_pio_intr_status"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_pio_intr_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.piocontrol_pio_intr_status,
+        )
     }
     fn write_piocontrol_pio_intr_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioIntrStatus::Register,
         >,
@@ -3549,29 +3806,31 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_pio_intr_status = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.piocontrol_pio_intr_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.piocontrol_pio_intr_status = new_val;
     }
     fn read_piocontrol_pio_intr_status_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PioIntrStatusEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::piocontrol_pio_intr_status_enable");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_pio_intr_status_enable)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.piocontrol_pio_intr_status_enable,
+        )
     }
     fn write_piocontrol_pio_intr_status_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioIntrStatusEnable::Register,
         >,
@@ -3579,39 +3838,41 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_pio_intr_status_enable = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.piocontrol_pio_intr_status_enable;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.piocontrol_pio_intr_status_enable = new_val;
     }
     fn read_piocontrol_pio_intr_signal_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PioIntrSignalEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::piocontrol_pio_intr_signal_enable");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_pio_intr_signal_enable)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.piocontrol_pio_intr_signal_enable,
+        )
     }
     fn write_piocontrol_pio_intr_signal_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioIntrSignalEnable::Register,
         >,
@@ -3619,28 +3880,28 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_pio_intr_signal_enable = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.piocontrol_pio_intr_signal_enable;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.piocontrol_pio_intr_signal_enable = new_val;
     }
     fn write_piocontrol_pio_intr_force(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioIntrForce::Register,
         >,
@@ -3648,39 +3909,39 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_pio_intr_force = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.piocontrol_pio_intr_force;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.piocontrol_pio_intr_force = new_val;
     }
     fn read_piocontrol_pio_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::PioControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c::piocontrol_pio_control");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_pio_control)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.piocontrol_pio_control)
     }
     fn write_piocontrol_pio_control(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::PioControl::Register,
         >,
@@ -3688,35 +3949,41 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::piocontrol_pio_control = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.piocontrol_pio_control;
         let mut new_val = current_val;
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.piocontrol_pio_control = new_val;
     }
     fn read_i3c_ec_sec_fw_recovery_if_extcap_header(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_extcap_header");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_extcap_header)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_sec_fw_recovery_if_extcap_header,
+        )
     }
-    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_0");
         }
         self.i3c_ec_sec_fw_recovery_if_prot_cap_0
     }
-    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_prot_cap_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_1");
         }
@@ -3724,16 +3991,20 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_2(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap2::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::ProtCap2::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_2");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_prot_cap_2)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_sec_fw_recovery_if_prot_cap_2,
+        )
     }
     fn write_i3c_ec_sec_fw_recovery_if_prot_cap_2(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::ProtCap2::Register,
         >,
@@ -3741,27 +4012,31 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_prot_cap_2 = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_prot_cap_2;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xffff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_prot_cap_2 = new_val;
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_3(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap3::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::ProtCap3::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_prot_cap_3");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_prot_cap_3)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_sec_fw_recovery_if_prot_cap_3,
+        )
     }
     fn write_i3c_ec_sec_fw_recovery_if_prot_cap_3(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::ProtCap3::Register,
         >,
@@ -3769,29 +4044,33 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_prot_cap_3 = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_prot_cap_3;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff as caliptra_emu_types::RvData))
-            | (write_val & (0xff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_prot_cap_3 = new_val;
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DeviceId0::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::DeviceId0::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_0");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_device_id_0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_sec_fw_recovery_if_device_id_0,
+        )
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_id_0(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DeviceId0::Register,
         >,
@@ -3799,103 +4078,130 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_id_0 = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_id_0;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff as caliptra_emu_types::RvData))
-            | (write_val & (0xff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xffff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_device_id_0 = new_val;
     }
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_1");
         }
         self.i3c_ec_sec_fw_recovery_if_device_id_1
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_1(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_1(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_id_1 = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_id_1;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_device_id_1 = new_val;
     }
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_2(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_2(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_2");
         }
         self.i3c_ec_sec_fw_recovery_if_device_id_2
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_2(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_2(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_id_2 = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_id_2;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_device_id_2 = new_val;
     }
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_3(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_3");
         }
         self.i3c_ec_sec_fw_recovery_if_device_id_3
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_3(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_3(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_id_3 = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_id_3;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_device_id_3 = new_val;
     }
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_4(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_4(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_4");
         }
         self.i3c_ec_sec_fw_recovery_if_device_id_4
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_4(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_4(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_id_4 = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_id_4;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_device_id_4 = new_val;
     }
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_5(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_5(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_5");
         }
         self.i3c_ec_sec_fw_recovery_if_device_id_5
     }
-    fn write_i3c_ec_sec_fw_recovery_if_device_id_5(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_sec_fw_recovery_if_device_id_5(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_id_5 = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_id_5;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_device_id_5 = new_val;
     }
-    fn read_i3c_ec_sec_fw_recovery_if_device_id_reserved(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_device_id_reserved(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_id_reserved");
         }
@@ -3903,18 +4209,20 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_status_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DeviceStatus0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_status_0");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_device_status_0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_sec_fw_recovery_if_device_status_0,
+        )
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_status_0(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DeviceStatus0::Register,
         >,
@@ -3922,31 +4230,33 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_status_0 = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_status_0;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff as caliptra_emu_types::RvData))
-            | (write_val & (0xff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xffff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_device_status_0 = new_val;
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_status_1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DeviceStatus1::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_status_1");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_device_status_1)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_sec_fw_recovery_if_device_status_1,
+        )
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_status_1(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DeviceStatus1::Register,
         >,
@@ -3954,31 +4264,33 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_status_1 = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_status_1;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1ff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1ff_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xfe00_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xfe00_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1ff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1ff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xfe00_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xfe00_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_device_status_1 = new_val;
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_reset(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::DeviceReset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_device_reset");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_device_reset)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_sec_fw_recovery_if_device_reset,
+        )
     }
     fn write_i3c_ec_sec_fw_recovery_if_device_reset(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::DeviceReset::Register,
         >,
@@ -3986,31 +4298,33 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_device_reset = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_device_reset;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff as caliptra_emu_types::RvData))
-            | (write_val & (0xff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_device_reset = new_val;
     }
     fn read_i3c_ec_sec_fw_recovery_if_recovery_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::RecoveryCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_recovery_ctrl");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_recovery_ctrl)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_sec_fw_recovery_if_recovery_ctrl,
+        )
     }
     fn write_i3c_ec_sec_fw_recovery_if_recovery_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::RecoveryCtrl::Register,
         >,
@@ -4018,31 +4332,33 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_recovery_ctrl = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_recovery_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff as caliptra_emu_types::RvData))
-            | (write_val & (0xff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_recovery_ctrl = new_val;
     }
     fn read_i3c_ec_sec_fw_recovery_if_recovery_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::RecoveryStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_recovery_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_recovery_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_sec_fw_recovery_if_recovery_status,
+        )
     }
     fn write_i3c_ec_sec_fw_recovery_if_recovery_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::RecoveryStatus::Register,
         >,
@@ -4050,29 +4366,33 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_recovery_status = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_recovery_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf as caliptra_emu_types::RvData))
-            | (write_val & (0xf as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xf0 as caliptra_emu_types::RvData))
-            | (write_val & (0xf0 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf0 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf0 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_recovery_status = new_val;
     }
     fn read_i3c_ec_sec_fw_recovery_if_hw_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HwStatus::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::HwStatus::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_hw_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_hw_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_sec_fw_recovery_if_hw_status,
+        )
     }
     fn write_i3c_ec_sec_fw_recovery_if_hw_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::HwStatus::Register,
         >,
@@ -4080,41 +4400,41 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_hw_status = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_hw_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xf8 as caliptra_emu_types::RvData))
-            | (write_val & (0xf8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_hw_status = new_val;
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0,
         )
     }
     fn write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
         >,
@@ -4122,18 +4442,18 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0 = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff as caliptra_emu_types::RvData))
-            | (write_val & (0xff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0 = new_val;
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1");
         }
@@ -4141,34 +4461,34 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1 = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1 = new_val;
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IndirectFifoStatus0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0,
         )
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1");
         }
@@ -4176,7 +4496,7 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2");
         }
@@ -4184,7 +4504,7 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3");
         }
@@ -4192,7 +4512,7 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4");
         }
@@ -4200,13 +4520,15 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved");
         }
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved
     }
-    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_sec_fw_recovery_if_indirect_fifo_data");
         }
@@ -4214,29 +4536,33 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn read_i3c_ec_stdby_ctrl_mode_extcap_header(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_extcap_header");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_extcap_header)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_stdby_ctrl_mode_extcap_header,
+        )
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_control");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_control)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_stdby_ctrl_mode_stby_cr_control,
+        )
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_control(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrControl::Register,
         >,
@@ -4244,51 +4570,53 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_control = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_control;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xc000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xc000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x10_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x700 as caliptra_emu_types::RvData))
-            | (write_val & (0x700 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xc000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xc000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x700 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x700 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_stby_cr_control = new_val;
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_addr");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_device_addr)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_stdby_ctrl_mode_stby_cr_device_addr,
+        )
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
         >,
@@ -4296,46 +4624,48 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_addr = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_device_addr;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x7f_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x7f_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x7f as caliptra_emu_types::RvData))
-            | (write_val & (0x7f as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x7f_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x7f_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x7f as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x7f as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_stby_cr_device_addr = new_val;
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrCapabilities::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_capabilities");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_capabilities)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_stdby_ctrl_mode_stby_cr_capabilities,
+        )
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char,
         )
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
         >,
@@ -4343,33 +4673,35 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xe000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xe000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1f00_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1f00_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xfffe as caliptra_emu_types::RvData))
-            | (write_val & (0xfffe as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xe000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xe000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1f00_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1f00_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xfffe as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xfffe as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char = new_val;
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_stdby_ctrl_mode_stby_cr_status,
+        )
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrStatus::Register,
         >,
@@ -4377,31 +4709,33 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_status = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xe0 as caliptra_emu_types::RvData))
-            | (write_val & (0xe0 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xe0 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xe0 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_stby_cr_status = new_val;
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrDeviceChar::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_char");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_device_char)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_stdby_ctrl_mode_stby_cr_device_char,
+        )
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrDeviceChar::Register,
         >,
@@ -4409,20 +4743,22 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_char = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_device_char;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xe000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xe000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1f00_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1f00_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xfffe as caliptra_emu_types::RvData))
-            | (write_val & (0xfffe as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xe000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xe000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1f00_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1f00_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xfffe as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xfffe as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_stby_cr_device_char = new_val;
     }
-    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo");
         }
@@ -4430,32 +4766,34 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo = new_val;
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrIntrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_status,
+        )
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrIntrStatus::Register,
         >,
@@ -4463,40 +4801,40 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_status = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_status = new_val;
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo");
         }
@@ -4504,34 +4842,34 @@ impl I3cPeripheral for I3cGenerated {
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo = new_val;
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable,
         )
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
         >,
@@ -4539,51 +4877,53 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable = new_val;
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrIntrForce::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_force");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_force)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_force,
+        )
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrIntrForce::Register,
         >,
@@ -4591,45 +4931,45 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_intr_force = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_force;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_stby_cr_intr_force = new_val;
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps,
         )
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
         >,
@@ -4637,31 +4977,31 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf00 as caliptra_emu_types::RvData))
-            | (write_val & (0xf00 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(7 as caliptra_emu_types::RvData))
-            | (write_val & (7 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf00 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(7 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (7 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps = new_val;
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params,
         )
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
         >,
@@ -4669,33 +5009,33 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params = new_val;
     }
     fn read_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr,
         )
     }
     fn write_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
         >,
@@ -4703,20 +5043,22 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x7f_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x7f_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x7f as caliptra_emu_types::RvData))
-            | (write_val & (0x7f as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x7f_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x7f_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x7f as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x7f as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr = new_val;
     }
-    fn read_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_stdby_ctrl_mode_rsvd_3(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::i3c_ec_stdby_ctrl_mode_rsvd_3"
@@ -4724,20 +5066,23 @@ impl I3cPeripheral for I3cGenerated {
         }
         self.i3c_ec_stdby_ctrl_mode_rsvd_3
     }
-    fn write_i3c_ec_stdby_ctrl_mode_rsvd_3(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_stdby_ctrl_mode_rsvd_3(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_stdby_ctrl_mode_rsvd_3 = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_stdby_ctrl_mode_rsvd_3;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_stdby_ctrl_mode_rsvd_3 = new_val;
     }
     fn read_i3c_ec_tti_extcap_header(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
@@ -4746,20 +5091,22 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_ec_tti_extcap_header"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_extcap_header)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_extcap_header)
     }
     fn read_i3c_ec_tti_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Control::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::Control::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c::i3c_ec_tti_control");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_control)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_control)
     }
     fn write_i3c_ec_tti_control(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::Control::Register,
         >,
@@ -4767,31 +5114,33 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_control = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_control;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xe000 as caliptra_emu_types::RvData))
-            | (write_val & (0xe000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xe000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xe000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_tti_control = new_val;
     }
     fn read_i3c_ec_tti_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Status::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::Status::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c::i3c_ec_tti_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_status)
     }
     fn read_i3c_ec_tti_tti_reset_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::TtiResetControl::Register,
     > {
@@ -4800,11 +5149,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_ec_tti_tti_reset_control"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_tti_reset_control)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_tti_tti_reset_control,
+        )
     }
     fn write_i3c_ec_tti_tti_reset_control(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TtiResetControl::Register,
         >,
@@ -4812,26 +5163,26 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_tti_reset_control = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_tti_reset_control;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_tti_tti_reset_control = new_val;
     }
     fn read_i3c_ec_tti_interrupt_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::InterruptStatus::Register,
     > {
@@ -4840,11 +5191,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_ec_tti_interrupt_status"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_interrupt_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_tti_interrupt_status,
+        )
     }
     fn write_i3c_ec_tti_interrupt_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::InterruptStatus::Register,
         >,
@@ -4852,42 +5205,51 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_interrupt_status = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_interrupt_status;
         let mut new_val = current_val;
-        let bits_to_clear_0 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_0 =
+            write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_0;
-        let bits_to_clear_1 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_1 =
+            write_val & (0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_1;
-        let bits_to_clear_2 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_2 =
+            write_val & (0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_2;
-        new_val = (new_val & !(0x7_8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x7_8000 as caliptra_emu_types::RvData));
-        let bits_to_clear_4 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        new_val = (new_val & !(0x7_8000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x7_8000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        let bits_to_clear_4 =
+            write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_4;
-        let bits_to_clear_5 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        let bits_to_clear_5 =
+            write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_5;
-        let bits_to_clear_6 = write_val & (0x800 as caliptra_emu_types::RvData);
+        let bits_to_clear_6 =
+            write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_6;
-        let bits_to_clear_7 = write_val & (0x400 as caliptra_emu_types::RvData);
+        let bits_to_clear_7 =
+            write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_7;
-        let bits_to_clear_8 = write_val & (0x200 as caliptra_emu_types::RvData);
+        let bits_to_clear_8 =
+            write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_8;
-        let bits_to_clear_9 = write_val & (0x100 as caliptra_emu_types::RvData);
+        let bits_to_clear_9 =
+            write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_9;
-        let bits_to_clear_10 = write_val & (8 as caliptra_emu_types::RvData);
+        let bits_to_clear_10 = write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_10;
-        let bits_to_clear_11 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_clear_11 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_11;
-        let bits_to_clear_12 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_clear_12 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_12;
-        let bits_to_clear_13 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_clear_13 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_13;
         self.i3c_ec_tti_interrupt_status = new_val;
     }
     fn read_i3c_ec_tti_interrupt_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::InterruptEnable::Register,
     > {
@@ -4896,11 +5258,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_ec_tti_interrupt_enable"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_interrupt_enable)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_tti_interrupt_enable,
+        )
     }
     fn write_i3c_ec_tti_interrupt_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::InterruptEnable::Register,
         >,
@@ -4908,40 +5272,40 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_interrupt_enable = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_interrupt_enable;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x400_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x200_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_tti_interrupt_enable = new_val;
     }
     fn read_i3c_ec_tti_interrupt_force(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::InterruptForce::Register,
     > {
@@ -4950,11 +5314,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_ec_tti_interrupt_force"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_interrupt_force)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_tti_interrupt_force,
+        )
     }
     fn write_i3c_ec_tti_interrupt_force(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::InterruptForce::Register,
         >,
@@ -4962,38 +5328,40 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_interrupt_force = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_interrupt_force;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x400_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x200_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_tti_interrupt_force = new_val;
     }
-    fn read_i3c_ec_tti_rx_desc_queue_port(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_tti_rx_desc_queue_port(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::i3c_ec_tti_rx_desc_queue_port"
@@ -5001,7 +5369,7 @@ impl I3cPeripheral for I3cGenerated {
         }
         self.i3c_ec_tti_rx_desc_queue_port
     }
-    fn read_i3c_ec_tti_rx_data_port(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_tti_rx_data_port(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::i3c_ec_tti_rx_data_port"
@@ -5009,42 +5377,51 @@ impl I3cPeripheral for I3cGenerated {
         }
         self.i3c_ec_tti_rx_data_port
     }
-    fn write_i3c_ec_tti_tx_desc_queue_port(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_tti_tx_desc_queue_port(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_tx_desc_queue_port = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_tx_desc_queue_port;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_tti_tx_desc_queue_port = new_val;
     }
-    fn write_i3c_ec_tti_tx_data_port(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_tti_tx_data_port(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_tx_data_port = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_tx_data_port;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_tti_tx_data_port = new_val;
     }
-    fn write_i3c_ec_tti_tti_ibi_port(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_tti_tti_ibi_port(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_tti_ibi_port = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_tti_ibi_port;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_tti_tti_ibi_port = new_val;
     }
     fn read_i3c_ec_tti_tti_queue_size(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::TtiQueueSize::Register,
     > {
@@ -5053,11 +5430,13 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_ec_tti_tti_queue_size"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_tti_queue_size)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_tti_tti_queue_size,
+        )
     }
     fn read_i3c_ec_tti_ibi_tti_queue_size(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::IbiTtiQueueSize::Register,
     > {
@@ -5066,22 +5445,26 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_ec_tti_ibi_tti_queue_size"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_ibi_tti_queue_size)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_tti_ibi_tti_queue_size,
+        )
     }
     fn read_i3c_ec_tti_tti_queue_thld_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_tti_tti_queue_thld_ctrl");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_tti_queue_thld_ctrl)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_tti_tti_queue_thld_ctrl,
+        )
     }
     fn write_i3c_ec_tti_tti_queue_thld_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
         >,
@@ -5089,31 +5472,33 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_tti_queue_thld_ctrl = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_tti_queue_thld_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff00_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff as caliptra_emu_types::RvData))
-            | (write_val & (0xff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_tti_tti_queue_thld_ctrl = new_val;
     }
     fn read_i3c_ec_tti_tti_data_buffer_thld_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_tti_tti_data_buffer_thld_ctrl");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_tti_tti_data_buffer_thld_ctrl)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_tti_tti_data_buffer_thld_ctrl,
+        )
     }
     fn write_i3c_ec_tti_tti_data_buffer_thld_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
         >,
@@ -5121,78 +5506,92 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_tti_tti_data_buffer_thld_ctrl = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_tti_tti_data_buffer_thld_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x700_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x700_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x7_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x7_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x700 as caliptra_emu_types::RvData))
-            | (write_val & (0x700 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(7 as caliptra_emu_types::RvData))
-            | (write_val & (7 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x700_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x700_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x7_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x7_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x700 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x700 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(7 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (7 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_tti_tti_data_buffer_thld_ctrl = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_extcap_header(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_extcap_header");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_extcap_header)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_extcap_header,
+        )
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_control(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_control");
         }
         self.i3c_ec_soc_mgmt_if_soc_mgmt_control
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_control(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_control(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_control = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_mgmt_control;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_soc_mgmt_control = new_val;
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_status(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_status");
         }
         self.i3c_ec_soc_mgmt_if_soc_mgmt_status
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_status(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_status(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_status = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_mgmt_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_soc_mgmt_status = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_rec_intf_cfg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::RecIntfCfg::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_rec_intf_cfg");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_rec_intf_cfg)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_rec_intf_cfg,
+        )
     }
     fn write_i3c_ec_soc_mgmt_if_rec_intf_cfg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::RecIntfCfg::Register,
         >,
@@ -5200,29 +5599,31 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_rec_intf_cfg = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_rec_intf_cfg;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_rec_intf_cfg = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access,
+        )
     }
     fn write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
         >,
@@ -5230,65 +5631,77 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff as caliptra_emu_types::RvData))
-            | (write_val & (0xff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access = new_val;
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2");
         }
         self.i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2 = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2 = new_val;
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3");
         }
         self.i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3 = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3 = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_soc_pad_conf(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::SocPadConf::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_pad_conf");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_soc_pad_conf)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_soc_pad_conf,
+        )
     }
     fn write_i3c_ec_soc_mgmt_if_soc_pad_conf(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::SocPadConf::Register,
         >,
@@ -5296,43 +5709,45 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_pad_conf = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_pad_conf;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff00_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x80 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x40 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_soc_pad_conf = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_soc_pad_attr(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::SocPadAttr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_pad_attr");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_soc_pad_attr)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_soc_pad_attr,
+        )
     }
     fn write_i3c_ec_soc_mgmt_if_soc_pad_attr(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::SocPadAttr::Register,
         >,
@@ -5340,63 +5755,77 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_pad_attr = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_pad_attr;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff00_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xff00 as caliptra_emu_types::RvData))
-            | (write_val & (0xff00 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff00 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_soc_pad_attr = new_val;
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_2");
         }
         self.i3c_ec_soc_mgmt_if_soc_mgmt_feature_2
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_2 = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_mgmt_feature_2;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_soc_mgmt_feature_2 = new_val;
     }
-    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_3");
         }
         self.i3c_ec_soc_mgmt_if_soc_mgmt_feature_3
     }
-    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_soc_mgmt_feature_3 = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_soc_mgmt_feature_3;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_soc_mgmt_feature_3 = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_t_r_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TRReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::TRReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_r_reg"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_r_reg)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_t_r_reg,
+        )
     }
     fn write_i3c_ec_soc_mgmt_if_t_r_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TRReg::Register,
         >,
@@ -5404,27 +5833,31 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_r_reg = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_r_reg;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xf_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_t_r_reg = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_t_f_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TFReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::TFReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_f_reg"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_f_reg)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_t_f_reg,
+        )
     }
     fn write_i3c_ec_soc_mgmt_if_t_f_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TFReg::Register,
         >,
@@ -5432,25 +5865,29 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_f_reg = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_f_reg;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xf_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_t_f_reg = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_dat_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuDatReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::TSuDatReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_su_dat_reg");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_su_dat_reg)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_t_su_dat_reg,
+        )
     }
     fn write_i3c_ec_soc_mgmt_if_t_su_dat_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TSuDatReg::Register,
         >,
@@ -5458,25 +5895,29 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_su_dat_reg = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_su_dat_reg;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xf_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_t_su_dat_reg = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_t_hd_dat_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdDatReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::THdDatReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_hd_dat_reg");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_hd_dat_reg)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_t_hd_dat_reg,
+        )
     }
     fn write_i3c_ec_soc_mgmt_if_t_hd_dat_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::THdDatReg::Register,
         >,
@@ -5484,27 +5925,31 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_hd_dat_reg = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_hd_dat_reg;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xf_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_t_hd_dat_reg = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_t_high_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THighReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::THighReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_high_reg"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_high_reg)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_t_high_reg,
+        )
     }
     fn write_i3c_ec_soc_mgmt_if_t_high_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::THighReg::Register,
         >,
@@ -5512,27 +5957,31 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_high_reg = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_high_reg;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xf_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_t_high_reg = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_t_low_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TLowReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::TLowReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_low_reg"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_low_reg)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_t_low_reg,
+        )
     }
     fn write_i3c_ec_soc_mgmt_if_t_low_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TLowReg::Register,
         >,
@@ -5540,25 +5989,29 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_low_reg = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_low_reg;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xf_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_t_low_reg = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_t_hd_sta_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdStaReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::THdStaReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_hd_sta_reg");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_hd_sta_reg)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_t_hd_sta_reg,
+        )
     }
     fn write_i3c_ec_soc_mgmt_if_t_hd_sta_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::THdStaReg::Register,
         >,
@@ -5566,25 +6019,29 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_hd_sta_reg = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_hd_sta_reg;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xf_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_t_hd_sta_reg = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_sta_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStaReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::TSuStaReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_su_sta_reg");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_su_sta_reg)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_t_su_sta_reg,
+        )
     }
     fn write_i3c_ec_soc_mgmt_if_t_su_sta_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TSuStaReg::Register,
         >,
@@ -5592,25 +6049,29 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_su_sta_reg = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_su_sta_reg;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xf_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_t_su_sta_reg = new_val;
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_sto_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStoReg::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::TSuStoReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_su_sto_reg");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_t_su_sto_reg)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_t_su_sto_reg,
+        )
     }
     fn write_i3c_ec_soc_mgmt_if_t_su_sto_reg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::i3c::bits::TSuStoReg::Register,
         >,
@@ -5618,14 +6079,16 @@ impl I3cPeripheral for I3cGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_su_sto_reg = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_su_sto_reg;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xf_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_t_su_sto_reg = new_val;
     }
-    fn read_i3c_ec_soc_mgmt_if_t_free_reg(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_t_free_reg(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_free_reg"
@@ -5633,18 +6096,23 @@ impl I3cPeripheral for I3cGenerated {
         }
         self.i3c_ec_soc_mgmt_if_t_free_reg
     }
-    fn write_i3c_ec_soc_mgmt_if_t_free_reg(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_t_free_reg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_free_reg = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_free_reg;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_t_free_reg = new_val;
     }
-    fn read_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_t_aval_reg(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_aval_reg"
@@ -5652,18 +6120,23 @@ impl I3cPeripheral for I3cGenerated {
         }
         self.i3c_ec_soc_mgmt_if_t_aval_reg
     }
-    fn write_i3c_ec_soc_mgmt_if_t_aval_reg(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_t_aval_reg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_aval_reg = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_aval_reg;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_t_aval_reg = new_val;
     }
-    fn read_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self) -> caliptra_emu_types::RvData {
+    fn read_i3c_ec_soc_mgmt_if_t_idle_reg(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c::i3c_ec_soc_mgmt_if_t_idle_reg"
@@ -5671,20 +6144,23 @@ impl I3cPeripheral for I3cGenerated {
         }
         self.i3c_ec_soc_mgmt_if_t_idle_reg
     }
-    fn write_i3c_ec_soc_mgmt_if_t_idle_reg(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_i3c_ec_soc_mgmt_if_t_idle_reg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write i3c::i3c_ec_soc_mgmt_if_t_idle_reg = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.i3c_ec_soc_mgmt_if_t_idle_reg;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.i3c_ec_soc_mgmt_if_t_idle_reg = new_val;
     }
     fn read_i3c_ec_ctrl_cfg_extcap_header(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
@@ -5693,136 +6169,143 @@ impl I3cPeripheral for I3cGenerated {
                 "[EMU] Generated default register handler: read i3c::i3c_ec_ctrl_cfg_extcap_header"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_ctrl_cfg_extcap_header)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_ctrl_cfg_extcap_header,
+        )
     }
     fn read_i3c_ec_ctrl_cfg_controller_config(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::i3c::bits::ControllerConfig::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c::i3c_ec_ctrl_cfg_controller_config");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_ctrl_cfg_controller_config)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_ctrl_cfg_controller_config,
+        )
     }
 }
 pub struct I3cBus {
     pub periph: Box<dyn I3cPeripheral>,
 }
-impl caliptra_emu_bus::Bus for I3cBus {
+impl caliptra_core_tools::caliptra_emu_bus::Bus for I3cBus {
     fn read(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+    ) -> Result<
+        caliptra_core_tools::caliptra_emu_types::RvData,
+        caliptra_core_tools::caliptra_emu_bus::BusError,
+    > {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
             0x400..0x800 => Ok(self.periph.read_dat((addr as usize - 0x400) / 4)),
             0x800..0x1000 => Ok(self.periph.read_dct((addr as usize - 0x800) / 4)),
             0..4 => Ok(self.periph.read_i3c_base_hci_version()),
-            4..8 => Ok(caliptra_emu_types::RvData::from(
+            4..8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_hc_control().reg.get(),
             )),
-            8..0xc => Ok(caliptra_emu_types::RvData::from(
+            8..0xc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_controller_device_addr().reg.get(),
             )),
-            0xc..0x10 => Ok(caliptra_emu_types::RvData::from(
+            0xc..0x10 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_hc_capabilities().reg.get(),
             )),
-            0x10..0x14 => Ok(caliptra_emu_types::RvData::from(
+            0x10..0x14 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_reset_control().reg.get(),
             )),
-            0x14..0x18 => Ok(caliptra_emu_types::RvData::from(
+            0x14..0x18 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_present_state().reg.get(),
             )),
-            0x20..0x24 => Ok(caliptra_emu_types::RvData::from(
+            0x20..0x24 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_intr_status().reg.get(),
             )),
-            0x24..0x28 => Ok(caliptra_emu_types::RvData::from(
+            0x24..0x28 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_intr_status_enable().reg.get(),
             )),
-            0x28..0x2c => Ok(caliptra_emu_types::RvData::from(
+            0x28..0x2c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_intr_signal_enable().reg.get(),
             )),
-            0x30..0x34 => Ok(caliptra_emu_types::RvData::from(
+            0x30..0x34 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_dat_section_offset().reg.get(),
             )),
-            0x34..0x38 => Ok(caliptra_emu_types::RvData::from(
+            0x34..0x38 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_dct_section_offset().reg.get(),
             )),
-            0x38..0x3c => Ok(caliptra_emu_types::RvData::from(
+            0x38..0x3c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_base_ring_headers_section_offset()
                     .reg
                     .get(),
             )),
-            0x3c..0x40 => Ok(caliptra_emu_types::RvData::from(
+            0x3c..0x40 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_pio_section_offset().reg.get(),
             )),
-            0x40..0x44 => Ok(caliptra_emu_types::RvData::from(
+            0x40..0x44 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_base_ext_caps_section_offset()
                     .reg
                     .get(),
             )),
-            0x4c..0x50 => Ok(caliptra_emu_types::RvData::from(
+            0x4c..0x50 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_int_ctrl_cmds_en().reg.get(),
             )),
-            0x58..0x5c => Ok(caliptra_emu_types::RvData::from(
+            0x58..0x5c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_ibi_notify_ctrl().reg.get(),
             )),
-            0x5c..0x60 => Ok(caliptra_emu_types::RvData::from(
+            0x5c..0x60 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_ibi_data_abort_ctrl().reg.get(),
             )),
-            0x60..0x64 => Ok(caliptra_emu_types::RvData::from(
+            0x60..0x64 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_dev_ctx_base_lo().reg.get(),
             )),
-            0x64..0x68 => Ok(caliptra_emu_types::RvData::from(
+            0x64..0x68 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_dev_ctx_base_hi().reg.get(),
             )),
-            0x68..0x6c => Ok(caliptra_emu_types::RvData::from(
+            0x68..0x6c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_base_dev_ctx_sg().reg.get(),
             )),
             0x84..0x88 => Ok(self.periph.read_piocontrol_response_port()),
             0x88..0x8c => Ok(self.periph.read_piocontrol_rx_data_port()),
             0x8c..0x90 => Ok(self.periph.read_piocontrol_ibi_port()),
-            0x90..0x94 => Ok(caliptra_emu_types::RvData::from(
+            0x90..0x94 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_piocontrol_queue_thld_ctrl().reg.get(),
             )),
-            0x94..0x98 => Ok(caliptra_emu_types::RvData::from(
+            0x94..0x98 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_piocontrol_data_buffer_thld_ctrl()
                     .reg
                     .get(),
             )),
-            0x98..0x9c => Ok(caliptra_emu_types::RvData::from(
+            0x98..0x9c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_piocontrol_queue_size().reg.get(),
             )),
-            0x9c..0xa0 => Ok(caliptra_emu_types::RvData::from(
+            0x9c..0xa0 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_piocontrol_alt_queue_size().reg.get(),
             )),
-            0xa0..0xa4 => Ok(caliptra_emu_types::RvData::from(
+            0xa0..0xa4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_piocontrol_pio_intr_status().reg.get(),
             )),
-            0xa4..0xa8 => Ok(caliptra_emu_types::RvData::from(
+            0xa4..0xa8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_piocontrol_pio_intr_status_enable()
                     .reg
                     .get(),
             )),
-            0xa8..0xac => Ok(caliptra_emu_types::RvData::from(
+            0xa8..0xac => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_piocontrol_pio_intr_signal_enable()
                     .reg
                     .get(),
             )),
-            0xb0..0xb4 => Ok(caliptra_emu_types::RvData::from(
+            0xb0..0xb4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_piocontrol_pio_control().reg.get(),
             )),
-            0x100..0x104 => Ok(caliptra_emu_types::RvData::from(
+            0x100..0x104 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_extcap_header()
                     .reg
@@ -5830,19 +6313,19 @@ impl caliptra_emu_bus::Bus for I3cBus {
             )),
             0x104..0x108 => Ok(self.periph.read_i3c_ec_sec_fw_recovery_if_prot_cap_0()),
             0x108..0x10c => Ok(self.periph.read_i3c_ec_sec_fw_recovery_if_prot_cap_1()),
-            0x10c..0x110 => Ok(caliptra_emu_types::RvData::from(
+            0x10c..0x110 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_prot_cap_2()
                     .reg
                     .get(),
             )),
-            0x110..0x114 => Ok(caliptra_emu_types::RvData::from(
+            0x110..0x114 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_prot_cap_3()
                     .reg
                     .get(),
             )),
-            0x114..0x118 => Ok(caliptra_emu_types::RvData::from(
+            0x114..0x118 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_device_id_0()
                     .reg
@@ -5856,43 +6339,43 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x12c..0x130 => Ok(self
                 .periph
                 .read_i3c_ec_sec_fw_recovery_if_device_id_reserved()),
-            0x130..0x134 => Ok(caliptra_emu_types::RvData::from(
+            0x130..0x134 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_device_status_0()
                     .reg
                     .get(),
             )),
-            0x134..0x138 => Ok(caliptra_emu_types::RvData::from(
+            0x134..0x138 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_device_status_1()
                     .reg
                     .get(),
             )),
-            0x138..0x13c => Ok(caliptra_emu_types::RvData::from(
+            0x138..0x13c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_device_reset()
                     .reg
                     .get(),
             )),
-            0x13c..0x140 => Ok(caliptra_emu_types::RvData::from(
+            0x13c..0x140 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_recovery_ctrl()
                     .reg
                     .get(),
             )),
-            0x140..0x144 => Ok(caliptra_emu_types::RvData::from(
+            0x140..0x144 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_recovery_status()
                     .reg
                     .get(),
             )),
-            0x144..0x148 => Ok(caliptra_emu_types::RvData::from(
+            0x144..0x148 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_hw_status()
                     .reg
                     .get(),
             )),
-            0x148..0x14c => Ok(caliptra_emu_types::RvData::from(
+            0x148..0x14c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0()
                     .reg
@@ -5901,7 +6384,7 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x14c..0x150 => Ok(self
                 .periph
                 .read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1()),
-            0x150..0x154 => Ok(caliptra_emu_types::RvData::from(
+            0x150..0x154 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0()
                     .reg
@@ -5925,43 +6408,43 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x168..0x16c => Ok(self
                 .periph
                 .read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data()),
-            0x180..0x184 => Ok(caliptra_emu_types::RvData::from(
+            0x180..0x184 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_extcap_header()
                     .reg
                     .get(),
             )),
-            0x184..0x188 => Ok(caliptra_emu_types::RvData::from(
+            0x184..0x188 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_control()
                     .reg
                     .get(),
             )),
-            0x188..0x18c => Ok(caliptra_emu_types::RvData::from(
+            0x188..0x18c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr()
                     .reg
                     .get(),
             )),
-            0x18c..0x190 => Ok(caliptra_emu_types::RvData::from(
+            0x18c..0x190 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_capabilities()
                     .reg
                     .get(),
             )),
-            0x190..0x194 => Ok(caliptra_emu_types::RvData::from(
+            0x190..0x194 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char()
                     .reg
                     .get(),
             )),
-            0x194..0x198 => Ok(caliptra_emu_types::RvData::from(
+            0x194..0x198 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_status()
                     .reg
                     .get(),
             )),
-            0x198..0x19c => Ok(caliptra_emu_types::RvData::from(
+            0x198..0x19c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_char()
                     .reg
@@ -5970,7 +6453,7 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x19c..0x1a0 => Ok(self
                 .periph
                 .read_i3c_ec_stdby_ctrl_mode_stby_cr_device_pid_lo()),
-            0x1a0..0x1a4 => Ok(caliptra_emu_types::RvData::from(
+            0x1a0..0x1a4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status()
                     .reg
@@ -5979,76 +6462,76 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x1a4..0x1a8 => Ok(self
                 .periph
                 .read_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_pid_lo()),
-            0x1a8..0x1ac => Ok(caliptra_emu_types::RvData::from(
+            0x1a8..0x1ac => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable()
                     .reg
                     .get(),
             )),
-            0x1ac..0x1b0 => Ok(caliptra_emu_types::RvData::from(
+            0x1ac..0x1b0 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force()
                     .reg
                     .get(),
             )),
-            0x1b0..0x1b4 => Ok(caliptra_emu_types::RvData::from(
+            0x1b0..0x1b4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps()
                     .reg
                     .get(),
             )),
-            0x1b4..0x1b8 => Ok(caliptra_emu_types::RvData::from(
+            0x1b4..0x1b8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params()
                     .reg
                     .get(),
             )),
-            0x1b8..0x1bc => Ok(caliptra_emu_types::RvData::from(
+            0x1b8..0x1bc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr()
                     .reg
                     .get(),
             )),
             0x1bc..0x1c0 => Ok(self.periph.read_i3c_ec_stdby_ctrl_mode_rsvd_3()),
-            0x1c0..0x1c4 => Ok(caliptra_emu_types::RvData::from(
+            0x1c0..0x1c4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_extcap_header().reg.get(),
             )),
-            0x1c4..0x1c8 => Ok(caliptra_emu_types::RvData::from(
+            0x1c4..0x1c8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_control().reg.get(),
             )),
-            0x1c8..0x1cc => Ok(caliptra_emu_types::RvData::from(
+            0x1c8..0x1cc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_status().reg.get(),
             )),
-            0x1cc..0x1d0 => Ok(caliptra_emu_types::RvData::from(
+            0x1cc..0x1d0 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_tti_reset_control().reg.get(),
             )),
-            0x1d0..0x1d4 => Ok(caliptra_emu_types::RvData::from(
+            0x1d0..0x1d4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_interrupt_status().reg.get(),
             )),
-            0x1d4..0x1d8 => Ok(caliptra_emu_types::RvData::from(
+            0x1d4..0x1d8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_interrupt_enable().reg.get(),
             )),
-            0x1d8..0x1dc => Ok(caliptra_emu_types::RvData::from(
+            0x1d8..0x1dc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_interrupt_force().reg.get(),
             )),
             0x1dc..0x1e0 => Ok(self.periph.read_i3c_ec_tti_rx_desc_queue_port()),
             0x1e0..0x1e4 => Ok(self.periph.read_i3c_ec_tti_rx_data_port()),
-            0x1f0..0x1f4 => Ok(caliptra_emu_types::RvData::from(
+            0x1f0..0x1f4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_tti_queue_size().reg.get(),
             )),
-            0x1f4..0x1f8 => Ok(caliptra_emu_types::RvData::from(
+            0x1f4..0x1f8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_ibi_tti_queue_size().reg.get(),
             )),
-            0x1f8..0x1fc => Ok(caliptra_emu_types::RvData::from(
+            0x1f8..0x1fc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_tti_tti_queue_thld_ctrl().reg.get(),
             )),
-            0x1fc..0x200 => Ok(caliptra_emu_types::RvData::from(
+            0x1fc..0x200 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_tti_tti_data_buffer_thld_ctrl()
                     .reg
                     .get(),
             )),
-            0x200..0x204 => Ok(caliptra_emu_types::RvData::from(
+            0x200..0x204 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_soc_mgmt_if_extcap_header()
                     .reg
@@ -6056,10 +6539,10 @@ impl caliptra_emu_bus::Bus for I3cBus {
             )),
             0x204..0x208 => Ok(self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_control()),
             0x208..0x20c => Ok(self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_status()),
-            0x20c..0x210 => Ok(caliptra_emu_types::RvData::from(
+            0x20c..0x210 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_rec_intf_cfg().reg.get(),
             )),
-            0x210..0x214 => Ok(caliptra_emu_types::RvData::from(
+            0x210..0x214 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access()
                     .reg
@@ -6067,64 +6550,64 @@ impl caliptra_emu_bus::Bus for I3cBus {
             )),
             0x214..0x218 => Ok(self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_2()),
             0x218..0x21c => Ok(self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_rsvd_3()),
-            0x21c..0x220 => Ok(caliptra_emu_types::RvData::from(
+            0x21c..0x220 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_soc_pad_conf().reg.get(),
             )),
-            0x220..0x224 => Ok(caliptra_emu_types::RvData::from(
+            0x220..0x224 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_soc_pad_attr().reg.get(),
             )),
             0x224..0x228 => Ok(self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_2()),
             0x228..0x22c => Ok(self.periph.read_i3c_ec_soc_mgmt_if_soc_mgmt_feature_3()),
-            0x22c..0x230 => Ok(caliptra_emu_types::RvData::from(
+            0x22c..0x230 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_r_reg().reg.get(),
             )),
-            0x230..0x234 => Ok(caliptra_emu_types::RvData::from(
+            0x230..0x234 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_f_reg().reg.get(),
             )),
-            0x234..0x238 => Ok(caliptra_emu_types::RvData::from(
+            0x234..0x238 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_su_dat_reg().reg.get(),
             )),
-            0x238..0x23c => Ok(caliptra_emu_types::RvData::from(
+            0x238..0x23c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_hd_dat_reg().reg.get(),
             )),
-            0x23c..0x240 => Ok(caliptra_emu_types::RvData::from(
+            0x23c..0x240 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_high_reg().reg.get(),
             )),
-            0x240..0x244 => Ok(caliptra_emu_types::RvData::from(
+            0x240..0x244 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_low_reg().reg.get(),
             )),
-            0x244..0x248 => Ok(caliptra_emu_types::RvData::from(
+            0x244..0x248 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_hd_sta_reg().reg.get(),
             )),
-            0x248..0x24c => Ok(caliptra_emu_types::RvData::from(
+            0x248..0x24c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_su_sta_reg().reg.get(),
             )),
-            0x24c..0x250 => Ok(caliptra_emu_types::RvData::from(
+            0x24c..0x250 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_soc_mgmt_if_t_su_sto_reg().reg.get(),
             )),
             0x250..0x254 => Ok(self.periph.read_i3c_ec_soc_mgmt_if_t_free_reg()),
             0x254..0x258 => Ok(self.periph.read_i3c_ec_soc_mgmt_if_t_aval_reg()),
             0x258..0x25c => Ok(self.periph.read_i3c_ec_soc_mgmt_if_t_idle_reg()),
-            0x260..0x264 => Ok(caliptra_emu_types::RvData::from(
+            0x260..0x264 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_i3c_ec_ctrl_cfg_extcap_header().reg.get(),
             )),
-            0x264..0x268 => Ok(caliptra_emu_types::RvData::from(
+            0x264..0x268 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_i3c_ec_ctrl_cfg_controller_config()
                     .reg
                     .get(),
             )),
-            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-        val: caliptra_emu_types::RvData,
-    ) -> Result<(), caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) -> Result<(), caliptra_core_tools::caliptra_emu_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             0x400..0x800 => {
@@ -6137,49 +6620,53 @@ impl caliptra_emu_bus::Bus for I3cBus {
             }
             0..4 => Ok(()),
             4..8 => {
-                self.periph
-                    .write_i3c_base_hc_control(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_base_hc_control(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             8..0xc => {
                 self.periph.write_i3c_base_controller_device_addr(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xc..0x10 => Ok(()),
             0x10..0x14 => {
-                self.periph
-                    .write_i3c_base_reset_control(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_base_reset_control(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x14..0x18 => Ok(()),
             0x20..0x24 => {
-                self.periph
-                    .write_i3c_base_intr_status(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_base_intr_status(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x24..0x28 => {
                 self.periph.write_i3c_base_intr_status_enable(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x28..0x2c => {
                 self.periph.write_i3c_base_intr_signal_enable(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x2c..0x30 => {
-                self.periph
-                    .write_i3c_base_intr_force(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_base_intr_force(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x30..0x34 => Ok(()),
             0x34..0x38 => {
                 self.periph.write_i3c_base_dct_section_offset(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -6188,24 +6675,27 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x40..0x44 => Ok(()),
             0x4c..0x50 => Ok(()),
             0x58..0x5c => {
-                self.periph
-                    .write_i3c_base_ibi_notify_ctrl(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_base_ibi_notify_ctrl(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x5c..0x60 => {
                 self.periph.write_i3c_base_ibi_data_abort_ctrl(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x60..0x64 => {
-                self.periph
-                    .write_i3c_base_dev_ctx_base_lo(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_base_dev_ctx_base_lo(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x64..0x68 => {
-                self.periph
-                    .write_i3c_base_dev_ctx_base_hi(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_base_dev_ctx_base_hi(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x68..0x6c => Ok(()),
@@ -6221,13 +6711,13 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x8c..0x90 => Ok(()),
             0x90..0x94 => {
                 self.periph.write_piocontrol_queue_thld_ctrl(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x94..0x98 => {
                 self.periph.write_piocontrol_data_buffer_thld_ctrl(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -6235,30 +6725,32 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x9c..0xa0 => Ok(()),
             0xa0..0xa4 => {
                 self.periph.write_piocontrol_pio_intr_status(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xa4..0xa8 => {
                 self.periph.write_piocontrol_pio_intr_status_enable(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xa8..0xac => {
                 self.periph.write_piocontrol_pio_intr_signal_enable(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xac..0xb0 => {
-                self.periph
-                    .write_piocontrol_pio_intr_force(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_piocontrol_pio_intr_force(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xb0..0xb4 => {
-                self.periph
-                    .write_piocontrol_pio_control(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_piocontrol_pio_control(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x100..0x104 => Ok(()),
@@ -6266,19 +6758,19 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x108..0x10c => Ok(()),
             0x10c..0x110 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_prot_cap_2(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x110..0x114 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_prot_cap_3(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x114..0x118 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_device_id_0(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -6305,44 +6797,44 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x12c..0x130 => Ok(()),
             0x130..0x134 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_device_status_0(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x134..0x138 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_device_status_1(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x138..0x13c => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_device_reset(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x13c..0x140 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_recovery_ctrl(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x140..0x144 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_recovery_status(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x144..0x148 => {
                 self.periph.write_i3c_ec_sec_fw_recovery_if_hw_status(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x148..0x14c => {
                 self.periph
                     .write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -6361,14 +6853,14 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x180..0x184 => Ok(()),
             0x184..0x188 => {
                 self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_control(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x188..0x18c => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_addr(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -6376,20 +6868,20 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x190..0x194 => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x194..0x198 => {
                 self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_status(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x198..0x19c => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_device_char(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -6401,7 +6893,7 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x1a0..0x1a4 => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_status(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -6413,34 +6905,34 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x1a8..0x1ac => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x1ac..0x1b0 => {
                 self.periph.write_i3c_ec_stdby_ctrl_mode_stby_cr_intr_force(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1b0..0x1b4 => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x1b4..0x1b8 => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x1b8..0x1bc => {
                 self.periph
                     .write_i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -6450,32 +6942,33 @@ impl caliptra_emu_bus::Bus for I3cBus {
             }
             0x1c0..0x1c4 => Ok(()),
             0x1c4..0x1c8 => {
-                self.periph
-                    .write_i3c_ec_tti_control(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_i3c_ec_tti_control(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x1c8..0x1cc => Ok(()),
             0x1cc..0x1d0 => {
                 self.periph.write_i3c_ec_tti_tti_reset_control(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1d0..0x1d4 => {
                 self.periph.write_i3c_ec_tti_interrupt_status(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1d4..0x1d8 => {
                 self.periph.write_i3c_ec_tti_interrupt_enable(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1d8..0x1dc => {
                 self.periph.write_i3c_ec_tti_interrupt_force(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -6497,13 +6990,13 @@ impl caliptra_emu_bus::Bus for I3cBus {
             0x1f4..0x1f8 => Ok(()),
             0x1f8..0x1fc => {
                 self.periph.write_i3c_ec_tti_tti_queue_thld_ctrl(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1fc..0x200 => {
                 self.periph.write_i3c_ec_tti_tti_data_buffer_thld_ctrl(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -6518,14 +7011,14 @@ impl caliptra_emu_bus::Bus for I3cBus {
             }
             0x20c..0x210 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_rec_intf_cfg(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x210..0x214 => {
                 self.periph
                     .write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -6539,13 +7032,13 @@ impl caliptra_emu_bus::Bus for I3cBus {
             }
             0x21c..0x220 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_soc_pad_conf(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x220..0x224 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_soc_pad_attr(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -6559,55 +7052,55 @@ impl caliptra_emu_bus::Bus for I3cBus {
             }
             0x22c..0x230 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_r_reg(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x230..0x234 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_f_reg(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x234..0x238 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_su_dat_reg(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x238..0x23c => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_hd_dat_reg(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x23c..0x240 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_high_reg(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x240..0x244 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_low_reg(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x244..0x248 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_hd_sta_reg(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x248..0x24c => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_su_sta_reg(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x24c..0x250 => {
                 self.periph.write_i3c_ec_soc_mgmt_if_t_su_sto_reg(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -6625,7 +7118,7 @@ impl caliptra_emu_bus::Bus for I3cBus {
             }
             0x260..0x264 => Ok(()),
             0x264..0x268 => Ok(()),
-            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {

@@ -68,6 +68,16 @@ The table below details which versions of Caliptra are compatible with each othe
 | main-2.1        | main         | 2.1.x RTL      |
 | main            | caliptra-2.0 | 2.0.x RTL      |
 
+### Caliptra Core Facade
+
+Versions of the Caliptra core library are managed through the `caliptra-core` facade crate located in `common/caliptra-core`. This crate re-exports the various `caliptra-sw` components and allows switching between different versions (e.g., 2.0, 2.1, or a local path) using Cargo features.
+
+To select a specific version in your workspace, enable the corresponding feature for `caliptra-core` in the root `Cargo.toml`:
+
+* `2_0`: (Default) Uses Caliptra 2.0 components.
+* `2_1`: Uses Caliptra 2.1 components.
+* `local`: Uses a local checkout of `caliptra-sw` located at `../caliptra-sw`.
+
 ## Documentation
 
 The specification is published [here](https://chipsalliance.github.io/caliptra-mcu-sw/).

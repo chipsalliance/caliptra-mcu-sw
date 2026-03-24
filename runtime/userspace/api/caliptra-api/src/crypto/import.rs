@@ -2,12 +2,14 @@
 
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::execute_mailbox_cmd;
-use caliptra_api::mailbox::{CmImportReq, CmImportResp, Request};
+use caliptra_core_firmware::caliptra_api::mailbox::{CmImportReq, CmImportResp, Request};
 use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::IntoBytes;
 
 // re-export
-pub use caliptra_api::mailbox::{CmKeyUsage, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE};
+pub use caliptra_core_firmware::caliptra_api::mailbox::{
+    CmKeyUsage, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
+};
 
 pub struct Import;
 

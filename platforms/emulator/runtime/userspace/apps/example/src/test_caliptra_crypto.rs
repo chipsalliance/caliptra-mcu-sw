@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_api::mailbox::CmKeyUsage;
-use caliptra_api::mailbox::Cmk;
+use caliptra_core_firmware::caliptra_api::mailbox::CmKeyUsage;
+use caliptra_core_firmware::caliptra_api::mailbox::Cmk;
 use libapi_caliptra::certificate::{CertContext, KEY_LABEL_SIZE};
 use libapi_caliptra::crypto::aes_gcm::AesGcm;
 use libapi_caliptra::crypto::asym::{

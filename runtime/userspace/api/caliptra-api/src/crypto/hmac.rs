@@ -3,7 +3,7 @@
 use crate::crypto::import::Import;
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::execute_mailbox_cmd;
-use caliptra_api::mailbox::{
+use caliptra_core_firmware::caliptra_api::mailbox::{
     CmHashAlgorithm, CmHkdfExpandReq, CmHkdfExpandResp, CmHkdfExtractReq, CmHkdfExtractResp,
     CmHmacReq, CmHmacResp, CmKeyUsage, Cmk, Request, MAX_CMB_DATA_SIZE,
 };

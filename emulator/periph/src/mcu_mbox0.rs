@@ -1,8 +1,10 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_emu_bus::BusError;
-use caliptra_emu_bus::{Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
-use caliptra_emu_types::{RvAddr, RvSize};
+use caliptra_core_tools::caliptra_emu_bus::BusError;
+use caliptra_core_tools::caliptra_emu_bus::{
+    Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer,
+};
+use caliptra_core_tools::caliptra_emu_types::{RvAddr, RvSize};
 use emulator_consts::MCU_MAILBOX0_SRAM_SIZE;
 use registers_generated::mci::bits::MboxExecute;
 use std::sync::{Arc, Mutex};
@@ -202,9 +204,11 @@ impl MciMailboxImpl {
         self.read_mcu_mbox0_csr_mbox_lock();
         assert!(self.is_locked(), "MCU can't acquire MCU mailbox lock");
         self.write_mcu_mbox0_csr_mbox_dlen(MCU_MAILBOX0_SRAM_SIZE);
-        self.write_mcu_mbox0_csr_mbox_execute(caliptra_emu_bus::ReadWriteRegister::new(
-            MboxExecute::Execute::CLEAR.value,
-        ));
+        self.write_mcu_mbox0_csr_mbox_execute(
+            caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+                MboxExecute::Execute::CLEAR.value,
+            ),
+        );
     }
 
     pub fn set_requester(&mut self, requester: MciMailboxRequester) {
@@ -243,7 +247,10 @@ impl MciMailboxImpl {
         self.lock.reg.set(0); // Release lock after clearing
     }
 
-    pub fn read_mcu_mbox0_csr_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    pub fn read_mcu_mbox0_csr_mbox_sram(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if index >= (MCU_MAILBOX0_SRAM_SIZE as usize / 4) {
             panic!("Index out of bounds for mcu_mbox0 SRAM: {index}");
         }
@@ -263,7 +270,11 @@ impl MciMailboxImpl {
             })
     }
 
-    pub fn write_mcu_mbox0_csr_mbox_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    pub fn write_mcu_mbox0_csr_mbox_sram(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if !self.is_locked() {
             panic!("Cannot write to mcu_mbox0 SRAM when mailbox is unlocked");
         }
@@ -284,8 +295,10 @@ impl MciMailboxImpl {
 
     pub fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxLock::Register,
+    > {
         // If the lock is not held, we can grant it to the current requester
         if self.lock.reg.get() == 0 {
             // Grant lock to current requester
@@ -296,27 +309,34 @@ impl MciMailboxImpl {
             self.max_dlen_in_lock_session = 0;
 
             // Return 0 to indicate lock is now held
-            caliptra_emu_bus::ReadWriteRegister::<
+            caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::<
                 u32,
                 registers_generated::mci::bits::MboxLock::Register,
             >::new(0)
         } else {
-            caliptra_emu_bus::ReadWriteRegister::<
+            caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::<
                 u32,
                 registers_generated::mci::bits::MboxLock::Register,
             >::new(self.lock.reg.get())
         }
     }
 
-    pub fn read_mcu_mbox0_csr_mbox_user(&mut self) -> caliptra_emu_types::RvData {
+    pub fn read_mcu_mbox0_csr_mbox_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         self.user.reg.get()
     }
 
-    pub fn read_mcu_mbox0_csr_mbox_target_user(&mut self) -> caliptra_emu_types::RvData {
+    pub fn read_mcu_mbox0_csr_mbox_target_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         self.target_user.reg.get()
     }
 
-    pub fn write_mcu_mbox0_csr_mbox_target_user(&mut self, val: caliptra_emu_types::RvData) {
+    pub fn write_mcu_mbox0_csr_mbox_target_user(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if !self.is_locked() {
             panic!("Cannot write mcu_mbox0 target user when mailbox is unlocked");
         }
@@ -325,16 +345,18 @@ impl MciMailboxImpl {
 
     pub fn read_mcu_mbox0_csr_mbox_target_user_valid(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.target_user_valid.reg.get())
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.target_user_valid.reg.get(),
+        )
     }
 
     pub fn write_mcu_mbox0_csr_mbox_target_user_valid(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
@@ -345,19 +367,29 @@ impl MciMailboxImpl {
         self.target_user_valid.reg.set(val.reg.get());
     }
 
-    pub fn read_mcu_mbox0_csr_mbox_cmd(&mut self) -> caliptra_emu_types::RvData {
+    pub fn read_mcu_mbox0_csr_mbox_cmd(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         self.cmd.reg.get()
     }
 
-    pub fn write_mcu_mbox0_csr_mbox_cmd(&mut self, val: caliptra_emu_types::RvData) {
+    pub fn write_mcu_mbox0_csr_mbox_cmd(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         self.cmd.reg.set(val);
     }
 
-    pub fn read_mcu_mbox0_csr_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+    pub fn read_mcu_mbox0_csr_mbox_dlen(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         self.dlen.reg.get()
     }
 
-    pub fn write_mcu_mbox0_csr_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+    pub fn write_mcu_mbox0_csr_mbox_dlen(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if val > MCU_MAILBOX0_SRAM_SIZE {
             panic!("DLEN value {val} exceeds mcu_mbox0 SRAM size");
         }
@@ -371,15 +403,15 @@ impl MciMailboxImpl {
 
     pub fn read_mcu_mbox0_csr_mbox_execute(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxExecute::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.execute.reg.get())
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.execute.reg.get())
     }
     pub fn write_mcu_mbox0_csr_mbox_execute(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxExecute::Register,
         >,
@@ -405,16 +437,16 @@ impl MciMailboxImpl {
 
     pub fn read_mcu_mbox0_csr_mbox_target_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.target_status.reg.get())
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.target_status.reg.get())
     }
 
     pub fn write_mcu_mbox0_csr_mbox_target_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
@@ -434,16 +466,16 @@ impl MciMailboxImpl {
 
     pub fn read_mcu_mbox0_csr_mbox_cmd_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxCmdStatus::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.cmd_status.reg.get())
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cmd_status.reg.get())
     }
 
     pub fn write_mcu_mbox0_csr_mbox_cmd_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
@@ -453,11 +485,11 @@ impl MciMailboxImpl {
 
     pub fn read_mcu_mbox0_csr_mbox_hw_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxHwStatus::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.hw_status.reg.get())
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.hw_status.reg.get())
     }
 }
 
@@ -468,9 +500,9 @@ mod tests {
     use super::*;
     use crate::mci::Mci;
     use crate::McuRootBus;
-    use caliptra_emu_bus::{Bus, Clock};
-    use caliptra_emu_cpu::Pic;
-    use caliptra_emu_types::RvSize;
+    use caliptra_core_tools::caliptra_emu_bus::{Bus, Clock};
+    use caliptra_core_tools::caliptra_emu_cpu::Pic;
+    use caliptra_core_tools::caliptra_emu_types::RvSize;
     use emulator_registers_generated::root_bus::AutoRootBus;
     use registers_generated::mci::bits::{
         MboxCmdStatus, MboxExecute, MboxTargetStatus, Notif0IntrEnT, Notif0IntrT,
@@ -496,7 +528,7 @@ mod tests {
 
     fn test_helper_setup_autobus(clock: &Clock, mcu_mailbox0: &McuMailbox0Internal) -> AutoRootBus {
         let pic = Pic::new();
-        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let ext_mci_regs = caliptra_core_tools::caliptra_emu_periph::mci::Mci::new(vec![]);
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
         let mci = Mci::new(
             clock,
@@ -782,7 +814,9 @@ mod tests {
             .write_mcu_mbox0_csr_mbox_cmd(test_cmd);
         // SoC writes 1 to EXECUTE
         soc.regs.lock().unwrap().write_mcu_mbox0_csr_mbox_execute(
-            caliptra_emu_bus::ReadWriteRegister::new(MboxExecute::Execute::SET.value),
+            caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+                MboxExecute::Execute::SET.value,
+            ),
         );
 
         for _ in 0..1000 {
@@ -853,7 +887,9 @@ mod tests {
 
         // SoC writes 0 to EXECUTE to release the mailbox
         soc.regs.lock().unwrap().write_mcu_mbox0_csr_mbox_execute(
-            caliptra_emu_bus::ReadWriteRegister::new(MboxExecute::Execute::CLEAR.value),
+            caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+                MboxExecute::Execute::CLEAR.value,
+            ),
         );
 
         test_mailbox_zeroization(test_dlen, &mcu_mailbox0);
@@ -958,9 +994,9 @@ mod tests {
         soc.regs
             .lock()
             .unwrap()
-            .write_mcu_mbox0_csr_mbox_target_status(caliptra_emu_bus::ReadWriteRegister::new(
-                response_status,
-            ));
+            .write_mcu_mbox0_csr_mbox_target_status(
+                caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(response_status),
+            );
 
         // Poll to process the interrupt
         for _ in 0..1000 {

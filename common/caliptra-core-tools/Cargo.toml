@@ -1,0 +1,129 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-core-tools"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Shared firmware types (re-exported)
+caliptra-core-firmware = { workspace = true }
+
+# 2.0 host-only dependencies
+caliptra-auth-man-gen-2_0 = { workspace = true, optional = true }
+caliptra-builder-2_0 = { workspace = true, optional = true }
+caliptra-emu-bus-2_0 = { workspace = true, optional = true }
+caliptra-emu-cpu-2_0 = { workspace = true, optional = true }
+caliptra-emu-derive-2_0 = { workspace = true, optional = true }
+caliptra-emu-periph-2_0 = { workspace = true, optional = true }
+caliptra-emu-types-2_0 = { workspace = true, optional = true }
+caliptra-hw-model-2_0 = { workspace = true, optional = true }
+caliptra-hw-model-types-2_0 = { workspace = true, optional = true }
+caliptra-image-crypto-2_0 = { workspace = true, optional = true }
+caliptra-image-fake-keys-2_0 = { workspace = true, optional = true }
+caliptra-image-gen-2_0 = { workspace = true, optional = true }
+caliptra-image-types-2_0 = { workspace = true, optional = true }
+caliptra-test-2_0 = { workspace = true, optional = true }
+caliptra-test-harness-2_0 = { workspace = true, optional = true }
+caliptra-test-harness-types-2_0 = { workspace = true, optional = true }
+
+# 2.1 host-only dependencies
+caliptra-auth-man-gen-2_1 = { workspace = true, optional = true }
+caliptra-builder-2_1 = { workspace = true, optional = true }
+caliptra-emu-bus-2_1 = { workspace = true, optional = true }
+caliptra-emu-cpu-2_1 = { workspace = true, optional = true }
+caliptra-emu-derive-2_1 = { workspace = true, optional = true }
+caliptra-emu-periph-2_1 = { workspace = true, optional = true }
+caliptra-emu-types-2_1 = { workspace = true, optional = true }
+caliptra-hw-model-2_1 = { workspace = true, optional = true }
+caliptra-hw-model-types-2_1 = { workspace = true, optional = true }
+caliptra-image-crypto-2_1 = { workspace = true, optional = true }
+caliptra-image-fake-keys-2_1 = { workspace = true, optional = true }
+caliptra-image-gen-2_1 = { workspace = true, optional = true }
+caliptra-image-types-2_1 = { workspace = true, optional = true }
+caliptra-test-2_1 = { workspace = true, optional = true }
+caliptra-test-harness-2_1 = { workspace = true, optional = true }
+caliptra-test-harness-types-2_1 = { workspace = true, optional = true }
+
+[features]
+default = ["2_0"]
+
+2_0 = [
+    "caliptra-core-firmware/2_0",
+    "caliptra-auth-man-gen-2_0",
+    "caliptra-builder-2_0",
+    "caliptra-emu-bus-2_0",
+    "caliptra-emu-cpu-2_0",
+    "caliptra-emu-derive-2_0",
+    "caliptra-emu-periph-2_0",
+    "caliptra-emu-types-2_0",
+    "caliptra-hw-model-2_0",
+    "caliptra-hw-model-types-2_0",
+    "caliptra-image-crypto-2_0",
+    "caliptra-image-fake-keys-2_0",
+    "caliptra-image-gen-2_0",
+    "caliptra-image-types-2_0",
+    "caliptra-test-2_0",
+    "caliptra-test-harness-2_0",
+    "caliptra-test-harness-types-2_0",
+]
+
+2_1 = [
+    "caliptra-core-firmware/2_1",
+    "caliptra-auth-man-gen-2_1",
+    "caliptra-builder-2_1",
+    "caliptra-emu-bus-2_1",
+    "caliptra-emu-cpu-2_1",
+    "caliptra-emu-derive-2_1",
+    "caliptra-emu-periph-2_1",
+    "caliptra-emu-types-2_1",
+    "caliptra-hw-model-2_1",
+    "caliptra-hw-model-types-2_1",
+    "caliptra-image-crypto-2_1",
+    "caliptra-image-fake-keys-2_1",
+    "caliptra-image-gen-2_1",
+    "caliptra-image-types-2_1",
+    "caliptra-test-2_1",
+    "caliptra-test-harness-2_1",
+    "caliptra-test-harness-types-2_1",
+]
+
+# Individual dependency activation
+caliptra-auth-man-gen-2_0 = ["dep:caliptra-auth-man-gen-2_0"]
+caliptra-auth-man-gen-2_1 = ["dep:caliptra-auth-man-gen-2_1"]
+caliptra-builder-2_0 = ["dep:caliptra-builder-2_0"]
+caliptra-builder-2_1 = ["dep:caliptra-builder-2_1"]
+caliptra-emu-bus-2_0 = ["dep:caliptra-emu-bus-2_0"]
+caliptra-emu-bus-2_1 = ["dep:caliptra-emu-bus-2_1"]
+caliptra-emu-cpu-2_0 = ["dep:caliptra-emu-cpu-2_0"]
+caliptra-emu-cpu-2_1 = ["dep:caliptra-emu-cpu-2_1"]
+caliptra-emu-derive-2_0 = ["dep:caliptra-emu-derive-2_0"]
+caliptra-emu-derive-2_1 = ["dep:caliptra-emu-derive-2_1"]
+caliptra-emu-periph-2_0 = ["dep:caliptra-emu-periph-2_0"]
+caliptra-emu-periph-2_1 = ["dep:caliptra-emu-periph-2_1"]
+caliptra-emu-types-2_0 = ["dep:caliptra-emu-types-2_0"]
+caliptra-emu-types-2_1 = ["dep:caliptra-emu-types-2_1"]
+caliptra-hw-model-2_0 = ["dep:caliptra-hw-model-2_0"]
+caliptra-hw-model-2_1 = ["dep:caliptra-hw-model-2_1"]
+caliptra-hw-model-types-2_0 = ["dep:caliptra-hw-model-types-2_0"]
+caliptra-hw-model-types-2_1 = ["dep:caliptra-hw-model-types-2_1"]
+caliptra-image-crypto-2_0 = ["dep:caliptra-image-crypto-2_0"]
+caliptra-image-crypto-2_1 = ["dep:caliptra-image-crypto-2_1"]
+caliptra-image-fake-keys-2_0 = ["dep:caliptra-image-fake-keys-2_0"]
+caliptra-image-fake-keys-2_1 = ["dep:caliptra-image-fake-keys-2_1"]
+caliptra-image-gen-2_0 = ["dep:caliptra-image-gen-2_0"]
+caliptra-image-gen-2_1 = ["dep:caliptra-image-gen-2_1"]
+caliptra-image-types-2_0 = ["dep:caliptra-image-types-2_0"]
+caliptra-image-types-2_1 = ["dep:caliptra-image-types-2_1"]
+caliptra-test-2_0 = ["dep:caliptra-test-2_0"]
+caliptra-test-2_1 = ["dep:caliptra-test-2_1"]
+caliptra-test-harness-2_0 = ["dep:caliptra-test-harness-2_0"]
+caliptra-test-harness-2_1 = ["dep:caliptra-test-harness-2_1"]
+caliptra-test-harness-types-2_0 = ["dep:caliptra-test-harness-types-2_0"]
+caliptra-test-harness-types-2_1 = ["dep:caliptra-test-harness-types-2_1"]
+
+hw-model-fpga_subsystem = [
+    "caliptra-hw-model-2_0?/fpga_subsystem",
+    "caliptra-hw-model-2_1?/fpga_subsystem",
+]

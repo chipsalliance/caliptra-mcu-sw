@@ -4,7 +4,7 @@ use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::{
     execute_mailbox_cmd, ShaFinalReq, ShaInitReq, ShaUpdateReq, MAX_CRYPTO_MBOX_DATA_SIZE,
 };
-use caliptra_api::mailbox::{
+use caliptra_core_firmware::caliptra_api::mailbox::{
     CmHashAlgorithm, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq,
     MailboxReqHeader, Request, CMB_SHA_CONTEXT_SIZE,
 };

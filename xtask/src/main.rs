@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_api_types::DeviceLifecycle;
+use caliptra_core_tools::caliptra_api_types::DeviceLifecycle;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
 use mcu_builder::ImageCfg;

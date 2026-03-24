@@ -12,8 +12,8 @@ use std::time::Duration;
 use anyhow::{bail, Context, Result};
 use thiserror::Error;
 
-use caliptra_hw_model::lcc::{LcCtrlReg, LcCtrlStatus, LcCtrlTransitionCmd};
-use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagTap, OpenOcdJtagTap};
+use caliptra_core_tools::caliptra_hw_model::lcc::{LcCtrlReg, LcCtrlStatus, LcCtrlTransitionCmd};
+use caliptra_core_tools::caliptra_hw_model::openocd::openocd_jtag_tap::{JtagTap, OpenOcdJtagTap};
 use mcu_rom_common::{Lifecycle, LifecycleControllerState};
 use poll_common::poll_until;
 

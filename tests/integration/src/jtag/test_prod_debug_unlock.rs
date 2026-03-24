@@ -8,14 +8,14 @@ mod test {
 
     use crate::jtag::test::{debug_is_unlocked, ss_setup, verify_execute_from_sram};
 
-    use caliptra_hw_model::jtag::CaliptraCoreReg;
-    use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
-    use caliptra_hw_model::HwModel;
-    use caliptra_image_fake_keys::{
+    use caliptra_core_tools::caliptra_hw_model::jtag::CaliptraCoreReg;
+    use caliptra_core_tools::caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
+    use caliptra_core_tools::caliptra_hw_model::HwModel;
+    use caliptra_core_tools::caliptra_image_fake_keys::{
         VENDOR_ECC_KEY_0_PRIVATE, VENDOR_ECC_KEY_0_PUBLIC, VENDOR_MLDSA_KEY_0_PRIVATE,
         VENDOR_MLDSA_KEY_0_PUBLIC,
     };
-    use caliptra_image_types::{
+    use caliptra_core_tools::caliptra_image_types::{
         ECC384_SCALAR_BYTE_SIZE, ECC384_SCALAR_WORD_SIZE, MLDSA87_PRIV_KEY_BYTE_SIZE,
     };
     use mcu_hw_model::debug_unlock::{

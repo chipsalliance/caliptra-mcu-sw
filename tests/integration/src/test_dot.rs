@@ -10,16 +10,20 @@ mod test {
     };
 
     use crate::test::{start_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK};
-    use caliptra_api::{
+    use caliptra_core_tools::caliptra_api::{
         calc_checksum,
         mailbox::{
             CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacReq, CmHmacResp,
             CmStableKeyType, CommandId,
         },
     };
-    use caliptra_auth_man_types::{AuthManifestPrivKeysConfig, AuthManifestPubKeysConfig};
-    use caliptra_image_gen::ImageGeneratorOwnerConfig;
-    use caliptra_image_types::{ImageManifest, ImageOwnerPrivKeys, OwnerPubKeyConfig};
+    use caliptra_core_tools::caliptra_auth_man_types::{
+        AuthManifestPrivKeysConfig, AuthManifestPubKeysConfig,
+    };
+    use caliptra_core_tools::caliptra_image_gen::ImageGeneratorOwnerConfig;
+    use caliptra_core_tools::caliptra_image_types::{
+        ImageManifest, ImageOwnerPrivKeys, OwnerPubKeyConfig,
+    };
     use mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries};
     use mcu_error::McuError;
     use mcu_hw_model::McuHwModel;
@@ -337,7 +341,7 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        use caliptra_image_fake_keys::{
+        use caliptra_core_tools::caliptra_image_fake_keys::{
             VENDOR_ECC_KEY_1_PRIVATE, VENDOR_ECC_KEY_1_PUBLIC, VENDOR_LMS_KEY_1_PRIVATE,
             VENDOR_LMS_KEY_1_PUBLIC, VENDOR_MLDSA_KEY_0_PRIVATE, VENDOR_MLDSA_KEY_0_PUBLIC,
         };

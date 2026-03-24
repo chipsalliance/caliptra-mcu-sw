@@ -36,8 +36,8 @@
 
 use crate::error::CaliptraApiError;
 use crate::error::CaliptraApiResult;
-use caliptra_api::mailbox::CmRandomGenerateResp;
-use caliptra_api::mailbox::{
+use caliptra_core_firmware::caliptra_api::mailbox::CmRandomGenerateResp;
+use caliptra_core_firmware::caliptra_api::mailbox::{
     CmRandomStirReq, InvokeDpeResp, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
     CMB_SHA_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
 };

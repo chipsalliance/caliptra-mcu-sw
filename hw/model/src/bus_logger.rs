@@ -8,8 +8,8 @@ use std::{
     rc::Rc,
 };
 
-use caliptra_emu_bus::{Bus, BusError};
-use caliptra_emu_types::{RvAddr, RvData, RvSize};
+use caliptra_core_tools::caliptra_emu_bus::{Bus, BusError};
+use caliptra_core_tools::caliptra_emu_types::{RvAddr, RvData, RvSize};
 
 #[derive(Clone)]
 pub struct LogFile(Rc<RefCell<BufWriter<File>>>);
@@ -32,7 +32,11 @@ impl Write for LogFile {
 
 pub struct NullBus();
 impl Bus for NullBus {
-    fn read(&mut self, _size: RvSize, _addr: RvAddr) -> Result<RvData, caliptra_emu_bus::BusError> {
+    fn read(
+        &mut self,
+        _size: RvSize,
+        _addr: RvAddr,
+    ) -> Result<RvData, caliptra_core_tools::caliptra_emu_bus::BusError> {
         Err(BusError::LoadAccessFault)
     }
 
@@ -41,7 +45,7 @@ impl Bus for NullBus {
         _size: RvSize,
         _addr: RvAddr,
         _val: RvData,
-    ) -> Result<(), caliptra_emu_bus::BusError> {
+    ) -> Result<(), caliptra_core_tools::caliptra_emu_bus::BusError> {
         Err(BusError::StoreAccessFault)
     }
 }
@@ -59,7 +63,7 @@ impl<TBus: Bus> BusLogger<TBus> {
         bus_name: &str,
         size: RvSize,
         addr: RvAddr,
-        result: Result<RvData, caliptra_emu_bus::BusError>,
+        result: Result<RvData, caliptra_core_tools::caliptra_emu_bus::BusError>,
     ) {
         if let Some(log) = &mut self.log {
             let size = usize::from(size);
@@ -79,7 +83,7 @@ impl<TBus: Bus> BusLogger<TBus> {
         size: RvSize,
         addr: RvAddr,
         val: RvData,
-        result: Result<(), caliptra_emu_bus::BusError>,
+        result: Result<(), caliptra_core_tools::caliptra_emu_bus::BusError>,
     ) {
         if addr < 0x1000_0000 {
             // Don't care about memory
@@ -101,7 +105,11 @@ impl<TBus: Bus> BusLogger<TBus> {
     }
 }
 impl<TBus: Bus> Bus for BusLogger<TBus> {
-    fn read(&mut self, size: RvSize, addr: RvAddr) -> Result<RvData, caliptra_emu_bus::BusError> {
+    fn read(
+        &mut self,
+        size: RvSize,
+        addr: RvAddr,
+    ) -> Result<RvData, caliptra_core_tools::caliptra_emu_bus::BusError> {
         let result = self.bus.read(size, addr);
         self.log_read("UC", size, addr, result);
         result
@@ -112,7 +120,7 @@ impl<TBus: Bus> Bus for BusLogger<TBus> {
         size: RvSize,
         addr: RvAddr,
         val: RvData,
-    ) -> Result<(), caliptra_emu_bus::BusError> {
+    ) -> Result<(), caliptra_core_tools::caliptra_emu_bus::BusError> {
         let result = self.bus.write(size, addr, val);
         self.log_write("UC", size, addr, val, result);
         result
@@ -130,13 +138,13 @@ impl<TBus: Bus> Bus for BusLogger<TBus> {
         self.bus.update_reset();
     }
 
-    fn incoming_event(&mut self, event: Rc<caliptra_emu_bus::Event>) {
+    fn incoming_event(&mut self, event: Rc<caliptra_core_tools::caliptra_emu_bus::Event>) {
         self.bus.incoming_event(event);
     }
 
     fn register_outgoing_events(
         &mut self,
-        sender: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
+        sender: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
     ) {
         self.bus.register_outgoing_events(sender);
     }

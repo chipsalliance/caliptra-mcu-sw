@@ -10,7 +10,8 @@ use mcu_rom_common::McuBootMilestones;
 #[test]
 fn test_hitless_update_flow() -> Result<()> {
     let mcu_rom_id = &mcu_builder::firmware::hw_model_tests::HITLESS_UPDATE_FLOW;
-    let cptra_rom_id = &caliptra_builder::firmware::hw_model_tests::MCU_HITLESS_UPDATE_FLOW;
+    let cptra_rom_id =
+        &caliptra_core_tools::caliptra_builder::firmware::hw_model_tests::MCU_HITLESS_UPDATE_FLOW;
     let (caliptra_rom, mcu_rom) = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
         (
             binaries.caliptra_test_rom(cptra_rom_id)?,
@@ -19,7 +20,7 @@ fn test_hitless_update_flow() -> Result<()> {
     } else {
         let rom_file = mcu_builder::test_rom_build(Some(platform()), mcu_rom_id, None)?;
         (
-            caliptra_builder::build_firmware_rom(cptra_rom_id).unwrap(),
+            caliptra_core_tools::caliptra_builder::build_firmware_rom(cptra_rom_id).unwrap(),
             std::fs::read(&rom_file)?,
         )
     };

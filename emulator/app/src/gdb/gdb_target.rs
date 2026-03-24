@@ -12,9 +12,9 @@ Abstract:
 
 --*/
 
-use caliptra_emu_cpu::xreg_file::XReg;
-use caliptra_emu_cpu::WatchPtrKind;
-use caliptra_emu_types::RvSize;
+use caliptra_core_tools::caliptra_emu_cpu::xreg_file::XReg;
+use caliptra_core_tools::caliptra_emu_cpu::WatchPtrKind;
+use caliptra_core_tools::caliptra_emu_types::RvSize;
 use gdbstub::arch::SingleStepGdbBehavior;
 use gdbstub::common::Signal;
 use gdbstub::stub::SingleThreadStopReason;
@@ -29,7 +29,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::emulator::Emulator;
-use caliptra_emu_cpu::StepAction as SystemStepAction;
+use caliptra_core_tools::caliptra_emu_cpu::StepAction as SystemStepAction;
 
 pub enum ExecMode {
     Step,

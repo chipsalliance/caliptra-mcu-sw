@@ -2,13 +2,13 @@
 
 use core::mem;
 
-use caliptra_api::{
+use caliptra_core_firmware::caliptra_api::{
     calc_checksum,
     mailbox::{MailboxReqHeader, MailboxRespHeader},
     CaliptraApiError, SocManager,
 };
+use caliptra_core_firmware::ureg::RealMmioMut;
 use registers_generated::{mbox, soc};
-use ureg::RealMmioMut;
 use zerocopy::{FromBytes, IntoBytes};
 
 const MAILBOX_SIZE: usize = 256 * 1024;
@@ -34,7 +34,7 @@ impl SocManager for CaliptraSoC {
 
     /// Returns a mutable reference to the memory-mapped I/O.
     fn mmio_mut(&mut self) -> Self::TMmio<'_> {
-        ureg::RealMmioMut::default()
+        caliptra_core_firmware::ureg::RealMmioMut::default()
     }
 
     /// Provides a delay function to be invoked when polling mailbox status.
@@ -44,9 +44,11 @@ impl SocManager for CaliptraSoC {
 
     /// A register block that can be used to manipulate the soc_ifc peripheral
     /// over the simulated SoC->Caliptra APB bus.
-    fn soc_ifc(&mut self) -> caliptra_registers::soc_ifc::RegisterBlock<Self::TMmio<'_>> {
+    fn soc_ifc(
+        &mut self,
+    ) -> caliptra_core_firmware::caliptra_registers::soc_ifc::RegisterBlock<Self::TMmio<'_>> {
         unsafe {
-            caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
+            caliptra_core_firmware::caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
                 self.soc_ifc_addr,
                 self.mmio_mut(),
             )
@@ -55,9 +57,12 @@ impl SocManager for CaliptraSoC {
 
     /// A register block that can be used to manipulate the soc_ifc peripheral TRNG registers
     /// over the simulated SoC->Caliptra APB bus.
-    fn soc_ifc_trng(&mut self) -> caliptra_registers::soc_ifc_trng::RegisterBlock<Self::TMmio<'_>> {
+    fn soc_ifc_trng(
+        &mut self,
+    ) -> caliptra_core_firmware::caliptra_registers::soc_ifc_trng::RegisterBlock<Self::TMmio<'_>>
+    {
         unsafe {
-            caliptra_registers::soc_ifc_trng::RegisterBlock::new_with_mmio(
+            caliptra_core_firmware::caliptra_registers::soc_ifc_trng::RegisterBlock::new_with_mmio(
                 self.soc_ifc_trng_addr,
                 self.mmio_mut(),
             )
@@ -66,9 +71,11 @@ impl SocManager for CaliptraSoC {
 
     /// A register block that can be used to manipulate the mbox peripheral
     /// over the simulated SoC->Caliptra APB bus.
-    fn soc_mbox(&mut self) -> caliptra_registers::mbox::RegisterBlock<Self::TMmio<'_>> {
+    fn soc_mbox(
+        &mut self,
+    ) -> caliptra_core_firmware::caliptra_registers::mbox::RegisterBlock<Self::TMmio<'_>> {
         unsafe {
-            caliptra_registers::mbox::RegisterBlock::new_with_mmio(
+            caliptra_core_firmware::caliptra_registers::mbox::RegisterBlock::new_with_mmio(
                 self.soc_mbox_addr,
                 self.mmio_mut(),
             )
@@ -356,7 +363,7 @@ impl CaliptraSoC {
 }
 
 pub struct CaliptraMailboxResponse<'a> {
-    soc_mbox: caliptra_registers::mbox::RegisterBlock<RealMmioMut<'a>>,
+    soc_mbox: caliptra_core_firmware::caliptra_registers::mbox::RegisterBlock<RealMmioMut<'a>>,
     idx: usize,
     dlen_bytes: usize,
     checksum: u32,

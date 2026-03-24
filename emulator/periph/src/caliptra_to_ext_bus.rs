@@ -13,8 +13,8 @@ Abstract:
 
 --*/
 
-use caliptra_emu_bus::{Bus, BusError};
-use caliptra_emu_types::{RvAddr, RvData, RvSize};
+use caliptra_core_tools::caliptra_emu_bus::{Bus, BusError};
+use caliptra_core_tools::caliptra_emu_types::{RvAddr, RvData, RvSize};
 use std::{rc::Rc, sync::mpsc};
 
 type ReadCallback = Box<dyn Fn(RvSize, RvAddr, &mut u32) -> bool>;
@@ -119,11 +119,14 @@ impl Bus for CaliptraToExtBus {
         // External communication doesn't need reset handling
     }
 
-    fn register_outgoing_events(&mut self, _sender: mpsc::Sender<caliptra_emu_bus::Event>) {
+    fn register_outgoing_events(
+        &mut self,
+        _sender: mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+    ) {
         // External communication doesn't need event handling
     }
 
-    fn incoming_event(&mut self, _event: Rc<caliptra_emu_bus::Event>) {
+    fn incoming_event(&mut self, _event: Rc<caliptra_core_tools::caliptra_emu_bus::Event>) {
         // External communication doesn't need event handling
     }
 }

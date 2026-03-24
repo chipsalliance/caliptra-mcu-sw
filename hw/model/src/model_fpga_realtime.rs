@@ -4,16 +4,18 @@
 
 use crate::{InitParams, McuHwModel, McuManager};
 use anyhow::{bail, Result};
-use caliptra_api::SocManager;
-use caliptra_emu_bus::{Bus, BusError, BusMmio, Event};
-use caliptra_emu_periph::MailboxRequester;
-use caliptra_emu_types::{RvAddr, RvData, RvSize};
-use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap, OpenOcdJtagTap};
-use caliptra_hw_model::{
+use caliptra_core_tools::caliptra_api::SocManager;
+use caliptra_core_tools::caliptra_emu_bus::{Bus, BusError, BusMmio, Event};
+use caliptra_core_tools::caliptra_emu_periph::MailboxRequester;
+use caliptra_core_tools::caliptra_emu_types::{RvAddr, RvData, RvSize};
+use caliptra_core_tools::caliptra_hw_model::openocd::openocd_jtag_tap::{
+    JtagParams, JtagTap, OpenOcdJtagTap,
+};
+use caliptra_core_tools::caliptra_hw_model::{
     DeviceLifecycle, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem, Output,
     SecurityState, SubsystemInitParams, XI3CWrapper,
 };
-use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
+use caliptra_core_tools::caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
 use mcu_rom_common::{LifecycleControllerState, McuBootMilestones};
 use mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
@@ -304,7 +306,7 @@ impl McuHwModel for ModelFpgaRealtime {
             csr_hmac_key: params.csr_hmac_key,
             itrng_nibbles: params.itrng_nibbles,
             etrng_responses: params.etrng_responses,
-            trng_mode: Some(caliptra_hw_model::TrngMode::Internal),
+            trng_mode: Some(caliptra_core_tools::caliptra_hw_model::TrngMode::Internal),
             random_sram_puf: params.random_sram_puf,
             trace_path: params.trace_path,
             stack_info: params.stack_info,
@@ -317,9 +319,11 @@ impl McuHwModel for ModelFpgaRealtime {
                 num_prod_dbg_unlock_pk_hashes: params.num_prod_dbg_unlock_pk_hashes,
                 prod_dbg_unlock_pk_hashes_offset: params.prod_dbg_unlock_pk_hashes_offset,
                 primary_flash_initial_contents: params.primary_flash_initial_contents.as_deref(),
-                lc_state: params
-                    .lifecycle_controller_state
-                    .map(|s| caliptra_hw_model::LifecycleControllerState::from(u8::from(s))),
+                lc_state: params.lifecycle_controller_state.map(|s| {
+                    caliptra_core_tools::caliptra_hw_model::LifecycleControllerState::from(
+                        u8::from(s),
+                    )
+                }),
                 ..Default::default()
             },
         };

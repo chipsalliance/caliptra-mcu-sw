@@ -12,7 +12,7 @@ Abstract:
 
 --*/
 
-use caliptra_emu_cpu::{CpuArgs, CpuOrgArgs};
+use caliptra_core_tools::caliptra_emu_cpu::{CpuArgs, CpuOrgArgs};
 
 pub const DEFAULT_CPU_ARGS: CpuArgs = CpuArgs {
     org: CpuOrgArgs {

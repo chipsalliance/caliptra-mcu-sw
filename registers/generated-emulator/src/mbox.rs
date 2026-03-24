@@ -5,14 +5,24 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait MboxPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
-    fn set_dma_rom_sram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
+    fn set_dma_ram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
+    fn set_dma_rom_sram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
     fn register_event_channels(
         &mut self,
-        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_caliptra: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
-        _events_to_mcu: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
+        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_caliptra: std::sync::mpsc::Receiver<
+            caliptra_core_tools::caliptra_emu_bus::Event,
+        >,
+        _events_to_mcu: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_core_tools::caliptra_emu_bus::Event>,
     ) {
     }
     fn poll(&mut self) {}
@@ -23,17 +33,19 @@ pub trait MboxPeripheral {
     }
     fn read_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::MboxLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mbox::mbox_lock");
         }
         if let Some(generated) = self.generated() {
             return generated.read_mbox_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_mbox_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mbox_user(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mbox::mbox_user");
         }
@@ -42,7 +54,7 @@ pub trait MboxPeripheral {
         }
         0
     }
-    fn read_mbox_cmd(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mbox_cmd(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mbox::mbox_cmd");
         }
@@ -51,7 +63,7 @@ pub trait MboxPeripheral {
         }
         0
     }
-    fn write_mbox_cmd(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mbox_cmd(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mbox::mbox_cmd = 0x{:08x}",
@@ -62,7 +74,7 @@ pub trait MboxPeripheral {
             generated.write_mbox_cmd(val);
         }
     }
-    fn read_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mbox_dlen(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mbox::mbox_dlen");
         }
@@ -71,7 +83,7 @@ pub trait MboxPeripheral {
         }
         0
     }
-    fn write_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mbox_dlen(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mbox::mbox_dlen = 0x{:08x}",
@@ -82,7 +94,7 @@ pub trait MboxPeripheral {
             generated.write_mbox_dlen(val);
         }
     }
-    fn read_mbox_datain(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mbox_datain(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mbox::mbox_datain");
         }
@@ -91,7 +103,7 @@ pub trait MboxPeripheral {
         }
         0
     }
-    fn write_mbox_datain(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mbox_datain(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mbox::mbox_datain = 0x{:08x}",
@@ -102,7 +114,7 @@ pub trait MboxPeripheral {
             generated.write_mbox_datain(val);
         }
     }
-    fn read_mbox_dataout(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mbox_dataout(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mbox::mbox_dataout");
         }
@@ -111,7 +123,7 @@ pub trait MboxPeripheral {
         }
         0
     }
-    fn write_mbox_dataout(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mbox_dataout(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mbox::mbox_dataout = 0x{:08x}",
@@ -124,7 +136,7 @@ pub trait MboxPeripheral {
     }
     fn read_mbox_execute(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mbox::bits::MboxExecute::Register,
     > {
@@ -134,11 +146,11 @@ pub trait MboxPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mbox_execute();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mbox_execute(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxExecute::Register,
         >,
@@ -155,7 +167,7 @@ pub trait MboxPeripheral {
     }
     fn read_mbox_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mbox::bits::MboxStatus::Register,
     > {
@@ -165,11 +177,11 @@ pub trait MboxPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mbox_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mbox_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxStatus::Register,
         >,
@@ -186,7 +198,7 @@ pub trait MboxPeripheral {
     }
     fn read_mbox_unlock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mbox::bits::MboxUnlock::Register,
     > {
@@ -196,11 +208,11 @@ pub trait MboxPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mbox_unlock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mbox_unlock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxUnlock::Register,
         >,
@@ -217,19 +229,21 @@ pub trait MboxPeripheral {
     }
     fn read_tap_mode(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::TapMode::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::TapMode::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mbox::tap_mode");
         }
         if let Some(generated) = self.generated() {
             return generated.read_tap_mode();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_tap_mode(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::TapMode::Register,
         >,
@@ -247,30 +261,30 @@ pub trait MboxPeripheral {
 }
 #[derive(Clone, Debug)]
 pub struct MboxGenerated {
-    mbox_lock: caliptra_emu_types::RvData,
-    mbox_user: caliptra_emu_types::RvData,
-    mbox_cmd: caliptra_emu_types::RvData,
-    mbox_dlen: caliptra_emu_types::RvData,
-    mbox_datain: caliptra_emu_types::RvData,
-    mbox_dataout: caliptra_emu_types::RvData,
-    mbox_execute: caliptra_emu_types::RvData,
-    mbox_status: caliptra_emu_types::RvData,
-    mbox_unlock: caliptra_emu_types::RvData,
-    tap_mode: caliptra_emu_types::RvData,
+    mbox_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    mbox_user: caliptra_core_tools::caliptra_emu_types::RvData,
+    mbox_cmd: caliptra_core_tools::caliptra_emu_types::RvData,
+    mbox_dlen: caliptra_core_tools::caliptra_emu_types::RvData,
+    mbox_datain: caliptra_core_tools::caliptra_emu_types::RvData,
+    mbox_dataout: caliptra_core_tools::caliptra_emu_types::RvData,
+    mbox_execute: caliptra_core_tools::caliptra_emu_types::RvData,
+    mbox_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    mbox_unlock: caliptra_core_tools::caliptra_emu_types::RvData,
+    tap_mode: caliptra_core_tools::caliptra_emu_types::RvData,
 }
 impl Default for MboxGenerated {
     fn default() -> Self {
         Self {
-            mbox_lock: 0 as caliptra_emu_types::RvData,
-            mbox_user: 0 as caliptra_emu_types::RvData,
-            mbox_cmd: 0 as caliptra_emu_types::RvData,
-            mbox_dlen: 0 as caliptra_emu_types::RvData,
-            mbox_datain: 0 as caliptra_emu_types::RvData,
-            mbox_dataout: 0 as caliptra_emu_types::RvData,
-            mbox_execute: 0 as caliptra_emu_types::RvData,
-            mbox_status: 0 as caliptra_emu_types::RvData,
-            mbox_unlock: 0 as caliptra_emu_types::RvData,
-            tap_mode: 0 as caliptra_emu_types::RvData,
+            mbox_lock: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mbox_user: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mbox_cmd: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mbox_dlen: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mbox_datain: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mbox_dataout: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mbox_execute: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mbox_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mbox_unlock: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            tap_mode: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
         }
     }
 }
@@ -294,113 +308,115 @@ impl MboxPeripheral for MboxGenerated {
     }
     fn read_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::MboxLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::mbox_lock");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mbox_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mbox_lock)
     }
-    fn read_mbox_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mbox_user(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::mbox_user");
         }
         self.mbox_user
     }
-    fn read_mbox_cmd(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mbox_cmd(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::mbox_cmd");
         }
         self.mbox_cmd
     }
-    fn write_mbox_cmd(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mbox_cmd(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write mbox::mbox_cmd = 0x{:08x}",
                 val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mbox_cmd;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mbox_cmd = new_val;
     }
-    fn read_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mbox_dlen(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::mbox_dlen");
         }
         self.mbox_dlen
     }
-    fn write_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mbox_dlen(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write mbox::mbox_dlen = 0x{:08x}",
                 val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mbox_dlen;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mbox_dlen = new_val;
     }
-    fn read_mbox_datain(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mbox_datain(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::mbox_datain");
         }
         self.mbox_datain
     }
-    fn write_mbox_datain(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mbox_datain(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write mbox::mbox_datain = 0x{:08x}",
                 val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mbox_datain;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mbox_datain = new_val;
     }
-    fn read_mbox_dataout(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mbox_dataout(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::mbox_dataout");
         }
         self.mbox_dataout
     }
-    fn write_mbox_dataout(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mbox_dataout(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write mbox::mbox_dataout = 0x{:08x}",
                 val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mbox_dataout;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mbox_dataout = new_val;
     }
     fn read_mbox_execute(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mbox::bits::MboxExecute::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::mbox_execute");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mbox_execute)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mbox_execute)
     }
     fn write_mbox_execute(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxExecute::Register,
         >,
@@ -411,27 +427,27 @@ impl MboxPeripheral for MboxGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mbox_execute;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mbox_execute = new_val;
     }
     fn read_mbox_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mbox::bits::MboxStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::mbox_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mbox_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mbox_status)
     }
     fn write_mbox_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxStatus::Register,
         >,
@@ -442,27 +458,27 @@ impl MboxPeripheral for MboxGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mbox_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf as caliptra_emu_types::RvData))
-            | (write_val & (0xf as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mbox_status = new_val;
     }
     fn read_mbox_unlock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mbox::bits::MboxUnlock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::mbox_unlock");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mbox_unlock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mbox_unlock)
     }
     fn write_mbox_unlock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::MboxUnlock::Register,
         >,
@@ -473,25 +489,27 @@ impl MboxPeripheral for MboxGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mbox_unlock;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mbox_unlock = new_val;
     }
     fn read_tap_mode(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::TapMode::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mbox::bits::TapMode::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::tap_mode");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.tap_mode)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.tap_mode)
     }
     fn write_tap_mode(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mbox::bits::TapMode::Register,
         >,
@@ -502,28 +520,31 @@ impl MboxPeripheral for MboxGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.tap_mode;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.tap_mode = new_val;
     }
 }
 pub struct MboxBus {
     pub periph: Box<dyn MboxPeripheral>,
 }
-impl caliptra_emu_bus::Bus for MboxBus {
+impl caliptra_core_tools::caliptra_emu_bus::Bus for MboxBus {
     fn read(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+    ) -> Result<
+        caliptra_core_tools::caliptra_emu_types::RvData,
+        caliptra_core_tools::caliptra_emu_bus::BusError,
+    > {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
-            0..4 => Ok(caliptra_emu_types::RvData::from(
+            0..4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mbox_lock().reg.get(),
             )),
             4..8 => Ok(self.periph.read_mbox_user()),
@@ -531,29 +552,29 @@ impl caliptra_emu_bus::Bus for MboxBus {
             0xc..0x10 => Ok(self.periph.read_mbox_dlen()),
             0x10..0x14 => Ok(self.periph.read_mbox_datain()),
             0x14..0x18 => Ok(self.periph.read_mbox_dataout()),
-            0x18..0x1c => Ok(caliptra_emu_types::RvData::from(
+            0x18..0x1c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mbox_execute().reg.get(),
             )),
-            0x1c..0x20 => Ok(caliptra_emu_types::RvData::from(
+            0x1c..0x20 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mbox_status().reg.get(),
             )),
-            0x20..0x24 => Ok(caliptra_emu_types::RvData::from(
+            0x20..0x24 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mbox_unlock().reg.get(),
             )),
-            0x24..0x28 => Ok(caliptra_emu_types::RvData::from(
+            0x24..0x28 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_tap_mode().reg.get(),
             )),
-            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-        val: caliptra_emu_types::RvData,
-    ) -> Result<(), caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) -> Result<(), caliptra_core_tools::caliptra_emu_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             0..4 => Ok(()),
@@ -575,26 +596,30 @@ impl caliptra_emu_bus::Bus for MboxBus {
                 Ok(())
             }
             0x18..0x1c => {
-                self.periph
-                    .write_mbox_execute(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mbox_execute(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x1c..0x20 => {
-                self.periph
-                    .write_mbox_status(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mbox_status(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x20..0x24 => {
-                self.periph
-                    .write_mbox_unlock(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mbox_unlock(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x24..0x28 => {
-                self.periph
-                    .write_tap_mode(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_tap_mode(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
-            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {

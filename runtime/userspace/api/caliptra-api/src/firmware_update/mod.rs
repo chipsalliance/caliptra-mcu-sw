@@ -10,11 +10,11 @@ use crate::firmware_update::pldm_context::State;
 use crate::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use caliptra_api::mailbox::{
+use caliptra_core_firmware::caliptra_api::mailbox::{
     ActivateFirmwareReq, ActivateFirmwareResp, CommandId, FirmwareVerifyResp, FirmwareVerifyResult,
     FwInfoResp, GetImageInfoReq, GetImageInfoResp, MailboxReqHeader, MailboxRespHeader, Request,
 };
-use caliptra_auth_man_types::{
+use caliptra_core_firmware::caliptra_auth_man_types::{
     AuthManifestImageMetadata, AuthManifestImageMetadataCollection, AuthorizationManifest,
 };
 use embassy_executor::Spawner;

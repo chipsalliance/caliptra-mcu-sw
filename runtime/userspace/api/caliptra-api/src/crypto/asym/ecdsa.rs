@@ -4,7 +4,9 @@ use crate::crypto::asym::{ECC_P384_PARAM_X_SIZE, ECC_P384_PARAM_Y_SIZE, ECC_P384
 use crate::crypto::hash::SHA384_HASH_SIZE;
 use crate::error::CaliptraApiResult;
 use crate::mailbox_api::execute_mailbox_cmd;
-use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, Request};
+use caliptra_core_firmware::caliptra_api::mailbox::{
+    EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, Request,
+};
 use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::IntoBytes;
 

@@ -2,7 +2,7 @@
 
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::execute_mailbox_cmd;
-use caliptra_api::mailbox::{
+use caliptra_core_firmware::caliptra_api::mailbox::{
     CommandId, FipsVersionResp, FwInfoResp, GetImageInfoReq, GetImageInfoResp, MailboxReqHeader,
 };
 use core::mem::size_of;

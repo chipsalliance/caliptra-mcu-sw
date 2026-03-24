@@ -12,11 +12,11 @@ Abstract:
 
 --*/
 
-use caliptra_api_types::{DeviceLifecycle, SecurityState};
-use caliptra_emu_bus::{BusMmio, Clock};
-use caliptra_emu_cpu::{Cpu, CpuArgs, Pic};
-use caliptra_emu_periph::soc_reg::DebugManufService;
-use caliptra_emu_periph::{
+use caliptra_core_tools::caliptra_api_types::{DeviceLifecycle, SecurityState};
+use caliptra_core_tools::caliptra_emu_bus::{BusMmio, Clock};
+use caliptra_core_tools::caliptra_emu_cpu::{Cpu, CpuArgs, Pic};
+use caliptra_core_tools::caliptra_emu_periph::soc_reg::DebugManufService;
+use caliptra_core_tools::caliptra_emu_periph::{
     CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal, MailboxRequester,
     Mci, ReadyForFwCb, SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
 };
@@ -169,7 +169,7 @@ pub fn start_caliptra(
 
     let root_bus = CaliptraRootBus::new(bus_args);
     let soc_ifc = unsafe {
-        caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
+        caliptra_core_tools::caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
             0x3003_0000 as *mut u32,
             BusMmio::new(root_bus.soc_to_caliptra_bus(MAILBOX_USER)),
         )

@@ -87,7 +87,7 @@ The xtask flows supports three different configurations:
 * "Subsystem": This mode configures the FPGA to run Caliptra MCU flows.
 * "Core-on-Subsystem": This mode configures the FPGA to run Caliptra-SW flows for a subsystem Caliptra.
 * "Core": This mode allows running Caliptra in Core mode on the FPGA.
-  * Note: You will need to override caliptra-sw to point to a local directory in the workspace [Cargo.toml](../../Cargo.toml).
+  * Note: You will need to use the `local` feature of `caliptra-core` to point to a local directory. This is done by enabling the `local` feature in the workspace [Cargo.toml](../../Cargo.toml) and ensuring that the `caliptra-sw` repository is located at `../../../caliptra-sw` relative to the `common/caliptra-core` directory.
 
 For example:
 

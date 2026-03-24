@@ -5,7 +5,7 @@ extern crate alloc;
 use crate::DefaultSyscalls;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use caliptra_api::mailbox::MailboxReqHeader;
+use caliptra_core_firmware::caliptra_api::mailbox::MailboxReqHeader;
 use core::{hint::black_box, marker::PhantomData};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
@@ -33,7 +33,7 @@ impl<S: Syscalls> Default for Mailbox<S> {
 // Populate the checksum for a mailbox request.
 pub fn populate_checksum(cmd: u32, data: &mut [u8]) -> Result<(), ErrorCode> {
     // Calc checksum, use the size override if provided
-    let checksum = caliptra_api::calc_checksum(cmd, data);
+    let checksum = caliptra_core_firmware::caliptra_api::calc_checksum(cmd, data);
 
     if data.len() < size_of::<MailboxReqHeader>() {
         Err(ErrorCode::Invalid)?;

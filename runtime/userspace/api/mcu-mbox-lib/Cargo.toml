@@ -7,10 +7,10 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
+caliptra-core-firmware = { workspace = true, default-features = false, features = ["2_0"] }
 embassy-executor.workspace = true
 embassy-sync.workspace = true
 external-cmds-common.workspace = true
-caliptra-api.workspace = true
 libapi-caliptra.workspace = true
 libsyscall-caliptra.workspace = true
 libtock_alarm.workspace = true

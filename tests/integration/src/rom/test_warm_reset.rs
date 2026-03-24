@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::Result;
-use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_core_tools::caliptra_image_types::FwVerificationPqcKeyType;
 use mcu_builder::flash_image::build_flash_image_bytes;
 use mcu_hw_model::McuHwModel;
 use mcu_hw_model::{new, Fuses, InitParams};

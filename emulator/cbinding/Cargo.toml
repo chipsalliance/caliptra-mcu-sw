@@ -12,11 +12,7 @@ crate-type = ["staticlib"]
 [dependencies]
 emulator.workspace = true
 libc.workspace = true
-caliptra-emu-bus.workspace = true
-caliptra-emu-cpu.workspace = true
-caliptra-emu-types.workspace = true
-caliptra-image-types.workspace = true
-caliptra-api-types.workspace = true
+caliptra-core-tools.workspace = true
 mcu-testing-common.workspace = true
 semver.workspace = true
 

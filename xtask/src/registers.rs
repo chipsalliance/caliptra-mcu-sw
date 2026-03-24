@@ -417,17 +417,17 @@ fn emu_make_peripheral_trait(
                 let len = register.array_dimensions.iter().product::<u64>() as usize;
                 let len_literal = Literal::usize_unsuffixed(len);
                 struct_fields.extend(quote! {
-                    #state_ident: Vec<caliptra_emu_types::RvData>,
+                    #state_ident: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
                 });
                 struct_defaults.extend(quote! {
-                    #state_ident: vec![#default_literal as caliptra_emu_types::RvData; #len_literal],
+                    #state_ident: vec![#default_literal as caliptra_core_tools::caliptra_emu_types::RvData; #len_literal],
                 });
             } else {
                 struct_fields.extend(quote! {
-                    #state_ident: caliptra_emu_types::RvData,
+                    #state_ident: caliptra_core_tools::caliptra_emu_types::RvData,
                 });
                 struct_defaults.extend(quote! {
-                    #state_ident: #default_literal as caliptra_emu_types::RvData,
+                    #state_ident: #default_literal as caliptra_core_tools::caliptra_emu_types::RvData,
                 });
             }
         }
@@ -474,7 +474,7 @@ fn emu_make_peripheral_trait(
             if register.can_read() {
                 if register.is_array() {
                     fn_tokens.extend(quote! {
-                        fn #read_name(&mut self, index: usize) -> caliptra_emu_types::RvData {
+                        fn #read_name(&mut self, index: usize) -> caliptra_core_tools::caliptra_emu_types::RvData {
                             if crate::stub_warnings::stub_warnings_enabled() {
                                 eprintln!(#stub_read_arr, index);
                             }
@@ -485,7 +485,7 @@ fn emu_make_peripheral_trait(
                         }
                     });
                     impl_tokens.extend(quote! {
-                        fn #read_name(&mut self, index: usize) -> caliptra_emu_types::RvData {
+                        fn #read_name(&mut self, index: usize) -> caliptra_core_tools::caliptra_emu_types::RvData {
                             if crate::stub_warnings::stub_warnings_enabled() {
                                 eprintln!(#gen_read_arr, index);
                             }
@@ -494,7 +494,7 @@ fn emu_make_peripheral_trait(
                     });
                 } else {
                     fn_tokens.extend(quote! {
-                        fn #read_name(&mut self) -> caliptra_emu_types::RvData {
+                        fn #read_name(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
                             if crate::stub_warnings::stub_warnings_enabled() {
                                 eprintln!(#stub_read);
                             }
@@ -505,7 +505,7 @@ fn emu_make_peripheral_trait(
                         }
                     });
                     impl_tokens.extend(quote! {
-                        fn #read_name(&mut self) -> caliptra_emu_types::RvData {
+                        fn #read_name(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
                             if crate::stub_warnings::stub_warnings_enabled() {
                                 eprintln!(#gen_read);
                             }
@@ -517,7 +517,7 @@ fn emu_make_peripheral_trait(
             if register.can_write() {
                 if register.is_array() {
                     fn_tokens.extend(quote! {
-                        fn #write_name(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+                        fn #write_name(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData, index: usize) {
                             if crate::stub_warnings::stub_warnings_enabled() {
                                 eprintln!(#stub_write_arr, index, val);
                             }
@@ -530,7 +530,7 @@ fn emu_make_peripheral_trait(
                     let write_logic =
                         make_register_write_logic(register, target_expr.clone(), quote! { val });
                     impl_tokens.extend(quote! {
-                        fn #write_name(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+                        fn #write_name(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData, index: usize) {
                             if crate::stub_warnings::stub_warnings_enabled() {
                                 eprintln!(#gen_write_arr, index, val);
                             }
@@ -539,7 +539,7 @@ fn emu_make_peripheral_trait(
                     });
                 } else {
                     fn_tokens.extend(quote! {
-                        fn #write_name(&mut self, val: caliptra_emu_types::RvData) {
+                        fn #write_name(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
                             if crate::stub_warnings::stub_warnings_enabled() {
                                 eprintln!(#stub_write, val);
                             }
@@ -552,7 +552,7 @@ fn emu_make_peripheral_trait(
                     let write_logic =
                         make_register_write_logic(register, target_expr.clone(), quote! { val });
                     impl_tokens.extend(quote! {
-                        fn #write_name(&mut self, val: caliptra_emu_types::RvData) {
+                        fn #write_name(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
                             if crate::stub_warnings::stub_warnings_enabled() {
                                 eprintln!(#gen_write, val);
                             }
@@ -582,7 +582,7 @@ fn emu_make_peripheral_trait(
             let tyn = camel_ident(register.ty.name.as_ref().unwrap());
             let read_val = quote! { registers_generated :: #rcrate :: bits :: #tyn :: Register };
             let prim = format_ident!("{}", register.ty.width.rust_primitive_name());
-            let fulltyn = quote! { caliptra_emu_bus::ReadWriteRegister::<#prim, #read_val> };
+            let fulltyn = quote! { caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::<#prim, #read_val> };
             if register.can_read() {
                 if register.is_array() {
                     fn_tokens.extend(quote! {
@@ -593,7 +593,7 @@ fn emu_make_peripheral_trait(
                             if let Some(generated) = self.generated() {
                                 return generated.#read_name(index);
                             }
-                            caliptra_emu_bus::ReadWriteRegister :: new(0)
+                            caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister :: new(0)
                         }
                     });
                     impl_tokens.extend(quote! {
@@ -601,7 +601,7 @@ fn emu_make_peripheral_trait(
                             if crate::stub_warnings::stub_warnings_enabled() {
                                 eprintln!(#gen_read_arr, index);
                             }
-                            caliptra_emu_bus::ReadWriteRegister::new(self.#state_ident[index])
+                            caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.#state_ident[index])
                         }
                     });
                 } else {
@@ -613,7 +613,7 @@ fn emu_make_peripheral_trait(
                             if let Some(generated) = self.generated() {
                                 return generated.#read_name();
                             }
-                            caliptra_emu_bus::ReadWriteRegister :: new(0)
+                            caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister :: new(0)
                         }
                     });
                     impl_tokens.extend(quote! {
@@ -621,7 +621,7 @@ fn emu_make_peripheral_trait(
                             if crate::stub_warnings::stub_warnings_enabled() {
                                 eprintln!(#gen_read);
                             }
-                            caliptra_emu_bus::ReadWriteRegister::new(self.#state_ident)
+                            caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.#state_ident)
                         }
                     });
                 }
@@ -685,14 +685,14 @@ fn emu_make_peripheral_trait(
     let mut tokens = TokenStream::new();
     tokens.extend(quote! {
         pub trait #periph {
-            fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
-            fn set_dma_rom_sram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
+            fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>) {}
+            fn set_dma_rom_sram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>) {}
             fn register_event_channels(
                 &mut self,
-                _events_to_caliptra: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-                _events_from_caliptra: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
-                _events_to_mcu: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-                _events_from_mcu: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
+                _events_to_caliptra: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+                _events_from_caliptra: std::sync::mpsc::Receiver<caliptra_core_tools::caliptra_emu_bus::Event>,
+                _events_to_mcu: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+                _events_from_mcu: std::sync::mpsc::Receiver<caliptra_core_tools::caliptra_emu_bus::Event>,
             ) {
             }
             fn poll(&mut self) {}
@@ -763,7 +763,7 @@ fn make_register_write_logic(
 ) -> TokenStream {
     let mut tokens = TokenStream::new();
     tokens.extend(quote! {
-        let write_val = (#write_val_expr) as caliptra_emu_types::RvData;
+        let write_val = (#write_val_expr) as caliptra_core_tools::caliptra_emu_types::RvData;
     });
 
     if register.ty.fields.is_empty() {
@@ -782,7 +782,8 @@ fn make_register_write_logic(
 
     for (idx, field) in register.ty.fields.iter().enumerate() {
         let mask_literal = hex_literal(field.mask());
-        let mask_expr = quote! { (#mask_literal as caliptra_emu_types::RvData) };
+        let mask_expr =
+            quote! { (#mask_literal as caliptra_core_tools::caliptra_emu_types::RvData) };
         match field.ty {
             FieldType::RO => {}
             FieldType::RW | FieldType::WO | FieldType::WRC => {
@@ -928,16 +929,16 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
                 if r.is_array() {
                     if offset + r.offset == 0 {
                         read_tokens.extend(quote! {
-                            #a..#b => Ok(caliptra_emu_types::RvData::from(self.periph.#read_name(addr as usize / 4).reg.get())),
+                            #a..#b => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(self.periph.#read_name(addr as usize / 4).reg.get())),
                         });
                     } else {
                         read_tokens.extend(quote! {
-                            #a..#b => Ok(caliptra_emu_types::RvData::from(self.periph.#read_name((addr as usize - #a) / 4).reg.get())),
+                            #a..#b => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(self.periph.#read_name((addr as usize - #a) / 4).reg.get())),
                         });
                     }
                 } else {
                     read_tokens.extend(quote! {
-                        #a..#b => Ok(caliptra_emu_types::RvData::from(self.periph.#read_name().reg.get())),
+                        #a..#b => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(self.periph.#read_name().reg.get())),
                     });
                 }
             }
@@ -947,14 +948,14 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
                         if start == 0 {
                             write_tokens.extend(quote! {
                                 #a..#b => {
-                                    self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val), addr as usize / 4);
+                                    self.periph.#write_name(caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val), addr as usize / 4);
                                     Ok(())
                                 }
                             });
                         } else {
                             write_tokens.extend(quote! {
                                 #a..#b => {
-                                    self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val), (addr as usize - #a) / 4);
+                                    self.periph.#write_name(caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val), (addr as usize - #a) / 4);
                                     Ok(())
                                 }
                             });
@@ -962,7 +963,7 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
                     } else {
                         write_tokens.extend(quote! {
                             #a..#b => {
-                                self.periph.#write_name(caliptra_emu_bus::ReadWriteRegister::new(val));
+                                self.periph.#write_name(caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val));
                                 Ok(())
                             }
                         });
@@ -981,23 +982,23 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
         pub struct #bus {
             pub periph: Box<dyn #periph>,
         }
-        impl caliptra_emu_bus::Bus for #bus {
-            fn read(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
-                if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-                    return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
+        impl caliptra_core_tools::caliptra_emu_bus::Bus for #bus {
+            fn read(&mut self, size: caliptra_core_tools::caliptra_emu_types::RvSize, addr: caliptra_core_tools::caliptra_emu_types::RvAddr) -> Result<caliptra_core_tools::caliptra_emu_types::RvData, caliptra_core_tools::caliptra_emu_bus::BusError> {
+                if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+                    return Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAddrMisaligned);
                 }
                 match addr {
                     #read_tokens
-                    _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
+                    _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAccessFault),
                 }
             }
-            fn write(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr, val: caliptra_emu_types::RvData) -> Result<(), caliptra_emu_bus::BusError> {
-                if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-                    return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
+            fn write(&mut self, size: caliptra_core_tools::caliptra_emu_types::RvSize, addr: caliptra_core_tools::caliptra_emu_types::RvAddr, val: caliptra_core_tools::caliptra_emu_types::RvData) -> Result<(), caliptra_core_tools::caliptra_emu_bus::BusError> {
+                if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+                    return Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAddrMisaligned);
                 }
                 match addr {
                     #write_tokens
-                    _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
+                    _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAccessFault),
                 }
             }
             fn poll(&mut self) {
@@ -1147,14 +1148,14 @@ fn emu_make_root_bus<'a>(
         }
 
         pub struct AutoRootBus {
-            delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
+            delegates: Vec<Box<dyn caliptra_core_tools::caliptra_emu_bus::Bus>>,
             offsets: AutoRootBusOffsets,
             #field_tokens
         }
         impl AutoRootBus {
             #[allow(clippy::too_many_arguments)]
             pub fn new(
-                delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
+                delegates: Vec<Box<dyn caliptra_core_tools::caliptra_emu_bus::Bus>>,
                 offsets: Option<AutoRootBusOffsets>,
                 #constructor_params_tokens
             ) -> Self {
@@ -1165,26 +1166,26 @@ fn emu_make_root_bus<'a>(
                 }
             }
         }
-        impl caliptra_emu_bus::Bus for AutoRootBus {
-            fn read(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
+        impl caliptra_core_tools::caliptra_emu_bus::Bus for AutoRootBus {
+            fn read(&mut self, size: caliptra_core_tools::caliptra_emu_types::RvSize, addr: caliptra_core_tools::caliptra_emu_types::RvAddr) -> Result<caliptra_core_tools::caliptra_emu_types::RvData, caliptra_core_tools::caliptra_emu_bus::BusError> {
                 #read_tokens
                 for delegate in self.delegates.iter_mut() {
                     let result = delegate.read(size, addr);
-                    if !matches!(result, Err(caliptra_emu_bus::BusError::LoadAccessFault)) {
+                    if !matches!(result, Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAccessFault)) {
                         return result;
                     }
                 }
-                Err(caliptra_emu_bus::BusError::LoadAccessFault)
+                Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAccessFault)
             }
-            fn write(&mut self, size: caliptra_emu_types::RvSize, addr: caliptra_emu_types::RvAddr, val: caliptra_emu_types::RvData) -> Result<(), caliptra_emu_bus::BusError> {
+            fn write(&mut self, size: caliptra_core_tools::caliptra_emu_types::RvSize, addr: caliptra_core_tools::caliptra_emu_types::RvAddr, val: caliptra_core_tools::caliptra_emu_types::RvData) -> Result<(), caliptra_core_tools::caliptra_emu_bus::BusError> {
                 #write_tokens
                 for delegate in self.delegates.iter_mut() {
                     let result = delegate.write(size, addr, val);
-                    if !matches!(result, Err(caliptra_emu_bus::BusError::StoreAccessFault)) {
+                    if !matches!(result, Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAccessFault)) {
                         return result;
                     }
                 }
-                Err(caliptra_emu_bus::BusError::StoreAccessFault)
+                Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAccessFault)
             }
             fn poll(&mut self) {
                 #poll_tokens
@@ -1204,13 +1205,13 @@ fn emu_make_root_bus<'a>(
                     delegate.update_reset();
                 }
             }
-            fn incoming_event(&mut self, event: std::rc::Rc<caliptra_emu_bus::Event>) {
+            fn incoming_event(&mut self, event: std::rc::Rc<caliptra_core_tools::caliptra_emu_bus::Event>) {
                 #incoming_event_tokens
                 for delegate in self.delegates.iter_mut() {
                     delegate.incoming_event(event.clone());
                 }
             }
-            fn register_outgoing_events(&mut self, sender: std::sync::mpsc::Sender<caliptra_emu_bus::Event>) {
+            fn register_outgoing_events(&mut self, sender: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>) {
                 #register_outgoing_events_tokens
                 for delegate in self.delegates.iter_mut() {
                     delegate.register_outgoing_events(sender.clone());

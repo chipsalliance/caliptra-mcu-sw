@@ -8,6 +8,6 @@ edition.workspace = true
 [dependencies]
 emulator-consts.workspace = true
 emulator-periph.workspace = true
-caliptra-emu-bus.workspace = true
+caliptra-core-tools.workspace = true
 registers-generated.workspace = true
 tock-registers.workspace = true

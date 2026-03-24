@@ -5,7 +5,7 @@ use crate::mailbox_api::{
     execute_mailbox_cmd, CertificateChainResp, CertifyEcKeyResp, DpeEcResp, DpeResponse,
     MAX_DPE_RESP_DATA_SIZE,
 };
-use caliptra_api::mailbox::{
+use caliptra_core_firmware::caliptra_api::mailbox::{
     CommandId, GetFmcAliasEcc384CertReq, GetIdevCsrReq, GetIdevCsrResp, GetLdevCertResp,
     GetLdevEcc384CertReq, GetRtAliasEcc384CertReq, InvokeDpeReq, MailboxRespHeader,
     PopulateIdevEcc384CertReq, Request,

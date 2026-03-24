@@ -14,9 +14,9 @@ Abstract:
 
 --*/
 use crate::ecc_ram::EccRam;
-use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
-use caliptra_emu_types::{RvAddr, RvData};
-use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_core_tools::caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
+use caliptra_core_tools::caliptra_emu_types::{RvAddr, RvData};
+use caliptra_core_tools::caliptra_image_types::FwVerificationPqcKeyType;
 use emulator_registers_generated::otp::OtpGenerated;
 use registers_generated::fuses::{self};
 use registers_generated::otp_ctrl::bits::{DirectAccessCmd, OtpStatus};
@@ -464,7 +464,9 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
         Some(&mut self.generated)
     }
 
-    fn read_otp_status(&mut self) -> caliptra_emu_bus::ReadWriteRegister<u32, OtpStatus::Register> {
+    fn read_otp_status(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<u32, OtpStatus::Register> {
         ReadWriteRegister::new(self.status.reg.get())
     }
 
@@ -511,147 +513,147 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
 
     fn read_err_code_rf_err_code_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[0])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[0])
     }
     fn read_err_code_rf_err_code_1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[1])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[1])
     }
     fn read_err_code_rf_err_code_2(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[2])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[2])
     }
     fn read_err_code_rf_err_code_3(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[3])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[3])
     }
     fn read_err_code_rf_err_code_4(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[4])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[4])
     }
     fn read_err_code_rf_err_code_5(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[5])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[5])
     }
     fn read_err_code_rf_err_code_6(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[6])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[6])
     }
     fn read_err_code_rf_err_code_7(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[7])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[7])
     }
     fn read_err_code_rf_err_code_8(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[8])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[8])
     }
     fn read_err_code_rf_err_code_9(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[9])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[9])
     }
     fn read_err_code_rf_err_code_10(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[10])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[10])
     }
     fn read_err_code_rf_err_code_11(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[11])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[11])
     }
     fn read_err_code_rf_err_code_12(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[12])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[12])
     }
     fn read_err_code_rf_err_code_13(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[13])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[13])
     }
     fn read_err_code_rf_err_code_14(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[14])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[14])
     }
     fn read_err_code_rf_err_code_15(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[15])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[15])
     }
     fn read_err_code_rf_err_code_16(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[16])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[16])
     }
     fn read_err_code_rf_err_code_17(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[17])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[17])
     }
 
     fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> RvData {

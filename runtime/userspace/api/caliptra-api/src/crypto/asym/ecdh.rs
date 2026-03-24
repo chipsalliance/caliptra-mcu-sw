@@ -2,7 +2,7 @@
 
 use crate::error::CaliptraApiResult;
 use crate::mailbox_api::execute_mailbox_cmd;
-use caliptra_api::mailbox::{
+use caliptra_core_firmware::caliptra_api::mailbox::{
     CmEcdhFinishReq, CmEcdhFinishResp, CmEcdhGenerateReq, CmEcdhGenerateResp, Cmk,
     MailboxReqHeader, Request,
 };
@@ -10,7 +10,9 @@ use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::IntoBytes;
 
 // re-export
-pub use caliptra_api::mailbox::{CmKeyUsage, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE};
+pub use caliptra_core_firmware::caliptra_api::mailbox::{
+    CmKeyUsage, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
+};
 
 pub struct Ecdh;
 

@@ -5,7 +5,7 @@ use mcu_builder::PROJECT_ROOT;
 use std::path::{Path, PathBuf};
 use toml::Table;
 
-const IGNORE_DIRS: [&str; 1] = ["libtock"];
+const IGNORE_DIRS: [&str; 2] = ["libtock", "caliptra-core"];
 
 pub(crate) fn check() -> Result<()> {
     let cargo_tomls = find_cargo_tomls(&PROJECT_ROOT)?;
@@ -60,7 +60,7 @@ pub(crate) fn find_cargo_tomls(dir: &Path) -> Result<Vec<PathBuf>> {
         {
             continue;
         }
-        if entry.file_name() == "Cargo.toml" {
+        if entry.file_name() == "Cargo.toml" && entry.path().parent() != Some(&PROJECT_ROOT) {
             result.push(entry.into_path());
         }
     }

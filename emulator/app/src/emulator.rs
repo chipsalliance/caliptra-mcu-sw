@@ -16,13 +16,13 @@ use crate::dis;
 use crate::doe_mbox_fsm;
 use crate::elf;
 use crate::tests;
-use caliptra_api_types::DeviceLifecycle;
-use caliptra_emu_bus::BusMmio;
-use caliptra_emu_bus::{Bus, Clock, Timer};
-use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
-use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
-use caliptra_emu_periph::MailboxRequester;
-use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_core_tools::caliptra_api_types::DeviceLifecycle;
+use caliptra_core_tools::caliptra_emu_bus::BusMmio;
+use caliptra_core_tools::caliptra_emu_bus::{Bus, Clock, Timer};
+use caliptra_core_tools::caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
+use caliptra_core_tools::caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
+use caliptra_core_tools::caliptra_emu_periph::MailboxRequester;
+use caliptra_core_tools::caliptra_image_types::FwVerificationPqcKeyType;
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
@@ -60,13 +60,18 @@ use std::thread::JoinHandle;
 use tests::pldm_request_response_test::PldmRequestResponseTest;
 
 // Type aliases for external shim callbacks
-pub type ExternalReadCallback =
-    Box<dyn Fn(caliptra_emu_types::RvSize, caliptra_emu_types::RvAddr, &mut u32) -> bool>;
+pub type ExternalReadCallback = Box<
+    dyn Fn(
+        caliptra_core_tools::caliptra_emu_types::RvSize,
+        caliptra_core_tools::caliptra_emu_types::RvAddr,
+        &mut u32,
+    ) -> bool,
+>;
 pub type ExternalWriteCallback = Box<
     dyn Fn(
-        caliptra_emu_types::RvSize,
-        caliptra_emu_types::RvAddr,
-        caliptra_emu_types::RvData,
+        caliptra_core_tools::caliptra_emu_types::RvSize,
+        caliptra_core_tools::caliptra_emu_types::RvAddr,
+        caliptra_core_tools::caliptra_emu_types::RvData,
     ) -> bool,
 >;
 
@@ -725,45 +730,46 @@ impl Emulator {
             PldmRequestResponseTest::run(pldm_socket, test_feature.to_string());
         }
 
-        let create_flash_controller =
-            |default_path: &str,
-             error_irq: u8,
-             event_irq: u8,
-             initial_content: Option<&[u8]>,
-             direct_read_region: Option<Rc<RefCell<caliptra_emu_bus::Ram>>>| {
-                // Use a temporary file for flash storage if we're running a test
-                let is_test = test_feature == "test-flash-ctrl-init"
-                    || test_feature == "test-flash-ctrl-read-write-page"
-                    || test_feature == "test-flash-ctrl-erase-page"
-                    || test_feature == "test-flash-storage-read-write"
-                    || test_feature == "test-flash-storage-erase"
-                    || test_feature == "test-flash-usermode"
-                    || test_feature == "test-mcu-rom-flash-access"
-                    || test_feature == "test-log-flash-linear"
-                    || test_feature == "test-log-flash-circular"
-                    || test_feature == "test-log-flash-usermode";
+        let create_flash_controller = |default_path: &str,
+                                       error_irq: u8,
+                                       event_irq: u8,
+                                       initial_content: Option<&[u8]>,
+                                       direct_read_region: Option<
+            Rc<RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+        >| {
+            // Use a temporary file for flash storage if we're running a test
+            let is_test = test_feature == "test-flash-ctrl-init"
+                || test_feature == "test-flash-ctrl-read-write-page"
+                || test_feature == "test-flash-ctrl-erase-page"
+                || test_feature == "test-flash-storage-read-write"
+                || test_feature == "test-flash-storage-erase"
+                || test_feature == "test-flash-usermode"
+                || test_feature == "test-mcu-rom-flash-access"
+                || test_feature == "test-log-flash-linear"
+                || test_feature == "test-log-flash-circular"
+                || test_feature == "test-log-flash-usermode";
 
-                let flash_file = if is_test {
-                    Some(
-                        tempfile::NamedTempFile::new()
-                            .unwrap()
-                            .into_temp_path()
-                            .to_path_buf(),
-                    )
-                } else {
-                    Some(PathBuf::from(default_path))
-                };
-
-                DummyFlashCtrl::new(
-                    &clock.clone(),
-                    direct_read_region,
-                    flash_file,
-                    pic.register_irq(error_irq),
-                    pic.register_irq(event_irq),
-                    initial_content,
+            let flash_file = if is_test {
+                Some(
+                    tempfile::NamedTempFile::new()
+                        .unwrap()
+                        .into_temp_path()
+                        .to_path_buf(),
                 )
-                .unwrap()
+            } else {
+                Some(PathBuf::from(default_path))
             };
+
+            DummyFlashCtrl::new(
+                &clock.clone(),
+                direct_read_region,
+                flash_file,
+                pic.register_irq(error_irq),
+                pic.register_irq(event_irq),
+                initial_content,
+            )
+            .unwrap()
+        };
 
         let primary_flash_initial_content = if cli.primary_flash_image.is_some() {
             let flash_image_path = cli.primary_flash_image.as_ref().unwrap();
@@ -879,7 +885,7 @@ impl Emulator {
         lc.set_otp_partitions(otp.partitions_ref());
         let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
         let soc_ifc = unsafe {
-            caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
+            caliptra_core_tools::caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
                 cli.soc_offset.unwrap_or(0x3003_0000) as *mut u32,
                 BusMmio::new(
                     caliptra_cpu
@@ -1192,15 +1198,17 @@ impl Emulator {
         }
 
         let caliptra_action = if self.trace_file.is_some() {
-            let caliptra_trace_fn: &mut dyn FnMut(u32, caliptra_emu_cpu::RvInstr) =
-                &mut |pc, instr| match instr {
-                    caliptra_emu_cpu::RvInstr::Instr32(instr32) => {
-                        println!("{{caliptra cpu}} {}", disassemble(pc, instr32));
-                    }
-                    caliptra_emu_cpu::RvInstr::Instr16(instr16) => {
-                        println!("{{caliptra cpu}} {}", disassemble(pc, instr16 as u32));
-                    }
-                };
+            let caliptra_trace_fn: &mut dyn FnMut(
+                u32,
+                caliptra_core_tools::caliptra_emu_cpu::RvInstr,
+            ) = &mut |pc, instr| match instr {
+                caliptra_core_tools::caliptra_emu_cpu::RvInstr::Instr32(instr32) => {
+                    println!("{{caliptra cpu}} {}", disassemble(pc, instr32));
+                }
+                caliptra_core_tools::caliptra_emu_cpu::RvInstr::Instr16(instr16) => {
+                    println!("{{caliptra cpu}} {}", disassemble(pc, instr16 as u32));
+                }
+            };
             self.caliptra_cpu.step(Some(caliptra_trace_fn))
         } else {
             self.caliptra_cpu.step(None)

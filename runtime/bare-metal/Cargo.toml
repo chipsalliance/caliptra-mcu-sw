@@ -7,7 +7,7 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-caliptra-drivers.workspace = true
+caliptra-core-firmware = { workspace = true, default-features = false, features = ["2_0"] }
 romtime.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]

@@ -11,11 +11,11 @@ Abstract:
     C bindings for the Caliptra MCU Emulator.
 
 --*/
-use caliptra_api_types::DeviceLifecycle;
-use caliptra_emu_bus::Bus;
-use caliptra_emu_cpu::xreg_file::XReg;
-use caliptra_emu_cpu::StepAction;
-use caliptra_emu_types::{RvAddr, RvSize};
+use caliptra_core_tools::caliptra_api_types::DeviceLifecycle;
+use caliptra_core_tools::caliptra_emu_bus::Bus;
+use caliptra_core_tools::caliptra_emu_cpu::xreg_file::XReg;
+use caliptra_core_tools::caliptra_emu_cpu::StepAction;
+use caliptra_core_tools::caliptra_emu_types::{RvAddr, RvSize};
 use emulator::{
     gdb::{self, ControlledGdbServer},
     Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback,
@@ -321,10 +321,11 @@ pub unsafe extern "C" fn emulator_init(
             .unwrap_or(DeviceLifecycle::Production) as u32,
         test_feature: None,
         vendor_pk_hash: convert_optional_c_string(config.vendor_pk_hash),
-        vendor_pqc_type: caliptra_image_types::FwVerificationPqcKeyType::from_u8(
-            config.vendor_pqc_type,
-        )
-        .unwrap_or(caliptra_image_types::FwVerificationPqcKeyType::LMS),
+        vendor_pqc_type:
+            caliptra_core_tools::caliptra_image_types::FwVerificationPqcKeyType::from_u8(
+                config.vendor_pqc_type,
+            )
+            .unwrap_or(caliptra_core_tools::caliptra_image_types::FwVerificationPqcKeyType::LMS),
         owner_pk_hash: convert_optional_c_string(config.owner_pk_hash),
         streaming_boot: convert_optional_c_string(config.streaming_boot_path).map(|s| s.into()),
         primary_flash_image: convert_optional_c_string(config.primary_flash_image_path)
@@ -1582,7 +1583,7 @@ pub unsafe extern "C" fn emulator_set_external_interrupt(
 
     // Use the PIC to set the external interrupt level
     // We need to register an IRQ and then set its level
-    let pic: &std::rc::Rc<caliptra_emu_cpu::Pic> = match &mut state.wrapper {
+    let pic: &std::rc::Rc<caliptra_core_tools::caliptra_emu_cpu::Pic> = match &mut state.wrapper {
         EmulatorWrapper::Normal(emulator) => &emulator.pic,
         EmulatorWrapper::Gdb(gdb_target) => &gdb_target.emulator().pic,
     };
@@ -1691,9 +1692,9 @@ pub unsafe extern "C" fn emulator_read_auto_root_bus(
 
     // Convert size to RvSize
     let rv_size = match size {
-        1 => caliptra_emu_types::RvSize::Byte,
-        2 => caliptra_emu_types::RvSize::HalfWord,
-        4 => caliptra_emu_types::RvSize::Word,
+        1 => caliptra_core_tools::caliptra_emu_types::RvSize::Byte,
+        2 => caliptra_core_tools::caliptra_emu_types::RvSize::HalfWord,
+        4 => caliptra_core_tools::caliptra_emu_types::RvSize::Word,
         _ => return EmulatorError::InvalidArgs,
     };
 
@@ -1710,8 +1711,12 @@ pub unsafe extern "C" fn emulator_read_auto_root_bus(
             EmulatorError::Success
         }
         Err(bus_error) => match bus_error {
-            caliptra_emu_bus::BusError::LoadAccessFault => EmulatorError::BusLoadAccessFault,
-            caliptra_emu_bus::BusError::LoadAddrMisaligned => EmulatorError::BusLoadAddrMisaligned,
+            caliptra_core_tools::caliptra_emu_bus::BusError::LoadAccessFault => {
+                EmulatorError::BusLoadAccessFault
+            }
+            caliptra_core_tools::caliptra_emu_bus::BusError::LoadAddrMisaligned => {
+                EmulatorError::BusLoadAddrMisaligned
+            }
             _ => EmulatorError::InvalidArgs, // Fallback for other bus errors
         },
     }
@@ -1746,9 +1751,9 @@ pub unsafe extern "C" fn emulator_write_auto_root_bus(
 
     // Convert size to RvSize
     let rv_size = match size {
-        1 => caliptra_emu_types::RvSize::Byte,
-        2 => caliptra_emu_types::RvSize::HalfWord,
-        4 => caliptra_emu_types::RvSize::Word,
+        1 => caliptra_core_tools::caliptra_emu_types::RvSize::Byte,
+        2 => caliptra_core_tools::caliptra_emu_types::RvSize::HalfWord,
+        4 => caliptra_core_tools::caliptra_emu_types::RvSize::Word,
         _ => return EmulatorError::InvalidArgs,
     };
 
@@ -1764,8 +1769,10 @@ pub unsafe extern "C" fn emulator_write_auto_root_bus(
     match result {
         Ok(_) => EmulatorError::Success,
         Err(bus_error) => match bus_error {
-            caliptra_emu_bus::BusError::StoreAccessFault => EmulatorError::BusStoreAccessFault,
-            caliptra_emu_bus::BusError::StoreAddrMisaligned => {
+            caliptra_core_tools::caliptra_emu_bus::BusError::StoreAccessFault => {
+                EmulatorError::BusStoreAccessFault
+            }
+            caliptra_core_tools::caliptra_emu_bus::BusError::StoreAddrMisaligned => {
                 EmulatorError::BusStoreAddrMisaligned
             }
             _ => EmulatorError::InvalidArgs, // Fallback for other bus errors

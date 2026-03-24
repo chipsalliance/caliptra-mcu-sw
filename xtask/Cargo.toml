@@ -9,22 +9,16 @@ edition = "2021"
 parallel-build = ["mcu-builder/parallel-build"]
 fpga_realtime = [
 	"mcu-hw-model/fpga_realtime",
-	"dep:caliptra-hw-model",
 	"dep:mcu-hw-model",
 	"dep:mcu-rom-common",
 ]
 
 [dependencies]
 base64.workspace = true
-caliptra-api-types.workspace = true
-caliptra-auth-man-types.workspace = true
-caliptra-builder.workspace = true
+caliptra-core-tools = { workspace = true, features = ["2_0"] }
 anyhow.workspace = true
 cargo_metadata.workspace = true
 cc.workspace = true
-caliptra-image-gen.workspace = true
-caliptra-image-types.workspace = true
-caliptra-hw-model = { workspace = true, optional = true }
 clap.workspace = true
 clap-num.workspace = true
 ecdsa.workspace = true

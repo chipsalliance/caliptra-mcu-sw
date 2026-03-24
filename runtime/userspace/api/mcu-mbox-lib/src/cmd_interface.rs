@@ -1,7 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use crate::transport::McuMboxTransport;
-use caliptra_api::mailbox::{CommandId as CaliptraCommandId, MailboxReqHeader};
+use caliptra_core_firmware::caliptra_api::mailbox::{
+    CommandId as CaliptraCommandId, MailboxReqHeader,
+};
 use core::sync::atomic::{AtomicBool, Ordering};
 use external_cmds_common::{
     DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, UnifiedCommandHandler, MAX_UID_LEN,

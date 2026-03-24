@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_builder::FwId;
+use caliptra_core_tools::caliptra_builder::FwId;
 
 pub mod hw_model_tests {
     use super::*;
@@ -52,4 +52,4 @@ pub const REGISTERED_FW: &[&FwId] = &[
 ];
 
 pub const CPTRA_REGISTERED_FW: &[&FwId] =
-    &[&caliptra_builder::firmware::hw_model_tests::MCU_HITLESS_UPDATE_FLOW];
+    &[&caliptra_core_tools::caliptra_builder::firmware::hw_model_tests::MCU_HITLESS_UPDATE_FLOW];

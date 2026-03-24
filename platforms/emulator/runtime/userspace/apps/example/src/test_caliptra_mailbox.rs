@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_api::mailbox::{MailboxReqHeader, QuotePcrsEcc384Req, QuotePcrsEcc384Resp, Request};
+use caliptra_core_firmware::caliptra_api::mailbox::{
+    MailboxReqHeader, QuotePcrsEcc384Req, QuotePcrsEcc384Resp, Request,
+};
 use core::fmt::Write;
 use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use romtime::{println, test_exit};
@@ -80,7 +82,10 @@ pub(crate) async fn test_caliptra_mailbox_bad_command() {
         .await
     {
         Err(MailboxError::MailboxError(err))
-            if err == u32::from(caliptra_error::CaliptraError::RUNTIME_UNIMPLEMENTED_COMMAND) =>
+            if err
+                == u32::from(
+                    caliptra_core_firmware::caliptra_error::CaliptraError::RUNTIME_UNIMPLEMENTED_COMMAND,
+                ) =>
         {
             println!("Test passed");
         }
@@ -118,7 +123,10 @@ pub(crate) async fn test_caliptra_mailbox_fail() {
         .await
     {
         Err(MailboxError::MailboxError(err))
-            if err == u32::from(caliptra_error::CaliptraError::RUNTIME_MAILBOX_INVALID_PARAMS) =>
+            if err
+                == u32::from(
+                    caliptra_core_firmware::caliptra_error::CaliptraError::RUNTIME_MAILBOX_INVALID_PARAMS,
+                ) =>
         {
             println!("Test passed");
         }

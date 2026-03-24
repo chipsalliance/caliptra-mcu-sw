@@ -7,7 +7,7 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
-caliptra-api-types.workspace = true
+caliptra-core-firmware = { workspace = true, default-features = false, features = ["2_0"] }
 bitfield.workspace = true
 crc.workspace = true
 mctp-vdm-common.workspace = true
