@@ -135,6 +135,7 @@ pub fn run(eth: EthernetDriver) {
     if let Err(e) = tftp.init(BaremetalTftpOps {
         write: tftp_write_verify,
         error: tftp_error,
+        close: None,
     }) {
         println!("Failed to initialize TFTP client: {:?}", e);
         netif.shutdown();

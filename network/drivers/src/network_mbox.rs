@@ -44,6 +44,8 @@ enum DriverState {
     TxInProgress,
     /// A request has been sent and we're waiting for the target to respond (sender mode).
     WaitingForTargetDone,
+    /// Target has set status+done; waiting for the sender to clear execute.
+    WaitingForExecuteClear,
 }
 
 /// Network Mailbox driver for the Network Coprocessor.
@@ -176,7 +178,7 @@ impl NetworkMboxDriver<'_> {
     }
 
     /// Poll for incoming requests or target done events.
-    pub fn poll(&self) {
+    fn poll_inner(&self) {
         match self.state.get() {
             DriverState::RxWait => {
                 if self.is_execute_set() {
@@ -187,6 +189,20 @@ impl NetworkMboxDriver<'_> {
                 let target_status = self.read_target_status();
                 if target_status.done {
                     self.handle_target_done(target_status);
+                }
+            }
+            DriverState::WaitingForExecuteClear => {
+                if !self.is_execute_set() {
+                    self.state.set(DriverState::RxWait);
+                } else {
+                    // Execute is still set. If zeroization happened (clearing
+                    // our done bit) and the sender already re-set execute for a
+                    // new transaction, the done bit in target_status will be 0.
+                    // Detect this so we don't miss the new request.
+                    let ts = self.read_target_status();
+                    if !ts.done {
+                        self.state.set(DriverState::RxWait);
+                    }
                 }
             }
             _ => {}
@@ -354,8 +370,8 @@ impl<'a> NetworkMailbox<'a> for NetworkMboxDriver<'a> {
             .network_mbox_target_status
             .write(Self::status_to_target_status_field(status) + TargetStatusBits::Done::SET);
 
-        // Transition back to RxWait.
-        self.state.set(DriverState::RxWait);
+        // Wait for the sender to clear execute before accepting new requests.
+        self.state.set(DriverState::WaitingForExecuteClear);
         Ok(())
     }
 
@@ -392,5 +408,9 @@ impl<'a> NetworkMailbox<'a> for NetworkMboxDriver<'a> {
 
     fn set_client(&self, client: &'a dyn NetworkMailboxClient) {
         self.client.set(Some(client));
+    }
+
+    fn poll(&self) {
+        self.poll_inner();
     }
 }

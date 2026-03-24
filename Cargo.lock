@@ -1975,7 +1975,11 @@ dependencies = [
 name = "caliptra-mcu-network-app-boot-source"
 version = "0.1.0"
 dependencies = [
+ "boot-source-protocol",
  "caliptra-mcu-flash-image",
+ "caliptra-mcu-lwip-rs",
+ "caliptra-mcu-network-drivers",
+ "caliptra-mcu-network-hil",
  "zerocopy",
 ]
 
@@ -2013,9 +2017,11 @@ version = "0.1.0"
 name = "caliptra-mcu-network-rom"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-network-app-boot-source",
  "caliptra-mcu-network-app-rom-test",
  "caliptra-mcu-network-config",
  "caliptra-mcu-network-drivers",
+ "caliptra-mcu-network-hil",
 ]
 
 [[package]]

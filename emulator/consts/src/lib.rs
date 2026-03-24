@@ -13,7 +13,7 @@ Abstract:
 --*/
 
 use caliptra_emu_cpu::{CpuArgs, CpuOrgArgs};
-use caliptra_mcu_network_config::DEFAULT_NETWORK_MEMORY_MAP;
+use caliptra_mcu_network_config::{DEFAULT_NETWORK_MEMORY_MAP, NETWORK_BOOT_ROM_SIZE};
 
 pub const DEFAULT_CPU_ARGS: CpuArgs = CpuArgs {
     org: CpuOrgArgs {
@@ -41,13 +41,13 @@ pub const DOT_FLASH_SIZE: u32 = 4 * 1024; // DOT flash
 // Network Coprocessor constants (re-exported from network-config for convenience)
 pub const NETWORK_MAILBOX_SRAM_SIZE: u32 = DEFAULT_NETWORK_MEMORY_MAP.network_mbox_sram_size;
 pub const NETWORK_ROM_ORG: u32 = DEFAULT_NETWORK_MEMORY_MAP.rom_offset;
-pub const NETWORK_ROM_SIZE: u32 = DEFAULT_NETWORK_MEMORY_MAP.rom_size;
+pub const NETWORK_ROM_SIZE: u32 = NETWORK_BOOT_ROM_SIZE;
 
 /// Default CPU arguments for the Network Coprocessor
 pub const NETWORK_CPU_ARGS: CpuArgs = CpuArgs {
     org: CpuOrgArgs {
         rom: DEFAULT_NETWORK_MEMORY_MAP.rom_offset,
-        rom_size: DEFAULT_NETWORK_MEMORY_MAP.rom_size,
+        rom_size: NETWORK_ROM_SIZE,
         iccm: DEFAULT_NETWORK_MEMORY_MAP.iccm_offset,
         iccm_size: DEFAULT_NETWORK_MEMORY_MAP.iccm_size,
         dccm: DEFAULT_NETWORK_MEMORY_MAP.dccm_offset,
