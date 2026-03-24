@@ -5,6 +5,7 @@ mod test_hitless_update;
 mod test_lc_ctrl;
 mod test_otp_blank_check;
 mod test_sw_digest_lock;
+mod test_vendor_key_policy;
 mod test_warm_reset;
 
 // testing this requires enabling the BootFSM breakpoint which is only implemented
