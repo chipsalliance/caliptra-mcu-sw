@@ -3456,6 +3456,7 @@ dependencies = [
  "mcu-error",
  "mcu-image-header",
  "mcu-rom-common",
+ "mcu-usb-emulator",
  "ocp",
  "registers-generated",
  "riscv-csr",
@@ -3595,6 +3596,18 @@ dependencies = [
  "romtime",
  "rv32i",
  "tock-registers",
+]
+
+[[package]]
+name = "mcu-usb-emulator"
+version = "0.1.0"
+dependencies = [
+ "ocp",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
+ "zerocopy",
+ "zeroize",
 ]
 
 [[package]]
