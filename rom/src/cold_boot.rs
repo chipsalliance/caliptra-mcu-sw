@@ -15,12 +15,16 @@ Abstract:
 #![allow(clippy::empty_loop)]
 
 use crate::boot_status::McuRomBootStatus;
+use crate::mailbox;
 use crate::{
     configure_mcu_mbox_axi_users, device_ownership_transfer, fatal_error,
     verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, AxiUsers, BootFlow, DotBlob,
     McuBootMilestones, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
-use caliptra_api::mailbox::{CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader};
+use caliptra_api::mailbox::{
+    CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader, StashMeasurementReq,
+    StashMeasurementResp,
+};
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
@@ -28,7 +32,7 @@ use core::fmt::Write;
 use core::ops::Deref;
 use mcu_error::McuError;
 use registers_generated::fuses;
-use romtime::{CaliptraSoC, HexWord};
+use romtime::{CaliptraSoC, HexBytes, HexWord};
 use tock_registers::interfaces::Readable;
 use zerocopy::{transmute, IntoBytes};
 
@@ -104,6 +108,72 @@ impl ColdBoot {
                 _ => mci.flow_checkpoint(),
             };
             mci.set_flow_checkpoint(partition_status);
+        }
+    }
+
+    /// Calculate SHA384 hash of ROM and compare it against the stored value. Optionally stash it.
+    fn rom_digest_integrity(soc_manager: &mut CaliptraSoC, stash: bool) {
+        const DIGEST_SIZE: usize = 48;
+        // Safety: MCU_MEMORY_MAP fields are linker-provided constants.
+        let rom_size = unsafe { MCU_MEMORY_MAP.rom_size } as usize;
+        let hashable_len = rom_size - DIGEST_SIZE;
+        let rom = unsafe {
+            core::slice::from_raw_parts(MCU_MEMORY_MAP.rom_offset as *const u32, hashable_len / 4)
+        };
+
+        let digest = mailbox::cm_sha384(soc_manager, rom);
+        romtime::println!("[mcu-rom] MCU ROM digest: {}", HexBytes(&digest));
+
+        let expected_digest: &[u8; DIGEST_SIZE] = unsafe {
+            &*((MCU_MEMORY_MAP.rom_offset as usize + hashable_len) as *const [u8; DIGEST_SIZE])
+        };
+        romtime::println!(
+            "[mcu-rom] MCU ROM expected digest: {}",
+            HexBytes(expected_digest)
+        );
+
+        if digest != *expected_digest {
+            romtime::println!("[mcu-rom] MCU ROM digest mismatch");
+            fatal_error(McuError::ROM_COLD_BOOT_ROM_DIGEST_MISMATCH);
+        }
+
+        if stash {
+            Self::stash_measurement(soc_manager, &digest);
+        }
+    }
+
+    fn stash_measurement(soc_manager: &mut CaliptraSoC, measurement: &[u8; 48]) {
+        let req = StashMeasurementReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            metadata: [0u8; 4],
+            measurement: *measurement,
+            context: [0u8; 48],
+            svn: 0,
+        };
+        let mut req_u32: [u32; core::mem::size_of::<StashMeasurementReq>() / 4] =
+            zerocopy::transmute!(req);
+        let mut resp_u32 = [0u32; core::mem::size_of::<StashMeasurementResp>() / 4];
+
+        if let Err(err) = soc_manager.exec_mailbox_req_u32(
+            CommandId::STASH_MEASUREMENT.into(),
+            &mut req_u32,
+            &mut resp_u32,
+        ) {
+            romtime::println!(
+                "[mcu-rom] STASH_MEASUREMENT error: {}",
+                HexWord(crate::err_code(&err))
+            );
+            fatal_error(McuError::GENERIC_EXCEPTION);
+        }
+
+        // StashMeasurementResp: hdr(2 u32) + dpe_result(1 u32)
+        let dpe_result = resp_u32[2];
+        if dpe_result != 0 {
+            romtime::println!(
+                "[mcu-rom] Stash Measurement failed: dpe_result={}",
+                dpe_result
+            );
+            fatal_error(McuError::GENERIC_EXCEPTION);
         }
     }
 }
@@ -659,6 +729,9 @@ impl BootFlow for ColdBoot {
             soc.check_hw_errors();
         }
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
+
+        let stash_rom_digest = params.stash_rom_digest.unwrap_or(true);
+        Self::rom_digest_integrity(soc_manager, stash_rom_digest);
 
         romtime::println!("[mcu-rom] Finished common initialization");
 

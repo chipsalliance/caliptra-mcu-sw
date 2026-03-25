@@ -379,8 +379,18 @@ impl McuError {
         ),
         (
             ROM_BOOTFSM_TIMEOUT,
-            0x5_0011,
+            0x5_0014,
             "Caliptra Core boot FSM timed out"
+        ),
+        (
+            ROM_COLD_BOOT_ROM_DIGEST_MISMATCH,
+            0x1_0018,
+            "Cold boot ROM integrity check failed"
+        ),
+        (
+            ROM_SOC_WDT_CFG_OUT_OF_RANGE,
+            0x5_0013,
+            "Caliptra WDT config index out of range"
         ),
         (
             GENERIC_EXCEPTION,

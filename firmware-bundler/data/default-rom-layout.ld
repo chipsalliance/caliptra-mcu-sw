@@ -61,6 +61,11 @@ SECTIONS
     } > RAM
 
     _end = . ;
+
+    /DISCARD/ :
+    {
+        *(.eh_frame*)
+    }
 }
 
 BSS_START = ADDR(.bss);

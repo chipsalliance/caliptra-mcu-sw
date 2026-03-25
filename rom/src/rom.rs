@@ -701,6 +701,7 @@ pub struct RomParameters<'a> {
     /// Caliptra entropy bypass mode. See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers)
     /// for more details.
     pub itrng_entropy_bypass_mode: bool,
+    pub stash_rom_digest: Option<bool>,
 }
 
 #[inline(always)]

@@ -8,6 +8,8 @@ use anyhow::Result;
 use crate::utils::manifest_file;
 use crate::PROJECT_ROOT;
 use caliptra_builder::FwId;
+use caliptra_image_crypto::RustCrypto as Crypto;
+use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
 use mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 
 pub fn rom_build(
@@ -31,6 +33,7 @@ pub fn rom_build(
         target_dir,
         ..Default::default()
     };
+    let rom_size = rom_size_for_platform(platform.as_deref().unwrap_or("emulator"));
     let rom_binary = common.release_dir().map(|t| t.join(format!("{rom}.bin")))?;
     let build_cmd = Commands::Build {
         common,
@@ -48,7 +51,28 @@ pub fn rom_build(
         &rom_binary,
     )?;
     assert!(rom_binary.exists(), "{rom_binary:?} does not exist");
+    append_rom_digest(&rom_binary, rom_size)?;
     Ok(rom_binary)
+}
+
+/// Pad the ROM binary to its full size and append a SHA384 digest of its contents to the end.
+fn append_rom_digest(binary: &PathBuf, rom_size: usize) -> Result<()> {
+    let mut data = std::fs::read(binary)?;
+    const DIGEST_SIZE: usize = 48;
+    let digest_offset = rom_size - DIGEST_SIZE;
+    data.resize(rom_size, 0);
+    let crypto = Crypto::default();
+    let digest = from_hw_format(&crypto.sha384_digest(&data[0..digest_offset])?);
+    data[digest_offset..].copy_from_slice(&digest);
+    std::fs::write(binary, data)?;
+    Ok(())
+}
+
+fn rom_size_for_platform(platform: &str) -> usize {
+    match platform {
+        "fpga" => mcu_config_fpga::FPGA_MEMORY_MAP.rom_size as usize,
+        _ => mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size as usize,
+    }
 }
 
 pub fn test_rom_build(
@@ -113,5 +137,7 @@ pub fn test_rom_build(
         &rom_binary,
         std::fs::metadata(&rom_binary)?.len()
     );
+    let rom_size = rom_size_for_platform(platform);
+    append_rom_digest(&rom_binary, rom_size)?;
     Ok(rom_binary.to_string_lossy().to_string())
 }
