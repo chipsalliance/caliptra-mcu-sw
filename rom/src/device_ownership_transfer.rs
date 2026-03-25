@@ -16,7 +16,7 @@ use crate::fuses::OwnerPkHash;
 use crate::{McuRomBootStatus, RomEnv};
 use caliptra_api::mailbox::{
     CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacResp, CmStableKeyType,
-    CommandId, MailboxReqHeader,
+    CommandId,
 };
 use mcu_error::{McuError, McuResult};
 use romtime::otp::Otp;
@@ -302,85 +302,77 @@ fn cm_derive_stable_key(
     Ok(DotEffectiveKey(Cmk(cmk)))
 }
 
-/// Calls Caliptra to compute an HMAC, streaming the request to avoid a large
-/// stack buffer.  Uses `start_mailbox_req_bytes` + `finish_mailbox_resp_bytes`,
-/// the same pattern as `cm_import_aes_key` and other cold-boot mailbox helpers.
+/// Calls Caliptra to compute an HMAC.  Builds the request in a flat byte
+/// buffer and sends it via `start_mailbox_req_bytes`, matching the proven
+/// pattern used by `cm_derive_stable_key` and `cm_import_aes_key`.
+///
+/// The data length must not exceed [`CM_HMAC_MAX_DATA`] bytes.
 fn cm_hmac(env: &mut RomEnv, key: &Cmk, data: &[u8]) -> McuResult<[u32; 16]> {
     use caliptra_api::mailbox::CMK_SIZE_BYTES;
+
+    // Maximum data payload supported by this helper.  Sized to fit DOT blob
+    // contents (104 bytes) with generous headroom.
+    const CM_HMAC_MAX_DATA: usize = 256;
+
+    if data.len() > CM_HMAC_MAX_DATA {
+        return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
+    }
 
     let cmd: u32 = CommandId::CM_HMAC.into();
     let hash_algorithm: u32 = CmHashAlgorithm::Sha512.into();
     let data_size: u32 = data.len() as u32;
 
-    // Payload = cmk + hash_algorithm + data_size + data (everything after hdr).
-    let payload_len = CMK_SIZE_BYTES + 4 + 4 + data.len();
-    let total_len = core::mem::size_of::<MailboxReqHeader>() + payload_len;
+    // Build the flat request buffer:
+    //   [chksum:4] [cmk:128] [hash_algorithm:4] [data_size:4] [data:N]
+    const HDR: usize = 4; // MailboxReqHeader (chksum only)
+    let req_len = HDR + CMK_SIZE_BYTES + 4 + 4 + data.len();
+    // Fixed buffer large enough for the maximum request size.
+    let mut buf = [0u8; HDR + CMK_SIZE_BYTES + 4 + 4 + CM_HMAC_MAX_DATA];
 
-    // Compute checksum: 0 - (cmd + sum of all payload bytes).
-    let mut sum = cmd;
+    let mut off = HDR; // skip chksum; will fill it after payload
+                       // cmk – serialise each u32 word in native byte order (matches write_data)
     for &w in key.0.iter() {
-        for &b in w.to_ne_bytes().iter() {
-            sum = sum.wrapping_add(b as u32);
+        if let Some(dst) = buf.get_mut(off..off + 4) {
+            dst.copy_from_slice(&w.to_ne_bytes());
         }
+        off += 4;
     }
-    for &b in hash_algorithm.to_le_bytes().iter() {
-        sum = sum.wrapping_add(b as u32);
+    // hash_algorithm (LE)
+    if let Some(dst) = buf.get_mut(off..off + 4) {
+        dst.copy_from_slice(&hash_algorithm.to_le_bytes());
     }
-    for &b in data_size.to_le_bytes().iter() {
-        sum = sum.wrapping_add(b as u32);
+    off += 4;
+    // data_size (LE)
+    if let Some(dst) = buf.get_mut(off..off + 4) {
+        dst.copy_from_slice(&data_size.to_le_bytes());
     }
-    for &b in data.iter() {
-        sum = sum.wrapping_add(b as u32);
-    }
-    let chksum = 0u32.wrapping_sub(sum);
-
-    // Stream the request word-by-word into the mailbox FIFO.
-    env.soc_manager
-        .initiate_request(cmd, total_len)
-        .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
-
-    // hdr.chksum
-    env.soc_manager
-        .write_data(chksum)
-        .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
-
-    // cmk (128 bytes = 32 words, already u32)
-    for &w in key.0.iter() {
-        env.soc_manager
-            .write_data(w)
-            .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+    off += 4;
+    // data
+    if let Some(dst) = buf.get_mut(off..off + data.len()) {
+        dst.copy_from_slice(data);
     }
 
-    // hash_algorithm + data_size
-    env.soc_manager
-        .write_data(hash_algorithm)
-        .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
-    env.soc_manager
-        .write_data(data_size)
-        .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
-
-    // data – stream directly from the caller's slice.
-    let full_words = data.len() / 4;
-    for i in 0..full_words {
-        let off = i * 4;
-        let word = u32::from_ne_bytes([data[off], data[off + 1], data[off + 2], data[off + 3]]);
-        env.soc_manager
-            .write_data(word)
-            .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
-    }
-    let tail = data.len() % 4;
-    if tail != 0 {
-        let off = full_words * 4;
-        let mut pad = [0u8; 4];
-        pad[..tail].copy_from_slice(&data[off..off + tail]);
-        env.soc_manager
-            .write_data(u32::from_ne_bytes(pad))
-            .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+    // Compute and store checksum over payload bytes (everything after chksum).
+    let chksum = caliptra_api::calc_checksum(
+        cmd,
+        match buf.get(HDR..req_len) {
+            Some(b) => b,
+            None => return Err(McuError::ROM_COLD_BOOT_DOT_ERROR),
+        },
+    );
+    if let Some(dst) = buf.get_mut(0..4) {
+        dst.copy_from_slice(&chksum.to_le_bytes());
     }
 
-    env.soc_manager
-        .execute_command()
-        .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+    // Send the request using the same API as cm_derive_stable_key.
+    let req_bytes = match buf.get(..req_len) {
+        Some(b) => b,
+        None => return Err(McuError::ROM_COLD_BOOT_DOT_ERROR),
+    };
+    if let Err(err) = env.soc_manager.start_mailbox_req_bytes(cmd, req_bytes) {
+        romtime::println!("[mcu-rom] Error computing HMAC: {:?}", err);
+        return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
+    }
 
     // Read response – CmHmacResp is MailboxRespHeaderVarSize(12) + mac(64) = 76 bytes.
     let mut resp_buf = [0u8; core::mem::size_of::<CmHmacResp>()];
