@@ -83,7 +83,8 @@ mod test {
                     }
                     MctpTestState::ReceiveReq => {
                         self.loopback_msg =
-                            self.mctp_util.receive_request(stream, target_addr, None);
+                            self.mctp_util
+                                .receive_request(stream, target_addr, Some(30));
                         self.test_state = MctpTestState::SendResp;
                     }
                     MctpTestState::SendResp => {
