@@ -388,24 +388,14 @@ impl OcpInterfaceStringDescriptor {
     }
 }
 
-/// Complete set of OCP Recovery descriptors for enumeration.
+/// Configuration descriptor blob returned to the host in response to
+/// `GET_DESCRIPTOR(Configuration)`.
 ///
-/// Contains the configuration descriptor blob (returned to the host in
-/// response to `GET_DESCRIPTOR(Configuration)`) plus the string descriptors
-/// (returned separately via `GET_DESCRIPTOR(String, index)`).
-///
-/// `wTotalLength` in the configuration header covers only the config,
-/// interface, and functional descriptors — not the string descriptors.
-pub const CONFIGURATION_TREE_LEN: usize = CONFIGURATION_DESCRIPTOR_LEN
-    + INTERFACE_DESCRIPTOR_LEN
-    + OCP_FUNCTIONAL_DESCRIPTOR_LEN
-    + STRING_DESCRIPTOR_ZERO_LEN
-    + OCP_INTERFACE_STRING_DESCRIPTOR_LEN;
-
-/// The USB `wTotalLength` value: config + interface + functional only.
-const W_TOTAL_LENGTH: u16 = (CONFIGURATION_DESCRIPTOR_LEN
-    + INTERFACE_DESCRIPTOR_LEN
-    + OCP_FUNCTIONAL_DESCRIPTOR_LEN) as u16;
+/// Contains the configuration, interface, and OCP functional descriptors
+/// as a single contiguous structure whose total size equals `wTotalLength`.
+/// String descriptors are served separately via `GET_DESCRIPTOR(String)`.
+pub const CONFIGURATION_TREE_LEN: usize =
+    CONFIGURATION_DESCRIPTOR_LEN + INTERFACE_DESCRIPTOR_LEN + OCP_FUNCTIONAL_DESCRIPTOR_LEN;
 
 const _: () = assert!(CONFIGURATION_TREE_LEN == size_of::<ConfigurationTree>());
 
@@ -415,17 +405,14 @@ pub struct ConfigurationTree {
     pub configuration: ConfigurationDescriptor,
     pub interface: InterfaceDescriptor,
     pub ocp_functional: OcpFunctionalDescriptor,
-    pub string_descriptor_zero: StringDescriptorZero,
-    pub ocp_interface_string: OcpInterfaceStringDescriptor,
 }
 
 impl ConfigurationTree {
-    /// Construct a complete OCP Recovery configuration descriptor tree.
+    /// Construct an OCP Recovery configuration descriptor tree.
     ///
-    /// Fixed: wTotalLength = 28 (config + interface + functional),
+    /// Fixed: wTotalLength covers config + interface + functional (28 bytes),
     ///   bNumInterfaces = 1, iInterface = `OCP_INTERFACE_STRING_INDEX`,
-    ///   bcdOCPRecVersion = 0x0101 (v1.1),
-    ///   string descriptors for language table and interface name.
+    ///   bcdOCPRecVersion = 0x0101 (v1.1).
     ///
     /// If the interface number is not specified, it defaults to 0 as
     /// recommended by OCP spec Section 8.5.2.
@@ -438,7 +425,7 @@ impl ConfigurationTree {
     ) -> Self {
         Self {
             configuration: ConfigurationDescriptor::ocp(
-                W_TOTAL_LENGTH,
+                CONFIGURATION_TREE_LEN as u16,
                 1,
                 bm_attributes,
                 b_max_power,
@@ -451,8 +438,6 @@ impl ConfigurationTree {
                 w_max_wr_transfer_size,
                 w_max_rd_transfer_size,
             ),
-            string_descriptor_zero: StringDescriptorZero::ocp(),
-            ocp_interface_string: OcpInterfaceStringDescriptor::ocp(),
         }
     }
 }
@@ -493,7 +478,7 @@ mod tests {
         // -- Configuration Descriptor (bytes 0..9) --
         assert_eq!(bytes[0], 9); // bLength
         assert_eq!(bytes[1], DescriptorType::Configuration as u8);
-        assert_eq!(u16::from_le_bytes([bytes[2], bytes[3]]), 28); // wTotalLength (config blob only)
+        assert_eq!(u16::from_le_bytes([bytes[2], bytes[3]]), 28); // wTotalLength
         assert_eq!(bytes[4], 1); // bNumInterfaces (fixed)
         assert_eq!(bytes[5], 1); // bConfigurationValue (fixed)
         assert_eq!(bytes[6], 0); // iConfiguration (fixed)
@@ -519,20 +504,6 @@ mod tests {
         assert_eq!(u16::from_le_bytes([bytes[22], bytes[23]]), 4096);
         assert_eq!(u16::from_le_bytes([bytes[24], bytes[25]]), 4096);
         assert_eq!(u16::from_le_bytes([bytes[26], bytes[27]]), 0x0101);
-
-        // -- String Descriptor Zero (bytes 28..32) --
-        assert_eq!(bytes[28], 4); // bLength
-        assert_eq!(bytes[29], DescriptorType::String as u8);
-        assert_eq!(u16::from_le_bytes([bytes[30], bytes[31]]), 0x0409);
-
-        // -- OCP Interface String Descriptor (bytes 32..90) --
-        assert_eq!(bytes[32], 58); // bLength = 2 + 28*2
-        assert_eq!(bytes[33], DescriptorType::String as u8);
-        let expected = "OCP Secure Firmware Recovery";
-        for (i, ch) in expected.bytes().enumerate() {
-            assert_eq!(bytes[34 + i * 2], ch);
-            assert_eq!(bytes[34 + i * 2 + 1], 0x00);
-        }
     }
 
     #[test]
