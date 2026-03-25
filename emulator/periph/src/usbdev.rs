@@ -254,6 +254,10 @@ impl UsbDevState {
         self.frame = frame_number;
         self.hw_intr_state |= IntrState::Frame::SET.value;
     }
+
+    pub(crate) fn do_host_bus_reset(&mut self) {
+        self.hw_intr_state |= IntrState::LinkReset::SET.value;
+    }
 }
 
 /// Emulator peripheral for the examplar USB 2.0 Full-Speed device IP block.
@@ -363,6 +367,12 @@ impl UsbHostController {
     pub fn host_sof(&self, frame_number: u16) {
         let mut state = self.state.lock().unwrap();
         state.do_host_sof(frame_number);
+    }
+
+    /// Simulate a USB bus reset (sets the `LinkReset` interrupt).
+    pub fn bus_reset(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.do_host_bus_reset();
     }
 }
 
