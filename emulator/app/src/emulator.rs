@@ -910,6 +910,12 @@ impl Emulator {
         mci.set_lc_reload_flag(lc_reload_flag.clone());
         lc.set_reload_flag(lc_reload_flag);
 
+        // Share a PPD (Physical Presence Detection) flag between MCI and LcCtrl.
+        // RMA and SCRAP transitions require the PPD pin to be asserted.
+        let lc_ppd_flag = Rc::new(Cell::new(false));
+        mci.set_lc_ppd_flag(lc_ppd_flag.clone());
+        lc.set_ppd_flag(lc_ppd_flag);
+
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
             Some(auto_root_bus_offsets),

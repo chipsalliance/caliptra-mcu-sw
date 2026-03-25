@@ -172,6 +172,9 @@ pub struct LcCtrl {
     /// Shared flag set by MCI when debug_out CMD_RELEASE_FC_LCC_RESET is received.
     /// LcCtrl checks this on register reads and reloads from OTP if set.
     reload_flag: Option<Rc<Cell<bool>>>,
+    /// Shared flag set by MCI when PPD (Physical Presence Detection) pin is asserted.
+    /// RMA and SCRAP transitions require this pin to be active.
+    ppd_flag: Option<Rc<Cell<bool>>>,
 }
 
 impl Default for LcCtrl {
@@ -204,6 +207,7 @@ impl LcCtrl {
             token: [0; 4],
             otp_partitions: None,
             reload_flag: None,
+            ppd_flag: None,
         }
     }
 
@@ -215,6 +219,16 @@ impl LcCtrl {
     /// Set the shared reload flag (shared with MCI).
     pub fn set_reload_flag(&mut self, flag: Rc<Cell<bool>>) {
         self.reload_flag = Some(flag);
+    }
+
+    /// Set the shared PPD (Physical Presence Detection) flag (shared with MCI).
+    pub fn set_ppd_flag(&mut self, flag: Rc<Cell<bool>>) {
+        self.ppd_flag = Some(flag);
+    }
+
+    /// Returns true if the PPD pin is currently asserted.
+    fn is_ppd_asserted(&self) -> bool {
+        self.ppd_flag.as_ref().map_or(false, |f| f.get())
     }
 
     /// If the reload flag is set, reload from OTP and clear the flag.
@@ -348,6 +362,12 @@ impl LcCtrl {
                 return;
             }
         };
+
+        // RMA and SCRAP transitions require the PPD pin to be asserted.
+        if (target_index == RMA || target_index == SCRAP) && !self.is_ppd_asserted() {
+            self.transition_error(STATUS_TRANSITION_ERROR);
+            return;
+        }
 
         match token_req {
             TokenRequirement::None => {}
@@ -615,6 +635,9 @@ mod tests {
     #[test]
     fn test_prod_to_rma() {
         let mut lc = make_lc_ctrl(PROD, 10, &TEST_RAW_TOKEN);
+        // RMA requires PPD pin asserted.
+        let ppd = Rc::new(Cell::new(true));
+        lc.set_ppd_flag(ppd);
         let token_words = token_to_words(&TEST_RAW_TOKEN);
         let status = do_transition(&mut lc, RMA, token_words);
         assert_ne!(status & STATUS_TRANSITION_SUCCESSFUL, 0);

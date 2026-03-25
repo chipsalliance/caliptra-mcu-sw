@@ -79,6 +79,8 @@ pub struct Mci {
 
     /// Shared flag to signal LcCtrl to reload from OTP on next register access.
     lc_reload_flag: Option<Rc<Cell<bool>>>,
+    /// Shared flag to signal LcCtrl that PPD (Physical Presence Detection) pin is asserted.
+    lc_ppd_flag: Option<Rc<Cell<bool>>>,
 }
 
 impl Mci {
@@ -121,6 +123,7 @@ impl Mci {
             mcu_mailbox0,
             reset_requested: false,
             lc_reload_flag: None,
+            lc_ppd_flag: None,
 
             // --- init mtimecmp ---
             mtimecmp: default_mtimecmp,
@@ -150,6 +153,11 @@ impl Mci {
     /// Set the shared flag used to signal LcCtrl to reload from OTP.
     pub fn set_lc_reload_flag(&mut self, flag: Rc<Cell<bool>>) {
         self.lc_reload_flag = Some(flag);
+    }
+
+    /// Set the shared PPD flag used to signal LcCtrl that PPD pin is asserted.
+    pub fn set_lc_ppd_flag(&mut self, flag: Rc<Cell<bool>>) {
+        self.lc_ppd_flag = Some(flag);
     }
 
     fn arm_mtime_interrupt(&mut self) {
@@ -286,10 +294,16 @@ impl MciPeripheral for Mci {
             CMD_LC_FORCE_RMA_SCRAP_PPD => {
                 println!("MCI: debug_out CMD_LC_FORCE_RMA_SCRAP_PPD (0x{:02x}) - asserting PPD pin", val);
                 self.ext_mci_regs.regs.borrow_mut().generic_input_wires[0] |= 0x2;
+                if let Some(flag) = &self.lc_ppd_flag {
+                    flag.set(true);
+                }
             }
             CMD_LC_RELEASE_RMA_SCRAP_PPD => {
                 println!("MCI: debug_out CMD_LC_RELEASE_RMA_SCRAP_PPD (0x{:02x}) - releasing PPD pin", val);
                 self.ext_mci_regs.regs.borrow_mut().generic_input_wires[0] &= !0x2;
+                if let Some(flag) = &self.lc_ppd_flag {
+                    flag.set(false);
+                }
             }
             CMD_FORCE_FC_AWUSER_CPTR_CORE => {
                 println!("MCI: debug_out CMD_FORCE_FC_AWUSER_CPTR_CORE (0x{:02x}) - no-op in emulator", val);
