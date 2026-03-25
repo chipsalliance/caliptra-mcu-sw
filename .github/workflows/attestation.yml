@@ -181,15 +181,15 @@ jobs:
 
           # Build Trust Anchor Store
           TA_STORE_DIR="attestation-artifacts/ta_store"
-          mkdir -p "$TA_STORE_DIR/roots" "$TA_STORE_DIR/signing-certs"
+          mkdir -p "$TA_STORE_DIR/roots" "$TA_STORE_DIR/endorsement-certs"
 
           # Copy the test root CA cert which endorsed the device ID cert into roots/
-          cp ocp-eat-verifier/ocptoken-rs/test-data/ta-store/roots/slot0_ecc_test_root_ca.der \
+          cp ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der \
             "$TA_STORE_DIR/roots/slot0_ecc_test_root_ca.der"
 
-          # Copy the CoRIM signing certificate into roots/ and signing-certs/
+          # Copy the CoRIM signing certificate into roots/ and endorsement-certs/
           cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/roots/corim_signing_cert.der"
-          cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/signing-certs/corim_signing_cert.der"
+          cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/endorsement-certs/corim_signing_cert.der"
 
           echo "Trust Anchor Store contents:"
           find "$TA_STORE_DIR" -type f | sort
