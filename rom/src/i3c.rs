@@ -60,7 +60,7 @@ impl I3c {
         // TODO: pass this timing information in
         let clocks = 0;
         regs.soc_mgmt_if_t_r_reg.set(clocks); // rise time of both SDA and SCL in clock units
-        regs.soc_mgmt_if_t_f_reg.set(clocks); // rise time of both SDA and SCL in clock units
+        regs.soc_mgmt_if_t_f_reg.set(clocks); // fall time of both SDA and SCL in clock units
 
         // if this is set to 6+ then ACKs start failing
         regs.soc_mgmt_if_t_hd_dat_reg.set(clocks); // data hold time in clock units
