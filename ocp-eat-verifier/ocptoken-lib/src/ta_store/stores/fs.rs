@@ -17,11 +17,11 @@ use std::path::Path;
 ///
 /// ```text
 /// ta_store_path/
-/// ├── roots/           # Root CA certificates (PEM or DER)
-/// └── signing-certs/   # Signing certificates indexed by kid (PEM or DER)
+/// ├── roots/              # Root CA certificates (PEM or DER)
+/// └── endorsement-certs/  # Endorsement certificates indexed by kid (PEM or DER)
 /// ```
 ///
-/// Root certificates are unconditionally trusted. Signing certificates
+/// Root certificates are unconditionally trusted. Endorsement certificates
 /// are indexed by their Subject Key Identifier (SKI) X.509 extension,
 /// which is used as the `kid` for lookup.
 pub struct FsTrustAnchorStore {
@@ -29,15 +29,15 @@ pub struct FsTrustAnchorStore {
     roots: Vec<X509>,
     /// Pre-built OpenSSL X509 store from the root CAs (for chain validation).
     store: X509Store,
-    /// Signing certificates indexed by kid (Subject Key Identifier).
-    signing_certs: HashMap<Vec<u8>, X509>,
+    /// Endorsement certificates indexed by kid (Subject Key Identifier).
+    endorsement_certs: HashMap<Vec<u8>, X509>,
 }
 
 impl FsTrustAnchorStore {
     /// Load a Trust Anchor Store from a directory.
     pub fn load(ta_store_path: &Path) -> Result<Self, TrustAnchorError> {
         let roots_dir = ta_store_path.join("roots");
-        let signing_dir = ta_store_path.join("signing-certs");
+        let signing_dir = ta_store_path.join("endorsement-certs");
 
         // Load root CAs
         let roots = if roots_dir.is_dir() {
@@ -58,9 +58,9 @@ impl FsTrustAnchorStore {
         // Build the X509 store from roots
         let store = build_x509_store(&roots)?;
 
-        // Load signing certs and index by kid (SKI)
-        let signing_certs = if signing_dir.is_dir() {
-            load_and_index_signing_certs(&signing_dir)?
+        // Load endorsement certs and index by kid (SKI)
+        let endorsement_certs = if signing_dir.is_dir() {
+            load_and_index_endorsement_certs(&signing_dir)?
         } else {
             HashMap::new()
         };
@@ -68,7 +68,7 @@ impl FsTrustAnchorStore {
         Ok(Self {
             roots,
             store,
-            signing_certs,
+            endorsement_certs,
         })
     }
 
@@ -100,18 +100,18 @@ impl FsTrustAnchorStore {
 impl TrustAnchorStore for FsTrustAnchorStore {
     fn authenticate_by_kid(&self, kid: &[u8]) -> Result<Vec<u8>, TrustAnchorError> {
         let cert = self
-            .signing_certs
+            .endorsement_certs
             .get(kid)
             .ok_or_else(|| TrustAnchorError::UnknownKid(hex::encode(kid)))?;
 
-        // Validate the signing cert against the trusted roots
+        // Validate the endorsement cert against the trusted roots
         let empty_chain = Stack::new()?;
         let mut ctx = X509StoreContext::new()?;
         let valid = ctx.init(&self.store, cert, &empty_chain, |ctx| ctx.verify_cert())?;
 
         if !valid {
             return Err(TrustAnchorError::ChainValidation(format!(
-                "Signing certificate (kid={}) does not chain to a trusted root",
+                "Endorsement certificate (kid={}) does not chain to a trusted root",
                 hex::encode(kid),
             )));
         }
@@ -202,16 +202,16 @@ fn load_certs_from_dir(dir: &Path) -> Result<Vec<X509>, TrustAnchorError> {
     Ok(certs)
 }
 
-/// Load signing certificates from a directory and index them by their
+/// Load endorsement certificates from a directory and index them by their
 /// Subject Key Identifier (SKI).
-fn load_and_index_signing_certs(dir: &Path) -> Result<HashMap<Vec<u8>, X509>, TrustAnchorError> {
+fn load_and_index_endorsement_certs(dir: &Path) -> Result<HashMap<Vec<u8>, X509>, TrustAnchorError> {
     let certs = load_certs_from_dir(dir)?;
     let mut map = HashMap::new();
 
     for cert in certs {
         let ski = subject_key_identifier(&cert)?.ok_or_else(|| {
             TrustAnchorError::Load(format!(
-                "Signing certificate has no Subject Key Identifier extension: {:?}",
+                "Endorsement certificate has no Subject Key Identifier extension: {:?}",
                 cert.subject_name()
             ))
         })?;
