@@ -1,0 +1,482 @@
+// Licensed under the Apache-2.0 license
+//
+// OTP Fuse Provisioning via DAI (Direct Access Interface)
+//
+// Implements three fuse provisioning commands per the MC_FUSE specification:
+//   MC_FUSE_READ           (0x4946_5052 / "IFPR")
+//   MC_FUSE_WRITE          (0x4946_5057 / "IFPW")
+//   MC_FUSE_LOCK_PARTITION (0x4946_504B / "IFPK")
+//
+// All OTP access goes through the DAI helpers in romtime::Otp
+// (read_word, write_word, finalize_digest).
+
+use crate::{HexWord, Otp};
+use caliptra_api::mailbox::MailboxRespHeader;
+use registers_generated::fuses;
+
+// ---------------------------------------------------------------------------
+// Command codes
+// ---------------------------------------------------------------------------
+pub const MC_FUSE_READ_CMD: u32 = 0x4946_5052; // "IFPR"
+pub const MC_FUSE_WRITE_CMD: u32 = 0x4946_5057; // "IFPW"
+pub const MC_FUSE_LOCK_PARTITION_CMD: u32 = 0x4946_504B; // "IFPK"
+
+pub const FIPS_STATUS_APPROVED: u32 = MailboxRespHeader::FIPS_STATUS_APPROVED;
+
+// ---------------------------------------------------------------------------
+// Limits
+// ---------------------------------------------------------------------------
+pub const MAX_FUSE_DATA_BYTES: usize = 512;
+pub const MAX_FUSE_DATA_WORDS: usize = MAX_FUSE_DATA_BYTES / 4;
+
+// ---------------------------------------------------------------------------
+// Partition identifiers (same numbering as the Fuse definition script)
+// ---------------------------------------------------------------------------
+pub const PARTITION_SW_TEST_UNLOCK: u32 = 0x0000_0000;
+pub const PARTITION_SECRET_MANUF: u32 = 0x0000_0001;
+pub const PARTITION_SECRET_PROD_0: u32 = 0x0000_0002;
+pub const PARTITION_SECRET_PROD_1: u32 = 0x0000_0003;
+pub const PARTITION_SECRET_PROD_2: u32 = 0x0000_0004;
+pub const PARTITION_SECRET_PROD_3: u32 = 0x0000_0005;
+pub const PARTITION_SW_MANUF: u32 = 0x0000_0006;
+pub const PARTITION_SECRET_LC_TRANSITION: u32 = 0x0000_0007;
+pub const PARTITION_SVN: u32 = 0x0000_0008;
+pub const PARTITION_VENDOR_TEST: u32 = 0x0000_0009;
+pub const PARTITION_VENDOR_HASHES_MANUF: u32 = 0x0000_000A;
+pub const PARTITION_VENDOR_HASHES_PROD: u32 = 0x0000_000B;
+pub const PARTITION_VENDOR_REVOCATIONS_PROD: u32 = 0x0000_000C;
+pub const PARTITION_VENDOR_SECRET_PROD: u32 = 0x0000_000D;
+pub const PARTITION_VENDOR_NON_SECRET_PROD: u32 = 0x0000_000E;
+pub const PARTITION_CPTRA_SS_LOCK_HEK_PROD_0: u32 = 0x0000_000F;
+pub const PARTITION_CPTRA_SS_LOCK_HEK_PROD_1: u32 = 0x0000_0010;
+pub const PARTITION_CPTRA_SS_LOCK_HEK_PROD_2: u32 = 0x0000_0011;
+pub const PARTITION_CPTRA_SS_LOCK_HEK_PROD_3: u32 = 0x0000_0012;
+pub const PARTITION_CPTRA_SS_LOCK_HEK_PROD_4: u32 = 0x0000_0013;
+pub const PARTITION_CPTRA_SS_LOCK_HEK_PROD_5: u32 = 0x0000_0014;
+pub const PARTITION_CPTRA_SS_LOCK_HEK_PROD_6: u32 = 0x0000_0015;
+pub const PARTITION_CPTRA_SS_LOCK_HEK_PROD_7: u32 = 0x0000_0016;
+
+// ---------------------------------------------------------------------------
+// Error codes  (0xE100_xxxx range)
+// ---------------------------------------------------------------------------
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum FuseError {
+    Success = 0x0000_0000,
+    InvalidPartition = 0xE100_0001,
+    EntryOutOfBounds = 0xE100_0002,
+    InvalidLength = 0xE100_0003,
+    InvalidStartBit = 0xE100_0004,
+    DaiReadError = 0xE100_0005,
+    DaiWriteError = 0xE100_0006,
+    LockError = 0xE100_0007,
+    SecretPartitionReadDenied = 0xE100_0008,
+    BitClearNotAllowed = 0xE100_0009,
+    ChecksumError = 0xE100_000A,
+    DataTooLarge = 0xE100_000B,
+    InputTooShort = 0xE100_000C,
+    UnknownCommand = 0xE100_000D,
+}
+
+impl FuseError {
+    #[inline]
+    pub fn as_u32(self) -> u32 {
+        self as u32
+    }
+
+    #[inline]
+    pub fn is_success(self) -> bool {
+        self == FuseError::Success
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Partition metadata
+// ---------------------------------------------------------------------------
+
+struct PartitionInfo {
+    byte_offset: usize,
+    byte_size: usize,
+    is_secret: bool,
+}
+
+fn get_partition_info(partition: u32) -> Option<PartitionInfo> {
+    Some(match partition {
+        PARTITION_SW_TEST_UNLOCK => PartitionInfo {
+            byte_offset: fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
+            byte_size: fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
+            is_secret: false,
+        },
+        PARTITION_SECRET_MANUF => PartitionInfo {
+            byte_offset: fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET,
+            byte_size: fuses::SECRET_MANUF_PARTITION_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_SECRET_PROD_0 => PartitionInfo {
+            byte_offset: fuses::SECRET_PROD_PARTITION_0_BYTE_OFFSET,
+            byte_size: fuses::SECRET_PROD_PARTITION_0_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_SECRET_PROD_1 => PartitionInfo {
+            byte_offset: fuses::SECRET_PROD_PARTITION_1_BYTE_OFFSET,
+            byte_size: fuses::SECRET_PROD_PARTITION_1_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_SECRET_PROD_2 => PartitionInfo {
+            byte_offset: fuses::SECRET_PROD_PARTITION_2_BYTE_OFFSET,
+            byte_size: fuses::SECRET_PROD_PARTITION_2_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_SECRET_PROD_3 => PartitionInfo {
+            byte_offset: fuses::SECRET_PROD_PARTITION_3_BYTE_OFFSET,
+            byte_size: fuses::SECRET_PROD_PARTITION_3_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_SW_MANUF => PartitionInfo {
+            byte_offset: fuses::SW_MANUF_PARTITION_BYTE_OFFSET,
+            byte_size: fuses::SW_MANUF_PARTITION_BYTE_SIZE,
+            is_secret: false,
+        },
+        PARTITION_SECRET_LC_TRANSITION => PartitionInfo {
+            byte_offset: fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET,
+            byte_size: fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_SVN => PartitionInfo {
+            byte_offset: fuses::SVN_PARTITION_BYTE_OFFSET,
+            byte_size: fuses::SVN_PARTITION_BYTE_SIZE,
+            is_secret: false,
+        },
+        PARTITION_VENDOR_TEST => PartitionInfo {
+            byte_offset: fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET,
+            byte_size: fuses::VENDOR_TEST_PARTITION_BYTE_SIZE,
+            is_secret: false,
+        },
+        PARTITION_VENDOR_HASHES_MANUF => PartitionInfo {
+            byte_offset: fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET,
+            byte_size: fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE,
+            is_secret: false,
+        },
+        PARTITION_VENDOR_HASHES_PROD => PartitionInfo {
+            byte_offset: fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET,
+            byte_size: fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
+            is_secret: false,
+        },
+        PARTITION_VENDOR_REVOCATIONS_PROD => PartitionInfo {
+            byte_offset: fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,
+            byte_size: fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
+            is_secret: false,
+        },
+        PARTITION_VENDOR_SECRET_PROD => PartitionInfo {
+            byte_offset: fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET,
+            byte_size: fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_VENDOR_NON_SECRET_PROD => PartitionInfo {
+            byte_offset: fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
+            byte_size: fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE,
+            is_secret: false,
+        },
+        PARTITION_CPTRA_SS_LOCK_HEK_PROD_0 => PartitionInfo {
+            byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET,
+            byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_CPTRA_SS_LOCK_HEK_PROD_1 => PartitionInfo {
+            byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_OFFSET,
+            byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_CPTRA_SS_LOCK_HEK_PROD_2 => PartitionInfo {
+            byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_2_BYTE_OFFSET,
+            byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_2_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_CPTRA_SS_LOCK_HEK_PROD_3 => PartitionInfo {
+            byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_3_BYTE_OFFSET,
+            byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_3_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_CPTRA_SS_LOCK_HEK_PROD_4 => PartitionInfo {
+            byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_4_BYTE_OFFSET,
+            byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_4_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_CPTRA_SS_LOCK_HEK_PROD_5 => PartitionInfo {
+            byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_5_BYTE_OFFSET,
+            byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_5_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_CPTRA_SS_LOCK_HEK_PROD_6 => PartitionInfo {
+            byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_6_BYTE_OFFSET,
+            byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_6_BYTE_SIZE,
+            is_secret: true,
+        },
+        PARTITION_CPTRA_SS_LOCK_HEK_PROD_7 => PartitionInfo {
+            byte_offset: fuses::CPTRA_SS_LOCK_HEK_PROD_7_BYTE_OFFSET,
+            byte_size: fuses::CPTRA_SS_LOCK_HEK_PROD_7_BYTE_SIZE,
+            is_secret: true,
+        },
+        _ => return None,
+    })
+}
+
+// ===========================================================================
+// MC_FUSE_READ  (0x4946_5052 / "IFPR")
+// ===========================================================================
+//
+// Reads fuse data from a partition via DAI.
+// Secret partitions are rejected (they can only be read via HW or Caliptra).
+//
+// `entry` is a *byte offset* within the partition (must be word-aligned).
+// The function reads from that offset to the end of the partition (capped
+// at `out_data.len()` words) and returns the valid bit count.
+
+pub fn fuse_read_dai(
+    otp: &Otp,
+    partition: u32,
+    entry: u32,
+    out_data: &mut [u32],
+) -> Result<u32, FuseError> {
+    let info = get_partition_info(partition).ok_or(FuseError::InvalidPartition)?;
+
+    if info.is_secret {
+        crate::println!(
+            "[otp-provision] Read denied: partition {} is secret",
+            partition
+        );
+        return Err(FuseError::SecretPartitionReadDenied);
+    }
+
+    let entry_offset = entry as usize;
+    if entry_offset >= info.byte_size || entry_offset % 4 != 0 {
+        crate::println!(
+            "[otp-provision] Entry out of bounds or unaligned: offset={}, size={}",
+            entry_offset,
+            info.byte_size
+        );
+        return Err(FuseError::EntryOutOfBounds);
+    }
+
+    let remaining_bytes = info.byte_size - entry_offset;
+    let remaining_words = (remaining_bytes + 3) / 4;
+    let words_to_read = remaining_words.min(out_data.len());
+    let base_word_addr = (info.byte_offset + entry_offset) / 4;
+
+    crate::println!(
+        "[otp-provision] DAI read: partition={}, entry={}, base_word_addr={}, words={}",
+        HexWord(partition),
+        entry,
+        base_word_addr,
+        words_to_read
+    );
+
+    for (i, slot) in out_data.iter_mut().enumerate().take(words_to_read) {
+        match otp.read_word(base_word_addr + i) {
+            Ok(word) => *slot = word,
+            Err(_) => {
+                crate::println!(
+                    "[otp-provision] DAI read error at word addr {}",
+                    base_word_addr + i
+                );
+                return Err(FuseError::DaiReadError);
+            }
+        }
+    }
+
+    let valid_bits = (remaining_bytes.min(words_to_read * 4) * 8) as u32;
+    Ok(valid_bits)
+}
+
+// ===========================================================================
+// MC_FUSE_WRITE  (0x4946_5057 / "IFPW")
+// ===========================================================================
+//
+// Writes fuse bits via DAI.
+//
+// `entry`     – byte offset within the partition (must be word-aligned).
+// `start_bit` – first bit to write (0 = LSB of the word at `entry`).
+// `length`    – number of bits to write.
+// `data`      – packed input words holding `length` bits, LSB-first.
+//
+// Idempotent: writing identical data is a no-op.
+// Fails if any existing 1-bit would be cleared to 0.
+// Writes to buffered partitions do not take effect until the next reset.
+
+pub fn fuse_write_dai(
+    otp: &Otp,
+    partition: u32,
+    entry: u32,
+    start_bit: u32,
+    length: u32,
+    data: &[u32],
+) -> FuseError {
+    let info = match get_partition_info(partition) {
+        Some(i) => i,
+        None => return FuseError::InvalidPartition,
+    };
+
+    if length == 0 {
+        return FuseError::InvalidLength;
+    }
+
+    let entry_offset = entry as usize;
+    if entry_offset >= info.byte_size || entry_offset % 4 != 0 {
+        return FuseError::EntryOutOfBounds;
+    }
+
+    let data_area_bits = ((info.byte_size - entry_offset) * 8) as u32;
+    let end_bit_excl = match start_bit.checked_add(length) {
+        Some(v) => v,
+        None => {
+            crate::println!("[otp-provision] Write overflow: start_bit + length wraps u32");
+            return FuseError::EntryOutOfBounds;
+        }
+    };
+    if end_bit_excl > data_area_bits {
+        crate::println!(
+            "[otp-provision] Write out of bounds: start_bit({}) + length({}) > {}",
+            start_bit,
+            length,
+            data_area_bits
+        );
+        return FuseError::EntryOutOfBounds;
+    }
+
+    let required_data_words = ((length + 31) / 32) as usize;
+    if data.len() < required_data_words {
+        return FuseError::InvalidLength;
+    }
+
+    let base_word_addr = (info.byte_offset + entry_offset) / 4;
+    let first_word_idx = (start_bit / 32) as usize;
+    let end_bit = end_bit_excl - 1; // safe: length > 0 validated above
+    let last_word_idx = (end_bit / 32) as usize;
+
+    crate::println!(
+        "[otp-provision] DAI write: partition={}, entry={}, start_bit={}, length={}, words {}..{}",
+        HexWord(partition),
+        entry,
+        start_bit,
+        length,
+        first_word_idx,
+        last_word_idx
+    );
+
+    let mut data_bit_consumed: u32 = 0;
+
+    for word_idx in first_word_idx..=last_word_idx {
+        let word_addr = base_word_addr + word_idx;
+
+        let word_bit_start = if word_idx == first_word_idx {
+            start_bit % 32
+        } else {
+            0
+        };
+        let word_bit_end = if word_idx == last_word_idx {
+            end_bit % 32
+        } else {
+            31
+        };
+        let bits_in_word = word_bit_end - word_bit_start + 1;
+
+        let mask = if bits_in_word >= 32 {
+            0xFFFF_FFFFu32
+        } else {
+            ((1u32 << bits_in_word) - 1) << word_bit_start
+        };
+
+        // Extract the corresponding bits from the input data stream.
+        let src_word_idx = (data_bit_consumed / 32) as usize;
+        let src_bit_off = data_bit_consumed % 32;
+
+        let mut new_bits: u32 = if src_word_idx < data.len() {
+            data[src_word_idx] >> src_bit_off
+        } else {
+            0
+        };
+        if src_bit_off > 0 && (src_word_idx + 1) < data.len() {
+            new_bits |= data[src_word_idx + 1] << (32 - src_bit_off);
+        }
+
+        let bits_mask = if bits_in_word >= 32 {
+            0xFFFF_FFFFu32
+        } else {
+            (1u32 << bits_in_word) - 1
+        };
+        new_bits = (new_bits & bits_mask) << word_bit_start;
+
+        // Read current OTP word via DAI.
+        let current = match otp.read_word(word_addr) {
+            Ok(v) => v,
+            Err(_) => {
+                crate::println!("[otp-provision] DAI read error at word addr {}", word_addr);
+                return FuseError::DaiReadError;
+            }
+        };
+
+        // Fail if any existing 1-bit would be cleared.
+        if (current & mask) & !new_bits != 0 {
+            crate::println!(
+                "[otp-provision] Bit-clear conflict at word {}: current={}, requested={}",
+                word_addr,
+                HexWord(current & mask),
+                HexWord(new_bits)
+            );
+            return FuseError::BitClearNotAllowed;
+        }
+
+        let write_value = current | new_bits;
+        if write_value != current {
+            match otp.write_word(word_addr, write_value) {
+                Ok(_) => {}
+                Err(_) => {
+                    crate::println!("[otp-provision] DAI write error at word addr {}", word_addr);
+                    return FuseError::DaiWriteError;
+                }
+            }
+        }
+
+        data_bit_consumed += bits_in_word;
+    }
+
+    FuseError::Success
+}
+
+// ===========================================================================
+// MC_FUSE_LOCK_PARTITION  (0x4946_504B / "IFPK")
+// ===========================================================================
+//
+// Locks a partition by computing and writing its integrity digest via DAI.
+// Idempotent: locking an already-locked partition is a no-op.
+// Locking does not fully take effect until the next reset.
+//
+// TODO: Currently only support using DAI digest command to lock hw_digest partitions.
+//       For sw_digest partitions, the MCU ROM software digest compute functions still
+//       need to be implemented.
+pub fn fuse_lock_partition_dai(otp: &Otp, partition: u32) -> FuseError {
+    let info = match get_partition_info(partition) {
+        Some(i) => i,
+        None => return FuseError::InvalidPartition,
+    };
+
+    crate::println!(
+        "[otp-provision] DAI lock: partition={}, base_addr={}",
+        HexWord(partition),
+        HexWord(info.byte_offset as u32)
+    );
+
+    match otp.finalize_digest(info.byte_offset) {
+        Ok(()) => {
+            crate::println!(
+                "[otp-provision] Partition {} locked successfully",
+                partition
+            );
+            FuseError::Success
+        }
+        Err(_) => {
+            crate::println!("[otp-provision] Failed to lock partition {}", partition);
+            FuseError::LockError
+        }
+    }
+}
