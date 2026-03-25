@@ -1,0 +1,16 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "ocptoken"
+version = "0.1.0"
+edition = "2021"
+authors = ["Caliptra Contributors"]
+
+[[bin]]
+name = "ocptoken"
+path = "src/main.rs"
+
+[dependencies]
+ocptoken.workspace = true
+clap.workspace = true
+coset.workspace = true
