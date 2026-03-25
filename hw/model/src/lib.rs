@@ -48,6 +48,7 @@ mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
 mod model_fpga_realtime;
 mod otp_provision;
+pub mod usb_ctrl;
 mod vmem;
 
 pub enum ShaAccMode {
@@ -1036,6 +1037,97 @@ mod tests {
         }
         let in_data = in_data.expect("firmware did not respond to OUT with IN data");
         assert_eq!(in_data, out_payload, "OUT echo mismatch");
+
+        Ok(())
+    }
+
+    #[cfg(not(feature = "fpga_realtime"))]
+    #[test]
+    pub fn test_usb_ocp_recovery() -> Result<()> {
+        let mcu_rom = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+            binaries.test_rom(&firmware::hw_model_tests::USB_OCP_RECOVERY)?
+        } else {
+            let rom_file = mcu_builder::test_rom_build(
+                Some(platform()),
+                &firmware::hw_model_tests::USB_OCP_RECOVERY,
+            )?;
+            std::fs::read(&rom_file)?
+        };
+
+        let mut model = new(InitParams {
+            mcu_rom: &mcu_rom,
+            check_booted_to_runtime: false,
+            ..Default::default()
+        })?;
+
+        let host = model.usb_host_controller.clone();
+
+        // Wait for firmware to enable USB
+        for _ in 0..10_000_000 {
+            model.step();
+            if host.device_enabled() {
+                break;
+            }
+        }
+        assert!(host.device_enabled(), "firmware did not enable USB device");
+
+        // Trigger a bus reset so the firmware can proceed past its LinkReset wait.
+        host.bus_reset();
+
+        use crate::usb_ctrl::*;
+        use ocp::protocol::device_status::{
+            DeviceStatus, DeviceStatusValue, ProtocolError, RecoveryReasonCode,
+        };
+        use ocp::protocol::prot_cap::{self, ProtCap, RecoveryProtocolCapabilities};
+        use ocp::protocol::RecoveryCommand;
+        use zerocopy::IntoBytes;
+
+        const TIMEOUT: usize = 1_000_000;
+
+        enumerate(&mut model, &host, TIMEOUT);
+
+        // --- OCP Recovery Commands ---
+
+        // PROT_CAP read
+        let mut expected_caps = RecoveryProtocolCapabilities(0);
+        expected_caps.set_identification(true);
+        expected_caps.set_device_status(true);
+        expected_caps.set_push_c_image_support(true);
+        expected_caps.set_recovery_memory_access(true);
+        let expected_prot_cap = ProtCap::new(1, 0, expected_caps, 1, 0, 0);
+
+        let setup = ocp_read(RecoveryCommand::ProtCap, prot_cap::RESPONSE_LEN as u16);
+        poll_setup(&mut model, &host, &setup, TIMEOUT);
+        let prot_cap = poll_in(&mut model, &host, TIMEOUT);
+        assert_eq!(prot_cap, expected_prot_cap.as_bytes(), "PROT_CAP mismatch");
+        poll_out(&mut model, &host, &[], TIMEOUT);
+
+        // DEVICE_STATUS read
+        let expected_ds = DeviceStatus::new(
+            DeviceStatusValue::StatusPending,
+            ProtocolError::NoError,
+            RecoveryReasonCode::NoBootFailure,
+            0,
+            &[],
+        )
+        .unwrap();
+        let mut expected_ds_buf = [0u8; 7];
+        let expected_ds_len = expected_ds.to_message(&mut expected_ds_buf).unwrap();
+
+        let setup = ocp_read(RecoveryCommand::DeviceStatus, expected_ds_len as u16);
+        poll_setup(&mut model, &host, &setup, TIMEOUT);
+        let status = poll_in(&mut model, &host, TIMEOUT);
+        assert_eq!(
+            status,
+            &expected_ds_buf[..expected_ds_len],
+            "DEVICE_STATUS mismatch"
+        );
+        poll_out(&mut model, &host, &[], TIMEOUT);
+
+        // Unsupported read (Vendor) → expect STALL
+        let setup = ocp_read(RecoveryCommand::Vendor, 4);
+        poll_setup(&mut model, &host, &setup, TIMEOUT);
+        poll_in_stall(&mut model, &host, TIMEOUT);
 
         Ok(())
     }

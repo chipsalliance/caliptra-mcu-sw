@@ -3314,6 +3314,7 @@ dependencies = [
  "mcu-testing-common",
  "network-config",
  "nix 0.26.4",
+ "ocp",
  "p384",
  "poll-common",
  "rand 0.8.5",
@@ -3342,11 +3343,14 @@ dependencies = [
  "mcu-error",
  "mcu-rom-common",
  "mcu-test-harness",
+ "mcu-usb-emulator",
+ "ocp",
  "registers-generated",
  "riscv-csr",
  "romtime",
  "rv32i",
  "tock-registers",
+ "zerocopy",
 ]
 
 [[package]]
