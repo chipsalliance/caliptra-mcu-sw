@@ -17,7 +17,7 @@ Abstract:
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use caliptra_emu_bus::ReadWriteRegister;
+use caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister;
 use emulator_registers_generated::lc::LcGenerated;
 use registers_generated::lc_ctrl;
 use tock_registers::interfaces::Readable;
@@ -381,25 +381,25 @@ impl emulator_registers_generated::lc::LcPeripheral for LcCtrl {
         }
     }
 
-    fn write_transition_token_0(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_transition_token_0(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if self.mutex_claimed {
             self.token[0] = val;
         }
     }
 
-    fn write_transition_token_1(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_transition_token_1(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if self.mutex_claimed {
             self.token[1] = val;
         }
     }
 
-    fn write_transition_token_2(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_transition_token_2(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if self.mutex_claimed {
             self.token[2] = val;
         }
     }
 
-    fn write_transition_token_3(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_transition_token_3(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if self.mutex_claimed {
             self.token[3] = val;
         }

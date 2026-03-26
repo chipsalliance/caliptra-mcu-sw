@@ -5,7 +5,7 @@ use crate::mailbox_api::{
     execute_mailbox_cmd, RandomGenerateResp, RandomStirReq, MAX_RANDOM_NUM_SIZE,
     MAX_RANDOM_STIR_SIZE,
 };
-use caliptra_api::mailbox::{
+use caliptra_core_firmware::caliptra_api::mailbox::{
     CmRandomGenerateReq, CmRandomStirReq, MailboxReqHeader, MailboxRespHeader,
     MailboxRespHeaderVarSize, Request,
 };

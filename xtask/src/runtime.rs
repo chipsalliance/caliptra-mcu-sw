@@ -2,7 +2,7 @@
 
 use crate::Commands;
 use anyhow::{anyhow, Result};
-use caliptra_api_types::DeviceLifecycle;
+use caliptra_core_tools::caliptra_api_types::DeviceLifecycle;
 use mcu_builder::{runtime_build_with_apps, CaliptraBuilder, PROJECT_ROOT};
 use std::process::Command;
 

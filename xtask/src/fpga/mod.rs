@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use caliptra_image_gen::to_hw_format;
-use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_core_tools::caliptra_image_gen::to_hw_format;
+use caliptra_core_tools::caliptra_image_types::FwVerificationPqcKeyType;
 use clap::Subcommand;
 use configurations::Configuration;
 use mcu_builder::flash_image::build_flash_image_bytes;
@@ -378,7 +378,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
     );
 
     let mut model = ModelFpgaRealtime::new_unbooted(InitParams {
-        fuses: caliptra_api_types::Fuses {
+        fuses: caliptra_core_tools::caliptra_api_types::Fuses {
             vendor_pk_hash: binaries
                 .vendor_pk_hash()
                 .map(|h| to_hw_format(&h))

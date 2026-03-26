@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-pub use caliptra_api::mailbox::{
+pub use caliptra_core_firmware::caliptra_api::mailbox::{
     CmAesDecryptInitReq, CmAesDecryptUpdateReq, CmAesEncryptInitReq, CmAesEncryptInitResp,
     CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq, CmAesGcmDecryptFinalReq,
     CmAesGcmDecryptFinalResp, CmAesGcmDecryptFinalRespHeader, CmAesGcmDecryptInitReq,
@@ -18,7 +18,7 @@ pub use caliptra_api::mailbox::{
     ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
     CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE, MAX_CMB_DATA_SIZE,
 };
-pub use caliptra_api::{calc_checksum, verify_checksum};
+pub use caliptra_core_firmware::caliptra_api::{calc_checksum, verify_checksum};
 use core::convert::From;
 use core::num::NonZeroU32;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};

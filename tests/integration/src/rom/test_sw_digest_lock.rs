@@ -9,7 +9,7 @@
 #[cfg(test)]
 mod test {
     use crate::platform;
-    use caliptra_hw_model::HwModel;
+    use caliptra_core_tools::caliptra_hw_model::HwModel;
     use mcu_builder::firmware;
     use mcu_hw_model::{InitParams, McuHwModel};
     use mcu_rom_common::LifecycleControllerState;

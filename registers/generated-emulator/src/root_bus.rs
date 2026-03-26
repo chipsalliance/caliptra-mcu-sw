@@ -65,7 +65,7 @@ impl Default for AutoRootBusOffsets {
     }
 }
 pub struct AutoRootBus {
-    delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
+    delegates: Vec<Box<dyn caliptra_core_tools::caliptra_emu_bus::Bus>>,
     offsets: AutoRootBusOffsets,
     pub i3c_periph: Option<crate::i3c::I3cBus>,
     pub i3c1_periph: Option<crate::i3c1::I3c1Bus>,
@@ -84,7 +84,7 @@ pub struct AutoRootBus {
 impl AutoRootBus {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        delegates: Vec<Box<dyn caliptra_emu_bus::Bus>>,
+        delegates: Vec<Box<dyn caliptra_core_tools::caliptra_emu_bus::Bus>>,
         offsets: Option<AutoRootBusOffsets>,
         i3c_periph: Option<Box<dyn crate::i3c::I3cPeripheral>>,
         i3c1_periph: Option<Box<dyn crate::i3c1::I3c1Peripheral>>,
@@ -122,12 +122,15 @@ impl AutoRootBus {
         }
     }
 }
-impl caliptra_emu_bus::Bus for AutoRootBus {
+impl caliptra_core_tools::caliptra_emu_bus::Bus for AutoRootBus {
     fn read(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+    ) -> Result<
+        caliptra_core_tools::caliptra_emu_types::RvData,
+        caliptra_core_tools::caliptra_emu_bus::BusError,
+    > {
         if addr >= self.offsets.i3c_offset && addr < self.offsets.i3c_offset + self.offsets.i3c_size
         {
             if let Some(periph) = self.i3c_periph.as_mut() {
@@ -215,18 +218,21 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         }
         for delegate in self.delegates.iter_mut() {
             let result = delegate.read(size, addr);
-            if !matches!(result, Err(caliptra_emu_bus::BusError::LoadAccessFault)) {
+            if !matches!(
+                result,
+                Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAccessFault)
+            ) {
                 return result;
             }
         }
-        Err(caliptra_emu_bus::BusError::LoadAccessFault)
+        Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAccessFault)
     }
     fn write(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-        val: caliptra_emu_types::RvData,
-    ) -> Result<(), caliptra_emu_bus::BusError> {
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) -> Result<(), caliptra_core_tools::caliptra_emu_bus::BusError> {
         if addr >= self.offsets.i3c_offset && addr < self.offsets.i3c_offset + self.offsets.i3c_size
         {
             if let Some(periph) = self.i3c_periph.as_mut() {
@@ -314,11 +320,14 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
         }
         for delegate in self.delegates.iter_mut() {
             let result = delegate.write(size, addr, val);
-            if !matches!(result, Err(caliptra_emu_bus::BusError::StoreAccessFault)) {
+            if !matches!(
+                result,
+                Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAccessFault)
+            ) {
                 return result;
             }
         }
-        Err(caliptra_emu_bus::BusError::StoreAccessFault)
+        Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAccessFault)
     }
     fn poll(&mut self) {
         if let Some(periph) = self.i3c_periph.as_mut() {
@@ -452,7 +461,7 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
             delegate.update_reset();
         }
     }
-    fn incoming_event(&mut self, event: std::rc::Rc<caliptra_emu_bus::Event>) {
+    fn incoming_event(&mut self, event: std::rc::Rc<caliptra_core_tools::caliptra_emu_bus::Event>) {
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.incoming_event(event.clone());
         }
@@ -498,7 +507,7 @@ impl caliptra_emu_bus::Bus for AutoRootBus {
     }
     fn register_outgoing_events(
         &mut self,
-        sender: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
+        sender: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
     ) {
         if let Some(periph) = self.i3c_periph.as_mut() {
             periph.register_outgoing_events(sender.clone());

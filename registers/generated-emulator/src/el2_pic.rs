@@ -5,14 +5,24 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait El2PicPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
-    fn set_dma_rom_sram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
+    fn set_dma_ram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
+    fn set_dma_rom_sram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
     fn register_event_channels(
         &mut self,
-        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_caliptra: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
-        _events_to_mcu: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
+        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_caliptra: std::sync::mpsc::Receiver<
+            caliptra_core_tools::caliptra_emu_bus::Event,
+        >,
+        _events_to_mcu: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_core_tools::caliptra_emu_bus::Event>,
     ) {
     }
     fn poll(&mut self) {}
@@ -24,7 +34,7 @@ pub trait El2PicPeripheral {
     fn read_meipl(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meipl::Register,
     > {
@@ -37,11 +47,11 @@ pub trait El2PicPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_meipl(index);
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_meipl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Meipl::Register,
         >,
@@ -61,7 +71,7 @@ pub trait El2PicPeripheral {
     fn read_meip(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meip::Register,
     > {
@@ -74,12 +84,12 @@ pub trait El2PicPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_meip(index);
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_meie(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meie::Register,
     > {
@@ -92,11 +102,11 @@ pub trait El2PicPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_meie(index);
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_meie(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Meie::Register,
         >,
@@ -115,7 +125,7 @@ pub trait El2PicPeripheral {
     }
     fn read_mpiccfg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
     > {
@@ -125,11 +135,11 @@ pub trait El2PicPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mpiccfg();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mpiccfg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
         >,
@@ -147,7 +157,7 @@ pub trait El2PicPeripheral {
     fn read_meigwctrl(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
     > {
@@ -160,11 +170,11 @@ pub trait El2PicPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_meigwctrl(index);
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_meigwctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
         >,
@@ -181,7 +191,7 @@ pub trait El2PicPeripheral {
             generated.write_meigwctrl(val, index);
         }
     }
-    fn read_meigwclr(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_meigwclr(&mut self, index: usize) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read el2_pic::meigwclr[{}]",
@@ -193,7 +203,11 @@ pub trait El2PicPeripheral {
         }
         0
     }
-    fn write_meigwclr(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_meigwclr(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write el2_pic::meigwclr[{}] = 0x{:08x}",
@@ -207,22 +221,22 @@ pub trait El2PicPeripheral {
 }
 #[derive(Clone, Debug)]
 pub struct El2PicGenerated {
-    meipl: Vec<caliptra_emu_types::RvData>,
-    meip: Vec<caliptra_emu_types::RvData>,
-    meie: Vec<caliptra_emu_types::RvData>,
-    mpiccfg: caliptra_emu_types::RvData,
-    meigwctrl: Vec<caliptra_emu_types::RvData>,
-    meigwclr: Vec<caliptra_emu_types::RvData>,
+    meipl: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    meip: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    meie: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mpiccfg: caliptra_core_tools::caliptra_emu_types::RvData,
+    meigwctrl: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    meigwclr: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
 }
 impl Default for El2PicGenerated {
     fn default() -> Self {
         Self {
-            meipl: vec![0 as caliptra_emu_types::RvData; 256],
-            meip: vec![0 as caliptra_emu_types::RvData; 256],
-            meie: vec![0 as caliptra_emu_types::RvData; 256],
-            mpiccfg: 0 as caliptra_emu_types::RvData,
-            meigwctrl: vec![0 as caliptra_emu_types::RvData; 256],
-            meigwclr: vec![0 as caliptra_emu_types::RvData; 256],
+            meipl: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 256],
+            meip: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 256],
+            meie: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 256],
+            mpiccfg: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            meigwctrl: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 256],
+            meigwclr: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 256],
         }
     }
 }
@@ -247,7 +261,7 @@ impl El2PicPeripheral for El2PicGenerated {
     fn read_meipl(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meipl::Register,
     > {
@@ -257,11 +271,11 @@ impl El2PicPeripheral for El2PicGenerated {
                 index
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.meipl[index])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.meipl[index])
     }
     fn write_meipl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Meipl::Register,
         >,
@@ -274,17 +288,17 @@ impl El2PicPeripheral for El2PicGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.meipl[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf as caliptra_emu_types::RvData))
-            | (write_val & (0xf as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf as caliptra_core_tools::caliptra_emu_types::RvData));
         self.meipl[index] = new_val;
     }
     fn read_meip(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meip::Register,
     > {
@@ -294,12 +308,12 @@ impl El2PicPeripheral for El2PicGenerated {
                 index
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.meip[index])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.meip[index])
     }
     fn read_meie(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meie::Register,
     > {
@@ -309,11 +323,11 @@ impl El2PicPeripheral for El2PicGenerated {
                 index
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.meie[index])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.meie[index])
     }
     fn write_meie(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Meie::Register,
         >,
@@ -326,27 +340,27 @@ impl El2PicPeripheral for El2PicGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.meie[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.meie[index] = new_val;
     }
     fn read_mpiccfg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read el2_pic::mpiccfg");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mpiccfg)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mpiccfg)
     }
     fn write_mpiccfg(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
         >,
@@ -357,17 +371,17 @@ impl El2PicPeripheral for El2PicGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mpiccfg;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mpiccfg = new_val;
     }
     fn read_meigwctrl(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
     > {
@@ -377,11 +391,11 @@ impl El2PicPeripheral for El2PicGenerated {
                 index
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.meigwctrl[index])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.meigwctrl[index])
     }
     fn write_meigwctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
         >,
@@ -394,16 +408,16 @@ impl El2PicPeripheral for El2PicGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.meigwctrl[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.meigwctrl[index] = new_val;
     }
-    fn read_meigwclr(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_meigwclr(&mut self, index: usize) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read el2_pic::meigwclr[{}]",
@@ -412,75 +426,82 @@ impl El2PicPeripheral for El2PicGenerated {
         }
         self.meigwclr[index]
     }
-    fn write_meigwclr(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_meigwclr(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write el2_pic::meigwclr[{}] = 0x{:08x}",
                 index, val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.meigwclr[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.meigwclr[index] = new_val;
     }
 }
 pub struct El2PicBus {
     pub periph: Box<dyn El2PicPeripheral>,
 }
-impl caliptra_emu_bus::Bus for El2PicBus {
+impl caliptra_core_tools::caliptra_emu_bus::Bus for El2PicBus {
     fn read(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+    ) -> Result<
+        caliptra_core_tools::caliptra_emu_types::RvData,
+        caliptra_core_tools::caliptra_emu_bus::BusError,
+    > {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
-            0..0x400 => Ok(caliptra_emu_types::RvData::from(
+            0..0x400 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_meipl(addr as usize / 4).reg.get(),
             )),
-            0x1000..0x1400 => Ok(caliptra_emu_types::RvData::from(
+            0x1000..0x1400 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_meip((addr as usize - 0x1000) / 4)
                     .reg
                     .get(),
             )),
-            0x2000..0x2400 => Ok(caliptra_emu_types::RvData::from(
+            0x2000..0x2400 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_meie((addr as usize - 0x2000) / 4)
                     .reg
                     .get(),
             )),
-            0x3000..0x3004 => Ok(caliptra_emu_types::RvData::from(
+            0x3000..0x3004 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mpiccfg().reg.get(),
             )),
-            0x4000..0x4400 => Ok(caliptra_emu_types::RvData::from(
+            0x4000..0x4400 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_meigwctrl((addr as usize - 0x4000) / 4)
                     .reg
                     .get(),
             )),
             0x5000..0x5400 => Ok(self.periph.read_meigwclr((addr as usize - 0x5000) / 4)),
-            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-        val: caliptra_emu_types::RvData,
-    ) -> Result<(), caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) -> Result<(), caliptra_core_tools::caliptra_emu_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             0..0x400 => {
                 self.periph.write_meipl(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     addr as usize / 4,
                 );
                 Ok(())
@@ -488,19 +509,20 @@ impl caliptra_emu_bus::Bus for El2PicBus {
             0x1000..0x1400 => Ok(()),
             0x2000..0x2400 => {
                 self.periph.write_meie(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     (addr as usize - 0x2000) / 4,
                 );
                 Ok(())
             }
             0x3000..0x3004 => {
-                self.periph
-                    .write_mpiccfg(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mpiccfg(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x4000..0x4400 => {
                 self.periph.write_meigwctrl(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     (addr as usize - 0x4000) / 4,
                 );
                 Ok(())
@@ -510,7 +532,7 @@ impl caliptra_emu_bus::Bus for El2PicBus {
                     .write_meigwclr(val, (addr as usize - 0x5000) / 4);
                 Ok(())
             }
-            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {

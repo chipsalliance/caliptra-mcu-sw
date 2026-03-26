@@ -5,7 +5,7 @@ mod test {
     use crate::test::{
         compile_runtime, get_rom_with_feature, has_prebuilt_binaries, run_runtime, TEST_LOCK,
     };
-    use caliptra_image_types::ImageManifest;
+    use caliptra_core_tools::caliptra_image_types::ImageManifest;
     use chrono::{TimeZone, Utc};
     use hex::ToHex;
     use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};

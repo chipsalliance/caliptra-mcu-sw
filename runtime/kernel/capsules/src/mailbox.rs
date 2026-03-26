@@ -3,7 +3,7 @@
 //! This provides the mailbox capsule that calls the underlying mailbox driver to
 //! communicate with Caliptra.
 
-use caliptra_api::CaliptraApiError;
+use caliptra_core_firmware::caliptra_api::CaliptraApiError;
 use core::cell::Cell;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::hil::time::{Alarm, AlarmClient};

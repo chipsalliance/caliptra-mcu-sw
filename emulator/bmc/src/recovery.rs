@@ -1,7 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_emu_bus::{Device, Event, EventData, ReadWriteRegister, RecoveryCommandCode};
-use caliptra_emu_periph::dma::recovery::RecoveryStatus;
+use caliptra_core_tools::caliptra_emu_bus::{
+    Device, Event, EventData, ReadWriteRegister, RecoveryCommandCode,
+};
+use caliptra_core_tools::caliptra_emu_periph::dma::recovery::RecoveryStatus;
 use smlang::statemachine;
 use std::sync::mpsc;
 use tock_registers::interfaces::Readable;

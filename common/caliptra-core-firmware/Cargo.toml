@@ -1,0 +1,69 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-core-firmware"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+caliptra-api-2_0 = { workspace = true, optional = true }
+caliptra-api-types-2_0 = { workspace = true, optional = true }
+caliptra-auth-man-types-2_0 = { workspace = true, optional = true }
+caliptra-drivers-2_0 = { workspace = true, optional = true }
+caliptra-error-2_0 = { workspace = true, optional = true }
+caliptra-registers-2_0 = { workspace = true, optional = true }
+ureg-2_0 = { workspace = true, optional = true }
+ocp-eat-2_0 = { workspace = true, optional = true }
+
+caliptra-api-2_1 = { workspace = true, optional = true }
+caliptra-api-types-2_1 = { workspace = true, optional = true }
+caliptra-auth-man-types-2_1 = { workspace = true, optional = true }
+caliptra-drivers-2_1 = { workspace = true, optional = true }
+caliptra-error-2_1 = { workspace = true, optional = true }
+caliptra-registers-2_1 = { workspace = true, optional = true }
+ureg-2_1 = { workspace = true, optional = true }
+ocp-eat-2_1 = { workspace = true, optional = true }
+
+[features]
+default = ["2_0"]
+
+2_0 = [
+    "caliptra-api-2_0",
+    "caliptra-api-types-2_0",
+    "caliptra-auth-man-types-2_0",
+    "caliptra-drivers-2_0",
+    "caliptra-error-2_0",
+    "caliptra-registers-2_0",
+    "ureg-2_0",
+    "ocp-eat-2_0",
+]
+
+2_1 = [
+    "caliptra-api-2_1",
+    "caliptra-api-types-2_1",
+    "caliptra-auth-man-types-2_1",
+    "caliptra-drivers-2_1",
+    "caliptra-error-2_1",
+    "caliptra-registers-2_1",
+    "ureg-2_1",
+    "ocp-eat-2_1",
+]
+
+# Individual dependency activation
+caliptra-api-2_0 = ["dep:caliptra-api-2_0"]
+caliptra-api-2_1 = ["dep:caliptra-api-2_1"]
+caliptra-api-types-2_0 = ["dep:caliptra-api-types-2_0"]
+caliptra-api-types-2_1 = ["dep:caliptra-api-types-2_1"]
+caliptra-auth-man-types-2_0 = ["dep:caliptra-auth-man-types-2_0"]
+caliptra-auth-man-types-2_1 = ["dep:caliptra-auth-man-types-2_1"]
+caliptra-drivers-2_0 = ["dep:caliptra-drivers-2_0"]
+caliptra-drivers-2_1 = ["dep:caliptra-drivers-2_1"]
+caliptra-error-2_0 = ["dep:caliptra-error-2_0"]
+caliptra-error-2_1 = ["dep:caliptra-error-2_1"]
+caliptra-registers-2_0 = ["dep:caliptra-registers-2_0"]
+caliptra-registers-2_1 = ["dep:caliptra-registers-2_1"]
+ureg-2_0 = ["dep:ureg-2_0"]
+ureg-2_1 = ["dep:ureg-2_1"]
+ocp-eat-2_0 = ["dep:ocp-eat-2_0"]
+ocp-eat-2_1 = ["dep:ocp-eat-2_1"]

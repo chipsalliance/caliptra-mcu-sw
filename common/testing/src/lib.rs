@@ -13,7 +13,7 @@ pub mod mctp_vdm_transport;
 pub mod mctp_util;
 pub mod spdm_responder_validator;
 
-pub use caliptra_api_types::DeviceLifecycle;
+pub use caliptra_core_firmware::caliptra_api_types::DeviceLifecycle;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::time::Duration;

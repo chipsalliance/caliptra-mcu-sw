@@ -12,9 +12,9 @@ Abstract:
 
 --*/
 
-use caliptra_emu_bus::{Bus, Clock, Ram};
-use caliptra_emu_cpu::{Cpu, Pic, StepAction};
-use caliptra_emu_types::RvSize;
+use caliptra_core_tools::caliptra_emu_bus::{Bus, Clock, Ram};
+use caliptra_core_tools::caliptra_emu_cpu::{Cpu, Pic, StepAction};
+use caliptra_core_tools::caliptra_emu_types::RvSize;
 use clap::{arg, value_parser};
 use emulator_consts::DEFAULT_CPU_ARGS;
 use fs::TempDir;

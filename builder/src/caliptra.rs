@@ -5,20 +5,20 @@
 
 use crate::target_dir;
 use anyhow::{bail, Result};
-use caliptra_auth_man_gen::{
+use caliptra_core_tools::caliptra_auth_man_gen::{
     AuthManifestGenerator, AuthManifestGeneratorConfig, AuthManifestGeneratorKeyConfig,
 };
-use caliptra_auth_man_types::{
+use caliptra_core_tools::caliptra_auth_man_types::{
     Addr64, AuthManifestFlags, AuthManifestImageMetadata, AuthManifestPrivKeysConfig,
     AuthManifestPubKeysConfig, AuthorizationManifest, ImageMetadataFlags,
 };
-use caliptra_image_crypto::RustCrypto as Crypto;
-use caliptra_image_fake_keys::*;
-use caliptra_image_gen::{
+use caliptra_core_tools::caliptra_image_crypto::RustCrypto as Crypto;
+use caliptra_core_tools::caliptra_image_fake_keys::*;
+use caliptra_core_tools::caliptra_image_gen::{
     from_hw_format, ImageGenerator, ImageGeneratorConfig, ImageGeneratorCrypto,
     ImageGeneratorExecutable, ImageGeneratorOwnerConfig,
 };
-use caliptra_image_types::{
+use caliptra_core_tools::caliptra_image_types::{
     FwVerificationPqcKeyType, ImageBundle, ImageManifest, ImageRevision, IMAGE_MANIFEST_BYTE_SIZE,
 };
 use cargo_metadata::MetadataCommand;
@@ -474,9 +474,11 @@ impl CaliptraBuilder {
 
     fn compile_caliptra_rom_uncached(fpga: bool) -> Result<PathBuf> {
         let rom_bytes = if fpga {
-            caliptra_builder::build_firmware_rom(&caliptra_builder::firmware::ROM_FPGA_WITH_UART)?
+            caliptra_core_tools::caliptra_builder::build_firmware_rom(
+                &caliptra_core_tools::caliptra_builder::firmware::ROM_FPGA_WITH_UART,
+            )?
         } else {
-            caliptra_builder::rom_for_fw_integration_tests()?.to_vec()
+            caliptra_core_tools::caliptra_builder::rom_for_fw_integration_tests()?.to_vec()
         };
         let path = target_dir().join("caliptra-rom.bin");
         std::fs::write(&path, rom_bytes)?;
@@ -606,7 +608,7 @@ impl CaliptraBuilder {
             fmc: fmc_exe,
             runtime: rt_exe,
             fw_svn: manifest.header.svn,
-            vendor_config: caliptra_image_fake_keys::VENDOR_CONFIG_KEY_0,
+            vendor_config: caliptra_core_tools::caliptra_image_fake_keys::VENDOR_CONFIG_KEY_0,
             owner_config: Some(owner_config),
             pqc_key_type: FwVerificationPqcKeyType::LMS,
         })?;
@@ -618,21 +620,21 @@ impl CaliptraBuilder {
     }
 
     fn compile_caliptra_fw_uncached(fpga: bool) -> Result<(PathBuf, String)> {
-        let opts = caliptra_builder::ImageOptions {
+        let opts = caliptra_core_tools::caliptra_builder::ImageOptions {
             pqc_key_type: FwVerificationPqcKeyType::LMS,
             ..Default::default()
         };
 
         let bundle = if fpga {
-            caliptra_builder::build_and_sign_image(
-                &caliptra_builder::firmware::FMC_FPGA_WITH_UART,
-                &caliptra_builder::firmware::APP_WITH_UART_FPGA,
+            caliptra_core_tools::caliptra_builder::build_and_sign_image(
+                &caliptra_core_tools::caliptra_builder::firmware::FMC_FPGA_WITH_UART,
+                &caliptra_core_tools::caliptra_builder::firmware::APP_WITH_UART_FPGA,
                 opts,
             )?
         } else {
-            caliptra_builder::build_and_sign_image(
-                &caliptra_builder::firmware::FMC_WITH_UART,
-                &caliptra_builder::firmware::APP_WITH_UART,
+            caliptra_core_tools::caliptra_builder::build_and_sign_image(
+                &caliptra_core_tools::caliptra_builder::firmware::FMC_WITH_UART,
+                &caliptra_core_tools::caliptra_builder::firmware::APP_WITH_UART,
                 opts,
             )?
         };

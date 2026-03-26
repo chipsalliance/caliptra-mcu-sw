@@ -7,11 +7,9 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-caliptra-api.workspace = true
-caliptra-registers.workspace = true
+caliptra-core-firmware = { workspace = true, default-features = false, features = ["2_0"] }
 registers-generated.workspace = true
 tock-registers.workspace = true
-ureg.workspace = true
 zerocopy.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]

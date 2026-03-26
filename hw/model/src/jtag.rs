@@ -3,10 +3,10 @@
 use std::thread;
 use std::time::{Duration, SystemTime};
 
-use caliptra_api::checksum::calc_checksum;
-use caliptra_api::mailbox::CommandId;
-use caliptra_hw_model::jtag::CaliptraCoreReg;
-use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
+use caliptra_core_tools::caliptra_api::checksum::calc_checksum;
+use caliptra_core_tools::caliptra_api::mailbox::CommandId;
+use caliptra_core_tools::caliptra_hw_model::jtag::CaliptraCoreReg;
+use caliptra_core_tools::caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
 
 use anyhow::{anyhow, Context, Result};
 use int_enum::IntEnum;

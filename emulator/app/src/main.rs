@@ -12,7 +12,7 @@ Abstract:
 
 --*/
 
-use caliptra_emu_cpu::StepAction;
+use caliptra_core_tools::caliptra_emu_cpu::StepAction;
 use clap::Parser;
 use emulator::{gdb, Emulator, EmulatorArgs};
 use mcu_testing_common::MCU_RUNNING;

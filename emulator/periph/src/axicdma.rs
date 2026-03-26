@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::McuMailbox0Internal;
-use caliptra_emu_bus::{ActionHandle, Clock, Ram, ReadWriteRegister, Timer};
-use caliptra_emu_cpu::Irq;
+use caliptra_core_tools::caliptra_emu_bus::{ActionHandle, Clock, Ram, ReadWriteRegister, Timer};
+use caliptra_core_tools::caliptra_emu_cpu::Irq;
 use emulator_consts::{RAM_ORG, RAM_SIZE};
 use emulator_registers_generated::axicdma::{AxicdmaGenerated, AxicdmaPeripheral};
 use registers_generated::axicdma::bits::{AxicdmaBytesToTransfer, AxicdmaControl, AxicdmaStatus};
@@ -287,7 +287,10 @@ impl AxicdmaPeripheral for AxiCDMA {
         Some(&mut self.generated)
     }
 
-    fn set_dma_ram(&mut self, ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {
+    fn set_dma_ram(
+        &mut self,
+        ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
         self.mcu_sram = Some(ram);
     }
 
@@ -299,12 +302,16 @@ impl AxicdmaPeripheral for AxiCDMA {
 
     fn read_axicdma_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, AxicdmaControl::Register> {
-        caliptra_emu_bus::ReadWriteRegister::new(self.control.reg.get())
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<u32, AxicdmaControl::Register>
+    {
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.control.reg.get())
     }
     fn write_axicdma_control(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<u32, AxicdmaControl::Register>,
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            AxicdmaControl::Register,
+        >,
     ) {
         if self.status.reg.is_set(AxicdmaStatus::IrqError)
             && val.reg.is_set(AxicdmaControl::ErrIrqEn)
@@ -338,12 +345,13 @@ impl AxicdmaPeripheral for AxiCDMA {
     }
     fn read_axicdma_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, AxicdmaStatus::Register> {
-        caliptra_emu_bus::ReadWriteRegister::new(self.status.reg.get())
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<u32, AxicdmaStatus::Register>
+    {
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.status.reg.get())
     }
     fn write_axicdma_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::axicdma::bits::AxicdmaStatus::Register,
         >,
@@ -355,38 +363,44 @@ impl AxicdmaPeripheral for AxiCDMA {
             self.clear_interrupt(DmaCtrlIntType::Event);
         }
     }
-    fn read_axicdma_src_addr(&mut self) -> caliptra_emu_types::RvData {
+    fn read_axicdma_src_addr(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         self.src_addr_lsb.reg.get()
     }
-    fn write_axicdma_src_addr(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_axicdma_src_addr(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         self.src_addr_lsb.reg.set(val);
     }
-    fn read_axicdma_src_addr_msb(&mut self) -> caliptra_emu_types::RvData {
+    fn read_axicdma_src_addr_msb(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         self.src_addr_msb.reg.get()
     }
-    fn write_axicdma_src_addr_msb(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_axicdma_src_addr_msb(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         self.src_addr_msb.reg.set(val);
     }
-    fn read_axicdma_dst_addr(&mut self) -> caliptra_emu_types::RvData {
+    fn read_axicdma_dst_addr(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         self.dst_addr_lsb.reg.get()
     }
-    fn write_axicdma_dst_addr(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_axicdma_dst_addr(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         self.dst_addr_lsb.reg.set(val);
     }
-    fn read_axicdma_dst_addr_msb(&mut self) -> caliptra_emu_types::RvData {
+    fn read_axicdma_dst_addr_msb(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         self.dst_addr_msb.reg.get()
     }
-    fn write_axicdma_dst_addr_msb(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_axicdma_dst_addr_msb(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         self.dst_addr_msb.reg.set(val);
     }
     fn read_axicdma_bytes_to_transfer(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, AxicdmaBytesToTransfer::Register> {
-        caliptra_emu_bus::ReadWriteRegister::new(self.btt.reg.get())
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        AxicdmaBytesToTransfer::Register,
+    > {
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.btt.reg.get())
     }
     fn write_axicdma_bytes_to_transfer(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<u32, AxicdmaBytesToTransfer::Register>,
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            AxicdmaBytesToTransfer::Register,
+        >,
     ) {
         self.btt.reg.set(val.reg.get());
         self.status.reg.modify(AxicdmaStatus::Idle::CLEAR);
@@ -401,9 +415,9 @@ impl AxicdmaPeripheral for AxiCDMA {
 mod test {
     use super::*;
 
-    use caliptra_emu_bus::{Bus, Clock};
-    use caliptra_emu_cpu::Pic;
-    use caliptra_emu_types::RvSize;
+    use caliptra_core_tools::caliptra_emu_bus::{Bus, Clock};
+    use caliptra_core_tools::caliptra_emu_cpu::Pic;
+    use caliptra_core_tools::caliptra_emu_types::RvSize;
     use emulator_consts::{EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE};
     use emulator_registers_generated::root_bus::AutoRootBus;
     use registers_generated::axicdma::bits::{AxicdmaControl, AxicdmaStatus};

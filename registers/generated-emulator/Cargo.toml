@@ -7,7 +7,6 @@ edition.workspace = true
 authors.workspace = true
 
 [dependencies]
-caliptra-emu-bus.workspace = true
-caliptra-emu-types.workspace = true
+caliptra-core-tools = { workspace = true, features = ["2_0"] }
 registers-generated.workspace = true
 tock-registers.workspace = true

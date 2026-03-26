@@ -7,9 +7,7 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-caliptra-api.workspace = true
-caliptra-error.workspace = true
-caliptra-auth-man-types.workspace = true
+caliptra-core-firmware = { workspace = true, default-features = false, features = ["2_0"] }
 critical-section.workspace = true
 embassy-executor.workspace = true
 libapi-caliptra.workspace = true

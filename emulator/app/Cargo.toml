@@ -9,15 +9,9 @@ edition = "2021"
 
 [dependencies]
 bitfield.workspace = true
-caliptra-emu-bus.workspace = true
-caliptra-emu-cpu.workspace = true
-caliptra-emu-periph.workspace = true
+caliptra-core-tools.workspace = true
 caliptra-util-host-mailbox-test-config.workspace = true
 caliptra-mailbox-server.workspace = true
-caliptra-emu-types.workspace = true
-caliptra-api-types.workspace = true
-caliptra-image-types.workspace = true
-caliptra-registers.workspace = true
 chrono.workspace = true
 clap.workspace = true
 clap-num.workspace = true
@@ -62,7 +56,7 @@ uuid.workspace = true
 zerocopy.workspace = true
 
 [dev-dependencies]
-caliptra-test.workspace = true
+caliptra-core-tools.workspace = true
 
 [[bin]]
 name = "emulator"

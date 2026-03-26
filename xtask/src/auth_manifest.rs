@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::Result;
-use caliptra_auth_man_types::AuthorizationManifest;
+use caliptra_core_tools::caliptra_auth_man_types::AuthorizationManifest;
 use clap::Subcommand;
 use hex::ToHex;
 use mcu_builder::{CaliptraBuilder, ImageCfg};

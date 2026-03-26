@@ -4,8 +4,8 @@
 mod test {
     use std::path::PathBuf;
 
-    use caliptra_hw_model::lcc::{LcCtrlReg, LcCtrlStatus};
-    use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
+    use caliptra_core_tools::caliptra_hw_model::lcc::{LcCtrlReg, LcCtrlStatus};
+    use caliptra_core_tools::caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
     use mcu_builder::FirmwareBinaries;
     use mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel};
     use mcu_rom_common::LifecycleControllerState;

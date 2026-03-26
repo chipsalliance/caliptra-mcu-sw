@@ -8,11 +8,11 @@ mod test {
 
     use crate::jtag::test::{debug_is_unlocked, ss_setup, verify_execute_from_sram};
 
-    use caliptra_api::mailbox::CommandId;
-    use caliptra_hw_model::jtag::CaliptraCoreReg;
-    use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
-    use caliptra_hw_model::HwModel;
-    use caliptra_hw_model::DEFAULT_MANUF_DEBUG_UNLOCK_RAW_TOKEN;
+    use caliptra_core_tools::caliptra_api::mailbox::CommandId;
+    use caliptra_core_tools::caliptra_hw_model::jtag::CaliptraCoreReg;
+    use caliptra_core_tools::caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
+    use caliptra_core_tools::caliptra_hw_model::HwModel;
+    use caliptra_core_tools::caliptra_hw_model::DEFAULT_MANUF_DEBUG_UNLOCK_RAW_TOKEN;
     use mcu_hw_model::jtag::{jtag_get_caliptra_mailbox_resp, jtag_send_caliptra_mailbox_cmd};
     use mcu_rom_common::LifecycleControllerState;
 

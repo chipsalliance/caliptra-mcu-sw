@@ -3,16 +3,17 @@
 use anyhow::{bail, Result};
 pub use api::mailbox::mbox_write_fifo;
 pub use api_types::{DbgManufServiceRegReq, DeviceLifecycle, Fuses, U4};
-use caliptra_api::{self as api, SocManager};
-use caliptra_api_types as api_types;
-use caliptra_emu_bus::Event;
-pub use caliptra_emu_cpu::{CodeRange, ImageInfo, StackInfo, StackRange};
-use caliptra_hw_model::{ExitStatus, ModelError, Output};
-use caliptra_hw_model_types::{
+use caliptra_core_tools::caliptra_api::{self as api, SocManager};
+use caliptra_core_tools::caliptra_api_types as api_types;
+use caliptra_core_tools::caliptra_emu_bus::Event;
+pub use caliptra_core_tools::caliptra_emu_cpu::{CodeRange, ImageInfo, StackInfo, StackRange};
+use caliptra_core_tools::caliptra_hw_model::{ExitStatus, ModelError, Output};
+use caliptra_core_tools::caliptra_hw_model_types::{
     EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
 };
-use caliptra_image_types::FwVerificationPqcKeyType;
-use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
+use caliptra_core_tools::caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_core_tools::caliptra_registers::mcu_mbox0::enums::MboxStatusE;
+use caliptra_core_tools::ureg::MmioMut;
 pub use mcu_mgr::McuManager;
 use mcu_rom_common::{
     LifecycleControllerState, LifecycleRawTokens, LifecycleToken, McuBootMilestones,
@@ -27,7 +28,6 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
-use ureg::MmioMut;
 pub use vmem::read_otp_vmem_data;
 
 // Re-export flash image builder for creating flash images from firmware bytes
@@ -793,10 +793,12 @@ pub trait McuHwModel {
     }
 }
 
-fn mbox_read_fifo(mbox: caliptra_registers::mbox::RegisterBlock<impl MmioMut>) -> Vec<u8> {
+fn mbox_read_fifo(
+    mbox: caliptra_core_tools::caliptra_registers::mbox::RegisterBlock<impl MmioMut>,
+) -> Vec<u8> {
     let dlen = mbox.dlen().read() as usize;
     let mut buf = vec![0; dlen];
-    let _ = caliptra_api::mailbox::mbox_read_fifo(mbox, buf.as_mut_slice());
+    let _ = caliptra_core_tools::caliptra_api::mailbox::mbox_read_fifo(mbox, buf.as_mut_slice());
     buf
 }
 

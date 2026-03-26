@@ -9,7 +9,7 @@ mod pldm_fdops_mock;
 
 mod config;
 
-use caliptra_api::mailbox::{
+use caliptra_core_firmware::caliptra_api::mailbox::{
     ActivateFirmwareReq, ActivateFirmwareResp, CommandId, MailboxReqHeader,
 };
 use core::fmt::Write;

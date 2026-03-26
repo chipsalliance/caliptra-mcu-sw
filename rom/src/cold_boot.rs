@@ -20,10 +20,12 @@ use crate::{
     verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, AxiUsers, BootFlow, DotBlob,
     McuBootMilestones, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
-use caliptra_api::mailbox::{CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader};
-use caliptra_api::CaliptraApiError;
-use caliptra_api::SocManager;
-use caliptra_api_types::{DeviceLifecycle, SecurityState};
+use caliptra_core_firmware::caliptra_api::mailbox::{
+    CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader,
+};
+use caliptra_core_firmware::caliptra_api::CaliptraApiError;
+use caliptra_core_firmware::caliptra_api::SocManager;
+use caliptra_core_firmware::caliptra_api_types::{DeviceLifecycle, SecurityState};
 use core::fmt::Write;
 use core::ops::Deref;
 use mcu_error::McuError;
@@ -55,7 +57,8 @@ impl ColdBoot {
                 ..Default::default()
             };
             let req = req.as_bytes();
-            let chksum = caliptra_api::calc_checksum(CommandId::FE_PROG.into(), req);
+            let chksum =
+                caliptra_core_firmware::caliptra_api::calc_checksum(CommandId::FE_PROG.into(), req);
             // set the checksum
             let req = FeProgReq {
                 hdr: MailboxReqHeader { chksum },

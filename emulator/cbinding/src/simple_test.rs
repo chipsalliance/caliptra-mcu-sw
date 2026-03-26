@@ -12,7 +12,7 @@ Abstract:
 
 --*/
 
-use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_core_tools::caliptra_image_types::FwVerificationPqcKeyType;
 use emulator::{Emulator, EmulatorArgs};
 use mcu_testing_common::DeviceLifecycle;
 

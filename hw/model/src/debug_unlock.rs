@@ -6,12 +6,12 @@ use std::time::Duration;
 use crate::jtag::{jtag_get_caliptra_mailbox_resp, jtag_send_caliptra_mailbox_cmd};
 use crate::DefaultHwModel;
 
-use caliptra_api::mailbox::{
+use caliptra_core_tools::caliptra_api::mailbox::{
     CommandId, ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockToken,
 };
-use caliptra_hw_model::jtag::CaliptraCoreReg;
-use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
-use caliptra_hw_model::HwModel;
+use caliptra_core_tools::caliptra_hw_model::jtag::CaliptraCoreReg;
+use caliptra_core_tools::caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
+use caliptra_core_tools::caliptra_hw_model::HwModel;
 
 use anyhow::{Context, Result};
 use ecdsa::signature::hazmat::PrehashSigner;

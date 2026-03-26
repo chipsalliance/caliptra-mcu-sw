@@ -5,14 +5,24 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait MciPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
-    fn set_dma_rom_sram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
+    fn set_dma_ram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
+    fn set_dma_rom_sram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
     fn register_event_channels(
         &mut self,
-        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_caliptra: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
-        _events_to_mcu: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
+        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_caliptra: std::sync::mpsc::Receiver<
+            caliptra_core_tools::caliptra_emu_bus::Event,
+        >,
+        _events_to_mcu: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_core_tools::caliptra_emu_bus::Event>,
     ) {
     }
     fn poll(&mut self) {}
@@ -21,7 +31,7 @@ pub trait MciPeripheral {
     fn generated(&mut self) -> Option<&mut MciGenerated> {
         None
     }
-    fn read_mcu_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mcu_sram(&mut self, index: usize) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mcu_sram[{}]",
@@ -33,7 +43,11 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mcu_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mcu_sram(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mcu_sram[{}] = 0x{:08x}",
@@ -44,7 +58,7 @@ pub trait MciPeripheral {
             generated.write_mcu_sram(val, index);
         }
     }
-    fn read_mci_reg_hw_capabilities(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_hw_capabilities(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_hw_capabilities");
         }
@@ -53,7 +67,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_hw_capabilities(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_hw_capabilities(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_hw_capabilities = 0x{:08x}",
@@ -64,7 +81,7 @@ pub trait MciPeripheral {
             generated.write_mci_reg_hw_capabilities(val);
         }
     }
-    fn read_mci_reg_fw_capabilities(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_capabilities(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_fw_capabilities");
         }
@@ -73,7 +90,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_fw_capabilities(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_fw_capabilities(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_fw_capabilities = 0x{:08x}",
@@ -86,19 +106,21 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_cap_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::CapLock::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::CapLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_cap_lock");
         }
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_cap_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_cap_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::CapLock::Register,
         >,
@@ -115,17 +137,22 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_hw_rev_id(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwRevId::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::HwRevId::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_hw_rev_id");
         }
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_hw_rev_id();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_mci_reg_fw_rev_id(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_rev_id(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mci_reg_fw_rev_id[{}]",
@@ -137,7 +164,11 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_fw_rev_id(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mci_reg_fw_rev_id(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_fw_rev_id[{}] = 0x{:08x}",
@@ -150,29 +181,33 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_hw_config0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig0::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::HwConfig0::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_hw_config0");
         }
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_hw_config0();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_hw_config1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig1::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::HwConfig1::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_hw_config1");
         }
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_hw_config1();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_mci_reg_mcu_ifu_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_ifu_axi_user(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_mcu_ifu_axi_user");
         }
@@ -181,7 +216,7 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn read_mci_reg_mcu_lsu_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_lsu_axi_user(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_mcu_lsu_axi_user");
         }
@@ -190,7 +225,9 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn read_mci_reg_mcu_sram_config_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_sram_config_axi_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mci_reg_mcu_sram_config_axi_user"
@@ -201,7 +238,9 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn read_mci_reg_mci_soc_config_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mci_soc_config_axi_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mci_reg_mci_soc_config_axi_user"
@@ -212,7 +251,7 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn read_mci_reg_fw_flow_status(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_flow_status(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_fw_flow_status");
         }
@@ -221,7 +260,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_fw_flow_status(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_fw_flow_status(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_fw_flow_status = 0x{:08x}",
@@ -234,7 +276,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_hw_flow_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::HwFlowStatus::Register,
     > {
@@ -244,11 +286,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_hw_flow_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_reset_reason(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::ResetReason::Register,
     > {
@@ -258,11 +300,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_reset_reason();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_reset_reason(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::ResetReason::Register,
         >,
@@ -279,7 +321,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_reset_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::ResetStatus::Register,
     > {
@@ -289,11 +331,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_reset_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_security_state(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::SecurityState::Register,
     > {
@@ -303,11 +345,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_security_state();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_hw_error_fatal(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::HwErrorFatal::Register,
     > {
@@ -317,11 +359,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_hw_error_fatal();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_hw_error_fatal(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::HwErrorFatal::Register,
         >,
@@ -338,7 +380,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_agg_error_fatal(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::AggErrorFatal::Register,
     > {
@@ -348,11 +390,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_agg_error_fatal();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_agg_error_fatal(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::AggErrorFatal::Register,
         >,
@@ -369,7 +411,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_hw_error_non_fatal(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::HwErrorNonFatal::Register,
     > {
@@ -379,11 +421,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_hw_error_non_fatal();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_hw_error_non_fatal(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::HwErrorNonFatal::Register,
         >,
@@ -397,7 +439,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_agg_error_non_fatal(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::AggErrorNonFatal::Register,
     > {
@@ -407,11 +449,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_agg_error_non_fatal();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_agg_error_non_fatal(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::AggErrorNonFatal::Register,
         >,
@@ -423,7 +465,7 @@ pub trait MciPeripheral {
             generated.write_mci_reg_agg_error_non_fatal(val);
         }
     }
-    fn read_mci_reg_fw_error_fatal(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_error_fatal(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_fw_error_fatal");
         }
@@ -432,7 +474,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_fw_error_fatal(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_fw_error_fatal(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_fw_error_fatal = 0x{:08x}",
@@ -443,7 +488,9 @@ pub trait MciPeripheral {
             generated.write_mci_reg_fw_error_fatal(val);
         }
     }
-    fn read_mci_reg_fw_error_non_fatal(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_error_non_fatal(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_fw_error_non_fatal");
         }
@@ -452,7 +499,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_fw_error_non_fatal(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_fw_error_non_fatal(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_fw_error_non_fatal = 0x{:08x}" , val);
         }
@@ -460,7 +510,7 @@ pub trait MciPeripheral {
             generated.write_mci_reg_fw_error_non_fatal(val);
         }
     }
-    fn read_mci_reg_hw_error_enc(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_hw_error_enc(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_hw_error_enc");
         }
@@ -469,7 +519,7 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_hw_error_enc(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_hw_error_enc(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_hw_error_enc = 0x{:08x}",
@@ -480,7 +530,7 @@ pub trait MciPeripheral {
             generated.write_mci_reg_hw_error_enc(val);
         }
     }
-    fn read_mci_reg_fw_error_enc(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_error_enc(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_fw_error_enc");
         }
@@ -489,7 +539,7 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_fw_error_enc(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_fw_error_enc(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_fw_error_enc = 0x{:08x}",
@@ -500,7 +550,10 @@ pub trait MciPeripheral {
             generated.write_mci_reg_fw_error_enc(val);
         }
     }
-    fn read_mci_reg_fw_extended_error_info(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_extended_error_info(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mci_reg_fw_extended_error_info[{}]",
@@ -514,7 +567,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_fw_extended_error_info(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -526,7 +579,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_internal_hw_error_fatal_mask(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
     > {
@@ -536,11 +589,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_internal_hw_error_fatal_mask();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_internal_hw_error_fatal_mask(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
         >,
@@ -554,7 +607,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_internal_hw_error_non_fatal_mask(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
     > {
@@ -564,11 +617,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_internal_hw_error_non_fatal_mask();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_internal_hw_error_non_fatal_mask(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
         >,
@@ -582,7 +635,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_internal_agg_error_fatal_mask(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
     > {
@@ -592,11 +645,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_internal_agg_error_fatal_mask();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_internal_agg_error_fatal_mask(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
         >,
@@ -610,7 +663,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_internal_agg_error_non_fatal_mask(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
     > {
@@ -620,11 +673,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_internal_agg_error_non_fatal_mask();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_internal_agg_error_non_fatal_mask(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
         >,
@@ -636,7 +689,9 @@ pub trait MciPeripheral {
             generated.write_mci_reg_internal_agg_error_non_fatal_mask(val);
         }
     }
-    fn read_mci_reg_internal_fw_error_fatal_mask(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_internal_fw_error_fatal_mask(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_internal_fw_error_fatal_mask");
         }
@@ -645,7 +700,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_internal_fw_error_fatal_mask(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_internal_fw_error_fatal_mask(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_internal_fw_error_fatal_mask = 0x{:08x}" , val);
         }
@@ -653,7 +711,9 @@ pub trait MciPeripheral {
             generated.write_mci_reg_internal_fw_error_fatal_mask(val);
         }
     }
-    fn read_mci_reg_internal_fw_error_non_fatal_mask(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_internal_fw_error_non_fatal_mask(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_internal_fw_error_non_fatal_mask");
         }
@@ -662,7 +722,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_internal_fw_error_non_fatal_mask(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_internal_fw_error_non_fatal_mask(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_internal_fw_error_non_fatal_mask = 0x{:08x}" , val);
         }
@@ -672,7 +735,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_wdt_timer1_en(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::WdtTimer1En::Register,
     > {
@@ -682,11 +745,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_wdt_timer1_en();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_wdt_timer1_en(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::WdtTimer1En::Register,
         >,
@@ -703,7 +766,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_wdt_timer1_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::WdtTimer1Ctrl::Register,
     > {
@@ -713,11 +776,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_wdt_timer1_ctrl();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_wdt_timer1_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::WdtTimer1Ctrl::Register,
         >,
@@ -735,7 +798,7 @@ pub trait MciPeripheral {
     fn read_mci_reg_wdt_timer1_timeout_period(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_wdt_timer1_timeout_period[{}]" , index);
         }
@@ -746,7 +809,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_wdt_timer1_timeout_period(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -758,7 +821,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_wdt_timer2_en(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::WdtTimer2En::Register,
     > {
@@ -768,11 +831,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_wdt_timer2_en();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_wdt_timer2_en(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::WdtTimer2En::Register,
         >,
@@ -789,7 +852,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_wdt_timer2_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::WdtTimer2Ctrl::Register,
     > {
@@ -799,11 +862,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_wdt_timer2_ctrl();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_wdt_timer2_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::WdtTimer2Ctrl::Register,
         >,
@@ -821,7 +884,7 @@ pub trait MciPeripheral {
     fn read_mci_reg_wdt_timer2_timeout_period(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_wdt_timer2_timeout_period[{}]" , index);
         }
@@ -832,7 +895,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_wdt_timer2_timeout_period(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -844,17 +907,22 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_wdt_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtStatus::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::WdtStatus::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_wdt_status");
         }
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_wdt_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_mci_reg_wdt_cfg(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_wdt_cfg(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mci_reg_wdt_cfg[{}]",
@@ -866,7 +934,11 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_wdt_cfg(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mci_reg_wdt_cfg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_wdt_cfg[{}] = 0x{:08x}",
@@ -877,7 +949,7 @@ pub trait MciPeripheral {
             generated.write_mci_reg_wdt_cfg(val, index);
         }
     }
-    fn read_mci_reg_mcu_timer_config(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_timer_config(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_mcu_timer_config");
         }
@@ -886,7 +958,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_mcu_timer_config(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_timer_config(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_mcu_timer_config = 0x{:08x}" , val);
         }
@@ -894,7 +969,7 @@ pub trait MciPeripheral {
             generated.write_mci_reg_mcu_timer_config(val);
         }
     }
-    fn read_mci_reg_mcu_rv_mtime_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_rv_mtime_l(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_mcu_rv_mtime_l");
         }
@@ -903,7 +978,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_mcu_rv_mtime_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_rv_mtime_l(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_mcu_rv_mtime_l = 0x{:08x}",
@@ -914,7 +992,7 @@ pub trait MciPeripheral {
             generated.write_mci_reg_mcu_rv_mtime_l(val);
         }
     }
-    fn read_mci_reg_mcu_rv_mtime_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_rv_mtime_h(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_mcu_rv_mtime_h");
         }
@@ -923,7 +1001,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_mcu_rv_mtime_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_rv_mtime_h(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_mcu_rv_mtime_h = 0x{:08x}",
@@ -934,7 +1015,9 @@ pub trait MciPeripheral {
             generated.write_mci_reg_mcu_rv_mtime_h(val);
         }
     }
-    fn read_mci_reg_mcu_rv_mtimecmp_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_rv_mtimecmp_l(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_mcu_rv_mtimecmp_l");
         }
@@ -943,7 +1026,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_mcu_rv_mtimecmp_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_rv_mtimecmp_l(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_mcu_rv_mtimecmp_l = 0x{:08x}" , val);
         }
@@ -951,7 +1037,9 @@ pub trait MciPeripheral {
             generated.write_mci_reg_mcu_rv_mtimecmp_l(val);
         }
     }
-    fn read_mci_reg_mcu_rv_mtimecmp_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_rv_mtimecmp_h(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_mcu_rv_mtimecmp_h");
         }
@@ -960,7 +1048,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_mcu_rv_mtimecmp_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_rv_mtimecmp_h(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_mcu_rv_mtimecmp_h = 0x{:08x}" , val);
         }
@@ -970,7 +1061,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_reset_request(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::ResetRequest::Register,
     > {
@@ -980,11 +1071,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_reset_request();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_reset_request(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::ResetRequest::Register,
         >,
@@ -1001,19 +1092,24 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_mci_bootfsm_go(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Go::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_mci_bootfsm_go");
         }
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_mci_bootfsm_go();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_mci_bootfsm_go(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>,
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Go::Register,
+        >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -1027,19 +1123,24 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_cptra_boot_go(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Go::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_cptra_boot_go");
         }
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_cptra_boot_go();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_cptra_boot_go(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>,
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Go::Register,
+        >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -1053,7 +1154,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_fw_sram_exec_region_size(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::FwSramExecRegionSize::Register,
     > {
@@ -1065,11 +1166,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_fw_sram_exec_region_size();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_fw_sram_exec_region_size(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::FwSramExecRegionSize::Register,
         >,
@@ -1081,7 +1182,7 @@ pub trait MciPeripheral {
             generated.write_mci_reg_fw_sram_exec_region_size(val);
         }
     }
-    fn read_mci_reg_mcu_nmi_vector(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_nmi_vector(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_mcu_nmi_vector");
         }
@@ -1090,7 +1191,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_mcu_nmi_vector(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_nmi_vector(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_mcu_nmi_vector = 0x{:08x}",
@@ -1101,7 +1205,7 @@ pub trait MciPeripheral {
             generated.write_mci_reg_mcu_nmi_vector(val);
         }
     }
-    fn read_mci_reg_mcu_reset_vector(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_reset_vector(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_mcu_reset_vector");
         }
@@ -1110,7 +1214,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_mcu_reset_vector(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_reset_vector(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_mcu_reset_vector = 0x{:08x}" , val);
         }
@@ -1118,7 +1225,10 @@ pub trait MciPeripheral {
             generated.write_mci_reg_mcu_reset_vector(val);
         }
     }
-    fn read_mci_reg_mbox0_valid_axi_user(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mbox0_valid_axi_user(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mci_reg_mbox0_valid_axi_user[{}]",
@@ -1132,7 +1242,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_mbox0_valid_axi_user(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1145,7 +1255,7 @@ pub trait MciPeripheral {
     fn read_mci_reg_mbox0_axi_user_lock(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxxAxiUserLock::Register,
     > {
@@ -1158,11 +1268,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_mbox0_axi_user_lock(index);
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_mbox0_axi_user_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxxAxiUserLock::Register,
         >,
@@ -1175,7 +1285,10 @@ pub trait MciPeripheral {
             generated.write_mci_reg_mbox0_axi_user_lock(val, index);
         }
     }
-    fn read_mci_reg_mbox1_valid_axi_user(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mbox1_valid_axi_user(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mci_reg_mbox1_valid_axi_user[{}]",
@@ -1189,7 +1302,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_mbox1_valid_axi_user(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1202,7 +1315,7 @@ pub trait MciPeripheral {
     fn read_mci_reg_mbox1_axi_user_lock(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxxAxiUserLock::Register,
     > {
@@ -1215,11 +1328,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_mbox1_axi_user_lock(index);
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_mbox1_axi_user_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxxAxiUserLock::Register,
         >,
@@ -1232,7 +1345,10 @@ pub trait MciPeripheral {
             generated.write_mci_reg_mbox1_axi_user_lock(val, index);
         }
     }
-    fn read_mci_reg_soc_dft_en(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_soc_dft_en(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mci_reg_soc_dft_en[{}]",
@@ -1244,7 +1360,11 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_soc_dft_en(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mci_reg_soc_dft_en(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_soc_dft_en[{}] = 0x{:08x}",
@@ -1255,7 +1375,10 @@ pub trait MciPeripheral {
             generated.write_mci_reg_soc_dft_en(val, index);
         }
     }
-    fn read_mci_reg_soc_hw_debug_en(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_soc_hw_debug_en(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mci_reg_soc_hw_debug_en[{}]",
@@ -1267,7 +1390,11 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_soc_hw_debug_en(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mci_reg_soc_hw_debug_en(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_soc_hw_debug_en[{}] = 0x{:08x}" , index , val);
         }
@@ -1275,7 +1402,10 @@ pub trait MciPeripheral {
             generated.write_mci_reg_soc_hw_debug_en(val, index);
         }
     }
-    fn read_mci_reg_soc_prod_debug_state(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_soc_prod_debug_state(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mci_reg_soc_prod_debug_state[{}]",
@@ -1289,7 +1419,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_soc_prod_debug_state(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1299,7 +1429,9 @@ pub trait MciPeripheral {
             generated.write_mci_reg_soc_prod_debug_state(val, index);
         }
     }
-    fn read_mci_reg_fc_fips_zerozation(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fc_fips_zerozation(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_fc_fips_zerozation");
         }
@@ -1308,7 +1440,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_fc_fips_zerozation(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_fc_fips_zerozation(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_fc_fips_zerozation = 0x{:08x}" , val);
         }
@@ -1316,7 +1451,10 @@ pub trait MciPeripheral {
             generated.write_mci_reg_fc_fips_zerozation(val);
         }
     }
-    fn read_mci_reg_generic_input_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_generic_input_wires(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mci_reg_generic_input_wires[{}]",
@@ -1328,7 +1466,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn read_mci_reg_generic_output_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_generic_output_wires(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mci_reg_generic_output_wires[{}]",
@@ -1342,7 +1483,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_generic_output_wires(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1352,7 +1493,7 @@ pub trait MciPeripheral {
             generated.write_mci_reg_generic_output_wires(val, index);
         }
     }
-    fn read_mci_reg_debug_in(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_debug_in(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_debug_in");
         }
@@ -1361,7 +1502,7 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_debug_in(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_debug_in(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_debug_in = 0x{:08x}",
@@ -1372,7 +1513,7 @@ pub trait MciPeripheral {
             generated.write_mci_reg_debug_in(val);
         }
     }
-    fn read_mci_reg_debug_out(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_debug_out(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_debug_out");
         }
@@ -1381,7 +1522,7 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mci_reg_debug_out(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_debug_out(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mci_reg_debug_out = 0x{:08x}",
@@ -1394,7 +1535,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_ss_debug_intent(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::SsDebugIntent::Register,
     > {
@@ -1404,11 +1545,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_ss_debug_intent();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_ss_config_done_sticky(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::SsConfigDone::Register,
     > {
@@ -1420,11 +1561,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_ss_config_done_sticky();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_ss_config_done_sticky(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::SsConfigDone::Register,
         >,
@@ -1438,7 +1579,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_ss_config_done(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::SsConfigDone::Register,
     > {
@@ -1448,11 +1589,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_ss_config_done();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_ss_config_done(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::SsConfigDone::Register,
         >,
@@ -1470,7 +1611,7 @@ pub trait MciPeripheral {
     fn read_mci_reg_prod_debug_unlock_pk_hash_reg(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_prod_debug_unlock_pk_hash_reg[{}]" , index);
         }
@@ -1481,7 +1622,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_prod_debug_unlock_pk_hash_reg(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1493,7 +1634,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_global_intr_en_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::GlobalIntrEnT::Register,
     > {
@@ -1503,11 +1644,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_global_intr_en_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_global_intr_en_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::GlobalIntrEnT::Register,
         >,
@@ -1521,7 +1662,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error0_intr_en_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error0IntrEnT::Register,
     > {
@@ -1531,11 +1672,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error0_intr_en_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_error0_intr_en_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error0IntrEnT::Register,
         >,
@@ -1549,7 +1690,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error1_intr_en_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error1IntrEnT::Register,
     > {
@@ -1559,11 +1700,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error1_intr_en_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_error1_intr_en_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error1IntrEnT::Register,
         >,
@@ -1577,7 +1718,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif0_intr_en_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif0IntrEnT::Register,
     > {
@@ -1587,11 +1728,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif0_intr_en_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_notif0_intr_en_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif0IntrEnT::Register,
         >,
@@ -1605,7 +1746,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif1_intr_en_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif1IntrEnT::Register,
     > {
@@ -1615,11 +1756,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif1_intr_en_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_notif1_intr_en_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif1IntrEnT::Register,
         >,
@@ -1633,7 +1774,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_global_intr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::GlobalIntrT::Register,
     > {
@@ -1643,11 +1784,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_global_intr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_global_intr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::GlobalIntrT::Register,
     > {
@@ -1657,11 +1798,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_global_intr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error0_internal_intr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error0IntrT::Register,
     > {
@@ -1671,11 +1812,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error0_internal_intr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_error0_internal_intr_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error0IntrT::Register,
         >,
@@ -1689,7 +1830,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error1_internal_intr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error1IntrT::Register,
     > {
@@ -1699,11 +1840,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error1_internal_intr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_error1_internal_intr_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error1IntrT::Register,
         >,
@@ -1717,7 +1858,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif0_internal_intr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif0IntrT::Register,
     > {
@@ -1727,11 +1868,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif0_internal_intr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_notif0_internal_intr_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif0IntrT::Register,
         >,
@@ -1745,7 +1886,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif1_internal_intr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif1IntrT::Register,
     > {
@@ -1755,11 +1896,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif1_internal_intr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_notif1_internal_intr_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif1IntrT::Register,
         >,
@@ -1773,7 +1914,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error0_intr_trig_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error0IntrTrigT::Register,
     > {
@@ -1783,11 +1924,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error0_intr_trig_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_error0_intr_trig_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error0IntrTrigT::Register,
         >,
@@ -1801,7 +1942,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error1_intr_trig_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error1IntrTrigT::Register,
     > {
@@ -1811,11 +1952,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error1_intr_trig_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_error1_intr_trig_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error1IntrTrigT::Register,
         >,
@@ -1829,7 +1970,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif0_intr_trig_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif0IntrTrigT::Register,
     > {
@@ -1839,11 +1980,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif0_intr_trig_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_notif0_intr_trig_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif0IntrTrigT::Register,
         >,
@@ -1857,7 +1998,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif1_intr_trig_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif1IntrTrigT::Register,
     > {
@@ -1867,11 +2008,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif1_intr_trig_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mci_reg_intr_block_rf_notif1_intr_trig_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif1IntrTrigT::Register,
         >,
@@ -1885,7 +2026,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_internal_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_internal_intr_count_r");
         }
@@ -1896,7 +2037,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_internal_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_internal_intr_count_r = 0x{:08x}" , val);
@@ -1907,7 +2048,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r");
         }
@@ -1918,7 +2059,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r = 0x{:08x}" , val);
@@ -1929,7 +2070,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r");
         }
@@ -1940,7 +2081,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r = 0x{:08x}" , val);
@@ -1951,7 +2092,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_r");
         }
@@ -1963,7 +2104,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_r = 0x{:08x}" , val);
@@ -1975,7 +2116,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_r");
         }
@@ -1986,7 +2127,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_r = 0x{:08x}" , val);
@@ -1997,7 +2138,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_r");
         }
@@ -2008,7 +2149,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_r = 0x{:08x}" , val);
@@ -2019,7 +2160,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_r");
         }
@@ -2030,7 +2171,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_r = 0x{:08x}" , val);
@@ -2041,7 +2182,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_r");
         }
@@ -2052,7 +2193,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_r = 0x{:08x}" , val);
@@ -2063,7 +2204,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_r");
         }
@@ -2074,7 +2215,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_r = 0x{:08x}" , val);
@@ -2085,7 +2226,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_r");
         }
@@ -2096,7 +2237,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_r = 0x{:08x}" , val);
@@ -2107,7 +2248,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_r");
         }
@@ -2118,7 +2259,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_r = 0x{:08x}" , val);
@@ -2129,7 +2270,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_r");
         }
@@ -2140,7 +2281,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_r = 0x{:08x}" , val);
@@ -2151,7 +2292,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_r");
         }
@@ -2162,7 +2303,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_r = 0x{:08x}" , val);
@@ -2173,7 +2314,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_r");
         }
@@ -2184,7 +2325,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_r = 0x{:08x}" , val);
@@ -2195,7 +2336,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_r");
         }
@@ -2206,7 +2347,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_r = 0x{:08x}" , val);
@@ -2217,7 +2358,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_r");
         }
@@ -2228,7 +2369,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_r = 0x{:08x}" , val);
@@ -2239,7 +2380,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_r");
         }
@@ -2250,7 +2391,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_r = 0x{:08x}" , val);
@@ -2261,7 +2402,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_r");
         }
@@ -2272,7 +2413,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_r = 0x{:08x}" , val);
@@ -2283,7 +2424,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_r");
         }
@@ -2294,7 +2435,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_r = 0x{:08x}" , val);
@@ -2305,7 +2446,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_r");
         }
@@ -2316,7 +2457,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_r = 0x{:08x}" , val);
@@ -2327,7 +2468,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_r");
         }
@@ -2338,7 +2479,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_r = 0x{:08x}" , val);
@@ -2349,7 +2490,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_r");
         }
@@ -2360,7 +2501,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_r = 0x{:08x}" , val);
@@ -2371,7 +2512,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_r");
         }
@@ -2382,7 +2523,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_r = 0x{:08x}" , val);
@@ -2393,7 +2534,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_r");
         }
@@ -2404,7 +2545,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_r = 0x{:08x}" , val);
@@ -2415,7 +2556,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_r");
         }
@@ -2426,7 +2567,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_r = 0x{:08x}" , val);
@@ -2437,7 +2578,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_r");
         }
@@ -2448,7 +2589,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_r = 0x{:08x}" , val);
@@ -2459,7 +2600,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_r");
         }
@@ -2470,7 +2611,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_r = 0x{:08x}" , val);
@@ -2481,7 +2622,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_r");
         }
@@ -2492,7 +2633,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_r = 0x{:08x}" , val);
@@ -2503,7 +2644,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_r");
         }
@@ -2514,7 +2655,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_r = 0x{:08x}" , val);
@@ -2525,7 +2666,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_r");
         }
@@ -2536,7 +2677,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_r = 0x{:08x}" , val);
@@ -2547,7 +2688,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_r");
         }
@@ -2558,7 +2699,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_r = 0x{:08x}" , val);
@@ -2569,7 +2710,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_r");
         }
@@ -2580,7 +2721,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_r = 0x{:08x}" , val);
@@ -2591,7 +2732,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_r");
         }
@@ -2602,7 +2743,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_r = 0x{:08x}" , val);
@@ -2613,7 +2754,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_r");
         }
@@ -2624,7 +2765,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_r = 0x{:08x}" , val);
@@ -2635,7 +2776,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_r");
         }
@@ -2646,7 +2787,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_r = 0x{:08x}" , val);
@@ -2657,7 +2798,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_r");
         }
@@ -2668,7 +2809,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_r = 0x{:08x}" , val);
@@ -2679,7 +2820,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_r");
         }
@@ -2690,7 +2831,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_r = 0x{:08x}" , val);
@@ -2701,7 +2842,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_r");
         }
@@ -2712,7 +2853,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_r = 0x{:08x}" , val);
@@ -2723,7 +2864,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r");
         }
@@ -2734,7 +2875,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r = 0x{:08x}" , val);
@@ -2745,7 +2886,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_r");
         }
@@ -2756,7 +2897,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_r = 0x{:08x}" , val);
@@ -2767,7 +2908,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r");
         }
@@ -2778,7 +2919,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r = 0x{:08x}" , val);
@@ -2789,7 +2930,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r");
         }
@@ -2800,7 +2941,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r = 0x{:08x}" , val);
@@ -2811,7 +2952,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r");
         }
@@ -2822,7 +2963,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r = 0x{:08x}" , val);
@@ -2833,7 +2974,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r");
         }
@@ -2844,7 +2985,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r = 0x{:08x}" , val);
@@ -2855,7 +2996,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r");
         }
@@ -2866,7 +3007,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r = 0x{:08x}" , val);
@@ -2877,7 +3018,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r");
         }
@@ -2888,7 +3029,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r = 0x{:08x}" , val);
@@ -2899,7 +3040,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r");
         }
@@ -2910,7 +3051,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r = 0x{:08x}" , val);
@@ -2921,7 +3062,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r");
         }
@@ -2932,7 +3073,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r = 0x{:08x}" , val);
@@ -2943,7 +3084,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r");
         }
@@ -2954,7 +3095,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r = 0x{:08x}" , val);
@@ -2965,7 +3106,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r");
         }
@@ -2976,7 +3117,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r = 0x{:08x}" , val);
@@ -2987,7 +3128,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r");
         }
@@ -2998,7 +3139,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r = 0x{:08x}" , val);
@@ -3009,7 +3150,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r");
         }
@@ -3020,7 +3161,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r = 0x{:08x}" , val);
@@ -3031,7 +3172,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r");
         }
@@ -3042,7 +3183,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r = 0x{:08x}" , val);
@@ -3053,7 +3194,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r");
         }
@@ -3064,7 +3205,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r = 0x{:08x}" , val);
@@ -3075,7 +3216,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r");
         }
@@ -3086,7 +3227,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r = 0x{:08x}" , val);
@@ -3097,7 +3238,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r");
         }
@@ -3108,7 +3249,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r = 0x{:08x}" , val);
@@ -3119,7 +3260,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r");
         }
@@ -3130,7 +3271,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r = 0x{:08x}" , val);
@@ -3141,7 +3282,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r");
         }
@@ -3152,7 +3293,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r = 0x{:08x}" , val);
@@ -3163,7 +3304,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r");
         }
@@ -3174,7 +3315,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r = 0x{:08x}" , val);
@@ -3185,7 +3326,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r");
         }
@@ -3196,7 +3337,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r = 0x{:08x}" , val);
@@ -3207,7 +3348,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r");
         }
@@ -3218,7 +3359,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r = 0x{:08x}" , val);
@@ -3229,7 +3370,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r");
         }
@@ -3240,7 +3381,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r = 0x{:08x}" , val);
@@ -3251,7 +3392,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r");
         }
@@ -3262,7 +3403,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r = 0x{:08x}" , val);
@@ -3273,7 +3414,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r");
         }
@@ -3284,7 +3425,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r = 0x{:08x}" , val);
@@ -3295,7 +3436,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r");
         }
@@ -3306,7 +3447,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r = 0x{:08x}" , val);
@@ -3317,7 +3458,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r");
         }
@@ -3328,7 +3469,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r = 0x{:08x}" , val);
@@ -3339,7 +3480,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r");
         }
@@ -3350,7 +3491,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r = 0x{:08x}" , val);
@@ -3361,7 +3502,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r");
         }
@@ -3372,7 +3513,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r = 0x{:08x}" , val);
@@ -3383,7 +3524,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r");
         }
@@ -3394,7 +3535,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r = 0x{:08x}" , val);
@@ -3405,7 +3546,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r");
         }
@@ -3416,7 +3557,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r = 0x{:08x}" , val);
@@ -3427,7 +3568,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r");
         }
@@ -3438,7 +3579,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r = 0x{:08x}" , val);
@@ -3449,7 +3590,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r");
         }
@@ -3460,7 +3601,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r = 0x{:08x}" , val);
@@ -3471,7 +3612,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r");
         }
@@ -3482,7 +3623,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r = 0x{:08x}" , val);
@@ -3493,7 +3634,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_r");
         }
@@ -3504,7 +3645,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_r = 0x{:08x}" , val);
@@ -3515,7 +3656,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_r");
         }
@@ -3526,7 +3667,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_r = 0x{:08x}" , val);
@@ -3537,7 +3678,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_r");
         }
@@ -3548,7 +3689,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_r = 0x{:08x}" , val);
@@ -3559,7 +3700,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_r");
         }
@@ -3570,7 +3711,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_r = 0x{:08x}" , val);
@@ -3581,7 +3722,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_r");
         }
@@ -3592,7 +3733,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_r = 0x{:08x}" , val);
@@ -3603,7 +3744,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r");
         }
@@ -3614,7 +3755,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r = 0x{:08x}" , val);
@@ -3625,7 +3766,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r");
         }
@@ -3636,7 +3777,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r = 0x{:08x}" , val);
@@ -3647,7 +3788,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_debug_locked_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_debug_locked_intr_count_r");
         }
@@ -3658,7 +3799,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_debug_locked_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_debug_locked_intr_count_r = 0x{:08x}" , val);
@@ -3669,7 +3810,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_scan_mode_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_scan_mode_intr_count_r");
         }
@@ -3680,7 +3821,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_scan_mode_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_scan_mode_intr_count_r = 0x{:08x}" , val);
@@ -3691,7 +3832,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_r");
         }
@@ -3702,7 +3843,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_r = 0x{:08x}" , val);
@@ -3713,7 +3854,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_r");
         }
@@ -3724,7 +3865,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_r = 0x{:08x}" , val);
@@ -3735,7 +3876,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r");
         }
@@ -3746,7 +3887,7 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r = 0x{:08x}" , val);
@@ -3757,7 +3898,7 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_intr_block_rf_error_internal_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3767,11 +3908,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_internal_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3781,11 +3922,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3795,11 +3936,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3810,11 +3951,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3825,11 +3966,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3840,11 +3981,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3854,11 +3995,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3868,11 +4009,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3882,11 +4023,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3896,11 +4037,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3910,11 +4051,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3924,11 +4065,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3938,11 +4079,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3952,11 +4093,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3966,11 +4107,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3980,11 +4121,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -3995,11 +4136,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4010,11 +4151,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4025,11 +4166,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4040,11 +4181,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4055,11 +4196,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4070,11 +4211,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4085,11 +4226,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4100,11 +4241,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4115,11 +4256,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4130,11 +4271,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4145,11 +4286,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4160,11 +4301,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4175,11 +4316,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4190,11 +4331,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4205,11 +4346,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4220,11 +4361,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4235,11 +4376,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4250,11 +4391,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4265,11 +4406,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4280,11 +4421,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4295,11 +4436,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4310,11 +4451,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4324,11 +4465,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4339,11 +4480,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4353,11 +4494,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4368,11 +4509,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4383,11 +4524,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4398,11 +4539,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4413,11 +4554,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4428,11 +4569,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4443,11 +4584,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4458,11 +4599,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4473,11 +4614,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4488,11 +4629,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4503,11 +4644,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4518,11 +4659,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4533,11 +4674,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4548,11 +4689,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4563,11 +4704,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4578,11 +4719,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4593,11 +4734,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4608,11 +4749,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4623,11 +4764,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4638,11 +4779,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4653,11 +4794,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4668,11 +4809,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4683,11 +4824,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4698,11 +4839,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4713,11 +4854,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4728,11 +4869,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4743,11 +4884,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4758,11 +4899,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4773,11 +4914,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4788,11 +4929,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4803,11 +4944,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4818,11 +4959,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4833,11 +4974,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4848,11 +4989,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4863,11 +5004,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4877,11 +5018,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4891,11 +5032,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4906,11 +5047,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4920,11 +5061,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4934,11 +5075,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4948,11 +5089,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4962,11 +5103,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4977,11 +5118,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -4992,11 +5133,11 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
@@ -5007,21 +5148,25 @@ pub trait MciPeripheral {
             return generated
                 .read_mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_incr_r();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_mcu_trace_buffer_csr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Status::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Status::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_trace_buffer_csr_status");
         }
         if let Some(generated) = self.generated() {
             return generated.read_mcu_trace_buffer_csr_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_mcu_trace_buffer_csr_config(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_trace_buffer_csr_config(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_trace_buffer_csr_config");
         }
@@ -5030,7 +5175,9 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn read_mcu_trace_buffer_csr_data(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_trace_buffer_csr_data(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_trace_buffer_csr_data");
         }
@@ -5039,7 +5186,9 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn read_mcu_trace_buffer_csr_write_ptr(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_trace_buffer_csr_write_ptr(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mcu_trace_buffer_csr_write_ptr"
@@ -5050,7 +5199,9 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn read_mcu_trace_buffer_csr_read_ptr(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_trace_buffer_csr_read_ptr(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mcu_trace_buffer_csr_read_ptr"
@@ -5061,7 +5212,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mcu_trace_buffer_csr_read_ptr(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_trace_buffer_csr_read_ptr(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mcu_trace_buffer_csr_read_ptr = 0x{:08x}" , val);
         }
@@ -5069,7 +5223,10 @@ pub trait MciPeripheral {
             generated.write_mcu_trace_buffer_csr_read_ptr(val);
         }
     }
-    fn read_mcu_mbox0_csr_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox0_csr_mbox_sram(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mcu_mbox0_csr_mbox_sram[{}]",
@@ -5081,7 +5238,11 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mcu_mbox0_csr_mbox_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mcu_mbox0_csr_mbox_sram(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mcu_mbox0_csr_mbox_sram[{}] = 0x{:08x}" , index , val);
         }
@@ -5091,17 +5252,19 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox0_csr_mbox_lock");
         }
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox0_csr_mbox_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_mcu_mbox0_csr_mbox_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox0_csr_mbox_user(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox0_csr_mbox_user");
         }
@@ -5110,7 +5273,9 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn read_mcu_mbox0_csr_mbox_target_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox0_csr_mbox_target_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mcu_mbox0_csr_mbox_target_user"
@@ -5121,7 +5286,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mcu_mbox0_csr_mbox_target_user(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_mbox0_csr_mbox_target_user(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mcu_mbox0_csr_mbox_target_user = 0x{:08x}" , val);
         }
@@ -5131,7 +5299,7 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox0_csr_mbox_target_user_valid(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
@@ -5141,11 +5309,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox0_csr_mbox_target_user_valid();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox0_csr_mbox_target_user_valid(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
@@ -5157,7 +5325,7 @@ pub trait MciPeripheral {
             generated.write_mcu_mbox0_csr_mbox_target_user_valid(val);
         }
     }
-    fn read_mcu_mbox0_csr_mbox_cmd(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox0_csr_mbox_cmd(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox0_csr_mbox_cmd");
         }
@@ -5166,7 +5334,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mcu_mbox0_csr_mbox_cmd(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_mbox0_csr_mbox_cmd(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mcu_mbox0_csr_mbox_cmd = 0x{:08x}",
@@ -5177,7 +5348,7 @@ pub trait MciPeripheral {
             generated.write_mcu_mbox0_csr_mbox_cmd(val);
         }
     }
-    fn read_mcu_mbox0_csr_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox0_csr_mbox_dlen(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox0_csr_mbox_dlen");
         }
@@ -5186,7 +5357,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mcu_mbox0_csr_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_mbox0_csr_mbox_dlen(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mcu_mbox0_csr_mbox_dlen = 0x{:08x}",
@@ -5199,7 +5373,7 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox0_csr_mbox_execute(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxExecute::Register,
     > {
@@ -5209,11 +5383,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox0_csr_mbox_execute();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox0_csr_mbox_execute(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxExecute::Register,
         >,
@@ -5227,7 +5401,7 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox0_csr_mbox_target_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
@@ -5239,11 +5413,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox0_csr_mbox_target_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox0_csr_mbox_target_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
@@ -5257,7 +5431,7 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox0_csr_mbox_cmd_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxCmdStatus::Register,
     > {
@@ -5269,11 +5443,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox0_csr_mbox_cmd_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox0_csr_mbox_cmd_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
@@ -5287,7 +5461,7 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox0_csr_mbox_hw_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxHwStatus::Register,
     > {
@@ -5297,9 +5471,12 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox0_csr_mbox_hw_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_mcu_mbox1_csr_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox1_csr_mbox_sram(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mcu_mbox1_csr_mbox_sram[{}]",
@@ -5311,7 +5488,11 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mcu_mbox1_csr_mbox_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mcu_mbox1_csr_mbox_sram(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mcu_mbox1_csr_mbox_sram[{}] = 0x{:08x}" , index , val);
         }
@@ -5321,17 +5502,19 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox1_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox1_csr_mbox_lock");
         }
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox1_csr_mbox_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_mcu_mbox1_csr_mbox_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox1_csr_mbox_user(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox1_csr_mbox_user");
         }
@@ -5340,7 +5523,9 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn read_mcu_mbox1_csr_mbox_target_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox1_csr_mbox_target_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read mci::mcu_mbox1_csr_mbox_target_user"
@@ -5351,7 +5536,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mcu_mbox1_csr_mbox_target_user(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_mbox1_csr_mbox_target_user(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write mci::mcu_mbox1_csr_mbox_target_user = 0x{:08x}" , val);
         }
@@ -5361,7 +5549,7 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox1_csr_mbox_target_user_valid(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
@@ -5371,11 +5559,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox1_csr_mbox_target_user_valid();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox1_csr_mbox_target_user_valid(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
@@ -5387,7 +5575,7 @@ pub trait MciPeripheral {
             generated.write_mcu_mbox1_csr_mbox_target_user_valid(val);
         }
     }
-    fn read_mcu_mbox1_csr_mbox_cmd(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox1_csr_mbox_cmd(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox1_csr_mbox_cmd");
         }
@@ -5396,7 +5584,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mcu_mbox1_csr_mbox_cmd(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_mbox1_csr_mbox_cmd(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mcu_mbox1_csr_mbox_cmd = 0x{:08x}",
@@ -5407,7 +5598,7 @@ pub trait MciPeripheral {
             generated.write_mcu_mbox1_csr_mbox_cmd(val);
         }
     }
-    fn read_mcu_mbox1_csr_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox1_csr_mbox_dlen(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox1_csr_mbox_dlen");
         }
@@ -5416,7 +5607,10 @@ pub trait MciPeripheral {
         }
         0
     }
-    fn write_mcu_mbox1_csr_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_mbox1_csr_mbox_dlen(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write mci::mcu_mbox1_csr_mbox_dlen = 0x{:08x}",
@@ -5429,7 +5623,7 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox1_csr_mbox_execute(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxExecute::Register,
     > {
@@ -5439,11 +5633,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox1_csr_mbox_execute();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox1_csr_mbox_execute(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxExecute::Register,
         >,
@@ -5457,7 +5651,7 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox1_csr_mbox_target_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
@@ -5469,11 +5663,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox1_csr_mbox_target_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox1_csr_mbox_target_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
@@ -5487,7 +5681,7 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox1_csr_mbox_cmd_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxCmdStatus::Register,
     > {
@@ -5499,11 +5693,11 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox1_csr_mbox_cmd_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_mcu_mbox1_csr_mbox_cmd_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
@@ -5517,7 +5711,7 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox1_csr_mbox_hw_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxHwStatus::Register,
     > {
@@ -5527,735 +5721,963 @@ pub trait MciPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_mcu_mbox1_csr_mbox_hw_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
 }
 #[derive(Clone, Debug)]
 pub struct MciGenerated {
-    mcu_sram: Vec<caliptra_emu_types::RvData>,
-    mci_reg_hw_capabilities: caliptra_emu_types::RvData,
-    mci_reg_fw_capabilities: caliptra_emu_types::RvData,
-    mci_reg_cap_lock: caliptra_emu_types::RvData,
-    mci_reg_hw_rev_id: caliptra_emu_types::RvData,
-    mci_reg_fw_rev_id: Vec<caliptra_emu_types::RvData>,
-    mci_reg_hw_config0: caliptra_emu_types::RvData,
-    mci_reg_hw_config1: caliptra_emu_types::RvData,
-    mci_reg_mcu_ifu_axi_user: caliptra_emu_types::RvData,
-    mci_reg_mcu_lsu_axi_user: caliptra_emu_types::RvData,
-    mci_reg_mcu_sram_config_axi_user: caliptra_emu_types::RvData,
-    mci_reg_mci_soc_config_axi_user: caliptra_emu_types::RvData,
-    mci_reg_fw_flow_status: caliptra_emu_types::RvData,
-    mci_reg_hw_flow_status: caliptra_emu_types::RvData,
-    mci_reg_reset_reason: caliptra_emu_types::RvData,
-    mci_reg_reset_status: caliptra_emu_types::RvData,
-    mci_reg_security_state: caliptra_emu_types::RvData,
-    mci_reg_hw_error_fatal: caliptra_emu_types::RvData,
-    mci_reg_agg_error_fatal: caliptra_emu_types::RvData,
-    mci_reg_hw_error_non_fatal: caliptra_emu_types::RvData,
-    mci_reg_agg_error_non_fatal: caliptra_emu_types::RvData,
-    mci_reg_fw_error_fatal: caliptra_emu_types::RvData,
-    mci_reg_fw_error_non_fatal: caliptra_emu_types::RvData,
-    mci_reg_hw_error_enc: caliptra_emu_types::RvData,
-    mci_reg_fw_error_enc: caliptra_emu_types::RvData,
-    mci_reg_fw_extended_error_info: Vec<caliptra_emu_types::RvData>,
-    mci_reg_internal_hw_error_fatal_mask: caliptra_emu_types::RvData,
-    mci_reg_internal_hw_error_non_fatal_mask: caliptra_emu_types::RvData,
-    mci_reg_internal_agg_error_fatal_mask: caliptra_emu_types::RvData,
-    mci_reg_internal_agg_error_non_fatal_mask: caliptra_emu_types::RvData,
-    mci_reg_internal_fw_error_fatal_mask: caliptra_emu_types::RvData,
-    mci_reg_internal_fw_error_non_fatal_mask: caliptra_emu_types::RvData,
-    mci_reg_wdt_timer1_en: caliptra_emu_types::RvData,
-    mci_reg_wdt_timer1_ctrl: caliptra_emu_types::RvData,
-    mci_reg_wdt_timer1_timeout_period: Vec<caliptra_emu_types::RvData>,
-    mci_reg_wdt_timer2_en: caliptra_emu_types::RvData,
-    mci_reg_wdt_timer2_ctrl: caliptra_emu_types::RvData,
-    mci_reg_wdt_timer2_timeout_period: Vec<caliptra_emu_types::RvData>,
-    mci_reg_wdt_status: caliptra_emu_types::RvData,
-    mci_reg_wdt_cfg: Vec<caliptra_emu_types::RvData>,
-    mci_reg_mcu_timer_config: caliptra_emu_types::RvData,
-    mci_reg_mcu_rv_mtime_l: caliptra_emu_types::RvData,
-    mci_reg_mcu_rv_mtime_h: caliptra_emu_types::RvData,
-    mci_reg_mcu_rv_mtimecmp_l: caliptra_emu_types::RvData,
-    mci_reg_mcu_rv_mtimecmp_h: caliptra_emu_types::RvData,
-    mci_reg_reset_request: caliptra_emu_types::RvData,
-    mci_reg_mci_bootfsm_go: caliptra_emu_types::RvData,
-    mci_reg_cptra_boot_go: caliptra_emu_types::RvData,
-    mci_reg_fw_sram_exec_region_size: caliptra_emu_types::RvData,
-    mci_reg_mcu_nmi_vector: caliptra_emu_types::RvData,
-    mci_reg_mcu_reset_vector: caliptra_emu_types::RvData,
-    mci_reg_mbox0_valid_axi_user: Vec<caliptra_emu_types::RvData>,
-    mci_reg_mbox0_axi_user_lock: Vec<caliptra_emu_types::RvData>,
-    mci_reg_mbox1_valid_axi_user: Vec<caliptra_emu_types::RvData>,
-    mci_reg_mbox1_axi_user_lock: Vec<caliptra_emu_types::RvData>,
-    mci_reg_soc_dft_en: Vec<caliptra_emu_types::RvData>,
-    mci_reg_soc_hw_debug_en: Vec<caliptra_emu_types::RvData>,
-    mci_reg_soc_prod_debug_state: Vec<caliptra_emu_types::RvData>,
-    mci_reg_fc_fips_zerozation: caliptra_emu_types::RvData,
-    mci_reg_generic_input_wires: Vec<caliptra_emu_types::RvData>,
-    mci_reg_generic_output_wires: Vec<caliptra_emu_types::RvData>,
-    mci_reg_debug_in: caliptra_emu_types::RvData,
-    mci_reg_debug_out: caliptra_emu_types::RvData,
-    mci_reg_ss_debug_intent: caliptra_emu_types::RvData,
-    mci_reg_ss_config_done_sticky: caliptra_emu_types::RvData,
-    mci_reg_ss_config_done: caliptra_emu_types::RvData,
-    mci_reg_prod_debug_unlock_pk_hash_reg: Vec<caliptra_emu_types::RvData>,
-    mci_reg_intr_block_rf_global_intr_en_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error0_intr_en_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error1_intr_en_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif0_intr_en_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif1_intr_en_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_global_intr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_global_intr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error0_internal_intr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error1_internal_intr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif0_internal_intr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif1_internal_intr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error0_intr_trig_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error1_intr_trig_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif0_intr_trig_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif1_intr_trig_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_internal_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_debug_locked_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_scan_mode_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_internal_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r: caliptra_emu_types::RvData,
+    mcu_sram: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_hw_capabilities: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_fw_capabilities: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_cap_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_hw_rev_id: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_fw_rev_id: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_hw_config0: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_hw_config1: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_mcu_ifu_axi_user: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_mcu_lsu_axi_user: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_mcu_sram_config_axi_user: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_mci_soc_config_axi_user: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_fw_flow_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_hw_flow_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_reset_reason: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_reset_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_security_state: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_hw_error_fatal: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_agg_error_fatal: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_hw_error_non_fatal: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_agg_error_non_fatal: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_fw_error_fatal: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_fw_error_non_fatal: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_hw_error_enc: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_fw_error_enc: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_fw_extended_error_info: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_internal_hw_error_fatal_mask: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_internal_hw_error_non_fatal_mask: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_internal_agg_error_fatal_mask: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_internal_agg_error_non_fatal_mask: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_internal_fw_error_fatal_mask: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_internal_fw_error_non_fatal_mask: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_wdt_timer1_en: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_wdt_timer1_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_wdt_timer1_timeout_period: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_wdt_timer2_en: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_wdt_timer2_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_wdt_timer2_timeout_period: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_wdt_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_wdt_cfg: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_mcu_timer_config: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_mcu_rv_mtime_l: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_mcu_rv_mtime_h: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_mcu_rv_mtimecmp_l: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_mcu_rv_mtimecmp_h: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_reset_request: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_mci_bootfsm_go: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_cptra_boot_go: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_fw_sram_exec_region_size: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_mcu_nmi_vector: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_mcu_reset_vector: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_mbox0_valid_axi_user: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_mbox0_axi_user_lock: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_mbox1_valid_axi_user: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_mbox1_axi_user_lock: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_soc_dft_en: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_soc_hw_debug_en: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_soc_prod_debug_state: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_fc_fips_zerozation: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_generic_input_wires: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_generic_output_wires: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_debug_in: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_debug_out: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_ss_debug_intent: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_ss_config_done_sticky: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_ss_config_done: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_prod_debug_unlock_pk_hash_reg: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mci_reg_intr_block_rf_global_intr_en_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error0_intr_en_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error1_intr_en_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif0_intr_en_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif1_intr_en_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_global_intr_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_global_intr_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error0_internal_intr_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error1_internal_intr_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif0_internal_intr_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif1_internal_intr_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error0_intr_trig_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error1_intr_trig_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif0_intr_trig_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif1_intr_trig_r: caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_internal_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_debug_locked_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_scan_mode_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_internal_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
     mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_incr_r:
-        caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_incr_r: caliptra_emu_types::RvData,
-    mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_incr_r: caliptra_emu_types::RvData,
-    mcu_trace_buffer_csr_status: caliptra_emu_types::RvData,
-    mcu_trace_buffer_csr_config: caliptra_emu_types::RvData,
-    mcu_trace_buffer_csr_data: caliptra_emu_types::RvData,
-    mcu_trace_buffer_csr_write_ptr: caliptra_emu_types::RvData,
-    mcu_trace_buffer_csr_read_ptr: caliptra_emu_types::RvData,
-    mcu_mbox0_csr_mbox_sram: Vec<caliptra_emu_types::RvData>,
-    mcu_mbox0_csr_mbox_lock: caliptra_emu_types::RvData,
-    mcu_mbox0_csr_mbox_user: caliptra_emu_types::RvData,
-    mcu_mbox0_csr_mbox_target_user: caliptra_emu_types::RvData,
-    mcu_mbox0_csr_mbox_target_user_valid: caliptra_emu_types::RvData,
-    mcu_mbox0_csr_mbox_cmd: caliptra_emu_types::RvData,
-    mcu_mbox0_csr_mbox_dlen: caliptra_emu_types::RvData,
-    mcu_mbox0_csr_mbox_execute: caliptra_emu_types::RvData,
-    mcu_mbox0_csr_mbox_target_status: caliptra_emu_types::RvData,
-    mcu_mbox0_csr_mbox_cmd_status: caliptra_emu_types::RvData,
-    mcu_mbox0_csr_mbox_hw_status: caliptra_emu_types::RvData,
-    mcu_mbox1_csr_mbox_sram: Vec<caliptra_emu_types::RvData>,
-    mcu_mbox1_csr_mbox_lock: caliptra_emu_types::RvData,
-    mcu_mbox1_csr_mbox_user: caliptra_emu_types::RvData,
-    mcu_mbox1_csr_mbox_target_user: caliptra_emu_types::RvData,
-    mcu_mbox1_csr_mbox_target_user_valid: caliptra_emu_types::RvData,
-    mcu_mbox1_csr_mbox_cmd: caliptra_emu_types::RvData,
-    mcu_mbox1_csr_mbox_dlen: caliptra_emu_types::RvData,
-    mcu_mbox1_csr_mbox_execute: caliptra_emu_types::RvData,
-    mcu_mbox1_csr_mbox_target_status: caliptra_emu_types::RvData,
-    mcu_mbox1_csr_mbox_cmd_status: caliptra_emu_types::RvData,
-    mcu_mbox1_csr_mbox_hw_status: caliptra_emu_types::RvData,
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_incr_r:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_trace_buffer_csr_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_trace_buffer_csr_config: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_trace_buffer_csr_data: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_trace_buffer_csr_write_ptr: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_trace_buffer_csr_read_ptr: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox0_csr_mbox_sram: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mcu_mbox0_csr_mbox_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox0_csr_mbox_user: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox0_csr_mbox_target_user: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox0_csr_mbox_target_user_valid: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox0_csr_mbox_cmd: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox0_csr_mbox_dlen: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox0_csr_mbox_execute: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox0_csr_mbox_target_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox0_csr_mbox_cmd_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox0_csr_mbox_hw_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox1_csr_mbox_sram: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    mcu_mbox1_csr_mbox_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox1_csr_mbox_user: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox1_csr_mbox_target_user: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox1_csr_mbox_target_user_valid: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox1_csr_mbox_cmd: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox1_csr_mbox_dlen: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox1_csr_mbox_execute: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox1_csr_mbox_target_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox1_csr_mbox_cmd_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    mcu_mbox1_csr_mbox_hw_status: caliptra_core_tools::caliptra_emu_types::RvData,
 }
 impl Default for MciGenerated {
     fn default() -> Self {
         Self {
-            mcu_sram: vec![0 as caliptra_emu_types::RvData; 524288],
-            mci_reg_hw_capabilities: 0 as caliptra_emu_types::RvData,
-            mci_reg_fw_capabilities: 0 as caliptra_emu_types::RvData,
-            mci_reg_cap_lock: 0 as caliptra_emu_types::RvData,
-            mci_reg_hw_rev_id: 0x2001 as caliptra_emu_types::RvData,
-            mci_reg_fw_rev_id: vec![0 as caliptra_emu_types::RvData; 2],
-            mci_reg_hw_config0: 0 as caliptra_emu_types::RvData,
-            mci_reg_hw_config1: 0 as caliptra_emu_types::RvData,
-            mci_reg_mcu_ifu_axi_user: 0 as caliptra_emu_types::RvData,
-            mci_reg_mcu_lsu_axi_user: 0 as caliptra_emu_types::RvData,
-            mci_reg_mcu_sram_config_axi_user: 0 as caliptra_emu_types::RvData,
-            mci_reg_mci_soc_config_axi_user: 0 as caliptra_emu_types::RvData,
-            mci_reg_fw_flow_status: 0 as caliptra_emu_types::RvData,
-            mci_reg_hw_flow_status: 0 as caliptra_emu_types::RvData,
-            mci_reg_reset_reason: 0 as caliptra_emu_types::RvData,
-            mci_reg_reset_status: 0 as caliptra_emu_types::RvData,
-            mci_reg_security_state: 0 as caliptra_emu_types::RvData,
-            mci_reg_hw_error_fatal: 0 as caliptra_emu_types::RvData,
-            mci_reg_agg_error_fatal: 0 as caliptra_emu_types::RvData,
-            mci_reg_hw_error_non_fatal: 0 as caliptra_emu_types::RvData,
-            mci_reg_agg_error_non_fatal: 0 as caliptra_emu_types::RvData,
-            mci_reg_fw_error_fatal: 0 as caliptra_emu_types::RvData,
-            mci_reg_fw_error_non_fatal: 0 as caliptra_emu_types::RvData,
-            mci_reg_hw_error_enc: 0 as caliptra_emu_types::RvData,
-            mci_reg_fw_error_enc: 0 as caliptra_emu_types::RvData,
-            mci_reg_fw_extended_error_info: vec![0 as caliptra_emu_types::RvData; 8],
-            mci_reg_internal_hw_error_fatal_mask: 0 as caliptra_emu_types::RvData,
-            mci_reg_internal_hw_error_non_fatal_mask: 0 as caliptra_emu_types::RvData,
-            mci_reg_internal_agg_error_fatal_mask: 0x3fff_f000 as caliptra_emu_types::RvData,
-            mci_reg_internal_agg_error_non_fatal_mask: 0 as caliptra_emu_types::RvData,
-            mci_reg_internal_fw_error_fatal_mask: 0 as caliptra_emu_types::RvData,
-            mci_reg_internal_fw_error_non_fatal_mask: 0 as caliptra_emu_types::RvData,
-            mci_reg_wdt_timer1_en: 0 as caliptra_emu_types::RvData,
-            mci_reg_wdt_timer1_ctrl: 0 as caliptra_emu_types::RvData,
-            mci_reg_wdt_timer1_timeout_period: vec![0xffff_ffff as caliptra_emu_types::RvData; 2],
-            mci_reg_wdt_timer2_en: 0 as caliptra_emu_types::RvData,
-            mci_reg_wdt_timer2_ctrl: 0 as caliptra_emu_types::RvData,
-            mci_reg_wdt_timer2_timeout_period: vec![0xffff_ffff as caliptra_emu_types::RvData; 2],
-            mci_reg_wdt_status: 0 as caliptra_emu_types::RvData,
-            mci_reg_wdt_cfg: vec![0 as caliptra_emu_types::RvData; 2],
-            mci_reg_mcu_timer_config: 0 as caliptra_emu_types::RvData,
-            mci_reg_mcu_rv_mtime_l: 0 as caliptra_emu_types::RvData,
-            mci_reg_mcu_rv_mtime_h: 0 as caliptra_emu_types::RvData,
-            mci_reg_mcu_rv_mtimecmp_l: 0 as caliptra_emu_types::RvData,
-            mci_reg_mcu_rv_mtimecmp_h: 0 as caliptra_emu_types::RvData,
-            mci_reg_reset_request: 0 as caliptra_emu_types::RvData,
-            mci_reg_mci_bootfsm_go: 0 as caliptra_emu_types::RvData,
-            mci_reg_cptra_boot_go: 0 as caliptra_emu_types::RvData,
-            mci_reg_fw_sram_exec_region_size: 0 as caliptra_emu_types::RvData,
-            mci_reg_mcu_nmi_vector: 0 as caliptra_emu_types::RvData,
-            mci_reg_mcu_reset_vector: 0 as caliptra_emu_types::RvData,
-            mci_reg_mbox0_valid_axi_user: vec![0xffff_ffff as caliptra_emu_types::RvData; 5],
-            mci_reg_mbox0_axi_user_lock: vec![0 as caliptra_emu_types::RvData; 5],
-            mci_reg_mbox1_valid_axi_user: vec![0xffff_ffff as caliptra_emu_types::RvData; 5],
-            mci_reg_mbox1_axi_user_lock: vec![0 as caliptra_emu_types::RvData; 5],
-            mci_reg_soc_dft_en: vec![0 as caliptra_emu_types::RvData; 2],
-            mci_reg_soc_hw_debug_en: vec![0 as caliptra_emu_types::RvData; 2],
-            mci_reg_soc_prod_debug_state: vec![0 as caliptra_emu_types::RvData; 2],
-            mci_reg_fc_fips_zerozation: 0 as caliptra_emu_types::RvData,
-            mci_reg_generic_input_wires: vec![0 as caliptra_emu_types::RvData; 2],
-            mci_reg_generic_output_wires: vec![0 as caliptra_emu_types::RvData; 2],
-            mci_reg_debug_in: 0 as caliptra_emu_types::RvData,
-            mci_reg_debug_out: 0 as caliptra_emu_types::RvData,
-            mci_reg_ss_debug_intent: 0 as caliptra_emu_types::RvData,
-            mci_reg_ss_config_done_sticky: 0 as caliptra_emu_types::RvData,
-            mci_reg_ss_config_done: 0 as caliptra_emu_types::RvData,
-            mci_reg_prod_debug_unlock_pk_hash_reg: vec![0 as caliptra_emu_types::RvData; 96],
-            mci_reg_intr_block_rf_global_intr_en_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_error0_intr_en_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_error1_intr_en_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_notif0_intr_en_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_notif1_intr_en_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_error_global_intr_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_notif_global_intr_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_error0_internal_intr_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_error1_internal_intr_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_notif0_internal_intr_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_notif1_internal_intr_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_error0_intr_trig_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_error1_intr_trig_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_notif0_intr_trig_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_notif1_intr_trig_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_error_internal_intr_count_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r: 0 as caliptra_emu_types::RvData,
+            mcu_sram: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 524288],
+            mci_reg_hw_capabilities: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_fw_capabilities: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_cap_lock: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_hw_rev_id: 0x2001 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_fw_rev_id: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 2],
+            mci_reg_hw_config0: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_hw_config1: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_mcu_ifu_axi_user: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_mcu_lsu_axi_user: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_mcu_sram_config_axi_user: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_mci_soc_config_axi_user: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_fw_flow_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_hw_flow_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_reset_reason: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_reset_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_security_state: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_hw_error_fatal: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_agg_error_fatal: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_hw_error_non_fatal: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_agg_error_non_fatal: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_fw_error_fatal: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_fw_error_non_fatal: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_hw_error_enc: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_fw_error_enc: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_fw_extended_error_info:
+                vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 8],
+            mci_reg_internal_hw_error_fatal_mask: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_internal_hw_error_non_fatal_mask: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_internal_agg_error_fatal_mask: 0x3fff_f000
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_internal_agg_error_non_fatal_mask: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_internal_fw_error_fatal_mask: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_internal_fw_error_non_fatal_mask: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_wdt_timer1_en: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_wdt_timer1_ctrl: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_wdt_timer1_timeout_period:
+                vec![0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData; 2],
+            mci_reg_wdt_timer2_en: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_wdt_timer2_ctrl: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_wdt_timer2_timeout_period:
+                vec![0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData; 2],
+            mci_reg_wdt_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_wdt_cfg: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 2],
+            mci_reg_mcu_timer_config: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_mcu_rv_mtime_l: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_mcu_rv_mtime_h: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_mcu_rv_mtimecmp_l: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_mcu_rv_mtimecmp_h: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_reset_request: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_mci_bootfsm_go: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_cptra_boot_go: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_fw_sram_exec_region_size: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_mcu_nmi_vector: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_mcu_reset_vector: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_mbox0_valid_axi_user:
+                vec![0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData; 5],
+            mci_reg_mbox0_axi_user_lock: vec![
+                0 as caliptra_core_tools::caliptra_emu_types::RvData;
+                5
+            ],
+            mci_reg_mbox1_valid_axi_user:
+                vec![0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData; 5],
+            mci_reg_mbox1_axi_user_lock: vec![
+                0 as caliptra_core_tools::caliptra_emu_types::RvData;
+                5
+            ],
+            mci_reg_soc_dft_en: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 2],
+            mci_reg_soc_hw_debug_en: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 2],
+            mci_reg_soc_prod_debug_state: vec![
+                0 as caliptra_core_tools::caliptra_emu_types::RvData;
+                2
+            ],
+            mci_reg_fc_fips_zerozation: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_generic_input_wires: vec![
+                0 as caliptra_core_tools::caliptra_emu_types::RvData;
+                2
+            ],
+            mci_reg_generic_output_wires: vec![
+                0 as caliptra_core_tools::caliptra_emu_types::RvData;
+                2
+            ],
+            mci_reg_debug_in: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_debug_out: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_ss_debug_intent: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_ss_config_done_sticky: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_ss_config_done: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_prod_debug_unlock_pk_hash_reg:
+                vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 96],
+            mci_reg_intr_block_rf_global_intr_en_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_error0_intr_en_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_error1_intr_en_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_notif0_intr_en_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_notif1_intr_en_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_error_global_intr_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_notif_global_intr_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_error0_internal_intr_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_error1_internal_intr_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_notif0_internal_intr_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_notif1_internal_intr_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_error0_intr_trig_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_error1_intr_trig_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_notif0_intr_trig_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_notif1_intr_trig_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_error_internal_intr_count_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_r: 0
-                as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r: 0 as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_r: 0
-                as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_notif_debug_locked_intr_count_r: 0 as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_notif_scan_mode_intr_count_r: 0 as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_notif_debug_locked_intr_count_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_notif_scan_mode_intr_count_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r: 0
-                as caliptra_emu_types::RvData,
-            mci_reg_intr_block_rf_error_internal_intr_count_incr_r: 0 as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mci_reg_intr_block_rf_error_internal_intr_count_incr_r: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
             mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_incr_r: 0
-                as caliptra_emu_types::RvData,
-            mcu_trace_buffer_csr_status: 0 as caliptra_emu_types::RvData,
-            mcu_trace_buffer_csr_config: 0 as caliptra_emu_types::RvData,
-            mcu_trace_buffer_csr_data: 0 as caliptra_emu_types::RvData,
-            mcu_trace_buffer_csr_write_ptr: 0 as caliptra_emu_types::RvData,
-            mcu_trace_buffer_csr_read_ptr: 0 as caliptra_emu_types::RvData,
-            mcu_mbox0_csr_mbox_sram: vec![0 as caliptra_emu_types::RvData; 524288],
-            mcu_mbox0_csr_mbox_lock: 0 as caliptra_emu_types::RvData,
-            mcu_mbox0_csr_mbox_user: 0 as caliptra_emu_types::RvData,
-            mcu_mbox0_csr_mbox_target_user: 0 as caliptra_emu_types::RvData,
-            mcu_mbox0_csr_mbox_target_user_valid: 0 as caliptra_emu_types::RvData,
-            mcu_mbox0_csr_mbox_cmd: 0 as caliptra_emu_types::RvData,
-            mcu_mbox0_csr_mbox_dlen: 0 as caliptra_emu_types::RvData,
-            mcu_mbox0_csr_mbox_execute: 0 as caliptra_emu_types::RvData,
-            mcu_mbox0_csr_mbox_target_status: 0 as caliptra_emu_types::RvData,
-            mcu_mbox0_csr_mbox_cmd_status: 0 as caliptra_emu_types::RvData,
-            mcu_mbox0_csr_mbox_hw_status: 0 as caliptra_emu_types::RvData,
-            mcu_mbox1_csr_mbox_sram: vec![0 as caliptra_emu_types::RvData; 524288],
-            mcu_mbox1_csr_mbox_lock: 0 as caliptra_emu_types::RvData,
-            mcu_mbox1_csr_mbox_user: 0 as caliptra_emu_types::RvData,
-            mcu_mbox1_csr_mbox_target_user: 0 as caliptra_emu_types::RvData,
-            mcu_mbox1_csr_mbox_target_user_valid: 0 as caliptra_emu_types::RvData,
-            mcu_mbox1_csr_mbox_cmd: 0 as caliptra_emu_types::RvData,
-            mcu_mbox1_csr_mbox_dlen: 0 as caliptra_emu_types::RvData,
-            mcu_mbox1_csr_mbox_execute: 0 as caliptra_emu_types::RvData,
-            mcu_mbox1_csr_mbox_target_status: 0 as caliptra_emu_types::RvData,
-            mcu_mbox1_csr_mbox_cmd_status: 0 as caliptra_emu_types::RvData,
-            mcu_mbox1_csr_mbox_hw_status: 0 as caliptra_emu_types::RvData,
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_trace_buffer_csr_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_trace_buffer_csr_config: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_trace_buffer_csr_data: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_trace_buffer_csr_write_ptr: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_trace_buffer_csr_read_ptr: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox0_csr_mbox_sram: vec![
+                0 as caliptra_core_tools::caliptra_emu_types::RvData;
+                524288
+            ],
+            mcu_mbox0_csr_mbox_lock: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox0_csr_mbox_user: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox0_csr_mbox_target_user: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox0_csr_mbox_target_user_valid: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox0_csr_mbox_cmd: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox0_csr_mbox_dlen: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox0_csr_mbox_execute: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox0_csr_mbox_target_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox0_csr_mbox_cmd_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox0_csr_mbox_hw_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox1_csr_mbox_sram: vec![
+                0 as caliptra_core_tools::caliptra_emu_types::RvData;
+                524288
+            ],
+            mcu_mbox1_csr_mbox_lock: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox1_csr_mbox_user: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox1_csr_mbox_target_user: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox1_csr_mbox_target_user_valid: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox1_csr_mbox_cmd: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox1_csr_mbox_dlen: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox1_csr_mbox_execute: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox1_csr_mbox_target_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox1_csr_mbox_cmd_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            mcu_mbox1_csr_mbox_hw_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
         }
     }
 }
@@ -6277,7 +6699,7 @@ impl MciPeripheral for MciGenerated {
     fn update_reset(&mut self) {
         self.reset_state();
     }
-    fn read_mcu_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mcu_sram(&mut self, index: usize) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_sram[{}]",
@@ -6286,21 +6708,25 @@ impl MciPeripheral for MciGenerated {
         }
         self.mcu_sram[index]
     }
-    fn write_mcu_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mcu_sram(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write mci::mcu_sram[{}] = 0x{:08x}",
                 index, val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_sram[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_sram[index] = new_val;
     }
-    fn read_mci_reg_hw_capabilities(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_hw_capabilities(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_hw_capabilities"
@@ -6308,18 +6734,21 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_hw_capabilities
     }
-    fn write_mci_reg_hw_capabilities(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_hw_capabilities(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_hw_capabilities = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_hw_capabilities;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_hw_capabilities = new_val;
     }
-    fn read_mci_reg_fw_capabilities(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_capabilities(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_fw_capabilities"
@@ -6327,29 +6756,34 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_fw_capabilities
     }
-    fn write_mci_reg_fw_capabilities(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_fw_capabilities(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_fw_capabilities = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_fw_capabilities;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_fw_capabilities = new_val;
     }
     fn read_mci_reg_cap_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::CapLock::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::CapLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_cap_lock");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_cap_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_cap_lock)
     }
     fn write_mci_reg_cap_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::CapLock::Register,
         >,
@@ -6360,23 +6794,28 @@ impl MciPeripheral for MciGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_cap_lock;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_cap_lock = new_val;
     }
     fn read_mci_reg_hw_rev_id(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwRevId::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::HwRevId::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_hw_rev_id");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_hw_rev_id)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_hw_rev_id)
     }
-    fn read_mci_reg_fw_rev_id(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_rev_id(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_fw_rev_id[{}]",
@@ -6385,36 +6824,44 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_fw_rev_id[index]
     }
-    fn write_mci_reg_fw_rev_id(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mci_reg_fw_rev_id(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_fw_rev_id[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_fw_rev_id[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_fw_rev_id[index] = new_val;
     }
     fn read_mci_reg_hw_config0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig0::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::HwConfig0::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_hw_config0");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_hw_config0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_hw_config0)
     }
     fn read_mci_reg_hw_config1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig1::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::HwConfig1::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_hw_config1");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_hw_config1)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_hw_config1)
     }
-    fn read_mci_reg_mcu_ifu_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_ifu_axi_user(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_mcu_ifu_axi_user"
@@ -6422,7 +6869,7 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_mcu_ifu_axi_user
     }
-    fn read_mci_reg_mcu_lsu_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_lsu_axi_user(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_mcu_lsu_axi_user"
@@ -6430,60 +6877,67 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_mcu_lsu_axi_user
     }
-    fn read_mci_reg_mcu_sram_config_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_sram_config_axi_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_mcu_sram_config_axi_user");
         }
         self.mci_reg_mcu_sram_config_axi_user
     }
-    fn read_mci_reg_mci_soc_config_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mci_soc_config_axi_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_mci_soc_config_axi_user");
         }
         self.mci_reg_mci_soc_config_axi_user
     }
-    fn read_mci_reg_fw_flow_status(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_flow_status(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_fw_flow_status");
         }
         self.mci_reg_fw_flow_status
     }
-    fn write_mci_reg_fw_flow_status(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_fw_flow_status(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_fw_flow_status = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_fw_flow_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_fw_flow_status = new_val;
     }
     fn read_mci_reg_hw_flow_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::HwFlowStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_hw_flow_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_hw_flow_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_hw_flow_status)
     }
     fn read_mci_reg_reset_reason(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::ResetReason::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_reset_reason");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_reset_reason)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_reset_reason)
     }
     fn write_mci_reg_reset_reason(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::ResetReason::Register,
         >,
@@ -6491,53 +6945,53 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_reset_reason = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_reset_reason;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_reset_reason = new_val;
     }
     fn read_mci_reg_reset_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::ResetStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_reset_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_reset_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_reset_status)
     }
     fn read_mci_reg_security_state(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::SecurityState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_security_state");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_security_state)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_security_state)
     }
     fn read_mci_reg_hw_error_fatal(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::HwErrorFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_hw_error_fatal");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_hw_error_fatal)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_hw_error_fatal)
     }
     fn write_mci_reg_hw_error_fatal(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::HwErrorFatal::Register,
         >,
@@ -6545,20 +6999,20 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_hw_error_fatal = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_hw_error_fatal;
         let mut new_val = current_val;
-        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_clear_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_0;
-        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_clear_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_1;
-        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_clear_2 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_2;
         self.mci_reg_hw_error_fatal = new_val;
     }
     fn read_mci_reg_agg_error_fatal(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::AggErrorFatal::Register,
     > {
@@ -6567,11 +7021,11 @@ impl MciPeripheral for MciGenerated {
                 "[EMU] Generated default register handler: read mci::mci_reg_agg_error_fatal"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_agg_error_fatal)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_agg_error_fatal)
     }
     fn write_mci_reg_agg_error_fatal(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::AggErrorFatal::Register,
         >,
@@ -6579,78 +7033,102 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_agg_error_fatal = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_agg_error_fatal;
         let mut new_val = current_val;
-        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_clear_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_0;
-        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_clear_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_1;
-        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_clear_2 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_2;
-        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        let bits_to_clear_3 = write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_3;
-        let bits_to_clear_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        let bits_to_clear_4 = write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_4;
-        let bits_to_clear_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        let bits_to_clear_5 = write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_5;
-        let bits_to_clear_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        let bits_to_clear_6 = write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_6;
-        let bits_to_clear_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        let bits_to_clear_7 = write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_7;
-        let bits_to_clear_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        let bits_to_clear_8 =
+            write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_8;
-        let bits_to_clear_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        let bits_to_clear_9 =
+            write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_9;
-        let bits_to_clear_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        let bits_to_clear_10 =
+            write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_10;
-        let bits_to_clear_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        let bits_to_clear_11 =
+            write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_11;
-        let bits_to_clear_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        let bits_to_clear_12 =
+            write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_12;
-        let bits_to_clear_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        let bits_to_clear_13 =
+            write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_13;
-        let bits_to_clear_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        let bits_to_clear_14 =
+            write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_14;
-        let bits_to_clear_15 = write_val & (0x8000 as caliptra_emu_types::RvData);
+        let bits_to_clear_15 =
+            write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_15;
-        let bits_to_clear_16 = write_val & (0x1_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_16 =
+            write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_16;
-        let bits_to_clear_17 = write_val & (0x2_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_17 =
+            write_val & (0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_17;
-        let bits_to_clear_18 = write_val & (0x4_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_18 =
+            write_val & (0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_18;
-        let bits_to_clear_19 = write_val & (0x8_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_19 =
+            write_val & (0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_19;
-        let bits_to_clear_20 = write_val & (0x10_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_20 =
+            write_val & (0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_20;
-        let bits_to_clear_21 = write_val & (0x20_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_21 =
+            write_val & (0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_21;
-        let bits_to_clear_22 = write_val & (0x40_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_22 =
+            write_val & (0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_22;
-        let bits_to_clear_23 = write_val & (0x80_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_23 =
+            write_val & (0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_23;
-        let bits_to_clear_24 = write_val & (0x100_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_24 =
+            write_val & (0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_24;
-        let bits_to_clear_25 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_25 =
+            write_val & (0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_25;
-        let bits_to_clear_26 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_26 =
+            write_val & (0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_26;
-        let bits_to_clear_27 = write_val & (0x800_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_27 =
+            write_val & (0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_27;
-        let bits_to_clear_28 = write_val & (0x1000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_28 =
+            write_val & (0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_28;
-        let bits_to_clear_29 = write_val & (0x2000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_29 =
+            write_val & (0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_29;
-        let bits_to_clear_30 = write_val & (0x4000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_30 =
+            write_val & (0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_30;
-        let bits_to_clear_31 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_31 =
+            write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_31;
         self.mci_reg_agg_error_fatal = new_val;
     }
     fn read_mci_reg_hw_error_non_fatal(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::HwErrorNonFatal::Register,
     > {
@@ -6659,11 +7137,13 @@ impl MciPeripheral for MciGenerated {
                 "[EMU] Generated default register handler: read mci::mci_reg_hw_error_non_fatal"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_hw_error_non_fatal)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_hw_error_non_fatal,
+        )
     }
     fn write_mci_reg_hw_error_non_fatal(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::HwErrorNonFatal::Register,
         >,
@@ -6671,18 +7151,18 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_hw_error_non_fatal = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_hw_error_non_fatal;
         let mut new_val = current_val;
-        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_clear_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_0;
-        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_clear_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_1;
         self.mci_reg_hw_error_non_fatal = new_val;
     }
     fn read_mci_reg_agg_error_non_fatal(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::AggErrorNonFatal::Register,
     > {
@@ -6691,11 +7171,13 @@ impl MciPeripheral for MciGenerated {
                 "[EMU] Generated default register handler: read mci::mci_reg_agg_error_non_fatal"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_agg_error_non_fatal)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_agg_error_non_fatal,
+        )
     }
     fn write_mci_reg_agg_error_non_fatal(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::AggErrorNonFatal::Register,
         >,
@@ -6703,93 +7185,122 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_agg_error_non_fatal = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_agg_error_non_fatal;
         let mut new_val = current_val;
-        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_clear_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_0;
-        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_clear_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_1;
-        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_clear_2 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_2;
-        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        let bits_to_clear_3 = write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_3;
-        let bits_to_clear_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        let bits_to_clear_4 = write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_4;
-        let bits_to_clear_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        let bits_to_clear_5 = write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_5;
-        let bits_to_clear_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        let bits_to_clear_6 = write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_6;
-        let bits_to_clear_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        let bits_to_clear_7 = write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_7;
-        let bits_to_clear_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        let bits_to_clear_8 =
+            write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_8;
-        let bits_to_clear_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        let bits_to_clear_9 =
+            write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_9;
-        let bits_to_clear_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        let bits_to_clear_10 =
+            write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_10;
-        let bits_to_clear_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        let bits_to_clear_11 =
+            write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_11;
-        let bits_to_clear_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        let bits_to_clear_12 =
+            write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_12;
-        let bits_to_clear_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        let bits_to_clear_13 =
+            write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_13;
-        let bits_to_clear_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        let bits_to_clear_14 =
+            write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_14;
-        let bits_to_clear_15 = write_val & (0x8000 as caliptra_emu_types::RvData);
+        let bits_to_clear_15 =
+            write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_15;
-        let bits_to_clear_16 = write_val & (0x1_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_16 =
+            write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_16;
-        let bits_to_clear_17 = write_val & (0x2_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_17 =
+            write_val & (0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_17;
-        let bits_to_clear_18 = write_val & (0x4_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_18 =
+            write_val & (0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_18;
-        let bits_to_clear_19 = write_val & (0x8_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_19 =
+            write_val & (0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_19;
-        let bits_to_clear_20 = write_val & (0x10_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_20 =
+            write_val & (0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_20;
-        let bits_to_clear_21 = write_val & (0x20_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_21 =
+            write_val & (0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_21;
-        let bits_to_clear_22 = write_val & (0x40_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_22 =
+            write_val & (0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_22;
-        let bits_to_clear_23 = write_val & (0x80_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_23 =
+            write_val & (0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_23;
-        let bits_to_clear_24 = write_val & (0x100_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_24 =
+            write_val & (0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_24;
-        let bits_to_clear_25 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_25 =
+            write_val & (0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_25;
-        let bits_to_clear_26 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_26 =
+            write_val & (0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_26;
-        let bits_to_clear_27 = write_val & (0x800_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_27 =
+            write_val & (0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_27;
-        let bits_to_clear_28 = write_val & (0x1000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_28 =
+            write_val & (0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_28;
-        let bits_to_clear_29 = write_val & (0x2000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_29 =
+            write_val & (0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_29;
-        let bits_to_clear_30 = write_val & (0x4000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_30 =
+            write_val & (0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_30;
-        let bits_to_clear_31 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_31 =
+            write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_31;
         self.mci_reg_agg_error_non_fatal = new_val;
     }
-    fn read_mci_reg_fw_error_fatal(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_error_fatal(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_fw_error_fatal");
         }
         self.mci_reg_fw_error_fatal
     }
-    fn write_mci_reg_fw_error_fatal(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_fw_error_fatal(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_fw_error_fatal = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_fw_error_fatal;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_fw_error_fatal = new_val;
     }
-    fn read_mci_reg_fw_error_non_fatal(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_error_non_fatal(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_fw_error_non_fatal"
@@ -6797,52 +7308,58 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_fw_error_non_fatal
     }
-    fn write_mci_reg_fw_error_non_fatal(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_fw_error_non_fatal(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_fw_error_non_fatal = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_fw_error_non_fatal;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_fw_error_non_fatal = new_val;
     }
-    fn read_mci_reg_hw_error_enc(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_hw_error_enc(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_hw_error_enc");
         }
         self.mci_reg_hw_error_enc
     }
-    fn write_mci_reg_hw_error_enc(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_hw_error_enc(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_hw_error_enc = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_hw_error_enc;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_hw_error_enc = new_val;
     }
-    fn read_mci_reg_fw_error_enc(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_error_enc(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_fw_error_enc");
         }
         self.mci_reg_fw_error_enc
     }
-    fn write_mci_reg_fw_error_enc(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_fw_error_enc(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_fw_error_enc = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_fw_error_enc;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_fw_error_enc = new_val;
     }
-    fn read_mci_reg_fw_extended_error_info(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fw_extended_error_info(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_fw_extended_error_info[{}]" , index);
         }
@@ -6850,33 +7367,35 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_fw_extended_error_info(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_fw_extended_error_info[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_fw_extended_error_info[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_fw_extended_error_info[index] = new_val;
     }
     fn read_mci_reg_internal_hw_error_fatal_mask(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_internal_hw_error_fatal_mask");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_internal_hw_error_fatal_mask)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_internal_hw_error_fatal_mask,
+        )
     }
     fn write_mci_reg_internal_hw_error_fatal_mask(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
         >,
@@ -6884,31 +7403,33 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_internal_hw_error_fatal_mask = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_internal_hw_error_fatal_mask;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_internal_hw_error_fatal_mask = new_val;
     }
     fn read_mci_reg_internal_hw_error_non_fatal_mask(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_internal_hw_error_non_fatal_mask");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_internal_hw_error_non_fatal_mask)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_internal_hw_error_non_fatal_mask,
+        )
     }
     fn write_mci_reg_internal_hw_error_non_fatal_mask(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
         >,
@@ -6916,29 +7437,31 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_internal_hw_error_non_fatal_mask = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_internal_hw_error_non_fatal_mask;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_internal_hw_error_non_fatal_mask = new_val;
     }
     fn read_mci_reg_internal_agg_error_fatal_mask(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_internal_agg_error_fatal_mask");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_internal_agg_error_fatal_mask)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_internal_agg_error_fatal_mask,
+        )
     }
     fn write_mci_reg_internal_agg_error_fatal_mask(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
         >,
@@ -6946,89 +7469,91 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_internal_agg_error_fatal_mask = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_internal_agg_error_fatal_mask;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x10_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x20_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x40_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x80_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x100_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x200_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x400_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x800_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x40 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x80 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_internal_agg_error_fatal_mask = new_val;
     }
     fn read_mci_reg_internal_agg_error_non_fatal_mask(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_internal_agg_error_non_fatal_mask");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_internal_agg_error_non_fatal_mask)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_internal_agg_error_non_fatal_mask,
+        )
     }
     fn write_mci_reg_internal_agg_error_non_fatal_mask(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
         >,
@@ -7036,123 +7561,133 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_internal_agg_error_non_fatal_mask = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_internal_agg_error_non_fatal_mask;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x10_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x20_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x40_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x80_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x100_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x200_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x400_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x800_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x40 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x80 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_internal_agg_error_non_fatal_mask = new_val;
     }
-    fn read_mci_reg_internal_fw_error_fatal_mask(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_internal_fw_error_fatal_mask(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_internal_fw_error_fatal_mask");
         }
         self.mci_reg_internal_fw_error_fatal_mask
     }
-    fn write_mci_reg_internal_fw_error_fatal_mask(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_internal_fw_error_fatal_mask(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_internal_fw_error_fatal_mask = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_internal_fw_error_fatal_mask;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_internal_fw_error_fatal_mask = new_val;
     }
-    fn read_mci_reg_internal_fw_error_non_fatal_mask(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_internal_fw_error_non_fatal_mask(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_internal_fw_error_non_fatal_mask");
         }
         self.mci_reg_internal_fw_error_non_fatal_mask
     }
-    fn write_mci_reg_internal_fw_error_non_fatal_mask(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_internal_fw_error_non_fatal_mask(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_internal_fw_error_non_fatal_mask = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_internal_fw_error_non_fatal_mask;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_internal_fw_error_non_fatal_mask = new_val;
     }
     fn read_mci_reg_wdt_timer1_en(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::WdtTimer1En::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_wdt_timer1_en");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_wdt_timer1_en)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_wdt_timer1_en)
     }
     fn write_mci_reg_wdt_timer1_en(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::WdtTimer1En::Register,
         >,
@@ -7160,16 +7695,16 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_wdt_timer1_en = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_wdt_timer1_en;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_wdt_timer1_en = new_val;
     }
     fn read_mci_reg_wdt_timer1_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::WdtTimer1Ctrl::Register,
     > {
@@ -7178,11 +7713,11 @@ impl MciPeripheral for MciGenerated {
                 "[EMU] Generated default register handler: read mci::mci_reg_wdt_timer1_ctrl"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_wdt_timer1_ctrl)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_wdt_timer1_ctrl)
     }
     fn write_mci_reg_wdt_timer1_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::WdtTimer1Ctrl::Register,
         >,
@@ -7190,17 +7725,17 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_wdt_timer1_ctrl = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_wdt_timer1_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_wdt_timer1_ctrl = new_val;
     }
     fn read_mci_reg_wdt_timer1_timeout_period(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_wdt_timer1_timeout_period[{}]" , index);
         }
@@ -7208,33 +7743,33 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_wdt_timer1_timeout_period(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_wdt_timer1_timeout_period[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_wdt_timer1_timeout_period[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_wdt_timer1_timeout_period[index] = new_val;
     }
     fn read_mci_reg_wdt_timer2_en(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::WdtTimer2En::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_wdt_timer2_en");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_wdt_timer2_en)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_wdt_timer2_en)
     }
     fn write_mci_reg_wdt_timer2_en(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::WdtTimer2En::Register,
         >,
@@ -7242,16 +7777,16 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_wdt_timer2_en = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_wdt_timer2_en;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_wdt_timer2_en = new_val;
     }
     fn read_mci_reg_wdt_timer2_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::WdtTimer2Ctrl::Register,
     > {
@@ -7260,11 +7795,11 @@ impl MciPeripheral for MciGenerated {
                 "[EMU] Generated default register handler: read mci::mci_reg_wdt_timer2_ctrl"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_wdt_timer2_ctrl)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_wdt_timer2_ctrl)
     }
     fn write_mci_reg_wdt_timer2_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::WdtTimer2Ctrl::Register,
         >,
@@ -7272,17 +7807,17 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_wdt_timer2_ctrl = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_wdt_timer2_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_wdt_timer2_ctrl = new_val;
     }
     fn read_mci_reg_wdt_timer2_timeout_period(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_wdt_timer2_timeout_period[{}]" , index);
         }
@@ -7290,29 +7825,34 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_wdt_timer2_timeout_period(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_wdt_timer2_timeout_period[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_wdt_timer2_timeout_period[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_wdt_timer2_timeout_period[index] = new_val;
     }
     fn read_mci_reg_wdt_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtStatus::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::WdtStatus::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_wdt_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_wdt_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_wdt_status)
     }
-    fn read_mci_reg_wdt_cfg(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_wdt_cfg(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_wdt_cfg[{}]",
@@ -7321,18 +7861,22 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_wdt_cfg[index]
     }
-    fn write_mci_reg_wdt_cfg(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mci_reg_wdt_cfg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_wdt_cfg[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_wdt_cfg[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_wdt_cfg[index] = new_val;
     }
-    fn read_mci_reg_mcu_timer_config(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_timer_config(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_mcu_timer_config"
@@ -7340,52 +7884,63 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_mcu_timer_config
     }
-    fn write_mci_reg_mcu_timer_config(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_timer_config(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_mcu_timer_config = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_mcu_timer_config;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_mcu_timer_config = new_val;
     }
-    fn read_mci_reg_mcu_rv_mtime_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_rv_mtime_l(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_mcu_rv_mtime_l");
         }
         self.mci_reg_mcu_rv_mtime_l
     }
-    fn write_mci_reg_mcu_rv_mtime_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_rv_mtime_l(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_mcu_rv_mtime_l = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_mcu_rv_mtime_l;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_mcu_rv_mtime_l = new_val;
     }
-    fn read_mci_reg_mcu_rv_mtime_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_rv_mtime_h(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_mcu_rv_mtime_h");
         }
         self.mci_reg_mcu_rv_mtime_h
     }
-    fn write_mci_reg_mcu_rv_mtime_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_rv_mtime_h(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_mcu_rv_mtime_h = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_mcu_rv_mtime_h;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_mcu_rv_mtime_h = new_val;
     }
-    fn read_mci_reg_mcu_rv_mtimecmp_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_rv_mtimecmp_l(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_mcu_rv_mtimecmp_l"
@@ -7393,18 +7948,23 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_mcu_rv_mtimecmp_l
     }
-    fn write_mci_reg_mcu_rv_mtimecmp_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_rv_mtimecmp_l(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_mcu_rv_mtimecmp_l = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_mcu_rv_mtimecmp_l;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_mcu_rv_mtimecmp_l = new_val;
     }
-    fn read_mci_reg_mcu_rv_mtimecmp_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_rv_mtimecmp_h(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_mcu_rv_mtimecmp_h"
@@ -7412,31 +7972,34 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_mcu_rv_mtimecmp_h
     }
-    fn write_mci_reg_mcu_rv_mtimecmp_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_rv_mtimecmp_h(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_mcu_rv_mtimecmp_h = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_mcu_rv_mtimecmp_h;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_mcu_rv_mtimecmp_h = new_val;
     }
     fn read_mci_reg_reset_request(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::ResetRequest::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_reset_request");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_reset_request)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_reset_request)
     }
     fn write_mci_reg_reset_request(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::ResetRequest::Register,
         >,
@@ -7444,73 +8007,85 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_reset_request = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_reset_request;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_reset_request = new_val;
     }
     fn read_mci_reg_mci_bootfsm_go(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Go::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_mci_bootfsm_go");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_mci_bootfsm_go)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_mci_bootfsm_go)
     }
     fn write_mci_reg_mci_bootfsm_go(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>,
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Go::Register,
+        >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_mci_bootfsm_go = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_mci_bootfsm_go;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_mci_bootfsm_go = new_val;
     }
     fn read_mci_reg_cptra_boot_go(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Go::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_cptra_boot_go");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_cptra_boot_go)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_cptra_boot_go)
     }
     fn write_mci_reg_cptra_boot_go(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>,
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Go::Register,
+        >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_cptra_boot_go = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_cptra_boot_go;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_cptra_boot_go = new_val;
     }
     fn read_mci_reg_fw_sram_exec_region_size(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::FwSramExecRegionSize::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_fw_sram_exec_region_size");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_fw_sram_exec_region_size)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_fw_sram_exec_region_size,
+        )
     }
     fn write_mci_reg_fw_sram_exec_region_size(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::FwSramExecRegionSize::Register,
         >,
@@ -7518,31 +8093,34 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_fw_sram_exec_region_size = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_fw_sram_exec_region_size;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_fw_sram_exec_region_size = new_val;
     }
-    fn read_mci_reg_mcu_nmi_vector(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_nmi_vector(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_mcu_nmi_vector");
         }
         self.mci_reg_mcu_nmi_vector
     }
-    fn write_mci_reg_mcu_nmi_vector(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_nmi_vector(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_mcu_nmi_vector = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_mcu_nmi_vector;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_mcu_nmi_vector = new_val;
     }
-    fn read_mci_reg_mcu_reset_vector(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mcu_reset_vector(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_mcu_reset_vector"
@@ -7550,18 +8128,24 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_mcu_reset_vector
     }
-    fn write_mci_reg_mcu_reset_vector(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_mcu_reset_vector(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_mcu_reset_vector = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_mcu_reset_vector;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_mcu_reset_vector = new_val;
     }
-    fn read_mci_reg_mbox0_valid_axi_user(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mbox0_valid_axi_user(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_mbox0_valid_axi_user[{}]" , index);
         }
@@ -7569,34 +8153,36 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_mbox0_valid_axi_user(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_mbox0_valid_axi_user[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_mbox0_valid_axi_user[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_mbox0_valid_axi_user[index] = new_val;
     }
     fn read_mci_reg_mbox0_axi_user_lock(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxxAxiUserLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_mbox0_axi_user_lock[{}]" , index);
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_mbox0_axi_user_lock[index])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_mbox0_axi_user_lock[index],
+        )
     }
     fn write_mci_reg_mbox0_axi_user_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxxAxiUserLock::Register,
         >,
@@ -7605,14 +8191,17 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_mbox0_axi_user_lock[{}] = 0x{:08x}" , index , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_mbox0_axi_user_lock[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_mbox0_axi_user_lock[index] = new_val;
     }
-    fn read_mci_reg_mbox1_valid_axi_user(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_mbox1_valid_axi_user(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_mbox1_valid_axi_user[{}]" , index);
         }
@@ -7620,34 +8209,36 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_mbox1_valid_axi_user(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_mbox1_valid_axi_user[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_mbox1_valid_axi_user[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_mbox1_valid_axi_user[index] = new_val;
     }
     fn read_mci_reg_mbox1_axi_user_lock(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxxAxiUserLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_mbox1_axi_user_lock[{}]" , index);
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_mbox1_axi_user_lock[index])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_mbox1_axi_user_lock[index],
+        )
     }
     fn write_mci_reg_mbox1_axi_user_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxxAxiUserLock::Register,
         >,
@@ -7656,14 +8247,17 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_mbox1_axi_user_lock[{}] = 0x{:08x}" , index , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_mbox1_axi_user_lock[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_mbox1_axi_user_lock[index] = new_val;
     }
-    fn read_mci_reg_soc_dft_en(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_soc_dft_en(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_soc_dft_en[{}]",
@@ -7672,18 +8266,25 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_soc_dft_en[index]
     }
-    fn write_mci_reg_soc_dft_en(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mci_reg_soc_dft_en(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_soc_dft_en[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_soc_dft_en[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_soc_dft_en[index] = new_val;
     }
-    fn read_mci_reg_soc_hw_debug_en(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_soc_hw_debug_en(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_soc_hw_debug_en[{}]",
@@ -7692,18 +8293,25 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_soc_hw_debug_en[index]
     }
-    fn write_mci_reg_soc_hw_debug_en(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mci_reg_soc_hw_debug_en(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_soc_hw_debug_en[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_soc_hw_debug_en[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_soc_hw_debug_en[index] = new_val;
     }
-    fn read_mci_reg_soc_prod_debug_state(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_soc_prod_debug_state(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_soc_prod_debug_state[{}]" , index);
         }
@@ -7711,20 +8319,22 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_soc_prod_debug_state(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_soc_prod_debug_state[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_soc_prod_debug_state[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_soc_prod_debug_state[index] = new_val;
     }
-    fn read_mci_reg_fc_fips_zerozation(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_fc_fips_zerozation(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mci_reg_fc_fips_zerozation"
@@ -7732,24 +8342,33 @@ impl MciPeripheral for MciGenerated {
         }
         self.mci_reg_fc_fips_zerozation
     }
-    fn write_mci_reg_fc_fips_zerozation(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_fc_fips_zerozation(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_fc_fips_zerozation = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_fc_fips_zerozation;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_fc_fips_zerozation = new_val;
     }
-    fn read_mci_reg_generic_input_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_generic_input_wires(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_generic_input_wires[{}]" , index);
         }
         self.mci_reg_generic_input_wires[index]
     }
-    fn read_mci_reg_generic_output_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_generic_output_wires(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_generic_output_wires[{}]" , index);
         }
@@ -7757,62 +8376,62 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_generic_output_wires(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_generic_output_wires[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_generic_output_wires[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_generic_output_wires[index] = new_val;
     }
-    fn read_mci_reg_debug_in(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_debug_in(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_debug_in");
         }
         self.mci_reg_debug_in
     }
-    fn write_mci_reg_debug_in(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_debug_in(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write mci::mci_reg_debug_in = 0x{:08x}",
                 val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_debug_in;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_debug_in = new_val;
     }
-    fn read_mci_reg_debug_out(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mci_reg_debug_out(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_debug_out");
         }
         self.mci_reg_debug_out
     }
-    fn write_mci_reg_debug_out(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mci_reg_debug_out(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write mci::mci_reg_debug_out = 0x{:08x}",
                 val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_debug_out;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_debug_out = new_val;
     }
     fn read_mci_reg_ss_debug_intent(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::SsDebugIntent::Register,
     > {
@@ -7821,11 +8440,11 @@ impl MciPeripheral for MciGenerated {
                 "[EMU] Generated default register handler: read mci::mci_reg_ss_debug_intent"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_ss_debug_intent)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_ss_debug_intent)
     }
     fn read_mci_reg_ss_config_done_sticky(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::SsConfigDone::Register,
     > {
@@ -7834,11 +8453,13 @@ impl MciPeripheral for MciGenerated {
                 "[EMU] Generated default register handler: read mci::mci_reg_ss_config_done_sticky"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_ss_config_done_sticky)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_ss_config_done_sticky,
+        )
     }
     fn write_mci_reg_ss_config_done_sticky(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::SsConfigDone::Register,
         >,
@@ -7846,27 +8467,27 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_ss_config_done_sticky = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_ss_config_done_sticky;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_ss_config_done_sticky = new_val;
     }
     fn read_mci_reg_ss_config_done(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::SsConfigDone::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_ss_config_done");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_ss_config_done)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_ss_config_done)
     }
     fn write_mci_reg_ss_config_done(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::SsConfigDone::Register,
         >,
@@ -7874,17 +8495,17 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_ss_config_done = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_ss_config_done;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_ss_config_done = new_val;
     }
     fn read_mci_reg_prod_debug_unlock_pk_hash_reg(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_prod_debug_unlock_pk_hash_reg[{}]" , index);
         }
@@ -7892,33 +8513,35 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_prod_debug_unlock_pk_hash_reg(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_prod_debug_unlock_pk_hash_reg[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_prod_debug_unlock_pk_hash_reg[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_prod_debug_unlock_pk_hash_reg[index] = new_val;
     }
     fn read_mci_reg_intr_block_rf_global_intr_en_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::GlobalIntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_global_intr_en_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_global_intr_en_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_global_intr_en_r,
+        )
     }
     fn write_mci_reg_intr_block_rf_global_intr_en_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::GlobalIntrEnT::Register,
         >,
@@ -7926,29 +8549,31 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_global_intr_en_r = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_global_intr_en_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_global_intr_en_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error0_intr_en_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error0IntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error0_intr_en_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_error0_intr_en_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_error0_intr_en_r,
+        )
     }
     fn write_mci_reg_intr_block_rf_error0_intr_en_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error0IntrEnT::Register,
         >,
@@ -7956,37 +8581,39 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error0_intr_en_r = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error0_intr_en_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error0_intr_en_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error1_intr_en_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error1IntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error1_intr_en_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_error1_intr_en_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_error1_intr_en_r,
+        )
     }
     fn write_mci_reg_intr_block_rf_error1_intr_en_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error1IntrEnT::Register,
         >,
@@ -7994,89 +8621,91 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error1_intr_en_r = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error1_intr_en_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x10_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x20_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x40_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x80_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x100_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x200_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x400_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x800_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x40 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x80 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error1_intr_en_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif0_intr_en_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif0IntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif0_intr_en_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_notif0_intr_en_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_notif0_intr_en_r,
+        )
     }
     fn write_mci_reg_intr_block_rf_notif0_intr_en_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif0IntrEnT::Register,
         >,
@@ -8084,55 +8713,57 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif0_intr_en_r = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif0_intr_en_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x40 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x80 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif0_intr_en_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif1_intr_en_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif1IntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif1_intr_en_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_notif1_intr_en_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_notif1_intr_en_r,
+        )
     }
     fn write_mci_reg_intr_block_rf_notif1_intr_en_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif1IntrEnT::Register,
         >,
@@ -8140,111 +8771,117 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif1_intr_en_r = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif1_intr_en_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400 as caliptra_emu_types::RvData))
-            | (write_val & (0x400 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x10_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x20_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x40_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x80_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x100_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x200_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x400_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x400_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x800_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x40 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x80 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif1_intr_en_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_global_intr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::GlobalIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_global_intr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_error_global_intr_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_error_global_intr_r,
+        )
     }
     fn read_mci_reg_intr_block_rf_notif_global_intr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::GlobalIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_global_intr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_notif_global_intr_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_notif_global_intr_r,
+        )
     }
     fn read_mci_reg_intr_block_rf_error0_internal_intr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error0IntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error0_internal_intr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_error0_internal_intr_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_error0_internal_intr_r,
+        )
     }
     fn write_mci_reg_intr_block_rf_error0_internal_intr_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error0IntrT::Register,
         >,
@@ -8252,37 +8889,39 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error0_internal_intr_r = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error0_internal_intr_r;
         let mut new_val = current_val;
-        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_clear_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_0;
-        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_clear_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_1;
-        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_clear_2 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_2;
-        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        let bits_to_clear_3 = write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_3;
-        let bits_to_clear_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        let bits_to_clear_4 = write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_4;
-        let bits_to_clear_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        let bits_to_clear_5 = write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_5;
         self.mci_reg_intr_block_rf_error0_internal_intr_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error1_internal_intr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error1IntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error1_internal_intr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_error1_internal_intr_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_error1_internal_intr_r,
+        )
     }
     fn write_mci_reg_intr_block_rf_error1_internal_intr_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error1IntrT::Register,
         >,
@@ -8290,89 +8929,115 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error1_internal_intr_r = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error1_internal_intr_r;
         let mut new_val = current_val;
-        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_clear_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_0;
-        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_clear_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_1;
-        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_clear_2 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_2;
-        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        let bits_to_clear_3 = write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_3;
-        let bits_to_clear_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        let bits_to_clear_4 = write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_4;
-        let bits_to_clear_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        let bits_to_clear_5 = write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_5;
-        let bits_to_clear_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        let bits_to_clear_6 = write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_6;
-        let bits_to_clear_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        let bits_to_clear_7 = write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_7;
-        let bits_to_clear_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        let bits_to_clear_8 =
+            write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_8;
-        let bits_to_clear_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        let bits_to_clear_9 =
+            write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_9;
-        let bits_to_clear_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        let bits_to_clear_10 =
+            write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_10;
-        let bits_to_clear_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        let bits_to_clear_11 =
+            write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_11;
-        let bits_to_clear_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        let bits_to_clear_12 =
+            write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_12;
-        let bits_to_clear_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        let bits_to_clear_13 =
+            write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_13;
-        let bits_to_clear_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        let bits_to_clear_14 =
+            write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_14;
-        let bits_to_clear_15 = write_val & (0x8000 as caliptra_emu_types::RvData);
+        let bits_to_clear_15 =
+            write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_15;
-        let bits_to_clear_16 = write_val & (0x1_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_16 =
+            write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_16;
-        let bits_to_clear_17 = write_val & (0x2_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_17 =
+            write_val & (0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_17;
-        let bits_to_clear_18 = write_val & (0x4_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_18 =
+            write_val & (0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_18;
-        let bits_to_clear_19 = write_val & (0x8_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_19 =
+            write_val & (0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_19;
-        let bits_to_clear_20 = write_val & (0x10_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_20 =
+            write_val & (0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_20;
-        let bits_to_clear_21 = write_val & (0x20_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_21 =
+            write_val & (0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_21;
-        let bits_to_clear_22 = write_val & (0x40_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_22 =
+            write_val & (0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_22;
-        let bits_to_clear_23 = write_val & (0x80_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_23 =
+            write_val & (0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_23;
-        let bits_to_clear_24 = write_val & (0x100_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_24 =
+            write_val & (0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_24;
-        let bits_to_clear_25 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_25 =
+            write_val & (0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_25;
-        let bits_to_clear_26 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_26 =
+            write_val & (0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_26;
-        let bits_to_clear_27 = write_val & (0x800_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_27 =
+            write_val & (0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_27;
-        let bits_to_clear_28 = write_val & (0x1000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_28 =
+            write_val & (0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_28;
-        let bits_to_clear_29 = write_val & (0x2000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_29 =
+            write_val & (0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_29;
-        let bits_to_clear_30 = write_val & (0x4000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_30 =
+            write_val & (0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_30;
-        let bits_to_clear_31 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_31 =
+            write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_31;
         self.mci_reg_intr_block_rf_error1_internal_intr_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif0_internal_intr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif0IntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif0_internal_intr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_notif0_internal_intr_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_notif0_internal_intr_r,
+        )
     }
     fn write_mci_reg_intr_block_rf_notif0_internal_intr_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif0IntrT::Register,
         >,
@@ -8380,55 +9045,64 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif0_internal_intr_r = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif0_internal_intr_r;
         let mut new_val = current_val;
-        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_clear_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_0;
-        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_clear_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_1;
-        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_clear_2 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_2;
-        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        let bits_to_clear_3 = write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_3;
-        let bits_to_clear_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        let bits_to_clear_4 = write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_4;
-        let bits_to_clear_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        let bits_to_clear_5 = write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_5;
-        let bits_to_clear_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        let bits_to_clear_6 = write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_6;
-        let bits_to_clear_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        let bits_to_clear_7 = write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_7;
-        let bits_to_clear_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        let bits_to_clear_8 =
+            write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_8;
-        let bits_to_clear_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        let bits_to_clear_9 =
+            write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_9;
-        let bits_to_clear_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        let bits_to_clear_10 =
+            write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_10;
-        let bits_to_clear_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        let bits_to_clear_11 =
+            write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_11;
-        let bits_to_clear_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        let bits_to_clear_12 =
+            write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_12;
-        let bits_to_clear_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        let bits_to_clear_13 =
+            write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_13;
-        let bits_to_clear_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        let bits_to_clear_14 =
+            write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_14;
         self.mci_reg_intr_block_rf_notif0_internal_intr_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif1_internal_intr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif1IntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif1_internal_intr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_notif1_internal_intr_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_notif1_internal_intr_r,
+        )
     }
     fn write_mci_reg_intr_block_rf_notif1_internal_intr_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif1IntrT::Register,
         >,
@@ -8436,89 +9110,115 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif1_internal_intr_r = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif1_internal_intr_r;
         let mut new_val = current_val;
-        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_clear_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_0;
-        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_clear_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_1;
-        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_clear_2 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_2;
-        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        let bits_to_clear_3 = write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_3;
-        let bits_to_clear_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        let bits_to_clear_4 = write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_4;
-        let bits_to_clear_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        let bits_to_clear_5 = write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_5;
-        let bits_to_clear_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        let bits_to_clear_6 = write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_6;
-        let bits_to_clear_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        let bits_to_clear_7 = write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_7;
-        let bits_to_clear_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        let bits_to_clear_8 =
+            write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_8;
-        let bits_to_clear_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        let bits_to_clear_9 =
+            write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_9;
-        let bits_to_clear_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        let bits_to_clear_10 =
+            write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_10;
-        let bits_to_clear_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        let bits_to_clear_11 =
+            write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_11;
-        let bits_to_clear_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        let bits_to_clear_12 =
+            write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_12;
-        let bits_to_clear_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        let bits_to_clear_13 =
+            write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_13;
-        let bits_to_clear_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        let bits_to_clear_14 =
+            write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_14;
-        let bits_to_clear_15 = write_val & (0x8000 as caliptra_emu_types::RvData);
+        let bits_to_clear_15 =
+            write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_15;
-        let bits_to_clear_16 = write_val & (0x1_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_16 =
+            write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_16;
-        let bits_to_clear_17 = write_val & (0x2_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_17 =
+            write_val & (0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_17;
-        let bits_to_clear_18 = write_val & (0x4_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_18 =
+            write_val & (0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_18;
-        let bits_to_clear_19 = write_val & (0x8_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_19 =
+            write_val & (0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_19;
-        let bits_to_clear_20 = write_val & (0x10_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_20 =
+            write_val & (0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_20;
-        let bits_to_clear_21 = write_val & (0x20_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_21 =
+            write_val & (0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_21;
-        let bits_to_clear_22 = write_val & (0x40_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_22 =
+            write_val & (0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_22;
-        let bits_to_clear_23 = write_val & (0x80_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_23 =
+            write_val & (0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_23;
-        let bits_to_clear_24 = write_val & (0x100_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_24 =
+            write_val & (0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_24;
-        let bits_to_clear_25 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_25 =
+            write_val & (0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_25;
-        let bits_to_clear_26 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_26 =
+            write_val & (0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_26;
-        let bits_to_clear_27 = write_val & (0x800_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_27 =
+            write_val & (0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_27;
-        let bits_to_clear_28 = write_val & (0x1000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_28 =
+            write_val & (0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_28;
-        let bits_to_clear_29 = write_val & (0x2000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_29 =
+            write_val & (0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_29;
-        let bits_to_clear_30 = write_val & (0x4000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_30 =
+            write_val & (0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_30;
-        let bits_to_clear_31 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        let bits_to_clear_31 =
+            write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_31;
         self.mci_reg_intr_block_rf_notif1_internal_intr_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error0_intr_trig_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error0IntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error0_intr_trig_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_error0_intr_trig_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_error0_intr_trig_r,
+        )
     }
     fn write_mci_reg_intr_block_rf_error0_intr_trig_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error0IntrTrigT::Register,
         >,
@@ -8526,37 +9226,39 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error0_intr_trig_r = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error0_intr_trig_r;
         let mut new_val = current_val;
-        let bits_to_set_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_set_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_0;
-        let bits_to_set_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_set_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_1;
-        let bits_to_set_2 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_set_2 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_2;
-        let bits_to_set_3 = write_val & (8 as caliptra_emu_types::RvData);
+        let bits_to_set_3 = write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_3;
-        let bits_to_set_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        let bits_to_set_4 = write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_4;
-        let bits_to_set_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        let bits_to_set_5 = write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_5;
         self.mci_reg_intr_block_rf_error0_intr_trig_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error1_intr_trig_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Error1IntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error1_intr_trig_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_error1_intr_trig_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_error1_intr_trig_r,
+        )
     }
     fn write_mci_reg_intr_block_rf_error1_intr_trig_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Error1IntrTrigT::Register,
         >,
@@ -8564,89 +9266,111 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error1_intr_trig_r = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error1_intr_trig_r;
         let mut new_val = current_val;
-        let bits_to_set_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_set_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_0;
-        let bits_to_set_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_set_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_1;
-        let bits_to_set_2 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_set_2 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_2;
-        let bits_to_set_3 = write_val & (8 as caliptra_emu_types::RvData);
+        let bits_to_set_3 = write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_3;
-        let bits_to_set_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        let bits_to_set_4 = write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_4;
-        let bits_to_set_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        let bits_to_set_5 = write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_5;
-        let bits_to_set_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        let bits_to_set_6 = write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_6;
-        let bits_to_set_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        let bits_to_set_7 = write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_7;
-        let bits_to_set_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        let bits_to_set_8 = write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_8;
-        let bits_to_set_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        let bits_to_set_9 = write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_9;
-        let bits_to_set_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        let bits_to_set_10 = write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_10;
-        let bits_to_set_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        let bits_to_set_11 = write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_11;
-        let bits_to_set_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        let bits_to_set_12 =
+            write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_12;
-        let bits_to_set_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        let bits_to_set_13 =
+            write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_13;
-        let bits_to_set_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        let bits_to_set_14 =
+            write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_14;
-        let bits_to_set_15 = write_val & (0x8000 as caliptra_emu_types::RvData);
+        let bits_to_set_15 =
+            write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_15;
-        let bits_to_set_16 = write_val & (0x1_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_16 =
+            write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_16;
-        let bits_to_set_17 = write_val & (0x2_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_17 =
+            write_val & (0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_17;
-        let bits_to_set_18 = write_val & (0x4_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_18 =
+            write_val & (0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_18;
-        let bits_to_set_19 = write_val & (0x8_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_19 =
+            write_val & (0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_19;
-        let bits_to_set_20 = write_val & (0x10_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_20 =
+            write_val & (0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_20;
-        let bits_to_set_21 = write_val & (0x20_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_21 =
+            write_val & (0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_21;
-        let bits_to_set_22 = write_val & (0x40_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_22 =
+            write_val & (0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_22;
-        let bits_to_set_23 = write_val & (0x80_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_23 =
+            write_val & (0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_23;
-        let bits_to_set_24 = write_val & (0x100_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_24 =
+            write_val & (0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_24;
-        let bits_to_set_25 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_25 =
+            write_val & (0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_25;
-        let bits_to_set_26 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_26 =
+            write_val & (0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_26;
-        let bits_to_set_27 = write_val & (0x800_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_27 =
+            write_val & (0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_27;
-        let bits_to_set_28 = write_val & (0x1000_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_28 =
+            write_val & (0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_28;
-        let bits_to_set_29 = write_val & (0x2000_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_29 =
+            write_val & (0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_29;
-        let bits_to_set_30 = write_val & (0x4000_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_30 =
+            write_val & (0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_30;
-        let bits_to_set_31 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_31 =
+            write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_31;
         self.mci_reg_intr_block_rf_error1_intr_trig_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif0_intr_trig_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif0IntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif0_intr_trig_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_notif0_intr_trig_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_notif0_intr_trig_r,
+        )
     }
     fn write_mci_reg_intr_block_rf_notif0_intr_trig_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif0IntrTrigT::Register,
         >,
@@ -8654,55 +9378,60 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif0_intr_trig_r = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif0_intr_trig_r;
         let mut new_val = current_val;
-        let bits_to_set_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_set_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_0;
-        let bits_to_set_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_set_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_1;
-        let bits_to_set_2 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_set_2 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_2;
-        let bits_to_set_3 = write_val & (8 as caliptra_emu_types::RvData);
+        let bits_to_set_3 = write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_3;
-        let bits_to_set_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        let bits_to_set_4 = write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_4;
-        let bits_to_set_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        let bits_to_set_5 = write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_5;
-        let bits_to_set_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        let bits_to_set_6 = write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_6;
-        let bits_to_set_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        let bits_to_set_7 = write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_7;
-        let bits_to_set_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        let bits_to_set_8 = write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_8;
-        let bits_to_set_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        let bits_to_set_9 = write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_9;
-        let bits_to_set_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        let bits_to_set_10 = write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_10;
-        let bits_to_set_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        let bits_to_set_11 = write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_11;
-        let bits_to_set_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        let bits_to_set_12 =
+            write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_12;
-        let bits_to_set_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        let bits_to_set_13 =
+            write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_13;
-        let bits_to_set_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        let bits_to_set_14 =
+            write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_14;
         self.mci_reg_intr_block_rf_notif0_intr_trig_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif1_intr_trig_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::Notif1IntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif1_intr_trig_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mci_reg_intr_block_rf_notif1_intr_trig_r)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mci_reg_intr_block_rf_notif1_intr_trig_r,
+        )
     }
     fn write_mci_reg_intr_block_rf_notif1_intr_trig_r(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::Notif1IntrTrigT::Register,
         >,
@@ -8710,78 +9439,98 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif1_intr_trig_r = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif1_intr_trig_r;
         let mut new_val = current_val;
-        let bits_to_set_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_set_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_0;
-        let bits_to_set_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_set_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_1;
-        let bits_to_set_2 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_set_2 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_2;
-        let bits_to_set_3 = write_val & (8 as caliptra_emu_types::RvData);
+        let bits_to_set_3 = write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_3;
-        let bits_to_set_4 = write_val & (0x10 as caliptra_emu_types::RvData);
+        let bits_to_set_4 = write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_4;
-        let bits_to_set_5 = write_val & (0x20 as caliptra_emu_types::RvData);
+        let bits_to_set_5 = write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_5;
-        let bits_to_set_6 = write_val & (0x40 as caliptra_emu_types::RvData);
+        let bits_to_set_6 = write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_6;
-        let bits_to_set_7 = write_val & (0x80 as caliptra_emu_types::RvData);
+        let bits_to_set_7 = write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_7;
-        let bits_to_set_8 = write_val & (0x100 as caliptra_emu_types::RvData);
+        let bits_to_set_8 = write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_8;
-        let bits_to_set_9 = write_val & (0x200 as caliptra_emu_types::RvData);
+        let bits_to_set_9 = write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_9;
-        let bits_to_set_10 = write_val & (0x400 as caliptra_emu_types::RvData);
+        let bits_to_set_10 = write_val & (0x400 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_10;
-        let bits_to_set_11 = write_val & (0x800 as caliptra_emu_types::RvData);
+        let bits_to_set_11 = write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_11;
-        let bits_to_set_12 = write_val & (0x1000 as caliptra_emu_types::RvData);
+        let bits_to_set_12 =
+            write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_12;
-        let bits_to_set_13 = write_val & (0x2000 as caliptra_emu_types::RvData);
+        let bits_to_set_13 =
+            write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_13;
-        let bits_to_set_14 = write_val & (0x4000 as caliptra_emu_types::RvData);
+        let bits_to_set_14 =
+            write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_14;
-        let bits_to_set_15 = write_val & (0x8000 as caliptra_emu_types::RvData);
+        let bits_to_set_15 =
+            write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_15;
-        let bits_to_set_16 = write_val & (0x1_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_16 =
+            write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_16;
-        let bits_to_set_17 = write_val & (0x2_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_17 =
+            write_val & (0x2_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_17;
-        let bits_to_set_18 = write_val & (0x4_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_18 =
+            write_val & (0x4_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_18;
-        let bits_to_set_19 = write_val & (0x8_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_19 =
+            write_val & (0x8_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_19;
-        let bits_to_set_20 = write_val & (0x10_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_20 =
+            write_val & (0x10_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_20;
-        let bits_to_set_21 = write_val & (0x20_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_21 =
+            write_val & (0x20_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_21;
-        let bits_to_set_22 = write_val & (0x40_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_22 =
+            write_val & (0x40_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_22;
-        let bits_to_set_23 = write_val & (0x80_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_23 =
+            write_val & (0x80_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_23;
-        let bits_to_set_24 = write_val & (0x100_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_24 =
+            write_val & (0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_24;
-        let bits_to_set_25 = write_val & (0x200_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_25 =
+            write_val & (0x200_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_25;
-        let bits_to_set_26 = write_val & (0x400_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_26 =
+            write_val & (0x400_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_26;
-        let bits_to_set_27 = write_val & (0x800_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_27 =
+            write_val & (0x800_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_27;
-        let bits_to_set_28 = write_val & (0x1000_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_28 =
+            write_val & (0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_28;
-        let bits_to_set_29 = write_val & (0x2000_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_29 =
+            write_val & (0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_29;
-        let bits_to_set_30 = write_val & (0x4000_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_30 =
+            write_val & (0x4000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_30;
-        let bits_to_set_31 = write_val & (0x8000_0000 as caliptra_emu_types::RvData);
+        let bits_to_set_31 =
+            write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val |= bits_to_set_31;
         self.mci_reg_intr_block_rf_notif1_intr_trig_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_internal_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_internal_intr_count_r");
         }
@@ -8789,21 +9538,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_internal_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_internal_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_internal_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_internal_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r");
         }
@@ -8811,21 +9560,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r");
         }
@@ -8833,21 +9582,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_r");
         }
@@ -8855,21 +9604,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_r");
         }
@@ -8877,21 +9626,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_r");
         }
@@ -8899,21 +9648,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_r");
         }
@@ -8921,21 +9670,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_r");
         }
@@ -8943,21 +9692,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_r");
         }
@@ -8965,21 +9714,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_r");
         }
@@ -8987,21 +9736,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_r");
         }
@@ -9009,21 +9758,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_r");
         }
@@ -9031,21 +9780,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_r");
         }
@@ -9053,21 +9802,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_r");
         }
@@ -9075,21 +9824,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_r");
         }
@@ -9097,21 +9846,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_r");
         }
@@ -9119,21 +9868,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_r");
         }
@@ -9141,21 +9890,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_r");
         }
@@ -9163,21 +9912,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_r");
         }
@@ -9185,21 +9934,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_r");
         }
@@ -9207,21 +9956,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_r");
         }
@@ -9229,21 +9978,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_r");
         }
@@ -9251,21 +10000,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_r");
         }
@@ -9273,21 +10022,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_r");
         }
@@ -9295,21 +10044,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_r");
         }
@@ -9317,21 +10066,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_r");
         }
@@ -9339,21 +10088,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_r");
         }
@@ -9361,21 +10110,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_r");
         }
@@ -9383,21 +10132,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_r");
         }
@@ -9405,21 +10154,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_r");
         }
@@ -9427,21 +10176,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_r");
         }
@@ -9449,21 +10198,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_r");
         }
@@ -9471,21 +10220,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_r");
         }
@@ -9493,21 +10242,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_r");
         }
@@ -9515,21 +10264,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_r");
         }
@@ -9537,21 +10286,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_r");
         }
@@ -9559,21 +10308,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_r");
         }
@@ -9581,21 +10330,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_r");
         }
@@ -9603,21 +10352,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r");
         }
@@ -9625,21 +10374,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_r");
         }
@@ -9647,21 +10396,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r");
         }
@@ -9669,21 +10418,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r");
         }
@@ -9691,21 +10440,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r");
         }
@@ -9713,21 +10462,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r");
         }
@@ -9735,21 +10484,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r");
         }
@@ -9757,21 +10506,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r");
         }
@@ -9779,21 +10528,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r");
         }
@@ -9801,21 +10550,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r");
         }
@@ -9823,21 +10572,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r");
         }
@@ -9845,21 +10594,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r");
         }
@@ -9867,21 +10616,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r");
         }
@@ -9889,21 +10638,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r");
         }
@@ -9911,21 +10660,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r");
         }
@@ -9933,21 +10682,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r");
         }
@@ -9955,21 +10704,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r");
         }
@@ -9977,21 +10726,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r");
         }
@@ -9999,21 +10748,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r");
         }
@@ -10021,21 +10770,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r");
         }
@@ -10043,21 +10792,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r");
         }
@@ -10065,21 +10814,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r");
         }
@@ -10087,21 +10836,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r");
         }
@@ -10109,21 +10858,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r");
         }
@@ -10131,21 +10880,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r");
         }
@@ -10153,21 +10902,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r");
         }
@@ -10175,21 +10924,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r");
         }
@@ -10197,21 +10946,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r");
         }
@@ -10219,21 +10968,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r");
         }
@@ -10241,21 +10990,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r");
         }
@@ -10263,21 +11012,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r");
         }
@@ -10285,21 +11034,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r");
         }
@@ -10307,21 +11056,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r");
         }
@@ -10329,21 +11078,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r");
         }
@@ -10351,21 +11100,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r");
         }
@@ -10373,21 +11122,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_r");
         }
@@ -10395,21 +11144,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_r");
         }
@@ -10417,21 +11166,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_r");
         }
@@ -10439,21 +11188,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_r");
         }
@@ -10461,21 +11210,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_r");
         }
@@ -10483,21 +11232,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r");
         }
@@ -10505,21 +11254,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r");
         }
@@ -10527,21 +11276,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_debug_locked_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_debug_locked_intr_count_r");
         }
@@ -10549,21 +11298,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_debug_locked_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_debug_locked_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_debug_locked_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_debug_locked_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_scan_mode_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_scan_mode_intr_count_r");
         }
@@ -10571,21 +11320,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_scan_mode_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_scan_mode_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_scan_mode_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_scan_mode_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_r");
         }
@@ -10593,21 +11342,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_r");
         }
@@ -10615,21 +11364,21 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r");
         }
@@ -10637,1135 +11386,1141 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r = new_val;
     }
     fn read_mci_reg_intr_block_rf_error_internal_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_internal_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_internal_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_incr_r,
         )
     }
     fn read_mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_incr_r(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_incr_r");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_incr_r,
         )
     }
     fn read_mcu_trace_buffer_csr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Status::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Status::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_trace_buffer_csr_status"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mcu_trace_buffer_csr_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mcu_trace_buffer_csr_status,
+        )
     }
-    fn read_mcu_trace_buffer_csr_config(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_trace_buffer_csr_config(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_trace_buffer_csr_config"
@@ -11773,7 +12528,9 @@ impl MciPeripheral for MciGenerated {
         }
         self.mcu_trace_buffer_csr_config
     }
-    fn read_mcu_trace_buffer_csr_data(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_trace_buffer_csr_data(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_trace_buffer_csr_data"
@@ -11781,13 +12538,17 @@ impl MciPeripheral for MciGenerated {
         }
         self.mcu_trace_buffer_csr_data
     }
-    fn read_mcu_trace_buffer_csr_write_ptr(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_trace_buffer_csr_write_ptr(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mcu_trace_buffer_csr_write_ptr");
         }
         self.mcu_trace_buffer_csr_write_ptr
     }
-    fn read_mcu_trace_buffer_csr_read_ptr(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_trace_buffer_csr_read_ptr(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_trace_buffer_csr_read_ptr"
@@ -11795,18 +12556,24 @@ impl MciPeripheral for MciGenerated {
         }
         self.mcu_trace_buffer_csr_read_ptr
     }
-    fn write_mcu_trace_buffer_csr_read_ptr(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_trace_buffer_csr_read_ptr(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_trace_buffer_csr_read_ptr = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_trace_buffer_csr_read_ptr;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_trace_buffer_csr_read_ptr = new_val;
     }
-    fn read_mcu_mbox0_csr_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox0_csr_mbox_sram(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_sram[{}]",
@@ -11815,29 +12582,35 @@ impl MciPeripheral for MciGenerated {
         }
         self.mcu_mbox0_csr_mbox_sram[index]
     }
-    fn write_mcu_mbox0_csr_mbox_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mcu_mbox0_csr_mbox_sram(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox0_csr_mbox_sram[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox0_csr_mbox_sram[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox0_csr_mbox_sram[index] = new_val;
     }
     fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_lock"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox0_csr_mbox_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox0_csr_mbox_lock)
     }
-    fn read_mcu_mbox0_csr_mbox_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox0_csr_mbox_user(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_user"
@@ -11845,37 +12618,44 @@ impl MciPeripheral for MciGenerated {
         }
         self.mcu_mbox0_csr_mbox_user
     }
-    fn read_mcu_mbox0_csr_mbox_target_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox0_csr_mbox_target_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_target_user");
         }
         self.mcu_mbox0_csr_mbox_target_user
     }
-    fn write_mcu_mbox0_csr_mbox_target_user(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_mbox0_csr_mbox_target_user(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox0_csr_mbox_target_user = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox0_csr_mbox_target_user;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox0_csr_mbox_target_user = new_val;
     }
     fn read_mcu_mbox0_csr_mbox_target_user_valid(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_target_user_valid");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox0_csr_mbox_target_user_valid)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mcu_mbox0_csr_mbox_target_user_valid,
+        )
     }
     fn write_mcu_mbox0_csr_mbox_target_user_valid(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
@@ -11883,31 +12663,34 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox0_csr_mbox_target_user_valid = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox0_csr_mbox_target_user_valid;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox0_csr_mbox_target_user_valid = new_val;
     }
-    fn read_mcu_mbox0_csr_mbox_cmd(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox0_csr_mbox_cmd(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_cmd");
         }
         self.mcu_mbox0_csr_mbox_cmd
     }
-    fn write_mcu_mbox0_csr_mbox_cmd(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_mbox0_csr_mbox_cmd(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox0_csr_mbox_cmd = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox0_csr_mbox_cmd;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox0_csr_mbox_cmd = new_val;
     }
-    fn read_mcu_mbox0_csr_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox0_csr_mbox_dlen(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_dlen"
@@ -11915,20 +12698,23 @@ impl MciPeripheral for MciGenerated {
         }
         self.mcu_mbox0_csr_mbox_dlen
     }
-    fn write_mcu_mbox0_csr_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_mbox0_csr_mbox_dlen(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox0_csr_mbox_dlen = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox0_csr_mbox_dlen;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox0_csr_mbox_dlen = new_val;
     }
     fn read_mcu_mbox0_csr_mbox_execute(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxExecute::Register,
     > {
@@ -11937,11 +12723,13 @@ impl MciPeripheral for MciGenerated {
                 "[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_execute"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox0_csr_mbox_execute)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mcu_mbox0_csr_mbox_execute,
+        )
     }
     fn write_mcu_mbox0_csr_mbox_execute(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxExecute::Register,
         >,
@@ -11949,27 +12737,29 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox0_csr_mbox_execute = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox0_csr_mbox_execute;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox0_csr_mbox_execute = new_val;
     }
     fn read_mcu_mbox0_csr_mbox_target_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_target_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox0_csr_mbox_target_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mcu_mbox0_csr_mbox_target_status,
+        )
     }
     fn write_mcu_mbox0_csr_mbox_target_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
@@ -11977,18 +12767,18 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox0_csr_mbox_target_status = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox0_csr_mbox_target_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf as caliptra_emu_types::RvData))
-            | (write_val & (0xf as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox0_csr_mbox_target_status = new_val;
     }
     fn read_mcu_mbox0_csr_mbox_cmd_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxCmdStatus::Register,
     > {
@@ -11997,11 +12787,13 @@ impl MciPeripheral for MciGenerated {
                 "[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_cmd_status"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox0_csr_mbox_cmd_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mcu_mbox0_csr_mbox_cmd_status,
+        )
     }
     fn write_mcu_mbox0_csr_mbox_cmd_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
@@ -12009,16 +12801,16 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox0_csr_mbox_cmd_status = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox0_csr_mbox_cmd_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf as caliptra_emu_types::RvData))
-            | (write_val & (0xf as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox0_csr_mbox_cmd_status = new_val;
     }
     fn read_mcu_mbox0_csr_mbox_hw_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxHwStatus::Register,
     > {
@@ -12027,9 +12819,14 @@ impl MciPeripheral for MciGenerated {
                 "[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_hw_status"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox0_csr_mbox_hw_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mcu_mbox0_csr_mbox_hw_status,
+        )
     }
-    fn read_mcu_mbox1_csr_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox1_csr_mbox_sram(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_sram[{}]",
@@ -12038,29 +12835,35 @@ impl MciPeripheral for MciGenerated {
         }
         self.mcu_mbox1_csr_mbox_sram[index]
     }
-    fn write_mcu_mbox1_csr_mbox_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_mcu_mbox1_csr_mbox_sram(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox1_csr_mbox_sram[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox1_csr_mbox_sram[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox1_csr_mbox_sram[index] = new_val;
     }
     fn read_mcu_mbox1_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::MboxLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_lock"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox1_csr_mbox_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox1_csr_mbox_lock)
     }
-    fn read_mcu_mbox1_csr_mbox_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox1_csr_mbox_user(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_user"
@@ -12068,37 +12871,44 @@ impl MciPeripheral for MciGenerated {
         }
         self.mcu_mbox1_csr_mbox_user
     }
-    fn read_mcu_mbox1_csr_mbox_target_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox1_csr_mbox_target_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_target_user");
         }
         self.mcu_mbox1_csr_mbox_target_user
     }
-    fn write_mcu_mbox1_csr_mbox_target_user(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_mbox1_csr_mbox_target_user(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox1_csr_mbox_target_user = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox1_csr_mbox_target_user;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox1_csr_mbox_target_user = new_val;
     }
     fn read_mcu_mbox1_csr_mbox_target_user_valid(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_target_user_valid");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox1_csr_mbox_target_user_valid)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mcu_mbox1_csr_mbox_target_user_valid,
+        )
     }
     fn write_mcu_mbox1_csr_mbox_target_user_valid(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
@@ -12106,31 +12916,34 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox1_csr_mbox_target_user_valid = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox1_csr_mbox_target_user_valid;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox1_csr_mbox_target_user_valid = new_val;
     }
-    fn read_mcu_mbox1_csr_mbox_cmd(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox1_csr_mbox_cmd(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_cmd");
         }
         self.mcu_mbox1_csr_mbox_cmd
     }
-    fn write_mcu_mbox1_csr_mbox_cmd(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_mbox1_csr_mbox_cmd(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox1_csr_mbox_cmd = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox1_csr_mbox_cmd;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox1_csr_mbox_cmd = new_val;
     }
-    fn read_mcu_mbox1_csr_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+    fn read_mcu_mbox1_csr_mbox_dlen(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_dlen"
@@ -12138,20 +12951,23 @@ impl MciPeripheral for MciGenerated {
         }
         self.mcu_mbox1_csr_mbox_dlen
     }
-    fn write_mcu_mbox1_csr_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_mcu_mbox1_csr_mbox_dlen(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox1_csr_mbox_dlen = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox1_csr_mbox_dlen;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox1_csr_mbox_dlen = new_val;
     }
     fn read_mcu_mbox1_csr_mbox_execute(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxExecute::Register,
     > {
@@ -12160,11 +12976,13 @@ impl MciPeripheral for MciGenerated {
                 "[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_execute"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox1_csr_mbox_execute)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mcu_mbox1_csr_mbox_execute,
+        )
     }
     fn write_mcu_mbox1_csr_mbox_execute(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxExecute::Register,
         >,
@@ -12172,27 +12990,29 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox1_csr_mbox_execute = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox1_csr_mbox_execute;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox1_csr_mbox_execute = new_val;
     }
     fn read_mcu_mbox1_csr_mbox_target_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_target_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox1_csr_mbox_target_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mcu_mbox1_csr_mbox_target_status,
+        )
     }
     fn write_mcu_mbox1_csr_mbox_target_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
@@ -12200,18 +13020,18 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox1_csr_mbox_target_status = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox1_csr_mbox_target_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf as caliptra_emu_types::RvData))
-            | (write_val & (0xf as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox1_csr_mbox_target_status = new_val;
     }
     fn read_mcu_mbox1_csr_mbox_cmd_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxCmdStatus::Register,
     > {
@@ -12220,11 +13040,13 @@ impl MciPeripheral for MciGenerated {
                 "[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_cmd_status"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox1_csr_mbox_cmd_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mcu_mbox1_csr_mbox_cmd_status,
+        )
     }
     fn write_mcu_mbox1_csr_mbox_cmd_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
@@ -12232,16 +13054,16 @@ impl MciPeripheral for MciGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mcu_mbox1_csr_mbox_cmd_status = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.mcu_mbox1_csr_mbox_cmd_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf as caliptra_emu_types::RvData))
-            | (write_val & (0xf as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf as caliptra_core_tools::caliptra_emu_types::RvData));
         self.mcu_mbox1_csr_mbox_cmd_status = new_val;
     }
     fn read_mcu_mbox1_csr_mbox_hw_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::mci::bits::MboxHwStatus::Register,
     > {
@@ -12250,38 +13072,43 @@ impl MciPeripheral for MciGenerated {
                 "[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_hw_status"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.mcu_mbox1_csr_mbox_hw_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.mcu_mbox1_csr_mbox_hw_status,
+        )
     }
 }
 pub struct MciBus {
     pub periph: Box<dyn MciPeripheral>,
 }
-impl caliptra_emu_bus::Bus for MciBus {
+impl caliptra_core_tools::caliptra_emu_bus::Bus for MciBus {
     fn read(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+    ) -> Result<
+        caliptra_core_tools::caliptra_emu_types::RvData,
+        caliptra_core_tools::caliptra_emu_bus::BusError,
+    > {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
             0xc0_0000..0xe0_0000 => Ok(self.periph.read_mcu_sram((addr as usize - 0xc0_0000) / 4)),
             0..4 => Ok(self.periph.read_mci_reg_hw_capabilities()),
             4..8 => Ok(self.periph.read_mci_reg_fw_capabilities()),
-            8..0xc => Ok(caliptra_emu_types::RvData::from(
+            8..0xc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_cap_lock().reg.get(),
             )),
-            0xc..0x10 => Ok(caliptra_emu_types::RvData::from(
+            0xc..0x10 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_hw_rev_id().reg.get(),
             )),
             0x10..0x18 => Ok(self
                 .periph
                 .read_mci_reg_fw_rev_id((addr as usize - 0x10) / 4)),
-            0x18..0x1c => Ok(caliptra_emu_types::RvData::from(
+            0x18..0x1c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_hw_config0().reg.get(),
             )),
-            0x1c..0x20 => Ok(caliptra_emu_types::RvData::from(
+            0x1c..0x20 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_hw_config1().reg.get(),
             )),
             0x20..0x24 => Ok(self.periph.read_mci_reg_mcu_ifu_axi_user()),
@@ -12289,28 +13116,28 @@ impl caliptra_emu_bus::Bus for MciBus {
             0x28..0x2c => Ok(self.periph.read_mci_reg_mcu_sram_config_axi_user()),
             0x2c..0x30 => Ok(self.periph.read_mci_reg_mci_soc_config_axi_user()),
             0x30..0x34 => Ok(self.periph.read_mci_reg_fw_flow_status()),
-            0x34..0x38 => Ok(caliptra_emu_types::RvData::from(
+            0x34..0x38 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_hw_flow_status().reg.get(),
             )),
-            0x38..0x3c => Ok(caliptra_emu_types::RvData::from(
+            0x38..0x3c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_reset_reason().reg.get(),
             )),
-            0x3c..0x40 => Ok(caliptra_emu_types::RvData::from(
+            0x3c..0x40 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_reset_status().reg.get(),
             )),
-            0x40..0x44 => Ok(caliptra_emu_types::RvData::from(
+            0x40..0x44 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_security_state().reg.get(),
             )),
-            0x50..0x54 => Ok(caliptra_emu_types::RvData::from(
+            0x50..0x54 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_hw_error_fatal().reg.get(),
             )),
-            0x54..0x58 => Ok(caliptra_emu_types::RvData::from(
+            0x54..0x58 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_agg_error_fatal().reg.get(),
             )),
-            0x58..0x5c => Ok(caliptra_emu_types::RvData::from(
+            0x58..0x5c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_hw_error_non_fatal().reg.get(),
             )),
-            0x5c..0x60 => Ok(caliptra_emu_types::RvData::from(
+            0x5c..0x60 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_agg_error_non_fatal().reg.get(),
             )),
             0x60..0x64 => Ok(self.periph.read_mci_reg_fw_error_fatal()),
@@ -12320,25 +13147,25 @@ impl caliptra_emu_bus::Bus for MciBus {
             0x70..0x90 => Ok(self
                 .periph
                 .read_mci_reg_fw_extended_error_info((addr as usize - 0x70) / 4)),
-            0x90..0x94 => Ok(caliptra_emu_types::RvData::from(
+            0x90..0x94 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_internal_hw_error_fatal_mask()
                     .reg
                     .get(),
             )),
-            0x94..0x98 => Ok(caliptra_emu_types::RvData::from(
+            0x94..0x98 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_internal_hw_error_non_fatal_mask()
                     .reg
                     .get(),
             )),
-            0x98..0x9c => Ok(caliptra_emu_types::RvData::from(
+            0x98..0x9c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_internal_agg_error_fatal_mask()
                     .reg
                     .get(),
             )),
-            0x9c..0xa0 => Ok(caliptra_emu_types::RvData::from(
+            0x9c..0xa0 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_internal_agg_error_non_fatal_mask()
                     .reg
@@ -12346,25 +13173,25 @@ impl caliptra_emu_bus::Bus for MciBus {
             )),
             0xa0..0xa4 => Ok(self.periph.read_mci_reg_internal_fw_error_fatal_mask()),
             0xa4..0xa8 => Ok(self.periph.read_mci_reg_internal_fw_error_non_fatal_mask()),
-            0xb0..0xb4 => Ok(caliptra_emu_types::RvData::from(
+            0xb0..0xb4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_wdt_timer1_en().reg.get(),
             )),
-            0xb4..0xb8 => Ok(caliptra_emu_types::RvData::from(
+            0xb4..0xb8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_wdt_timer1_ctrl().reg.get(),
             )),
             0xb8..0xc0 => Ok(self
                 .periph
                 .read_mci_reg_wdt_timer1_timeout_period((addr as usize - 0xb8) / 4)),
-            0xc0..0xc4 => Ok(caliptra_emu_types::RvData::from(
+            0xc0..0xc4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_wdt_timer2_en().reg.get(),
             )),
-            0xc4..0xc8 => Ok(caliptra_emu_types::RvData::from(
+            0xc4..0xc8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_wdt_timer2_ctrl().reg.get(),
             )),
             0xc8..0xd0 => Ok(self
                 .periph
                 .read_mci_reg_wdt_timer2_timeout_period((addr as usize - 0xc8) / 4)),
-            0xd0..0xd4 => Ok(caliptra_emu_types::RvData::from(
+            0xd0..0xd4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_wdt_status().reg.get(),
             )),
             0xd4..0xdc => Ok(self.periph.read_mci_reg_wdt_cfg((addr as usize - 0xd4) / 4)),
@@ -12373,16 +13200,16 @@ impl caliptra_emu_bus::Bus for MciBus {
             0xe8..0xec => Ok(self.periph.read_mci_reg_mcu_rv_mtime_h()),
             0xec..0xf0 => Ok(self.periph.read_mci_reg_mcu_rv_mtimecmp_l()),
             0xf0..0xf4 => Ok(self.periph.read_mci_reg_mcu_rv_mtimecmp_h()),
-            0x100..0x104 => Ok(caliptra_emu_types::RvData::from(
+            0x100..0x104 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_reset_request().reg.get(),
             )),
-            0x104..0x108 => Ok(caliptra_emu_types::RvData::from(
+            0x104..0x108 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_mci_bootfsm_go().reg.get(),
             )),
-            0x108..0x10c => Ok(caliptra_emu_types::RvData::from(
+            0x108..0x10c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_cptra_boot_go().reg.get(),
             )),
-            0x10c..0x110 => Ok(caliptra_emu_types::RvData::from(
+            0x10c..0x110 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_fw_sram_exec_region_size()
                     .reg
@@ -12393,7 +13220,7 @@ impl caliptra_emu_bus::Bus for MciBus {
             0x180..0x194 => Ok(self
                 .periph
                 .read_mci_reg_mbox0_valid_axi_user((addr as usize - 0x180) / 4)),
-            0x1a0..0x1b4 => Ok(caliptra_emu_types::RvData::from(
+            0x1a0..0x1b4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_mbox0_axi_user_lock((addr as usize - 0x1a0) / 4)
                     .reg
@@ -12402,7 +13229,7 @@ impl caliptra_emu_bus::Bus for MciBus {
             0x1c0..0x1d4 => Ok(self
                 .periph
                 .read_mci_reg_mbox1_valid_axi_user((addr as usize - 0x1c0) / 4)),
-            0x1e0..0x1f4 => Ok(caliptra_emu_types::RvData::from(
+            0x1e0..0x1f4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_mbox1_axi_user_lock((addr as usize - 0x1e0) / 4)
                     .reg
@@ -12426,103 +13253,103 @@ impl caliptra_emu_bus::Bus for MciBus {
                 .read_mci_reg_generic_output_wires((addr as usize - 0x408) / 4)),
             0x410..0x414 => Ok(self.periph.read_mci_reg_debug_in()),
             0x414..0x418 => Ok(self.periph.read_mci_reg_debug_out()),
-            0x418..0x41c => Ok(caliptra_emu_types::RvData::from(
+            0x418..0x41c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_ss_debug_intent().reg.get(),
             )),
-            0x440..0x444 => Ok(caliptra_emu_types::RvData::from(
+            0x440..0x444 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_ss_config_done_sticky().reg.get(),
             )),
-            0x444..0x448 => Ok(caliptra_emu_types::RvData::from(
+            0x444..0x448 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mci_reg_ss_config_done().reg.get(),
             )),
             0x480..0x600 => Ok(self
                 .periph
                 .read_mci_reg_prod_debug_unlock_pk_hash_reg((addr as usize - 0x480) / 4)),
-            0x1000..0x1004 => Ok(caliptra_emu_types::RvData::from(
+            0x1000..0x1004 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_global_intr_en_r()
                     .reg
                     .get(),
             )),
-            0x1004..0x1008 => Ok(caliptra_emu_types::RvData::from(
+            0x1004..0x1008 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error0_intr_en_r()
                     .reg
                     .get(),
             )),
-            0x1008..0x100c => Ok(caliptra_emu_types::RvData::from(
+            0x1008..0x100c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error1_intr_en_r()
                     .reg
                     .get(),
             )),
-            0x100c..0x1010 => Ok(caliptra_emu_types::RvData::from(
+            0x100c..0x1010 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif0_intr_en_r()
                     .reg
                     .get(),
             )),
-            0x1010..0x1014 => Ok(caliptra_emu_types::RvData::from(
+            0x1010..0x1014 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif1_intr_en_r()
                     .reg
                     .get(),
             )),
-            0x1014..0x1018 => Ok(caliptra_emu_types::RvData::from(
+            0x1014..0x1018 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_global_intr_r()
                     .reg
                     .get(),
             )),
-            0x1018..0x101c => Ok(caliptra_emu_types::RvData::from(
+            0x1018..0x101c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_global_intr_r()
                     .reg
                     .get(),
             )),
-            0x101c..0x1020 => Ok(caliptra_emu_types::RvData::from(
+            0x101c..0x1020 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error0_internal_intr_r()
                     .reg
                     .get(),
             )),
-            0x1020..0x1024 => Ok(caliptra_emu_types::RvData::from(
+            0x1020..0x1024 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error1_internal_intr_r()
                     .reg
                     .get(),
             )),
-            0x1024..0x1028 => Ok(caliptra_emu_types::RvData::from(
+            0x1024..0x1028 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif0_internal_intr_r()
                     .reg
                     .get(),
             )),
-            0x1028..0x102c => Ok(caliptra_emu_types::RvData::from(
+            0x1028..0x102c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif1_internal_intr_r()
                     .reg
                     .get(),
             )),
-            0x102c..0x1030 => Ok(caliptra_emu_types::RvData::from(
+            0x102c..0x1030 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error0_intr_trig_r()
                     .reg
                     .get(),
             )),
-            0x1030..0x1034 => Ok(caliptra_emu_types::RvData::from(
+            0x1030..0x1034 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error1_intr_trig_r()
                     .reg
                     .get(),
             )),
-            0x1034..0x1038 => Ok(caliptra_emu_types::RvData::from(
+            0x1034..0x1038 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif0_intr_trig_r()
                     .reg
                     .get(),
             )),
-            0x1038..0x103c => Ok(caliptra_emu_types::RvData::from(
+            0x1038..0x103c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif1_intr_trig_r()
                     .reg
@@ -12783,517 +13610,517 @@ impl caliptra_emu_bus::Bus for MciBus {
             0x12b8..0x12bc => Ok(self
                 .periph
                 .read_mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_r()),
-            0x1300..0x1304 => Ok(caliptra_emu_types::RvData::from(
+            0x1300..0x1304 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_internal_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1304..0x1308 => Ok(caliptra_emu_types::RvData::from(
+            0x1304..0x1308 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1308..0x130c => Ok(caliptra_emu_types::RvData::from(
+            0x1308..0x130c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x130c..0x1310 => Ok(caliptra_emu_types::RvData::from(
+            0x130c..0x1310 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1310..0x1314 => Ok(caliptra_emu_types::RvData::from(
+            0x1310..0x1314 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1314..0x1318 => Ok(caliptra_emu_types::RvData::from(
+            0x1314..0x1318 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1318..0x131c => Ok(caliptra_emu_types::RvData::from(
+            0x1318..0x131c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x131c..0x1320 => Ok(caliptra_emu_types::RvData::from(
+            0x131c..0x1320 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1320..0x1324 => Ok(caliptra_emu_types::RvData::from(
+            0x1320..0x1324 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1324..0x1328 => Ok(caliptra_emu_types::RvData::from(
+            0x1324..0x1328 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1328..0x132c => Ok(caliptra_emu_types::RvData::from(
+            0x1328..0x132c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x132c..0x1330 => Ok(caliptra_emu_types::RvData::from(
+            0x132c..0x1330 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1330..0x1334 => Ok(caliptra_emu_types::RvData::from(
+            0x1330..0x1334 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1334..0x1338 => Ok(caliptra_emu_types::RvData::from(
+            0x1334..0x1338 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1338..0x133c => Ok(caliptra_emu_types::RvData::from(
+            0x1338..0x133c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x133c..0x1340 => Ok(caliptra_emu_types::RvData::from(
+            0x133c..0x1340 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1340..0x1344 => Ok(caliptra_emu_types::RvData::from(
+            0x1340..0x1344 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1344..0x1348 => Ok(caliptra_emu_types::RvData::from(
+            0x1344..0x1348 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1348..0x134c => Ok(caliptra_emu_types::RvData::from(
+            0x1348..0x134c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x134c..0x1350 => Ok(caliptra_emu_types::RvData::from(
+            0x134c..0x1350 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1350..0x1354 => Ok(caliptra_emu_types::RvData::from(
+            0x1350..0x1354 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1354..0x1358 => Ok(caliptra_emu_types::RvData::from(
+            0x1354..0x1358 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1358..0x135c => Ok(caliptra_emu_types::RvData::from(
+            0x1358..0x135c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x135c..0x1360 => Ok(caliptra_emu_types::RvData::from(
+            0x135c..0x1360 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1360..0x1364 => Ok(caliptra_emu_types::RvData::from(
+            0x1360..0x1364 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1364..0x1368 => Ok(caliptra_emu_types::RvData::from(
+            0x1364..0x1368 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1368..0x136c => Ok(caliptra_emu_types::RvData::from(
+            0x1368..0x136c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x136c..0x1370 => Ok(caliptra_emu_types::RvData::from(
+            0x136c..0x1370 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1370..0x1374 => Ok(caliptra_emu_types::RvData::from(
+            0x1370..0x1374 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1374..0x1378 => Ok(caliptra_emu_types::RvData::from(
+            0x1374..0x1378 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1378..0x137c => Ok(caliptra_emu_types::RvData::from(
+            0x1378..0x137c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x137c..0x1380 => Ok(caliptra_emu_types::RvData::from(
+            0x137c..0x1380 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1380..0x1384 => Ok(caliptra_emu_types::RvData::from(
+            0x1380..0x1384 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1384..0x1388 => Ok(caliptra_emu_types::RvData::from(
+            0x1384..0x1388 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1388..0x138c => Ok(caliptra_emu_types::RvData::from(
+            0x1388..0x138c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x138c..0x1390 => Ok(caliptra_emu_types::RvData::from(
+            0x138c..0x1390 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1390..0x1394 => Ok(caliptra_emu_types::RvData::from(
+            0x1390..0x1394 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1394..0x1398 => Ok(caliptra_emu_types::RvData::from(
+            0x1394..0x1398 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1398..0x139c => Ok(caliptra_emu_types::RvData::from(
+            0x1398..0x139c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x139c..0x13a0 => Ok(caliptra_emu_types::RvData::from(
+            0x139c..0x13a0 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13a0..0x13a4 => Ok(caliptra_emu_types::RvData::from(
+            0x13a0..0x13a4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13a4..0x13a8 => Ok(caliptra_emu_types::RvData::from(
+            0x13a4..0x13a8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13a8..0x13ac => Ok(caliptra_emu_types::RvData::from(
+            0x13a8..0x13ac => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13ac..0x13b0 => Ok(caliptra_emu_types::RvData::from(
+            0x13ac..0x13b0 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13b0..0x13b4 => Ok(caliptra_emu_types::RvData::from(
+            0x13b0..0x13b4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13b4..0x13b8 => Ok(caliptra_emu_types::RvData::from(
+            0x13b4..0x13b8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13b8..0x13bc => Ok(caliptra_emu_types::RvData::from(
+            0x13b8..0x13bc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13bc..0x13c0 => Ok(caliptra_emu_types::RvData::from(
+            0x13bc..0x13c0 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13c0..0x13c4 => Ok(caliptra_emu_types::RvData::from(
+            0x13c0..0x13c4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13c4..0x13c8 => Ok(caliptra_emu_types::RvData::from(
+            0x13c4..0x13c8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13c8..0x13cc => Ok(caliptra_emu_types::RvData::from(
+            0x13c8..0x13cc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13cc..0x13d0 => Ok(caliptra_emu_types::RvData::from(
+            0x13cc..0x13d0 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13d0..0x13d4 => Ok(caliptra_emu_types::RvData::from(
+            0x13d0..0x13d4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13d4..0x13d8 => Ok(caliptra_emu_types::RvData::from(
+            0x13d4..0x13d8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13d8..0x13dc => Ok(caliptra_emu_types::RvData::from(
+            0x13d8..0x13dc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13dc..0x13e0 => Ok(caliptra_emu_types::RvData::from(
+            0x13dc..0x13e0 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13e0..0x13e4 => Ok(caliptra_emu_types::RvData::from(
+            0x13e0..0x13e4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13e4..0x13e8 => Ok(caliptra_emu_types::RvData::from(
+            0x13e4..0x13e8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13e8..0x13ec => Ok(caliptra_emu_types::RvData::from(
+            0x13e8..0x13ec => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13ec..0x13f0 => Ok(caliptra_emu_types::RvData::from(
+            0x13ec..0x13f0 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13f0..0x13f4 => Ok(caliptra_emu_types::RvData::from(
+            0x13f0..0x13f4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13f4..0x13f8 => Ok(caliptra_emu_types::RvData::from(
+            0x13f4..0x13f8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13f8..0x13fc => Ok(caliptra_emu_types::RvData::from(
+            0x13f8..0x13fc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x13fc..0x1400 => Ok(caliptra_emu_types::RvData::from(
+            0x13fc..0x1400 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1400..0x1404 => Ok(caliptra_emu_types::RvData::from(
+            0x1400..0x1404 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1404..0x1408 => Ok(caliptra_emu_types::RvData::from(
+            0x1404..0x1408 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1408..0x140c => Ok(caliptra_emu_types::RvData::from(
+            0x1408..0x140c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x140c..0x1410 => Ok(caliptra_emu_types::RvData::from(
+            0x140c..0x1410 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1410..0x1414 => Ok(caliptra_emu_types::RvData::from(
+            0x1410..0x1414 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1414..0x1418 => Ok(caliptra_emu_types::RvData::from(
+            0x1414..0x1418 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1418..0x141c => Ok(caliptra_emu_types::RvData::from(
+            0x1418..0x141c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x141c..0x1420 => Ok(caliptra_emu_types::RvData::from(
+            0x141c..0x1420 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1420..0x1424 => Ok(caliptra_emu_types::RvData::from(
+            0x1420..0x1424 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1424..0x1428 => Ok(caliptra_emu_types::RvData::from(
+            0x1424..0x1428 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1428..0x142c => Ok(caliptra_emu_types::RvData::from(
+            0x1428..0x142c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x142c..0x1430 => Ok(caliptra_emu_types::RvData::from(
+            0x142c..0x1430 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1430..0x1434 => Ok(caliptra_emu_types::RvData::from(
+            0x1430..0x1434 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1434..0x1438 => Ok(caliptra_emu_types::RvData::from(
+            0x1434..0x1438 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1438..0x143c => Ok(caliptra_emu_types::RvData::from(
+            0x1438..0x143c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x143c..0x1440 => Ok(caliptra_emu_types::RvData::from(
+            0x143c..0x1440 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1440..0x1444 => Ok(caliptra_emu_types::RvData::from(
+            0x1440..0x1444 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1444..0x1448 => Ok(caliptra_emu_types::RvData::from(
+            0x1444..0x1448 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1448..0x144c => Ok(caliptra_emu_types::RvData::from(
+            0x1448..0x144c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x144c..0x1450 => Ok(caliptra_emu_types::RvData::from(
+            0x144c..0x1450 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1450..0x1454 => Ok(caliptra_emu_types::RvData::from(
+            0x1450..0x1454 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_incr_r()
                     .reg
                     .get(),
             )),
-            0x1_0000..0x1_0004 => Ok(caliptra_emu_types::RvData::from(
+            0x1_0000..0x1_0004 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mcu_trace_buffer_csr_status().reg.get(),
             )),
             0x1_0004..0x1_0008 => Ok(self.periph.read_mcu_trace_buffer_csr_config()),
@@ -13303,12 +14130,12 @@ impl caliptra_emu_bus::Bus for MciBus {
             0x40_0000..0x60_0000 => Ok(self
                 .periph
                 .read_mcu_mbox0_csr_mbox_sram((addr as usize - 0x40_0000) / 4)),
-            0x60_0000..0x60_0004 => Ok(caliptra_emu_types::RvData::from(
+            0x60_0000..0x60_0004 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mcu_mbox0_csr_mbox_lock().reg.get(),
             )),
             0x60_0004..0x60_0008 => Ok(self.periph.read_mcu_mbox0_csr_mbox_user()),
             0x60_0008..0x60_000c => Ok(self.periph.read_mcu_mbox0_csr_mbox_target_user()),
-            0x60_000c..0x60_0010 => Ok(caliptra_emu_types::RvData::from(
+            0x60_000c..0x60_0010 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mcu_mbox0_csr_mbox_target_user_valid()
                     .reg
@@ -13316,30 +14143,30 @@ impl caliptra_emu_bus::Bus for MciBus {
             )),
             0x60_0010..0x60_0014 => Ok(self.periph.read_mcu_mbox0_csr_mbox_cmd()),
             0x60_0014..0x60_0018 => Ok(self.periph.read_mcu_mbox0_csr_mbox_dlen()),
-            0x60_0018..0x60_001c => Ok(caliptra_emu_types::RvData::from(
+            0x60_0018..0x60_001c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mcu_mbox0_csr_mbox_execute().reg.get(),
             )),
-            0x60_001c..0x60_0020 => Ok(caliptra_emu_types::RvData::from(
+            0x60_001c..0x60_0020 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mcu_mbox0_csr_mbox_target_status()
                     .reg
                     .get(),
             )),
-            0x60_0020..0x60_0024 => Ok(caliptra_emu_types::RvData::from(
+            0x60_0020..0x60_0024 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mcu_mbox0_csr_mbox_cmd_status().reg.get(),
             )),
-            0x60_0024..0x60_0028 => Ok(caliptra_emu_types::RvData::from(
+            0x60_0024..0x60_0028 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mcu_mbox0_csr_mbox_hw_status().reg.get(),
             )),
             0x80_0000..0xa0_0000 => Ok(self
                 .periph
                 .read_mcu_mbox1_csr_mbox_sram((addr as usize - 0x80_0000) / 4)),
-            0xa0_0000..0xa0_0004 => Ok(caliptra_emu_types::RvData::from(
+            0xa0_0000..0xa0_0004 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mcu_mbox1_csr_mbox_lock().reg.get(),
             )),
             0xa0_0004..0xa0_0008 => Ok(self.periph.read_mcu_mbox1_csr_mbox_user()),
             0xa0_0008..0xa0_000c => Ok(self.periph.read_mcu_mbox1_csr_mbox_target_user()),
-            0xa0_000c..0xa0_0010 => Ok(caliptra_emu_types::RvData::from(
+            0xa0_000c..0xa0_0010 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mcu_mbox1_csr_mbox_target_user_valid()
                     .reg
@@ -13347,32 +14174,32 @@ impl caliptra_emu_bus::Bus for MciBus {
             )),
             0xa0_0010..0xa0_0014 => Ok(self.periph.read_mcu_mbox1_csr_mbox_cmd()),
             0xa0_0014..0xa0_0018 => Ok(self.periph.read_mcu_mbox1_csr_mbox_dlen()),
-            0xa0_0018..0xa0_001c => Ok(caliptra_emu_types::RvData::from(
+            0xa0_0018..0xa0_001c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mcu_mbox1_csr_mbox_execute().reg.get(),
             )),
-            0xa0_001c..0xa0_0020 => Ok(caliptra_emu_types::RvData::from(
+            0xa0_001c..0xa0_0020 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_mcu_mbox1_csr_mbox_target_status()
                     .reg
                     .get(),
             )),
-            0xa0_0020..0xa0_0024 => Ok(caliptra_emu_types::RvData::from(
+            0xa0_0020..0xa0_0024 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mcu_mbox1_csr_mbox_cmd_status().reg.get(),
             )),
-            0xa0_0024..0xa0_0028 => Ok(caliptra_emu_types::RvData::from(
+            0xa0_0024..0xa0_0028 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_mcu_mbox1_csr_mbox_hw_status().reg.get(),
             )),
-            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-        val: caliptra_emu_types::RvData,
-    ) -> Result<(), caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) -> Result<(), caliptra_core_tools::caliptra_emu_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             0xc0_0000..0xe0_0000 => {
@@ -13389,8 +14216,9 @@ impl caliptra_emu_bus::Bus for MciBus {
                 Ok(())
             }
             8..0xc => {
-                self.periph
-                    .write_mci_reg_cap_lock(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_cap_lock(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xc..0x10 => Ok(()),
@@ -13411,31 +14239,34 @@ impl caliptra_emu_bus::Bus for MciBus {
             }
             0x34..0x38 => Ok(()),
             0x38..0x3c => {
-                self.periph
-                    .write_mci_reg_reset_reason(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_reset_reason(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x3c..0x40 => Ok(()),
             0x40..0x44 => Ok(()),
             0x50..0x54 => {
-                self.periph
-                    .write_mci_reg_hw_error_fatal(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_hw_error_fatal(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x54..0x58 => {
-                self.periph
-                    .write_mci_reg_agg_error_fatal(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_agg_error_fatal(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x58..0x5c => {
                 self.periph.write_mci_reg_hw_error_non_fatal(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x5c..0x60 => {
                 self.periph.write_mci_reg_agg_error_non_fatal(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -13462,25 +14293,25 @@ impl caliptra_emu_bus::Bus for MciBus {
             }
             0x90..0x94 => {
                 self.periph.write_mci_reg_internal_hw_error_fatal_mask(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x94..0x98 => {
                 self.periph.write_mci_reg_internal_hw_error_non_fatal_mask(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x98..0x9c => {
                 self.periph.write_mci_reg_internal_agg_error_fatal_mask(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x9c..0xa0 => {
                 self.periph.write_mci_reg_internal_agg_error_non_fatal_mask(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -13494,13 +14325,15 @@ impl caliptra_emu_bus::Bus for MciBus {
                 Ok(())
             }
             0xb0..0xb4 => {
-                self.periph
-                    .write_mci_reg_wdt_timer1_en(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_wdt_timer1_en(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xb4..0xb8 => {
-                self.periph
-                    .write_mci_reg_wdt_timer1_ctrl(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_wdt_timer1_ctrl(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xb8..0xc0 => {
@@ -13509,13 +14342,15 @@ impl caliptra_emu_bus::Bus for MciBus {
                 Ok(())
             }
             0xc0..0xc4 => {
-                self.periph
-                    .write_mci_reg_wdt_timer2_en(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_wdt_timer2_en(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xc4..0xc8 => {
-                self.periph
-                    .write_mci_reg_wdt_timer2_ctrl(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_wdt_timer2_ctrl(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xc8..0xd0 => {
@@ -13550,23 +14385,26 @@ impl caliptra_emu_bus::Bus for MciBus {
                 Ok(())
             }
             0x100..0x104 => {
-                self.periph
-                    .write_mci_reg_reset_request(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_reset_request(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x104..0x108 => {
-                self.periph
-                    .write_mci_reg_mci_bootfsm_go(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_mci_bootfsm_go(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x108..0x10c => {
-                self.periph
-                    .write_mci_reg_cptra_boot_go(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_cptra_boot_go(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x10c..0x110 => {
                 self.periph.write_mci_reg_fw_sram_exec_region_size(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -13585,7 +14423,7 @@ impl caliptra_emu_bus::Bus for MciBus {
             }
             0x1a0..0x1b4 => {
                 self.periph.write_mci_reg_mbox0_axi_user_lock(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     (addr as usize - 0x1a0) / 4,
                 );
                 Ok(())
@@ -13597,7 +14435,7 @@ impl caliptra_emu_bus::Bus for MciBus {
             }
             0x1e0..0x1f4 => {
                 self.periph.write_mci_reg_mbox1_axi_user_lock(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     (addr as usize - 0x1e0) / 4,
                 );
                 Ok(())
@@ -13638,13 +14476,14 @@ impl caliptra_emu_bus::Bus for MciBus {
             0x418..0x41c => Ok(()),
             0x440..0x444 => {
                 self.periph.write_mci_reg_ss_config_done_sticky(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x444..0x448 => {
-                self.periph
-                    .write_mci_reg_ss_config_done(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_mci_reg_ss_config_done(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x480..0x600 => {
@@ -13654,31 +14493,31 @@ impl caliptra_emu_bus::Bus for MciBus {
             }
             0x1000..0x1004 => {
                 self.periph.write_mci_reg_intr_block_rf_global_intr_en_r(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1004..0x1008 => {
                 self.periph.write_mci_reg_intr_block_rf_error0_intr_en_r(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1008..0x100c => {
                 self.periph.write_mci_reg_intr_block_rf_error1_intr_en_r(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x100c..0x1010 => {
                 self.periph.write_mci_reg_intr_block_rf_notif0_intr_en_r(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1010..0x1014 => {
                 self.periph.write_mci_reg_intr_block_rf_notif1_intr_en_r(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -13687,52 +14526,52 @@ impl caliptra_emu_bus::Bus for MciBus {
             0x101c..0x1020 => {
                 self.periph
                     .write_mci_reg_intr_block_rf_error0_internal_intr_r(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x1020..0x1024 => {
                 self.periph
                     .write_mci_reg_intr_block_rf_error1_internal_intr_r(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x1024..0x1028 => {
                 self.periph
                     .write_mci_reg_intr_block_rf_notif0_internal_intr_r(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x1028..0x102c => {
                 self.periph
                     .write_mci_reg_intr_block_rf_notif1_internal_intr_r(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0x102c..0x1030 => {
                 self.periph.write_mci_reg_intr_block_rf_error0_intr_trig_r(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1030..0x1034 => {
                 self.periph.write_mci_reg_intr_block_rf_error1_intr_trig_r(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1034..0x1038 => {
                 self.periph.write_mci_reg_intr_block_rf_notif0_intr_trig_r(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x1038..0x103c => {
                 self.periph.write_mci_reg_intr_block_rf_notif1_intr_trig_r(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -14267,7 +15106,7 @@ impl caliptra_emu_bus::Bus for MciBus {
             }
             0x60_000c..0x60_0010 => {
                 self.periph.write_mcu_mbox0_csr_mbox_target_user_valid(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -14281,19 +15120,19 @@ impl caliptra_emu_bus::Bus for MciBus {
             }
             0x60_0018..0x60_001c => {
                 self.periph.write_mcu_mbox0_csr_mbox_execute(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x60_001c..0x60_0020 => {
                 self.periph.write_mcu_mbox0_csr_mbox_target_status(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x60_0020..0x60_0024 => {
                 self.periph.write_mcu_mbox0_csr_mbox_cmd_status(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -14311,7 +15150,7 @@ impl caliptra_emu_bus::Bus for MciBus {
             }
             0xa0_000c..0xa0_0010 => {
                 self.periph.write_mcu_mbox1_csr_mbox_target_user_valid(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -14325,24 +15164,24 @@ impl caliptra_emu_bus::Bus for MciBus {
             }
             0xa0_0018..0xa0_001c => {
                 self.periph.write_mcu_mbox1_csr_mbox_execute(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xa0_001c..0xa0_0020 => {
                 self.periph.write_mcu_mbox1_csr_mbox_target_status(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xa0_0020..0xa0_0024 => {
                 self.periph.write_mcu_mbox1_csr_mbox_cmd_status(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xa0_0024..0xa0_0028 => Ok(()),
-            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {

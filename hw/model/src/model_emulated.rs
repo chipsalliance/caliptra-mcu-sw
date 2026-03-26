@@ -11,22 +11,22 @@ use crate::McuManager;
 use crate::DEFAULT_LIFECYCLE_RAW_TOKENS;
 use anyhow::bail;
 use anyhow::Result;
-use caliptra_api::SocManager;
-use caliptra_emu_bus::Bus;
-use caliptra_emu_bus::BusError;
-use caliptra_emu_bus::BusMmio;
-use caliptra_emu_bus::Ram;
-use caliptra_emu_bus::{Clock, Event};
-use caliptra_emu_cpu::CpuOrgArgs;
-use caliptra_emu_cpu::{Cpu, CpuArgs, InstrTracer, Pic};
-use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
-use caliptra_emu_periph::SocToCaliptraBus;
-use caliptra_emu_types::RvAddr;
-use caliptra_emu_types::RvData;
-use caliptra_emu_types::RvSize;
-use caliptra_hw_model::Output;
-use caliptra_image_types::FwVerificationPqcKeyType;
-use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
+use caliptra_core_tools::caliptra_api::SocManager;
+use caliptra_core_tools::caliptra_emu_bus::Bus;
+use caliptra_core_tools::caliptra_emu_bus::BusError;
+use caliptra_core_tools::caliptra_emu_bus::BusMmio;
+use caliptra_core_tools::caliptra_emu_bus::Ram;
+use caliptra_core_tools::caliptra_emu_bus::{Clock, Event};
+use caliptra_core_tools::caliptra_emu_cpu::CpuOrgArgs;
+use caliptra_core_tools::caliptra_emu_cpu::{Cpu, CpuArgs, InstrTracer, Pic};
+use caliptra_core_tools::caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
+use caliptra_core_tools::caliptra_emu_periph::SocToCaliptraBus;
+use caliptra_core_tools::caliptra_emu_types::RvAddr;
+use caliptra_core_tools::caliptra_emu_types::RvData;
+use caliptra_core_tools::caliptra_emu_types::RvSize;
+use caliptra_core_tools::caliptra_hw_model::Output;
+use caliptra_core_tools::caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_core_tools::caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
 use emulator_bmc::Bmc;
 use emulator_caliptra::start_caliptra;
 use emulator_caliptra::BytesOrPath;
@@ -87,7 +87,7 @@ pub struct ModelEmulated {
     i3c_controller_join_handle: Option<JoinHandle<()>>,
     dot_flash: Rc<RefCell<Ram>>,
     otp_partitions: Rc<RefCell<Vec<u8>>>,
-    mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
+    mci_regs: Rc<RefCell<caliptra_core_tools::caliptra_emu_periph::mci::MciRegs>>,
     check_booted_to_runtime: bool,
     // Synchronises cross-thread timer scheduling (I3C controller thread)
     // with the CPU step that advances the clock.
@@ -238,25 +238,26 @@ impl McuHwModel for ModelEmulated {
         let mut lc = lc;
         lc.set_otp_partitions(otp_partitions.clone());
 
-        let create_flash_controller =
-            |default_path: &str,
-             error_irq: u8,
-             event_irq: u8,
-             initial_content: Option<&[u8]>,
-             direct_read_region: Option<Rc<RefCell<caliptra_emu_bus::Ram>>>| {
-                // Use a temporary file for flash storage if we're running a test
-                let flash_file = Some(PathBuf::from(default_path));
+        let create_flash_controller = |default_path: &str,
+                                       error_irq: u8,
+                                       event_irq: u8,
+                                       initial_content: Option<&[u8]>,
+                                       direct_read_region: Option<
+            Rc<RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+        >| {
+            // Use a temporary file for flash storage if we're running a test
+            let flash_file = Some(PathBuf::from(default_path));
 
-                DummyFlashCtrl::new(
-                    &clock.clone(),
-                    direct_read_region,
-                    flash_file,
-                    pic.register_irq(error_irq),
-                    pic.register_irq(event_irq),
-                    initial_content,
-                )
-                .unwrap()
-            };
+            DummyFlashCtrl::new(
+                &clock.clone(),
+                direct_read_region,
+                flash_file,
+                pic.register_irq(error_irq),
+                pic.register_irq(event_irq),
+                initial_content,
+            )
+            .unwrap()
+        };
 
         let mut primary_flash_controller = create_flash_controller(
             "primary_flash",
@@ -347,7 +348,7 @@ impl McuHwModel for ModelEmulated {
             mci_generic_input_wires,
         );
 
-        let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
+        let delegates: Vec<Box<dyn caliptra_core_tools::caliptra_emu_bus::Bus>> =
             vec![Box::new(mcu_root_bus), Box::new(soc_to_caliptra)];
 
         let auto_root_bus = AutoRootBus::new(
@@ -607,7 +608,7 @@ impl McuHwModel for ModelEmulated {
         self
     }
 
-    fn caliptra_soc_manager(&mut self) -> impl caliptra_api::SocManager {
+    fn caliptra_soc_manager(&mut self) -> impl caliptra_core_tools::caliptra_api::SocManager {
         self
     }
 

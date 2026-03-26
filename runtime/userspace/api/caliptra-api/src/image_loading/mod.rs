@@ -8,7 +8,7 @@ mod pldm_fdops;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use caliptra_api::mailbox::{
+use caliptra_core_firmware::caliptra_api::mailbox::{
     AuthorizeAndStashReq, AuthorizeAndStashResp, CommandId, GetImageInfoReq, GetImageInfoResp,
     ImageHashSource, MailboxReqHeader, MailboxRespHeader, Request,
 };

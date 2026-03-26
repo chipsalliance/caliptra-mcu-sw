@@ -5,14 +5,24 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait OtpPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
-    fn set_dma_rom_sram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
+    fn set_dma_ram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
+    fn set_dma_rom_sram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
     fn register_event_channels(
         &mut self,
-        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_caliptra: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
-        _events_to_mcu: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
+        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_caliptra: std::sync::mpsc::Receiver<
+            caliptra_core_tools::caliptra_emu_bus::Event,
+        >,
+        _events_to_mcu: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_core_tools::caliptra_emu_bus::Event>,
     ) {
     }
     fn poll(&mut self) {}
@@ -23,7 +33,7 @@ pub trait OtpPeripheral {
     }
     fn read_interrupt_state(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::InterruptState::Register,
     > {
@@ -33,11 +43,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_interrupt_state();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_interrupt_state(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::InterruptState::Register,
         >,
@@ -54,7 +64,7 @@ pub trait OtpPeripheral {
     }
     fn read_otp_interrupt_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
     > {
@@ -64,11 +74,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_otp_interrupt_enable();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_otp_interrupt_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
         >,
@@ -85,7 +95,7 @@ pub trait OtpPeripheral {
     }
     fn write_interrupt_test(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::InterruptTest::Register,
         >,
@@ -102,7 +112,7 @@ pub trait OtpPeripheral {
     }
     fn write_alert_test(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::AlertTest::Register,
         >,
@@ -119,7 +129,7 @@ pub trait OtpPeripheral {
     }
     fn read_otp_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::OtpStatus::Register,
     > {
@@ -129,11 +139,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_otp_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_direct_access_regwen(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
     > {
@@ -143,11 +153,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_direct_access_regwen();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_direct_access_regwen(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
         >,
@@ -164,7 +174,7 @@ pub trait OtpPeripheral {
     }
     fn write_direct_access_cmd(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::DirectAccessCmd::Register,
         >,
@@ -181,7 +191,7 @@ pub trait OtpPeripheral {
     }
     fn read_direct_access_address(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
     > {
@@ -191,11 +201,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_direct_access_address();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_direct_access_address(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
         >,
@@ -212,7 +222,7 @@ pub trait OtpPeripheral {
     }
     fn read_check_trigger_regwen(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
     > {
@@ -222,11 +232,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_check_trigger_regwen();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_check_trigger_regwen(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
         >,
@@ -243,7 +253,7 @@ pub trait OtpPeripheral {
     }
     fn write_check_trigger(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CheckTrigger::Register,
         >,
@@ -260,7 +270,7 @@ pub trait OtpPeripheral {
     }
     fn write_check_regwen(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CheckRegwen::Register,
         >,
@@ -275,7 +285,7 @@ pub trait OtpPeripheral {
             generated.write_check_regwen(val);
         }
     }
-    fn read_check_timeout(&mut self) -> caliptra_emu_types::RvData {
+    fn read_check_timeout(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::check_timeout");
         }
@@ -284,7 +294,7 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn write_check_timeout(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_check_timeout(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write otp::check_timeout = 0x{:08x}",
@@ -295,7 +305,7 @@ pub trait OtpPeripheral {
             generated.write_check_timeout(val);
         }
     }
-    fn read_integrity_check_period(&mut self) -> caliptra_emu_types::RvData {
+    fn read_integrity_check_period(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::integrity_check_period");
         }
@@ -304,7 +314,10 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn write_integrity_check_period(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_integrity_check_period(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write otp::integrity_check_period = 0x{:08x}",
@@ -315,7 +328,7 @@ pub trait OtpPeripheral {
             generated.write_integrity_check_period(val);
         }
     }
-    fn read_consistency_check_period(&mut self) -> caliptra_emu_types::RvData {
+    fn read_consistency_check_period(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::consistency_check_period");
         }
@@ -324,7 +337,10 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn write_consistency_check_period(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_consistency_check_period(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write otp::consistency_check_period = 0x{:08x}" , val);
         }
@@ -334,7 +350,7 @@ pub trait OtpPeripheral {
     }
     fn read_sw_manuf_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
     > {
@@ -344,11 +360,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_sw_manuf_partition_read_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_sw_manuf_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
         >,
@@ -362,7 +378,7 @@ pub trait OtpPeripheral {
     }
     fn read_svn_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
     > {
@@ -372,11 +388,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_svn_partition_read_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_svn_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
         >,
@@ -393,7 +409,7 @@ pub trait OtpPeripheral {
     }
     fn read_vendor_test_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
     > {
@@ -405,11 +421,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_vendor_test_partition_read_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_vendor_test_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
         >,
@@ -423,7 +439,7 @@ pub trait OtpPeripheral {
     }
     fn read_vendor_hashes_manuf_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
     > {
@@ -433,11 +449,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_vendor_hashes_manuf_partition_read_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_vendor_hashes_manuf_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
         >,
@@ -451,7 +467,7 @@ pub trait OtpPeripheral {
     }
     fn read_vendor_hashes_prod_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
     > {
@@ -461,11 +477,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_vendor_hashes_prod_partition_read_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_vendor_hashes_prod_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
         >,
@@ -479,7 +495,7 @@ pub trait OtpPeripheral {
     }
     fn read_vendor_revocations_prod_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
     > {
@@ -489,11 +505,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_vendor_revocations_prod_partition_read_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_vendor_revocations_prod_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
         >,
@@ -507,7 +523,7 @@ pub trait OtpPeripheral {
     }
     fn read_vendor_non_secret_prod_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
     > {
@@ -517,11 +533,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_vendor_non_secret_prod_partition_read_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_vendor_non_secret_prod_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
         >,
@@ -533,7 +549,9 @@ pub trait OtpPeripheral {
             generated.write_vendor_non_secret_prod_partition_read_lock(val);
         }
     }
-    fn read_vendor_pk_hash_volatile_lock(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_pk_hash_volatile_lock(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::vendor_pk_hash_volatile_lock");
         }
@@ -542,7 +560,10 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn write_vendor_pk_hash_volatile_lock(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_vendor_pk_hash_volatile_lock(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write otp::vendor_pk_hash_volatile_lock = 0x{:08x}" , val);
         }
@@ -552,19 +573,21 @@ pub trait OtpPeripheral {
     }
     fn read_csr0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr0::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr0::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr0");
         }
         if let Some(generated) = self.generated() {
             return generated.read_csr0();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_csr0(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr0::Register,
         >,
@@ -581,19 +604,21 @@ pub trait OtpPeripheral {
     }
     fn read_csr1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr1::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr1::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr1");
         }
         if let Some(generated) = self.generated() {
             return generated.read_csr1();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_csr1(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr1::Register,
         >,
@@ -610,19 +635,21 @@ pub trait OtpPeripheral {
     }
     fn read_csr2(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr2::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr2::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr2");
         }
         if let Some(generated) = self.generated() {
             return generated.read_csr2();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_csr2(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr2::Register,
         >,
@@ -639,19 +666,21 @@ pub trait OtpPeripheral {
     }
     fn read_csr3(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr3::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr3::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr3");
         }
         if let Some(generated) = self.generated() {
             return generated.read_csr3();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_csr3(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr3::Register,
         >,
@@ -668,19 +697,21 @@ pub trait OtpPeripheral {
     }
     fn read_csr4(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr4::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr4::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr4");
         }
         if let Some(generated) = self.generated() {
             return generated.read_csr4();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_csr4(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr4::Register,
         >,
@@ -697,19 +728,21 @@ pub trait OtpPeripheral {
     }
     fn read_csr5(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr5::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr5::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr5");
         }
         if let Some(generated) = self.generated() {
             return generated.read_csr5();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_csr5(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr5::Register,
         >,
@@ -726,19 +759,21 @@ pub trait OtpPeripheral {
     }
     fn read_csr6(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr6::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr6::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr6");
         }
         if let Some(generated) = self.generated() {
             return generated.read_csr6();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_csr6(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr6::Register,
         >,
@@ -755,19 +790,21 @@ pub trait OtpPeripheral {
     }
     fn read_csr7(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr7::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr7::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr7");
         }
         if let Some(generated) = self.generated() {
             return generated.read_csr7();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -777,11 +814,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_0();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -791,11 +828,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_1();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_2(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -805,11 +842,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_2();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_3(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -819,11 +856,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_3();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_4(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -833,11 +870,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_4();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_5(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -847,11 +884,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_5();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_6(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -861,11 +898,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_6();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_7(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -875,11 +912,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_7();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_8(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -889,11 +926,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_8();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_9(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -903,11 +940,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_9();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_10(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -917,11 +954,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_10();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_11(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -931,11 +968,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_11();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_12(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -945,11 +982,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_12();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_13(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -959,11 +996,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_13();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_14(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -973,11 +1010,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_14();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_15(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -987,11 +1024,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_15();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_16(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -1001,11 +1038,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_16();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_err_code_rf_err_code_17(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -1015,9 +1052,11 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_err_code_rf_err_code_17();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_dai_wdata_rf_direct_access_wdata_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read otp::dai_wdata_rf_direct_access_wdata_0"
@@ -1028,7 +1067,10 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn write_dai_wdata_rf_direct_access_wdata_0(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_dai_wdata_rf_direct_access_wdata_0(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write otp::dai_wdata_rf_direct_access_wdata_0 = 0x{:08x}" , val);
         }
@@ -1036,7 +1078,9 @@ pub trait OtpPeripheral {
             generated.write_dai_wdata_rf_direct_access_wdata_0(val);
         }
     }
-    fn read_dai_wdata_rf_direct_access_wdata_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_dai_wdata_rf_direct_access_wdata_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read otp::dai_wdata_rf_direct_access_wdata_1"
@@ -1047,7 +1091,10 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn write_dai_wdata_rf_direct_access_wdata_1(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_dai_wdata_rf_direct_access_wdata_1(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write otp::dai_wdata_rf_direct_access_wdata_1 = 0x{:08x}" , val);
         }
@@ -1055,7 +1102,9 @@ pub trait OtpPeripheral {
             generated.write_dai_wdata_rf_direct_access_wdata_1(val);
         }
     }
-    fn read_dai_rdata_rf_direct_access_rdata_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_dai_rdata_rf_direct_access_rdata_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read otp::dai_rdata_rf_direct_access_rdata_0"
@@ -1066,7 +1115,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_dai_rdata_rf_direct_access_rdata_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_dai_rdata_rf_direct_access_rdata_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read otp::dai_rdata_rf_direct_access_rdata_1"
@@ -1077,7 +1128,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_sw_test_unlock_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_sw_test_unlock_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::sw_test_unlock_partition_digest_digest_0");
         }
@@ -1086,7 +1139,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_sw_test_unlock_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_sw_test_unlock_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::sw_test_unlock_partition_digest_digest_1");
         }
@@ -1095,7 +1150,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_secret_manuf_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_manuf_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::secret_manuf_partition_digest_digest_0");
         }
@@ -1104,7 +1161,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_secret_manuf_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_manuf_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::secret_manuf_partition_digest_digest_1");
         }
@@ -1113,7 +1172,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_secret_prod_partition_0_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_0_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_0_digest_digest_0");
         }
@@ -1122,7 +1183,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_secret_prod_partition_0_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_0_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_0_digest_digest_1");
         }
@@ -1131,7 +1194,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_secret_prod_partition_1_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_1_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_1_digest_digest_0");
         }
@@ -1140,7 +1205,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_secret_prod_partition_1_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_1_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_1_digest_digest_1");
         }
@@ -1149,7 +1216,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_secret_prod_partition_2_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_2_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_2_digest_digest_0");
         }
@@ -1158,7 +1227,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_secret_prod_partition_2_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_2_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_2_digest_digest_1");
         }
@@ -1167,7 +1238,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_secret_prod_partition_3_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_3_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_3_digest_digest_0");
         }
@@ -1176,7 +1249,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_secret_prod_partition_3_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_3_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::secret_prod_partition_3_digest_digest_1");
         }
@@ -1185,7 +1260,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_sw_manuf_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_sw_manuf_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read otp::sw_manuf_partition_digest_digest_0"
@@ -1196,7 +1273,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_sw_manuf_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_sw_manuf_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read otp::sw_manuf_partition_digest_digest_1"
@@ -1209,7 +1288,7 @@ pub trait OtpPeripheral {
     }
     fn read_secret_lc_transition_partition_digest_digest_0(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::secret_lc_transition_partition_digest_digest_0");
         }
@@ -1220,7 +1299,7 @@ pub trait OtpPeripheral {
     }
     fn read_secret_lc_transition_partition_digest_digest_1(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::secret_lc_transition_partition_digest_digest_1");
         }
@@ -1229,7 +1308,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_vendor_test_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_test_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_test_partition_digest_digest_0");
         }
@@ -1238,7 +1319,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_vendor_test_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_test_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_test_partition_digest_digest_1");
         }
@@ -1247,7 +1330,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_vendor_hashes_manuf_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_hashes_manuf_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_manuf_partition_digest_digest_0");
         }
@@ -1256,7 +1341,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_vendor_hashes_manuf_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_hashes_manuf_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_manuf_partition_digest_digest_1");
         }
@@ -1265,7 +1352,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_vendor_hashes_prod_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_hashes_prod_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_prod_partition_digest_digest_0");
         }
@@ -1274,7 +1363,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_vendor_hashes_prod_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_hashes_prod_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_prod_partition_digest_digest_1");
         }
@@ -1285,7 +1376,7 @@ pub trait OtpPeripheral {
     }
     fn read_vendor_revocations_prod_partition_digest_digest_0(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_revocations_prod_partition_digest_digest_0");
         }
@@ -1296,7 +1387,7 @@ pub trait OtpPeripheral {
     }
     fn read_vendor_revocations_prod_partition_digest_digest_1(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_revocations_prod_partition_digest_digest_1");
         }
@@ -1305,7 +1396,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_vendor_secret_prod_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_secret_prod_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_secret_prod_partition_digest_digest_0");
         }
@@ -1314,7 +1407,9 @@ pub trait OtpPeripheral {
         }
         0
     }
-    fn read_vendor_secret_prod_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_secret_prod_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_secret_prod_partition_digest_digest_1");
         }
@@ -1325,7 +1420,7 @@ pub trait OtpPeripheral {
     }
     fn read_vendor_non_secret_prod_partition_digest_digest_0(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_non_secret_prod_partition_digest_digest_0");
         }
@@ -1336,7 +1431,7 @@ pub trait OtpPeripheral {
     }
     fn read_vendor_non_secret_prod_partition_digest_digest_1(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_non_secret_prod_partition_digest_digest_1");
         }
@@ -1348,170 +1443,210 @@ pub trait OtpPeripheral {
 }
 #[derive(Clone, Debug)]
 pub struct OtpGenerated {
-    interrupt_state: caliptra_emu_types::RvData,
-    otp_interrupt_enable: caliptra_emu_types::RvData,
-    interrupt_test: caliptra_emu_types::RvData,
-    alert_test: caliptra_emu_types::RvData,
-    otp_status: caliptra_emu_types::RvData,
-    direct_access_regwen: caliptra_emu_types::RvData,
-    direct_access_cmd: caliptra_emu_types::RvData,
-    direct_access_address: caliptra_emu_types::RvData,
-    check_trigger_regwen: caliptra_emu_types::RvData,
-    check_trigger: caliptra_emu_types::RvData,
-    check_regwen: caliptra_emu_types::RvData,
-    check_timeout: caliptra_emu_types::RvData,
-    integrity_check_period: caliptra_emu_types::RvData,
-    consistency_check_period: caliptra_emu_types::RvData,
-    sw_manuf_partition_read_lock: caliptra_emu_types::RvData,
-    svn_partition_read_lock: caliptra_emu_types::RvData,
-    vendor_test_partition_read_lock: caliptra_emu_types::RvData,
-    vendor_hashes_manuf_partition_read_lock: caliptra_emu_types::RvData,
-    vendor_hashes_prod_partition_read_lock: caliptra_emu_types::RvData,
-    vendor_revocations_prod_partition_read_lock: caliptra_emu_types::RvData,
-    vendor_non_secret_prod_partition_read_lock: caliptra_emu_types::RvData,
-    vendor_pk_hash_volatile_lock: caliptra_emu_types::RvData,
-    csr0: caliptra_emu_types::RvData,
-    csr1: caliptra_emu_types::RvData,
-    csr2: caliptra_emu_types::RvData,
-    csr3: caliptra_emu_types::RvData,
-    csr4: caliptra_emu_types::RvData,
-    csr5: caliptra_emu_types::RvData,
-    csr6: caliptra_emu_types::RvData,
-    csr7: caliptra_emu_types::RvData,
-    err_code_rf_err_code_0: caliptra_emu_types::RvData,
-    err_code_rf_err_code_1: caliptra_emu_types::RvData,
-    err_code_rf_err_code_2: caliptra_emu_types::RvData,
-    err_code_rf_err_code_3: caliptra_emu_types::RvData,
-    err_code_rf_err_code_4: caliptra_emu_types::RvData,
-    err_code_rf_err_code_5: caliptra_emu_types::RvData,
-    err_code_rf_err_code_6: caliptra_emu_types::RvData,
-    err_code_rf_err_code_7: caliptra_emu_types::RvData,
-    err_code_rf_err_code_8: caliptra_emu_types::RvData,
-    err_code_rf_err_code_9: caliptra_emu_types::RvData,
-    err_code_rf_err_code_10: caliptra_emu_types::RvData,
-    err_code_rf_err_code_11: caliptra_emu_types::RvData,
-    err_code_rf_err_code_12: caliptra_emu_types::RvData,
-    err_code_rf_err_code_13: caliptra_emu_types::RvData,
-    err_code_rf_err_code_14: caliptra_emu_types::RvData,
-    err_code_rf_err_code_15: caliptra_emu_types::RvData,
-    err_code_rf_err_code_16: caliptra_emu_types::RvData,
-    err_code_rf_err_code_17: caliptra_emu_types::RvData,
-    dai_wdata_rf_direct_access_wdata_0: caliptra_emu_types::RvData,
-    dai_wdata_rf_direct_access_wdata_1: caliptra_emu_types::RvData,
-    dai_rdata_rf_direct_access_rdata_0: caliptra_emu_types::RvData,
-    dai_rdata_rf_direct_access_rdata_1: caliptra_emu_types::RvData,
-    sw_test_unlock_partition_digest_digest_0: caliptra_emu_types::RvData,
-    sw_test_unlock_partition_digest_digest_1: caliptra_emu_types::RvData,
-    secret_manuf_partition_digest_digest_0: caliptra_emu_types::RvData,
-    secret_manuf_partition_digest_digest_1: caliptra_emu_types::RvData,
-    secret_prod_partition_0_digest_digest_0: caliptra_emu_types::RvData,
-    secret_prod_partition_0_digest_digest_1: caliptra_emu_types::RvData,
-    secret_prod_partition_1_digest_digest_0: caliptra_emu_types::RvData,
-    secret_prod_partition_1_digest_digest_1: caliptra_emu_types::RvData,
-    secret_prod_partition_2_digest_digest_0: caliptra_emu_types::RvData,
-    secret_prod_partition_2_digest_digest_1: caliptra_emu_types::RvData,
-    secret_prod_partition_3_digest_digest_0: caliptra_emu_types::RvData,
-    secret_prod_partition_3_digest_digest_1: caliptra_emu_types::RvData,
-    sw_manuf_partition_digest_digest_0: caliptra_emu_types::RvData,
-    sw_manuf_partition_digest_digest_1: caliptra_emu_types::RvData,
-    secret_lc_transition_partition_digest_digest_0: caliptra_emu_types::RvData,
-    secret_lc_transition_partition_digest_digest_1: caliptra_emu_types::RvData,
-    vendor_test_partition_digest_digest_0: caliptra_emu_types::RvData,
-    vendor_test_partition_digest_digest_1: caliptra_emu_types::RvData,
-    vendor_hashes_manuf_partition_digest_digest_0: caliptra_emu_types::RvData,
-    vendor_hashes_manuf_partition_digest_digest_1: caliptra_emu_types::RvData,
-    vendor_hashes_prod_partition_digest_digest_0: caliptra_emu_types::RvData,
-    vendor_hashes_prod_partition_digest_digest_1: caliptra_emu_types::RvData,
-    vendor_revocations_prod_partition_digest_digest_0: caliptra_emu_types::RvData,
-    vendor_revocations_prod_partition_digest_digest_1: caliptra_emu_types::RvData,
-    vendor_secret_prod_partition_digest_digest_0: caliptra_emu_types::RvData,
-    vendor_secret_prod_partition_digest_digest_1: caliptra_emu_types::RvData,
-    vendor_non_secret_prod_partition_digest_digest_0: caliptra_emu_types::RvData,
-    vendor_non_secret_prod_partition_digest_digest_1: caliptra_emu_types::RvData,
+    interrupt_state: caliptra_core_tools::caliptra_emu_types::RvData,
+    otp_interrupt_enable: caliptra_core_tools::caliptra_emu_types::RvData,
+    interrupt_test: caliptra_core_tools::caliptra_emu_types::RvData,
+    alert_test: caliptra_core_tools::caliptra_emu_types::RvData,
+    otp_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    direct_access_regwen: caliptra_core_tools::caliptra_emu_types::RvData,
+    direct_access_cmd: caliptra_core_tools::caliptra_emu_types::RvData,
+    direct_access_address: caliptra_core_tools::caliptra_emu_types::RvData,
+    check_trigger_regwen: caliptra_core_tools::caliptra_emu_types::RvData,
+    check_trigger: caliptra_core_tools::caliptra_emu_types::RvData,
+    check_regwen: caliptra_core_tools::caliptra_emu_types::RvData,
+    check_timeout: caliptra_core_tools::caliptra_emu_types::RvData,
+    integrity_check_period: caliptra_core_tools::caliptra_emu_types::RvData,
+    consistency_check_period: caliptra_core_tools::caliptra_emu_types::RvData,
+    sw_manuf_partition_read_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    svn_partition_read_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_test_partition_read_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_hashes_manuf_partition_read_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_hashes_prod_partition_read_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_revocations_prod_partition_read_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_non_secret_prod_partition_read_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_pk_hash_volatile_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    csr0: caliptra_core_tools::caliptra_emu_types::RvData,
+    csr1: caliptra_core_tools::caliptra_emu_types::RvData,
+    csr2: caliptra_core_tools::caliptra_emu_types::RvData,
+    csr3: caliptra_core_tools::caliptra_emu_types::RvData,
+    csr4: caliptra_core_tools::caliptra_emu_types::RvData,
+    csr5: caliptra_core_tools::caliptra_emu_types::RvData,
+    csr6: caliptra_core_tools::caliptra_emu_types::RvData,
+    csr7: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_2: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_3: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_4: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_5: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_6: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_7: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_8: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_9: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_10: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_11: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_12: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_13: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_14: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_15: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_16: caliptra_core_tools::caliptra_emu_types::RvData,
+    err_code_rf_err_code_17: caliptra_core_tools::caliptra_emu_types::RvData,
+    dai_wdata_rf_direct_access_wdata_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    dai_wdata_rf_direct_access_wdata_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    dai_rdata_rf_direct_access_rdata_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    dai_rdata_rf_direct_access_rdata_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    sw_test_unlock_partition_digest_digest_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    sw_test_unlock_partition_digest_digest_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    secret_manuf_partition_digest_digest_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    secret_manuf_partition_digest_digest_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    secret_prod_partition_0_digest_digest_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    secret_prod_partition_0_digest_digest_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    secret_prod_partition_1_digest_digest_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    secret_prod_partition_1_digest_digest_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    secret_prod_partition_2_digest_digest_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    secret_prod_partition_2_digest_digest_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    secret_prod_partition_3_digest_digest_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    secret_prod_partition_3_digest_digest_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    sw_manuf_partition_digest_digest_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    sw_manuf_partition_digest_digest_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    secret_lc_transition_partition_digest_digest_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    secret_lc_transition_partition_digest_digest_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_test_partition_digest_digest_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_test_partition_digest_digest_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_hashes_manuf_partition_digest_digest_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_hashes_manuf_partition_digest_digest_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_hashes_prod_partition_digest_digest_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_hashes_prod_partition_digest_digest_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_revocations_prod_partition_digest_digest_0:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_revocations_prod_partition_digest_digest_1:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_secret_prod_partition_digest_digest_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_secret_prod_partition_digest_digest_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_non_secret_prod_partition_digest_digest_0:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    vendor_non_secret_prod_partition_digest_digest_1:
+        caliptra_core_tools::caliptra_emu_types::RvData,
 }
 impl Default for OtpGenerated {
     fn default() -> Self {
         Self {
-            interrupt_state: 0 as caliptra_emu_types::RvData,
-            otp_interrupt_enable: 0 as caliptra_emu_types::RvData,
-            interrupt_test: 0 as caliptra_emu_types::RvData,
-            alert_test: 0 as caliptra_emu_types::RvData,
-            otp_status: 0 as caliptra_emu_types::RvData,
-            direct_access_regwen: 0 as caliptra_emu_types::RvData,
-            direct_access_cmd: 0 as caliptra_emu_types::RvData,
-            direct_access_address: 0 as caliptra_emu_types::RvData,
-            check_trigger_regwen: 0 as caliptra_emu_types::RvData,
-            check_trigger: 0 as caliptra_emu_types::RvData,
-            check_regwen: 0 as caliptra_emu_types::RvData,
-            check_timeout: 0 as caliptra_emu_types::RvData,
-            integrity_check_period: 0 as caliptra_emu_types::RvData,
-            consistency_check_period: 0 as caliptra_emu_types::RvData,
-            sw_manuf_partition_read_lock: 0 as caliptra_emu_types::RvData,
-            svn_partition_read_lock: 0 as caliptra_emu_types::RvData,
-            vendor_test_partition_read_lock: 0 as caliptra_emu_types::RvData,
-            vendor_hashes_manuf_partition_read_lock: 0 as caliptra_emu_types::RvData,
-            vendor_hashes_prod_partition_read_lock: 0 as caliptra_emu_types::RvData,
-            vendor_revocations_prod_partition_read_lock: 0 as caliptra_emu_types::RvData,
-            vendor_non_secret_prod_partition_read_lock: 0 as caliptra_emu_types::RvData,
-            vendor_pk_hash_volatile_lock: 0 as caliptra_emu_types::RvData,
-            csr0: 0 as caliptra_emu_types::RvData,
-            csr1: 0 as caliptra_emu_types::RvData,
-            csr2: 0 as caliptra_emu_types::RvData,
-            csr3: 0 as caliptra_emu_types::RvData,
-            csr4: 0 as caliptra_emu_types::RvData,
-            csr5: 0 as caliptra_emu_types::RvData,
-            csr6: 0 as caliptra_emu_types::RvData,
-            csr7: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_0: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_1: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_2: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_3: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_4: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_5: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_6: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_7: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_8: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_9: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_10: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_11: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_12: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_13: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_14: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_15: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_16: 0 as caliptra_emu_types::RvData,
-            err_code_rf_err_code_17: 0 as caliptra_emu_types::RvData,
-            dai_wdata_rf_direct_access_wdata_0: 0 as caliptra_emu_types::RvData,
-            dai_wdata_rf_direct_access_wdata_1: 0 as caliptra_emu_types::RvData,
-            dai_rdata_rf_direct_access_rdata_0: 0 as caliptra_emu_types::RvData,
-            dai_rdata_rf_direct_access_rdata_1: 0 as caliptra_emu_types::RvData,
-            sw_test_unlock_partition_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            sw_test_unlock_partition_digest_digest_1: 0 as caliptra_emu_types::RvData,
-            secret_manuf_partition_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            secret_manuf_partition_digest_digest_1: 0 as caliptra_emu_types::RvData,
-            secret_prod_partition_0_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            secret_prod_partition_0_digest_digest_1: 0 as caliptra_emu_types::RvData,
-            secret_prod_partition_1_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            secret_prod_partition_1_digest_digest_1: 0 as caliptra_emu_types::RvData,
-            secret_prod_partition_2_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            secret_prod_partition_2_digest_digest_1: 0 as caliptra_emu_types::RvData,
-            secret_prod_partition_3_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            secret_prod_partition_3_digest_digest_1: 0 as caliptra_emu_types::RvData,
-            sw_manuf_partition_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            sw_manuf_partition_digest_digest_1: 0 as caliptra_emu_types::RvData,
-            secret_lc_transition_partition_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            secret_lc_transition_partition_digest_digest_1: 0 as caliptra_emu_types::RvData,
-            vendor_test_partition_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            vendor_test_partition_digest_digest_1: 0 as caliptra_emu_types::RvData,
-            vendor_hashes_manuf_partition_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            vendor_hashes_manuf_partition_digest_digest_1: 0 as caliptra_emu_types::RvData,
-            vendor_hashes_prod_partition_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            vendor_hashes_prod_partition_digest_digest_1: 0 as caliptra_emu_types::RvData,
-            vendor_revocations_prod_partition_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            vendor_revocations_prod_partition_digest_digest_1: 0 as caliptra_emu_types::RvData,
-            vendor_secret_prod_partition_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            vendor_secret_prod_partition_digest_digest_1: 0 as caliptra_emu_types::RvData,
-            vendor_non_secret_prod_partition_digest_digest_0: 0 as caliptra_emu_types::RvData,
-            vendor_non_secret_prod_partition_digest_digest_1: 0 as caliptra_emu_types::RvData,
+            interrupt_state: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            otp_interrupt_enable: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            interrupt_test: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            alert_test: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            otp_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            direct_access_regwen: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            direct_access_cmd: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            direct_access_address: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            check_trigger_regwen: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            check_trigger: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            check_regwen: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            check_timeout: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            integrity_check_period: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            consistency_check_period: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            sw_manuf_partition_read_lock: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            svn_partition_read_lock: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_test_partition_read_lock: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_hashes_manuf_partition_read_lock: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_hashes_prod_partition_read_lock: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_revocations_prod_partition_read_lock: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_non_secret_prod_partition_read_lock: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_pk_hash_volatile_lock: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            csr0: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            csr1: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            csr2: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            csr3: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            csr4: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            csr5: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            csr6: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            csr7: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_0: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_1: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_2: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_3: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_4: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_5: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_6: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_7: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_8: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_9: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_10: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_11: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_12: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_13: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_14: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_15: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_16: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            err_code_rf_err_code_17: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            dai_wdata_rf_direct_access_wdata_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            dai_wdata_rf_direct_access_wdata_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            dai_rdata_rf_direct_access_rdata_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            dai_rdata_rf_direct_access_rdata_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            sw_test_unlock_partition_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            sw_test_unlock_partition_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            secret_manuf_partition_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            secret_manuf_partition_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            secret_prod_partition_0_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            secret_prod_partition_0_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            secret_prod_partition_1_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            secret_prod_partition_1_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            secret_prod_partition_2_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            secret_prod_partition_2_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            secret_prod_partition_3_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            secret_prod_partition_3_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            sw_manuf_partition_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            sw_manuf_partition_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            secret_lc_transition_partition_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            secret_lc_transition_partition_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_test_partition_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_test_partition_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_hashes_manuf_partition_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_hashes_manuf_partition_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_hashes_prod_partition_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_hashes_prod_partition_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_revocations_prod_partition_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_revocations_prod_partition_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_secret_prod_partition_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_secret_prod_partition_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_non_secret_prod_partition_digest_digest_0: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            vendor_non_secret_prod_partition_digest_digest_1: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
         }
     }
 }
@@ -1535,18 +1670,18 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_interrupt_state(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::InterruptState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::interrupt_state");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_state)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_state)
     }
     fn write_interrupt_state(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::InterruptState::Register,
         >,
@@ -1557,29 +1692,29 @@ impl OtpPeripheral for OtpGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.interrupt_state;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.interrupt_state = new_val;
     }
     fn read_otp_interrupt_enable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::otp_interrupt_enable");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.otp_interrupt_enable)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.otp_interrupt_enable)
     }
     fn write_otp_interrupt_enable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
         >,
@@ -1587,18 +1722,18 @@ impl OtpPeripheral for OtpGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::otp_interrupt_enable = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.otp_interrupt_enable;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.otp_interrupt_enable = new_val;
     }
     fn write_interrupt_test(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::InterruptTest::Register,
         >,
@@ -1609,18 +1744,18 @@ impl OtpPeripheral for OtpGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.interrupt_test;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.interrupt_test = new_val;
     }
     fn write_alert_test(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::AlertTest::Register,
         >,
@@ -1631,46 +1766,46 @@ impl OtpPeripheral for OtpGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.alert_test;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.alert_test = new_val;
     }
     fn read_otp_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::OtpStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::otp_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.otp_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.otp_status)
     }
     fn read_direct_access_regwen(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::direct_access_regwen");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.direct_access_regwen)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.direct_access_regwen)
     }
     fn write_direct_access_regwen(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
         >,
@@ -1678,16 +1813,16 @@ impl OtpPeripheral for OtpGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::direct_access_regwen = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.direct_access_regwen;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.direct_access_regwen = new_val;
     }
     fn write_direct_access_cmd(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::DirectAccessCmd::Register,
         >,
@@ -1698,31 +1833,31 @@ impl OtpPeripheral for OtpGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.direct_access_cmd;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.direct_access_cmd = new_val;
     }
     fn read_direct_access_address(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::direct_access_address");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.direct_access_address)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.direct_access_address)
     }
     fn write_direct_access_address(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
         >,
@@ -1730,27 +1865,27 @@ impl OtpPeripheral for OtpGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::direct_access_address = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.direct_access_address;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xfff as caliptra_emu_types::RvData))
-            | (write_val & (0xfff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xfff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xfff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.direct_access_address = new_val;
     }
     fn read_check_trigger_regwen(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::check_trigger_regwen");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.check_trigger_regwen)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.check_trigger_regwen)
     }
     fn write_check_trigger_regwen(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
         >,
@@ -1758,16 +1893,16 @@ impl OtpPeripheral for OtpGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::check_trigger_regwen = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.check_trigger_regwen;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.check_trigger_regwen = new_val;
     }
     fn write_check_trigger(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CheckTrigger::Register,
         >,
@@ -1778,18 +1913,18 @@ impl OtpPeripheral for OtpGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.check_trigger;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.check_trigger = new_val;
     }
     fn write_check_regwen(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::CheckRegwen::Register,
         >,
@@ -1800,51 +1935,54 @@ impl OtpPeripheral for OtpGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.check_regwen;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.check_regwen = new_val;
     }
-    fn read_check_timeout(&mut self) -> caliptra_emu_types::RvData {
+    fn read_check_timeout(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::check_timeout");
         }
         self.check_timeout
     }
-    fn write_check_timeout(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_check_timeout(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write otp::check_timeout = 0x{:08x}",
                 val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.check_timeout;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.check_timeout = new_val;
     }
-    fn read_integrity_check_period(&mut self) -> caliptra_emu_types::RvData {
+    fn read_integrity_check_period(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::integrity_check_period");
         }
         self.integrity_check_period
     }
-    fn write_integrity_check_period(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_integrity_check_period(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::integrity_check_period = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.integrity_check_period;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.integrity_check_period = new_val;
     }
-    fn read_consistency_check_period(&mut self) -> caliptra_emu_types::RvData {
+    fn read_consistency_check_period(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read otp::consistency_check_period"
@@ -1852,20 +1990,23 @@ impl OtpPeripheral for OtpGenerated {
         }
         self.consistency_check_period
     }
-    fn write_consistency_check_period(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_consistency_check_period(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::consistency_check_period = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.consistency_check_period;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.consistency_check_period = new_val;
     }
     fn read_sw_manuf_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
     > {
@@ -1874,11 +2015,13 @@ impl OtpPeripheral for OtpGenerated {
                 "[EMU] Generated default register handler: read otp::sw_manuf_partition_read_lock"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.sw_manuf_partition_read_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.sw_manuf_partition_read_lock,
+        )
     }
     fn write_sw_manuf_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
         >,
@@ -1886,16 +2029,16 @@ impl OtpPeripheral for OtpGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::sw_manuf_partition_read_lock = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.sw_manuf_partition_read_lock;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.sw_manuf_partition_read_lock = new_val;
     }
     fn read_svn_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
     > {
@@ -1904,11 +2047,11 @@ impl OtpPeripheral for OtpGenerated {
                 "[EMU] Generated default register handler: read otp::svn_partition_read_lock"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.svn_partition_read_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.svn_partition_read_lock)
     }
     fn write_svn_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
         >,
@@ -1916,27 +2059,29 @@ impl OtpPeripheral for OtpGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::svn_partition_read_lock = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.svn_partition_read_lock;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.svn_partition_read_lock = new_val;
     }
     fn read_vendor_test_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_test_partition_read_lock");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.vendor_test_partition_read_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.vendor_test_partition_read_lock,
+        )
     }
     fn write_vendor_test_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
         >,
@@ -1944,27 +2089,29 @@ impl OtpPeripheral for OtpGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::vendor_test_partition_read_lock = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.vendor_test_partition_read_lock;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.vendor_test_partition_read_lock = new_val;
     }
     fn read_vendor_hashes_manuf_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_manuf_partition_read_lock");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.vendor_hashes_manuf_partition_read_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.vendor_hashes_manuf_partition_read_lock,
+        )
     }
     fn write_vendor_hashes_manuf_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
         >,
@@ -1972,27 +2119,29 @@ impl OtpPeripheral for OtpGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::vendor_hashes_manuf_partition_read_lock = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.vendor_hashes_manuf_partition_read_lock;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.vendor_hashes_manuf_partition_read_lock = new_val;
     }
     fn read_vendor_hashes_prod_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_prod_partition_read_lock");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.vendor_hashes_prod_partition_read_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.vendor_hashes_prod_partition_read_lock,
+        )
     }
     fn write_vendor_hashes_prod_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
         >,
@@ -2000,27 +2149,29 @@ impl OtpPeripheral for OtpGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::vendor_hashes_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.vendor_hashes_prod_partition_read_lock;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.vendor_hashes_prod_partition_read_lock = new_val;
     }
     fn read_vendor_revocations_prod_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_revocations_prod_partition_read_lock");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.vendor_revocations_prod_partition_read_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.vendor_revocations_prod_partition_read_lock,
+        )
     }
     fn write_vendor_revocations_prod_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
         >,
@@ -2028,27 +2179,29 @@ impl OtpPeripheral for OtpGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::vendor_revocations_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.vendor_revocations_prod_partition_read_lock;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.vendor_revocations_prod_partition_read_lock = new_val;
     }
     fn read_vendor_non_secret_prod_partition_read_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_non_secret_prod_partition_read_lock");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.vendor_non_secret_prod_partition_read_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.vendor_non_secret_prod_partition_read_lock,
+        )
     }
     fn write_vendor_non_secret_prod_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
         >,
@@ -2056,14 +2209,16 @@ impl OtpPeripheral for OtpGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::vendor_non_secret_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.vendor_non_secret_prod_partition_read_lock;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.vendor_non_secret_prod_partition_read_lock = new_val;
     }
-    fn read_vendor_pk_hash_volatile_lock(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_pk_hash_volatile_lock(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read otp::vendor_pk_hash_volatile_lock"
@@ -2071,29 +2226,34 @@ impl OtpPeripheral for OtpGenerated {
         }
         self.vendor_pk_hash_volatile_lock
     }
-    fn write_vendor_pk_hash_volatile_lock(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_vendor_pk_hash_volatile_lock(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::vendor_pk_hash_volatile_lock = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.vendor_pk_hash_volatile_lock;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.vendor_pk_hash_volatile_lock = new_val;
     }
     fn read_csr0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr0::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr0::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr0");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.csr0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.csr0)
     }
     fn write_csr0(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr0::Register,
         >,
@@ -2104,33 +2264,35 @@ impl OtpPeripheral for OtpGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.csr0;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x3ff0 as caliptra_emu_types::RvData))
-            | (write_val & (0x3ff0 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x7ff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x7ff_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x3ff0 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x3ff0 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x7ff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x7ff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.csr0 = new_val;
     }
     fn read_csr1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr1::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr1::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr1");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.csr1)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.csr1)
     }
     fn write_csr1(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr1::Register,
         >,
@@ -2141,33 +2303,35 @@ impl OtpPeripheral for OtpGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.csr1;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x7f as caliptra_emu_types::RvData))
-            | (write_val & (0x7f as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x7f00 as caliptra_emu_types::RvData))
-            | (write_val & (0x7f00 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xffff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x7f as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x7f as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x80 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x7f00 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x7f00 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.csr1 = new_val;
     }
     fn read_csr2(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr2::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr2::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr2");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.csr2)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.csr2)
     }
     fn write_csr2(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr2::Register,
         >,
@@ -2178,25 +2342,27 @@ impl OtpPeripheral for OtpGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.csr2;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.csr2 = new_val;
     }
     fn read_csr3(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr3::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr3::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr3");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.csr3)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.csr3)
     }
     fn write_csr3(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr3::Register,
         >,
@@ -2207,29 +2373,31 @@ impl OtpPeripheral for OtpGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.csr3;
         let mut new_val = current_val;
-        new_val = (new_val & !(7 as caliptra_emu_types::RvData))
-            | (write_val & (7 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x3ff0 as caliptra_emu_types::RvData))
-            | (write_val & (0x3ff0 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(7 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (7 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x3ff0 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x3ff0 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.csr3 = new_val;
     }
     fn read_csr4(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr4::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr4::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr4");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.csr4)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.csr4)
     }
     fn write_csr4(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr4::Register,
         >,
@@ -2240,31 +2408,33 @@ impl OtpPeripheral for OtpGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.csr4;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x3ff as caliptra_emu_types::RvData))
-            | (write_val & (0x3ff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x4000 as caliptra_emu_types::RvData))
-            | (write_val & (0x4000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x3ff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x3ff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x4000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x4000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.csr4 = new_val;
     }
     fn read_csr5(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr5::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr5::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr5");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.csr5)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.csr5)
     }
     fn write_csr5(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr5::Register,
         >,
@@ -2275,29 +2445,31 @@ impl OtpPeripheral for OtpGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.csr5;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x3f as caliptra_emu_types::RvData))
-            | (write_val & (0x3f as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xc0 as caliptra_emu_types::RvData))
-            | (write_val & (0xc0 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xffff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x3f as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x3f as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xc0 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xc0 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.csr5 = new_val;
     }
     fn read_csr6(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr6::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr6::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr6");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.csr6)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.csr6)
     }
     fn write_csr6(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::otp_ctrl::bits::Csr6::Register,
         >,
@@ -2308,141 +2480,143 @@ impl OtpPeripheral for OtpGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.csr6;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x3ff as caliptra_emu_types::RvData))
-            | (write_val & (0x3ff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x800 as caliptra_emu_types::RvData))
-            | (write_val & (0x800 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xffff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x3ff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x3ff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x800 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x800 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.csr6 = new_val;
     }
     fn read_csr7(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr7::Register>
-    {
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::otp_ctrl::bits::Csr7::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr7");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.csr7)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.csr7)
     }
     fn read_err_code_rf_err_code_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_0");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_0)
     }
     fn read_err_code_rf_err_code_1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_1");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_1)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_1)
     }
     fn read_err_code_rf_err_code_2(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_2");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_2)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_2)
     }
     fn read_err_code_rf_err_code_3(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_3");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_3)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_3)
     }
     fn read_err_code_rf_err_code_4(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_4");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_4)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_4)
     }
     fn read_err_code_rf_err_code_5(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_5");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_5)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_5)
     }
     fn read_err_code_rf_err_code_6(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_6");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_6)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_6)
     }
     fn read_err_code_rf_err_code_7(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_7");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_7)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_7)
     }
     fn read_err_code_rf_err_code_8(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_8");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_8)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_8)
     }
     fn read_err_code_rf_err_code_9(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_9");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_9)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_9)
     }
     fn read_err_code_rf_err_code_10(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -2451,11 +2625,11 @@ impl OtpPeripheral for OtpGenerated {
                 "[EMU] Generated default register handler: read otp::err_code_rf_err_code_10"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_10)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_10)
     }
     fn read_err_code_rf_err_code_11(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -2464,11 +2638,11 @@ impl OtpPeripheral for OtpGenerated {
                 "[EMU] Generated default register handler: read otp::err_code_rf_err_code_11"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_11)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_11)
     }
     fn read_err_code_rf_err_code_12(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -2477,11 +2651,11 @@ impl OtpPeripheral for OtpGenerated {
                 "[EMU] Generated default register handler: read otp::err_code_rf_err_code_12"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_12)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_12)
     }
     fn read_err_code_rf_err_code_13(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -2490,11 +2664,11 @@ impl OtpPeripheral for OtpGenerated {
                 "[EMU] Generated default register handler: read otp::err_code_rf_err_code_13"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_13)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_13)
     }
     fn read_err_code_rf_err_code_14(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -2503,11 +2677,11 @@ impl OtpPeripheral for OtpGenerated {
                 "[EMU] Generated default register handler: read otp::err_code_rf_err_code_14"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_14)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_14)
     }
     fn read_err_code_rf_err_code_15(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -2516,11 +2690,11 @@ impl OtpPeripheral for OtpGenerated {
                 "[EMU] Generated default register handler: read otp::err_code_rf_err_code_15"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_15)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_15)
     }
     fn read_err_code_rf_err_code_16(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -2529,11 +2703,11 @@ impl OtpPeripheral for OtpGenerated {
                 "[EMU] Generated default register handler: read otp::err_code_rf_err_code_16"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_16)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_16)
     }
     fn read_err_code_rf_err_code_17(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
@@ -2542,133 +2716,175 @@ impl OtpPeripheral for OtpGenerated {
                 "[EMU] Generated default register handler: read otp::err_code_rf_err_code_17"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_17)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.err_code_rf_err_code_17)
     }
-    fn read_dai_wdata_rf_direct_access_wdata_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_dai_wdata_rf_direct_access_wdata_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::dai_wdata_rf_direct_access_wdata_0");
         }
         self.dai_wdata_rf_direct_access_wdata_0
     }
-    fn write_dai_wdata_rf_direct_access_wdata_0(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_dai_wdata_rf_direct_access_wdata_0(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::dai_wdata_rf_direct_access_wdata_0 = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.dai_wdata_rf_direct_access_wdata_0;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.dai_wdata_rf_direct_access_wdata_0 = new_val;
     }
-    fn read_dai_wdata_rf_direct_access_wdata_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_dai_wdata_rf_direct_access_wdata_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::dai_wdata_rf_direct_access_wdata_1");
         }
         self.dai_wdata_rf_direct_access_wdata_1
     }
-    fn write_dai_wdata_rf_direct_access_wdata_1(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_dai_wdata_rf_direct_access_wdata_1(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::dai_wdata_rf_direct_access_wdata_1 = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.dai_wdata_rf_direct_access_wdata_1;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.dai_wdata_rf_direct_access_wdata_1 = new_val;
     }
-    fn read_dai_rdata_rf_direct_access_rdata_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_dai_rdata_rf_direct_access_rdata_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::dai_rdata_rf_direct_access_rdata_0");
         }
         self.dai_rdata_rf_direct_access_rdata_0
     }
-    fn read_dai_rdata_rf_direct_access_rdata_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_dai_rdata_rf_direct_access_rdata_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::dai_rdata_rf_direct_access_rdata_1");
         }
         self.dai_rdata_rf_direct_access_rdata_1
     }
-    fn read_sw_test_unlock_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_sw_test_unlock_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::sw_test_unlock_partition_digest_digest_0");
         }
         self.sw_test_unlock_partition_digest_digest_0
     }
-    fn read_sw_test_unlock_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_sw_test_unlock_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::sw_test_unlock_partition_digest_digest_1");
         }
         self.sw_test_unlock_partition_digest_digest_1
     }
-    fn read_secret_manuf_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_manuf_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::secret_manuf_partition_digest_digest_0");
         }
         self.secret_manuf_partition_digest_digest_0
     }
-    fn read_secret_manuf_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_manuf_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::secret_manuf_partition_digest_digest_1");
         }
         self.secret_manuf_partition_digest_digest_1
     }
-    fn read_secret_prod_partition_0_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_0_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_0_digest_digest_0");
         }
         self.secret_prod_partition_0_digest_digest_0
     }
-    fn read_secret_prod_partition_0_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_0_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_0_digest_digest_1");
         }
         self.secret_prod_partition_0_digest_digest_1
     }
-    fn read_secret_prod_partition_1_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_1_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_1_digest_digest_0");
         }
         self.secret_prod_partition_1_digest_digest_0
     }
-    fn read_secret_prod_partition_1_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_1_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_1_digest_digest_1");
         }
         self.secret_prod_partition_1_digest_digest_1
     }
-    fn read_secret_prod_partition_2_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_2_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_2_digest_digest_0");
         }
         self.secret_prod_partition_2_digest_digest_0
     }
-    fn read_secret_prod_partition_2_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_2_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_2_digest_digest_1");
         }
         self.secret_prod_partition_2_digest_digest_1
     }
-    fn read_secret_prod_partition_3_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_3_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_3_digest_digest_0");
         }
         self.secret_prod_partition_3_digest_digest_0
     }
-    fn read_secret_prod_partition_3_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_secret_prod_partition_3_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::secret_prod_partition_3_digest_digest_1");
         }
         self.secret_prod_partition_3_digest_digest_1
     }
-    fn read_sw_manuf_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_sw_manuf_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::sw_manuf_partition_digest_digest_0");
         }
         self.sw_manuf_partition_digest_digest_0
     }
-    fn read_sw_manuf_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_sw_manuf_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::sw_manuf_partition_digest_digest_1");
         }
@@ -2676,7 +2892,7 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_secret_lc_transition_partition_digest_digest_0(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::secret_lc_transition_partition_digest_digest_0");
         }
@@ -2684,43 +2900,55 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_secret_lc_transition_partition_digest_digest_1(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::secret_lc_transition_partition_digest_digest_1");
         }
         self.secret_lc_transition_partition_digest_digest_1
     }
-    fn read_vendor_test_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_test_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_test_partition_digest_digest_0");
         }
         self.vendor_test_partition_digest_digest_0
     }
-    fn read_vendor_test_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_test_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_test_partition_digest_digest_1");
         }
         self.vendor_test_partition_digest_digest_1
     }
-    fn read_vendor_hashes_manuf_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_hashes_manuf_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_manuf_partition_digest_digest_0");
         }
         self.vendor_hashes_manuf_partition_digest_digest_0
     }
-    fn read_vendor_hashes_manuf_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_hashes_manuf_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_manuf_partition_digest_digest_1");
         }
         self.vendor_hashes_manuf_partition_digest_digest_1
     }
-    fn read_vendor_hashes_prod_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_hashes_prod_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_prod_partition_digest_digest_0");
         }
         self.vendor_hashes_prod_partition_digest_digest_0
     }
-    fn read_vendor_hashes_prod_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_hashes_prod_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_prod_partition_digest_digest_1");
         }
@@ -2728,7 +2956,7 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_vendor_revocations_prod_partition_digest_digest_0(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_revocations_prod_partition_digest_digest_0");
         }
@@ -2736,19 +2964,23 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_vendor_revocations_prod_partition_digest_digest_1(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_revocations_prod_partition_digest_digest_1");
         }
         self.vendor_revocations_prod_partition_digest_digest_1
     }
-    fn read_vendor_secret_prod_partition_digest_digest_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_secret_prod_partition_digest_digest_0(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_secret_prod_partition_digest_digest_0");
         }
         self.vendor_secret_prod_partition_digest_digest_0
     }
-    fn read_vendor_secret_prod_partition_digest_digest_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_vendor_secret_prod_partition_digest_digest_1(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_secret_prod_partition_digest_digest_1");
         }
@@ -2756,7 +2988,7 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_vendor_non_secret_prod_partition_digest_digest_0(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_non_secret_prod_partition_digest_digest_0");
         }
@@ -2764,7 +2996,7 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_vendor_non_secret_prod_partition_digest_digest_1(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_non_secret_prod_partition_digest_digest_1");
         }
@@ -2774,147 +3006,150 @@ impl OtpPeripheral for OtpGenerated {
 pub struct OtpBus {
     pub periph: Box<dyn OtpPeripheral>,
 }
-impl caliptra_emu_bus::Bus for OtpBus {
+impl caliptra_core_tools::caliptra_emu_bus::Bus for OtpBus {
     fn read(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+    ) -> Result<
+        caliptra_core_tools::caliptra_emu_types::RvData,
+        caliptra_core_tools::caliptra_emu_bus::BusError,
+    > {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
-            0..4 => Ok(caliptra_emu_types::RvData::from(
+            0..4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_interrupt_state().reg.get(),
             )),
-            4..8 => Ok(caliptra_emu_types::RvData::from(
+            4..8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_otp_interrupt_enable().reg.get(),
             )),
-            0x10..0x14 => Ok(caliptra_emu_types::RvData::from(
+            0x10..0x14 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_otp_status().reg.get(),
             )),
-            0x5c..0x60 => Ok(caliptra_emu_types::RvData::from(
+            0x5c..0x60 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_direct_access_regwen().reg.get(),
             )),
-            0x64..0x68 => Ok(caliptra_emu_types::RvData::from(
+            0x64..0x68 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_direct_access_address().reg.get(),
             )),
-            0x78..0x7c => Ok(caliptra_emu_types::RvData::from(
+            0x78..0x7c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_check_trigger_regwen().reg.get(),
             )),
             0x84..0x88 => Ok(self.periph.read_check_timeout()),
             0x88..0x8c => Ok(self.periph.read_integrity_check_period()),
             0x8c..0x90 => Ok(self.periph.read_consistency_check_period()),
-            0x90..0x94 => Ok(caliptra_emu_types::RvData::from(
+            0x90..0x94 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_sw_manuf_partition_read_lock().reg.get(),
             )),
-            0x94..0x98 => Ok(caliptra_emu_types::RvData::from(
+            0x94..0x98 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_svn_partition_read_lock().reg.get(),
             )),
-            0x98..0x9c => Ok(caliptra_emu_types::RvData::from(
+            0x98..0x9c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_vendor_test_partition_read_lock().reg.get(),
             )),
-            0x9c..0xa0 => Ok(caliptra_emu_types::RvData::from(
+            0x9c..0xa0 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_vendor_hashes_manuf_partition_read_lock()
                     .reg
                     .get(),
             )),
-            0xa0..0xa4 => Ok(caliptra_emu_types::RvData::from(
+            0xa0..0xa4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_vendor_hashes_prod_partition_read_lock()
                     .reg
                     .get(),
             )),
-            0xa4..0xa8 => Ok(caliptra_emu_types::RvData::from(
+            0xa4..0xa8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_vendor_revocations_prod_partition_read_lock()
                     .reg
                     .get(),
             )),
-            0xa8..0xac => Ok(caliptra_emu_types::RvData::from(
+            0xa8..0xac => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_vendor_non_secret_prod_partition_read_lock()
                     .reg
                     .get(),
             )),
             0xac..0xb0 => Ok(self.periph.read_vendor_pk_hash_volatile_lock()),
-            0x120..0x124 => Ok(caliptra_emu_types::RvData::from(
+            0x120..0x124 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_csr0().reg.get(),
             )),
-            0x124..0x128 => Ok(caliptra_emu_types::RvData::from(
+            0x124..0x128 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_csr1().reg.get(),
             )),
-            0x128..0x12c => Ok(caliptra_emu_types::RvData::from(
+            0x128..0x12c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_csr2().reg.get(),
             )),
-            0x12c..0x130 => Ok(caliptra_emu_types::RvData::from(
+            0x12c..0x130 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_csr3().reg.get(),
             )),
-            0x130..0x134 => Ok(caliptra_emu_types::RvData::from(
+            0x130..0x134 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_csr4().reg.get(),
             )),
-            0x134..0x138 => Ok(caliptra_emu_types::RvData::from(
+            0x134..0x138 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_csr5().reg.get(),
             )),
-            0x138..0x13c => Ok(caliptra_emu_types::RvData::from(
+            0x138..0x13c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_csr6().reg.get(),
             )),
-            0x13c..0x140 => Ok(caliptra_emu_types::RvData::from(
+            0x13c..0x140 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_csr7().reg.get(),
             )),
-            0x14..0x18 => Ok(caliptra_emu_types::RvData::from(
+            0x14..0x18 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_0().reg.get(),
             )),
-            0x18..0x1c => Ok(caliptra_emu_types::RvData::from(
+            0x18..0x1c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_1().reg.get(),
             )),
-            0x1c..0x20 => Ok(caliptra_emu_types::RvData::from(
+            0x1c..0x20 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_2().reg.get(),
             )),
-            0x20..0x24 => Ok(caliptra_emu_types::RvData::from(
+            0x20..0x24 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_3().reg.get(),
             )),
-            0x24..0x28 => Ok(caliptra_emu_types::RvData::from(
+            0x24..0x28 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_4().reg.get(),
             )),
-            0x28..0x2c => Ok(caliptra_emu_types::RvData::from(
+            0x28..0x2c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_5().reg.get(),
             )),
-            0x2c..0x30 => Ok(caliptra_emu_types::RvData::from(
+            0x2c..0x30 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_6().reg.get(),
             )),
-            0x30..0x34 => Ok(caliptra_emu_types::RvData::from(
+            0x30..0x34 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_7().reg.get(),
             )),
-            0x34..0x38 => Ok(caliptra_emu_types::RvData::from(
+            0x34..0x38 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_8().reg.get(),
             )),
-            0x38..0x3c => Ok(caliptra_emu_types::RvData::from(
+            0x38..0x3c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_9().reg.get(),
             )),
-            0x3c..0x40 => Ok(caliptra_emu_types::RvData::from(
+            0x3c..0x40 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_10().reg.get(),
             )),
-            0x40..0x44 => Ok(caliptra_emu_types::RvData::from(
+            0x40..0x44 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_11().reg.get(),
             )),
-            0x44..0x48 => Ok(caliptra_emu_types::RvData::from(
+            0x44..0x48 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_12().reg.get(),
             )),
-            0x48..0x4c => Ok(caliptra_emu_types::RvData::from(
+            0x48..0x4c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_13().reg.get(),
             )),
-            0x4c..0x50 => Ok(caliptra_emu_types::RvData::from(
+            0x4c..0x50 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_14().reg.get(),
             )),
-            0x50..0x54 => Ok(caliptra_emu_types::RvData::from(
+            0x50..0x54 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_15().reg.get(),
             )),
-            0x54..0x58 => Ok(caliptra_emu_types::RvData::from(
+            0x54..0x58 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_16().reg.get(),
             )),
-            0x58..0x5c => Ok(caliptra_emu_types::RvData::from(
+            0x58..0x5c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_err_code_rf_err_code_17().reg.get(),
             )),
             0x68..0x6c => Ok(self.periph.read_dai_wdata_rf_direct_access_wdata_0()),
@@ -2973,68 +3208,78 @@ impl caliptra_emu_bus::Bus for OtpBus {
             0x11c..0x120 => Ok(self
                 .periph
                 .read_vendor_non_secret_prod_partition_digest_digest_1()),
-            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-        val: caliptra_emu_types::RvData,
-    ) -> Result<(), caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) -> Result<(), caliptra_core_tools::caliptra_emu_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             0..4 => {
-                self.periph
-                    .write_interrupt_state(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_interrupt_state(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             4..8 => {
-                self.periph
-                    .write_otp_interrupt_enable(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_otp_interrupt_enable(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             8..0xc => {
-                self.periph
-                    .write_interrupt_test(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_interrupt_test(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xc..0x10 => {
-                self.periph
-                    .write_alert_test(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_alert_test(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x10..0x14 => Ok(()),
             0x5c..0x60 => {
-                self.periph
-                    .write_direct_access_regwen(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_direct_access_regwen(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x60..0x64 => {
-                self.periph
-                    .write_direct_access_cmd(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_direct_access_cmd(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x64..0x68 => {
-                self.periph
-                    .write_direct_access_address(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_direct_access_address(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x78..0x7c => {
-                self.periph
-                    .write_check_trigger_regwen(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_check_trigger_regwen(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x7c..0x80 => {
-                self.periph
-                    .write_check_trigger(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_check_trigger(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x80..0x84 => {
-                self.periph
-                    .write_check_regwen(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_check_regwen(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x84..0x88 => {
@@ -3051,44 +3296,45 @@ impl caliptra_emu_bus::Bus for OtpBus {
             }
             0x90..0x94 => {
                 self.periph.write_sw_manuf_partition_read_lock(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x94..0x98 => {
-                self.periph
-                    .write_svn_partition_read_lock(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_svn_partition_read_lock(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x98..0x9c => {
                 self.periph.write_vendor_test_partition_read_lock(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x9c..0xa0 => {
                 self.periph.write_vendor_hashes_manuf_partition_read_lock(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xa0..0xa4 => {
                 self.periph.write_vendor_hashes_prod_partition_read_lock(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xa4..0xa8 => {
                 self.periph
                     .write_vendor_revocations_prod_partition_read_lock(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
             0xa8..0xac => {
                 self.periph
                     .write_vendor_non_secret_prod_partition_read_lock(
-                        caliptra_emu_bus::ReadWriteRegister::new(val),
+                        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     );
                 Ok(())
             }
@@ -3098,37 +3344,37 @@ impl caliptra_emu_bus::Bus for OtpBus {
             }
             0x120..0x124 => {
                 self.periph
-                    .write_csr0(caliptra_emu_bus::ReadWriteRegister::new(val));
+                    .write_csr0(caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x124..0x128 => {
                 self.periph
-                    .write_csr1(caliptra_emu_bus::ReadWriteRegister::new(val));
+                    .write_csr1(caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x128..0x12c => {
                 self.periph
-                    .write_csr2(caliptra_emu_bus::ReadWriteRegister::new(val));
+                    .write_csr2(caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x12c..0x130 => {
                 self.periph
-                    .write_csr3(caliptra_emu_bus::ReadWriteRegister::new(val));
+                    .write_csr3(caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x130..0x134 => {
                 self.periph
-                    .write_csr4(caliptra_emu_bus::ReadWriteRegister::new(val));
+                    .write_csr4(caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x134..0x138 => {
                 self.periph
-                    .write_csr5(caliptra_emu_bus::ReadWriteRegister::new(val));
+                    .write_csr5(caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x138..0x13c => {
                 self.periph
-                    .write_csr6(caliptra_emu_bus::ReadWriteRegister::new(val));
+                    .write_csr6(caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val));
                 Ok(())
             }
             0x13c..0x140 => Ok(()),
@@ -3188,7 +3434,7 @@ impl caliptra_emu_bus::Bus for OtpBus {
             0x114..0x118 => Ok(()),
             0x118..0x11c => Ok(()),
             0x11c..0x120 => Ok(()),
-            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {

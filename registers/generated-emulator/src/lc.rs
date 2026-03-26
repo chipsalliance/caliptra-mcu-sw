@@ -5,14 +5,24 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait LcPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
-    fn set_dma_rom_sram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
+    fn set_dma_ram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
+    fn set_dma_rom_sram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
     fn register_event_channels(
         &mut self,
-        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_caliptra: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
-        _events_to_mcu: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
+        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_caliptra: std::sync::mpsc::Receiver<
+            caliptra_core_tools::caliptra_emu_bus::Event,
+        >,
+        _events_to_mcu: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_core_tools::caliptra_emu_bus::Event>,
     ) {
     }
     fn poll(&mut self) {}
@@ -23,7 +33,7 @@ pub trait LcPeripheral {
     }
     fn write_alert_test(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::AlertTest::Register,
         >,
@@ -40,7 +50,7 @@ pub trait LcPeripheral {
     }
     fn read_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::Status::Register,
     > {
@@ -50,11 +60,11 @@ pub trait LcPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_claim_transition_if_regwen(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
     > {
@@ -64,11 +74,11 @@ pub trait LcPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_claim_transition_if_regwen();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_claim_transition_if_regwen(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
         >,
@@ -82,7 +92,7 @@ pub trait LcPeripheral {
     }
     fn read_claim_transition_if(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
     > {
@@ -92,11 +102,11 @@ pub trait LcPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_claim_transition_if();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_claim_transition_if(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
         >,
@@ -113,7 +123,7 @@ pub trait LcPeripheral {
     }
     fn read_transition_regwen(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::TransitionRegwen::Register,
     > {
@@ -123,11 +133,11 @@ pub trait LcPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_transition_regwen();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_transition_cmd(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::TransitionCmd::Register,
     > {
@@ -137,11 +147,11 @@ pub trait LcPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_transition_cmd();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_transition_cmd(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::TransitionCmd::Register,
         >,
@@ -158,7 +168,7 @@ pub trait LcPeripheral {
     }
     fn read_transition_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
     > {
@@ -168,11 +178,11 @@ pub trait LcPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_transition_ctrl();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_transition_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
         >,
@@ -187,7 +197,7 @@ pub trait LcPeripheral {
             generated.write_transition_ctrl(val);
         }
     }
-    fn read_transition_token_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_transition_token_0(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::transition_token_0");
         }
@@ -196,7 +206,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn write_transition_token_0(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_transition_token_0(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write lc::transition_token_0 = 0x{:08x}",
@@ -207,7 +217,7 @@ pub trait LcPeripheral {
             generated.write_transition_token_0(val);
         }
     }
-    fn read_transition_token_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_transition_token_1(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::transition_token_1");
         }
@@ -216,7 +226,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn write_transition_token_1(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_transition_token_1(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write lc::transition_token_1 = 0x{:08x}",
@@ -227,7 +237,7 @@ pub trait LcPeripheral {
             generated.write_transition_token_1(val);
         }
     }
-    fn read_transition_token_2(&mut self) -> caliptra_emu_types::RvData {
+    fn read_transition_token_2(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::transition_token_2");
         }
@@ -236,7 +246,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn write_transition_token_2(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_transition_token_2(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write lc::transition_token_2 = 0x{:08x}",
@@ -247,7 +257,7 @@ pub trait LcPeripheral {
             generated.write_transition_token_2(val);
         }
     }
-    fn read_transition_token_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_transition_token_3(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::transition_token_3");
         }
@@ -256,7 +266,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn write_transition_token_3(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_transition_token_3(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write lc::transition_token_3 = 0x{:08x}",
@@ -269,7 +279,7 @@ pub trait LcPeripheral {
     }
     fn read_transition_target(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::TransitionTarget::Register,
     > {
@@ -279,11 +289,11 @@ pub trait LcPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_transition_target();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_transition_target(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::TransitionTarget::Register,
         >,
@@ -298,7 +308,7 @@ pub trait LcPeripheral {
             generated.write_transition_target(val);
         }
     }
-    fn read_otp_vendor_test_ctrl(&mut self) -> caliptra_emu_types::RvData {
+    fn read_otp_vendor_test_ctrl(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::otp_vendor_test_ctrl");
         }
@@ -307,7 +317,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn write_otp_vendor_test_ctrl(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_otp_vendor_test_ctrl(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write lc::otp_vendor_test_ctrl = 0x{:08x}",
@@ -318,7 +328,7 @@ pub trait LcPeripheral {
             generated.write_otp_vendor_test_ctrl(val);
         }
     }
-    fn read_otp_vendor_test_status(&mut self) -> caliptra_emu_types::RvData {
+    fn read_otp_vendor_test_status(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::otp_vendor_test_status");
         }
@@ -329,7 +339,7 @@ pub trait LcPeripheral {
     }
     fn read_lc_state(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::LcState::Register,
     > {
@@ -339,11 +349,11 @@ pub trait LcPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_lc_state();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_lc_transition_cnt(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::LcTransitionCnt::Register,
     > {
@@ -353,9 +363,9 @@ pub trait LcPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_lc_transition_cnt();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_lc_id_state(&mut self) -> caliptra_emu_types::RvData {
+    fn read_lc_id_state(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::lc_id_state");
         }
@@ -366,7 +376,7 @@ pub trait LcPeripheral {
     }
     fn read_hw_revision0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::HwRevision0::Register,
     > {
@@ -376,11 +386,11 @@ pub trait LcPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_hw_revision0();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_hw_revision1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::HwRevision1::Register,
     > {
@@ -390,9 +400,9 @@ pub trait LcPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_hw_revision1();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_device_id_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_0(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::device_id_0");
         }
@@ -401,7 +411,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_device_id_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_1(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::device_id_1");
         }
@@ -410,7 +420,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_device_id_2(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_2(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::device_id_2");
         }
@@ -419,7 +429,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_device_id_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_3(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::device_id_3");
         }
@@ -428,7 +438,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_device_id_4(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_4(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::device_id_4");
         }
@@ -437,7 +447,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_device_id_5(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_5(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::device_id_5");
         }
@@ -446,7 +456,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_device_id_6(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_6(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::device_id_6");
         }
@@ -455,7 +465,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_device_id_7(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_7(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::device_id_7");
         }
@@ -464,7 +474,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_manuf_state_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_0(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_0");
         }
@@ -473,7 +483,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_manuf_state_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_1(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_1");
         }
@@ -482,7 +492,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_manuf_state_2(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_2(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_2");
         }
@@ -491,7 +501,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_manuf_state_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_3(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_3");
         }
@@ -500,7 +510,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_manuf_state_4(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_4(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_4");
         }
@@ -509,7 +519,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_manuf_state_5(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_5(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_5");
         }
@@ -518,7 +528,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_manuf_state_6(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_6(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_6");
         }
@@ -527,7 +537,7 @@ pub trait LcPeripheral {
         }
         0
     }
-    fn read_manuf_state_7(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_7(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::manuf_state_7");
         }
@@ -539,80 +549,80 @@ pub trait LcPeripheral {
 }
 #[derive(Clone, Debug)]
 pub struct LcGenerated {
-    alert_test: caliptra_emu_types::RvData,
-    status: caliptra_emu_types::RvData,
-    claim_transition_if_regwen: caliptra_emu_types::RvData,
-    claim_transition_if: caliptra_emu_types::RvData,
-    transition_regwen: caliptra_emu_types::RvData,
-    transition_cmd: caliptra_emu_types::RvData,
-    transition_ctrl: caliptra_emu_types::RvData,
-    transition_token_0: caliptra_emu_types::RvData,
-    transition_token_1: caliptra_emu_types::RvData,
-    transition_token_2: caliptra_emu_types::RvData,
-    transition_token_3: caliptra_emu_types::RvData,
-    transition_target: caliptra_emu_types::RvData,
-    otp_vendor_test_ctrl: caliptra_emu_types::RvData,
-    otp_vendor_test_status: caliptra_emu_types::RvData,
-    lc_state: caliptra_emu_types::RvData,
-    lc_transition_cnt: caliptra_emu_types::RvData,
-    lc_id_state: caliptra_emu_types::RvData,
-    hw_revision0: caliptra_emu_types::RvData,
-    hw_revision1: caliptra_emu_types::RvData,
-    device_id_0: caliptra_emu_types::RvData,
-    device_id_1: caliptra_emu_types::RvData,
-    device_id_2: caliptra_emu_types::RvData,
-    device_id_3: caliptra_emu_types::RvData,
-    device_id_4: caliptra_emu_types::RvData,
-    device_id_5: caliptra_emu_types::RvData,
-    device_id_6: caliptra_emu_types::RvData,
-    device_id_7: caliptra_emu_types::RvData,
-    manuf_state_0: caliptra_emu_types::RvData,
-    manuf_state_1: caliptra_emu_types::RvData,
-    manuf_state_2: caliptra_emu_types::RvData,
-    manuf_state_3: caliptra_emu_types::RvData,
-    manuf_state_4: caliptra_emu_types::RvData,
-    manuf_state_5: caliptra_emu_types::RvData,
-    manuf_state_6: caliptra_emu_types::RvData,
-    manuf_state_7: caliptra_emu_types::RvData,
+    alert_test: caliptra_core_tools::caliptra_emu_types::RvData,
+    status: caliptra_core_tools::caliptra_emu_types::RvData,
+    claim_transition_if_regwen: caliptra_core_tools::caliptra_emu_types::RvData,
+    claim_transition_if: caliptra_core_tools::caliptra_emu_types::RvData,
+    transition_regwen: caliptra_core_tools::caliptra_emu_types::RvData,
+    transition_cmd: caliptra_core_tools::caliptra_emu_types::RvData,
+    transition_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    transition_token_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    transition_token_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    transition_token_2: caliptra_core_tools::caliptra_emu_types::RvData,
+    transition_token_3: caliptra_core_tools::caliptra_emu_types::RvData,
+    transition_target: caliptra_core_tools::caliptra_emu_types::RvData,
+    otp_vendor_test_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    otp_vendor_test_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    lc_state: caliptra_core_tools::caliptra_emu_types::RvData,
+    lc_transition_cnt: caliptra_core_tools::caliptra_emu_types::RvData,
+    lc_id_state: caliptra_core_tools::caliptra_emu_types::RvData,
+    hw_revision0: caliptra_core_tools::caliptra_emu_types::RvData,
+    hw_revision1: caliptra_core_tools::caliptra_emu_types::RvData,
+    device_id_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    device_id_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    device_id_2: caliptra_core_tools::caliptra_emu_types::RvData,
+    device_id_3: caliptra_core_tools::caliptra_emu_types::RvData,
+    device_id_4: caliptra_core_tools::caliptra_emu_types::RvData,
+    device_id_5: caliptra_core_tools::caliptra_emu_types::RvData,
+    device_id_6: caliptra_core_tools::caliptra_emu_types::RvData,
+    device_id_7: caliptra_core_tools::caliptra_emu_types::RvData,
+    manuf_state_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    manuf_state_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    manuf_state_2: caliptra_core_tools::caliptra_emu_types::RvData,
+    manuf_state_3: caliptra_core_tools::caliptra_emu_types::RvData,
+    manuf_state_4: caliptra_core_tools::caliptra_emu_types::RvData,
+    manuf_state_5: caliptra_core_tools::caliptra_emu_types::RvData,
+    manuf_state_6: caliptra_core_tools::caliptra_emu_types::RvData,
+    manuf_state_7: caliptra_core_tools::caliptra_emu_types::RvData,
 }
 impl Default for LcGenerated {
     fn default() -> Self {
         Self {
-            alert_test: 0 as caliptra_emu_types::RvData,
-            status: 0 as caliptra_emu_types::RvData,
-            claim_transition_if_regwen: 0 as caliptra_emu_types::RvData,
-            claim_transition_if: 0 as caliptra_emu_types::RvData,
-            transition_regwen: 0 as caliptra_emu_types::RvData,
-            transition_cmd: 0 as caliptra_emu_types::RvData,
-            transition_ctrl: 0 as caliptra_emu_types::RvData,
-            transition_token_0: 0 as caliptra_emu_types::RvData,
-            transition_token_1: 0 as caliptra_emu_types::RvData,
-            transition_token_2: 0 as caliptra_emu_types::RvData,
-            transition_token_3: 0 as caliptra_emu_types::RvData,
-            transition_target: 0 as caliptra_emu_types::RvData,
-            otp_vendor_test_ctrl: 0 as caliptra_emu_types::RvData,
-            otp_vendor_test_status: 0 as caliptra_emu_types::RvData,
-            lc_state: 0 as caliptra_emu_types::RvData,
-            lc_transition_cnt: 0 as caliptra_emu_types::RvData,
-            lc_id_state: 0 as caliptra_emu_types::RvData,
-            hw_revision0: 0 as caliptra_emu_types::RvData,
-            hw_revision1: 0 as caliptra_emu_types::RvData,
-            device_id_0: 0 as caliptra_emu_types::RvData,
-            device_id_1: 0 as caliptra_emu_types::RvData,
-            device_id_2: 0 as caliptra_emu_types::RvData,
-            device_id_3: 0 as caliptra_emu_types::RvData,
-            device_id_4: 0 as caliptra_emu_types::RvData,
-            device_id_5: 0 as caliptra_emu_types::RvData,
-            device_id_6: 0 as caliptra_emu_types::RvData,
-            device_id_7: 0 as caliptra_emu_types::RvData,
-            manuf_state_0: 0 as caliptra_emu_types::RvData,
-            manuf_state_1: 0 as caliptra_emu_types::RvData,
-            manuf_state_2: 0 as caliptra_emu_types::RvData,
-            manuf_state_3: 0 as caliptra_emu_types::RvData,
-            manuf_state_4: 0 as caliptra_emu_types::RvData,
-            manuf_state_5: 0 as caliptra_emu_types::RvData,
-            manuf_state_6: 0 as caliptra_emu_types::RvData,
-            manuf_state_7: 0 as caliptra_emu_types::RvData,
+            alert_test: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            claim_transition_if_regwen: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            claim_transition_if: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            transition_regwen: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            transition_cmd: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            transition_ctrl: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            transition_token_0: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            transition_token_1: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            transition_token_2: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            transition_token_3: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            transition_target: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            otp_vendor_test_ctrl: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            otp_vendor_test_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            lc_state: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            lc_transition_cnt: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            lc_id_state: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            hw_revision0: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            hw_revision1: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            device_id_0: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            device_id_1: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            device_id_2: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            device_id_3: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            device_id_4: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            device_id_5: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            device_id_6: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            device_id_7: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            manuf_state_0: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            manuf_state_1: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            manuf_state_2: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            manuf_state_3: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            manuf_state_4: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            manuf_state_5: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            manuf_state_6: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            manuf_state_7: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
         }
     }
 }
@@ -636,7 +646,7 @@ impl LcPeripheral for LcGenerated {
     }
     fn write_alert_test(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::AlertTest::Register,
         >,
@@ -647,31 +657,31 @@ impl LcPeripheral for LcGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.alert_test;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.alert_test = new_val;
     }
     fn read_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::Status::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.status)
     }
     fn read_claim_transition_if_regwen(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
     > {
@@ -680,11 +690,13 @@ impl LcPeripheral for LcGenerated {
                 "[EMU] Generated default register handler: read lc::claim_transition_if_regwen"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.claim_transition_if_regwen)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.claim_transition_if_regwen,
+        )
     }
     fn write_claim_transition_if_regwen(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
         >,
@@ -692,27 +704,27 @@ impl LcPeripheral for LcGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write lc::claim_transition_if_regwen = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.claim_transition_if_regwen;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.claim_transition_if_regwen = new_val;
     }
     fn read_claim_transition_if(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::claim_transition_if");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.claim_transition_if)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.claim_transition_if)
     }
     fn write_claim_transition_if(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
         >,
@@ -720,38 +732,38 @@ impl LcPeripheral for LcGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write lc::claim_transition_if = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.claim_transition_if;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff as caliptra_emu_types::RvData))
-            | (write_val & (0xff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.claim_transition_if = new_val;
     }
     fn read_transition_regwen(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::TransitionRegwen::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::transition_regwen");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.transition_regwen)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.transition_regwen)
     }
     fn read_transition_cmd(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::TransitionCmd::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::transition_cmd");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.transition_cmd)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.transition_cmd)
     }
     fn write_transition_cmd(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::TransitionCmd::Register,
         >,
@@ -762,27 +774,27 @@ impl LcPeripheral for LcGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.transition_cmd;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.transition_cmd = new_val;
     }
     fn read_transition_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::transition_ctrl");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.transition_ctrl)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.transition_ctrl)
     }
     fn write_transition_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
         >,
@@ -793,109 +805,109 @@ impl LcPeripheral for LcGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.transition_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.transition_ctrl = new_val;
     }
-    fn read_transition_token_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_transition_token_0(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::transition_token_0");
         }
         self.transition_token_0
     }
-    fn write_transition_token_0(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_transition_token_0(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write lc::transition_token_0 = 0x{:08x}",
                 val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.transition_token_0;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.transition_token_0 = new_val;
     }
-    fn read_transition_token_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_transition_token_1(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::transition_token_1");
         }
         self.transition_token_1
     }
-    fn write_transition_token_1(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_transition_token_1(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write lc::transition_token_1 = 0x{:08x}",
                 val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.transition_token_1;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.transition_token_1 = new_val;
     }
-    fn read_transition_token_2(&mut self) -> caliptra_emu_types::RvData {
+    fn read_transition_token_2(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::transition_token_2");
         }
         self.transition_token_2
     }
-    fn write_transition_token_2(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_transition_token_2(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write lc::transition_token_2 = 0x{:08x}",
                 val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.transition_token_2;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.transition_token_2 = new_val;
     }
-    fn read_transition_token_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_transition_token_3(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::transition_token_3");
         }
         self.transition_token_3
     }
-    fn write_transition_token_3(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_transition_token_3(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write lc::transition_token_3 = 0x{:08x}",
                 val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.transition_token_3;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.transition_token_3 = new_val;
     }
     fn read_transition_target(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::TransitionTarget::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::transition_target");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.transition_target)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.transition_target)
     }
     fn write_transition_target(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::lc_ctrl::bits::TransitionTarget::Register,
         >,
@@ -906,31 +918,31 @@ impl LcPeripheral for LcGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.transition_target;
         let mut new_val = current_val;
-        new_val = (new_val & !(0x3fff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0x3fff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x3fff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x3fff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.transition_target = new_val;
     }
-    fn read_otp_vendor_test_ctrl(&mut self) -> caliptra_emu_types::RvData {
+    fn read_otp_vendor_test_ctrl(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::otp_vendor_test_ctrl");
         }
         self.otp_vendor_test_ctrl
     }
-    fn write_otp_vendor_test_ctrl(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_otp_vendor_test_ctrl(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write lc::otp_vendor_test_ctrl = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.otp_vendor_test_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.otp_vendor_test_ctrl = new_val;
     }
-    fn read_otp_vendor_test_status(&mut self) -> caliptra_emu_types::RvData {
+    fn read_otp_vendor_test_status(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::otp_vendor_test_status");
         }
@@ -938,27 +950,27 @@ impl LcPeripheral for LcGenerated {
     }
     fn read_lc_state(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::LcState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::lc_state");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.lc_state)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.lc_state)
     }
     fn read_lc_transition_cnt(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::LcTransitionCnt::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::lc_transition_cnt");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.lc_transition_cnt)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.lc_transition_cnt)
     }
-    fn read_lc_id_state(&mut self) -> caliptra_emu_types::RvData {
+    fn read_lc_id_state(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::lc_id_state");
         }
@@ -966,117 +978,117 @@ impl LcPeripheral for LcGenerated {
     }
     fn read_hw_revision0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::HwRevision0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::hw_revision0");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.hw_revision0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.hw_revision0)
     }
     fn read_hw_revision1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::lc_ctrl::bits::HwRevision1::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::hw_revision1");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.hw_revision1)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.hw_revision1)
     }
-    fn read_device_id_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_0(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::device_id_0");
         }
         self.device_id_0
     }
-    fn read_device_id_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_1(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::device_id_1");
         }
         self.device_id_1
     }
-    fn read_device_id_2(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_2(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::device_id_2");
         }
         self.device_id_2
     }
-    fn read_device_id_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_3(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::device_id_3");
         }
         self.device_id_3
     }
-    fn read_device_id_4(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_4(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::device_id_4");
         }
         self.device_id_4
     }
-    fn read_device_id_5(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_5(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::device_id_5");
         }
         self.device_id_5
     }
-    fn read_device_id_6(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_6(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::device_id_6");
         }
         self.device_id_6
     }
-    fn read_device_id_7(&mut self) -> caliptra_emu_types::RvData {
+    fn read_device_id_7(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::device_id_7");
         }
         self.device_id_7
     }
-    fn read_manuf_state_0(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_0(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::manuf_state_0");
         }
         self.manuf_state_0
     }
-    fn read_manuf_state_1(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_1(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::manuf_state_1");
         }
         self.manuf_state_1
     }
-    fn read_manuf_state_2(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_2(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::manuf_state_2");
         }
         self.manuf_state_2
     }
-    fn read_manuf_state_3(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_3(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::manuf_state_3");
         }
         self.manuf_state_3
     }
-    fn read_manuf_state_4(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_4(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::manuf_state_4");
         }
         self.manuf_state_4
     }
-    fn read_manuf_state_5(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_5(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::manuf_state_5");
         }
         self.manuf_state_5
     }
-    fn read_manuf_state_6(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_6(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::manuf_state_6");
         }
         self.manuf_state_6
     }
-    fn read_manuf_state_7(&mut self) -> caliptra_emu_types::RvData {
+    fn read_manuf_state_7(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::manuf_state_7");
         }
@@ -1086,54 +1098,57 @@ impl LcPeripheral for LcGenerated {
 pub struct LcBus {
     pub periph: Box<dyn LcPeripheral>,
 }
-impl caliptra_emu_bus::Bus for LcBus {
+impl caliptra_core_tools::caliptra_emu_bus::Bus for LcBus {
     fn read(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+    ) -> Result<
+        caliptra_core_tools::caliptra_emu_types::RvData,
+        caliptra_core_tools::caliptra_emu_bus::BusError,
+    > {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
-            4..8 => Ok(caliptra_emu_types::RvData::from(
+            4..8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_status().reg.get(),
             )),
-            8..0xc => Ok(caliptra_emu_types::RvData::from(
+            8..0xc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_claim_transition_if_regwen().reg.get(),
             )),
-            0xc..0x10 => Ok(caliptra_emu_types::RvData::from(
+            0xc..0x10 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_claim_transition_if().reg.get(),
             )),
-            0x10..0x14 => Ok(caliptra_emu_types::RvData::from(
+            0x10..0x14 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_transition_regwen().reg.get(),
             )),
-            0x14..0x18 => Ok(caliptra_emu_types::RvData::from(
+            0x14..0x18 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_transition_cmd().reg.get(),
             )),
-            0x18..0x1c => Ok(caliptra_emu_types::RvData::from(
+            0x18..0x1c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_transition_ctrl().reg.get(),
             )),
             0x1c..0x20 => Ok(self.periph.read_transition_token_0()),
             0x20..0x24 => Ok(self.periph.read_transition_token_1()),
             0x24..0x28 => Ok(self.periph.read_transition_token_2()),
             0x28..0x2c => Ok(self.periph.read_transition_token_3()),
-            0x2c..0x30 => Ok(caliptra_emu_types::RvData::from(
+            0x2c..0x30 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_transition_target().reg.get(),
             )),
             0x30..0x34 => Ok(self.periph.read_otp_vendor_test_ctrl()),
             0x34..0x38 => Ok(self.periph.read_otp_vendor_test_status()),
-            0x38..0x3c => Ok(caliptra_emu_types::RvData::from(
+            0x38..0x3c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_lc_state().reg.get(),
             )),
-            0x3c..0x40 => Ok(caliptra_emu_types::RvData::from(
+            0x3c..0x40 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_lc_transition_cnt().reg.get(),
             )),
             0x40..0x44 => Ok(self.periph.read_lc_id_state()),
-            0x44..0x48 => Ok(caliptra_emu_types::RvData::from(
+            0x44..0x48 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_hw_revision0().reg.get(),
             )),
-            0x48..0x4c => Ok(caliptra_emu_types::RvData::from(
+            0x48..0x4c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_hw_revision1().reg.get(),
             )),
             0x4c..0x50 => Ok(self.periph.read_device_id_0()),
@@ -1152,45 +1167,49 @@ impl caliptra_emu_bus::Bus for LcBus {
             0x80..0x84 => Ok(self.periph.read_manuf_state_5()),
             0x84..0x88 => Ok(self.periph.read_manuf_state_6()),
             0x88..0x8c => Ok(self.periph.read_manuf_state_7()),
-            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-        val: caliptra_emu_types::RvData,
-    ) -> Result<(), caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) -> Result<(), caliptra_core_tools::caliptra_emu_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             0..4 => {
-                self.periph
-                    .write_alert_test(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_alert_test(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             4..8 => Ok(()),
             8..0xc => {
                 self.periph.write_claim_transition_if_regwen(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0xc..0x10 => {
-                self.periph
-                    .write_claim_transition_if(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_claim_transition_if(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x10..0x14 => Ok(()),
             0x14..0x18 => {
-                self.periph
-                    .write_transition_cmd(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_transition_cmd(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x18..0x1c => {
-                self.periph
-                    .write_transition_ctrl(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_transition_ctrl(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x1c..0x20 => {
@@ -1210,8 +1229,9 @@ impl caliptra_emu_bus::Bus for LcBus {
                 Ok(())
             }
             0x2c..0x30 => {
-                self.periph
-                    .write_transition_target(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_transition_target(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x30..0x34 => {
@@ -1240,7 +1260,7 @@ impl caliptra_emu_bus::Bus for LcBus {
             0x80..0x84 => Ok(()),
             0x84..0x88 => Ok(()),
             0x88..0x8c => Ok(()),
-            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {

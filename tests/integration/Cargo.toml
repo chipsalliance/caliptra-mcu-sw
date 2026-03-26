@@ -15,15 +15,7 @@ itrng = []
 [dependencies]
 aes-gcm.workspace = true
 anyhow.workspace = true
-caliptra-api.workspace = true
-caliptra-api-types.workspace = true
-caliptra-auth-man-types.workspace = true
-caliptra-builder.workspace = true
-caliptra-hw-model-types.workspace = true
-caliptra-hw-model.workspace = true
-caliptra-image-gen.workspace = true
-caliptra-image-types.workspace = true
-caliptra-image-fake-keys.workspace = true
+caliptra-core-tools.workspace = true
 chrono.workspace = true
 crc.workspace = true
 ecdsa.workspace = true

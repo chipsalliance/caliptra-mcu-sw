@@ -58,9 +58,11 @@ impl McuMailboxTransport {
             .regs
             .lock()
             .unwrap()
-            .write_mcu_mbox0_csr_mbox_execute(caliptra_emu_bus::ReadWriteRegister::new(
-                MboxExecute::Execute::SET.value,
-            ));
+            .write_mcu_mbox0_csr_mbox_execute(
+                caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+                    MboxExecute::Execute::SET.value,
+                ),
+            );
 
         Ok(())
     }
@@ -139,9 +141,11 @@ impl McuMailboxTransport {
             .regs
             .lock()
             .unwrap()
-            .write_mcu_mbox0_csr_mbox_execute(caliptra_emu_bus::ReadWriteRegister::new(
-                MboxExecute::Execute::CLEAR.value,
-            ));
+            .write_mcu_mbox0_csr_mbox_execute(
+                caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+                    MboxExecute::Execute::CLEAR.value,
+                ),
+            );
     }
 }
 

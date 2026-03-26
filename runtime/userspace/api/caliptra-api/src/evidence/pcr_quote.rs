@@ -4,7 +4,7 @@ use crate::crypto::hash::SHA384_HASH_SIZE;
 use crate::crypto::rng::Rng;
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::execute_mailbox_cmd;
-use caliptra_api::mailbox::{
+use caliptra_core_firmware::caliptra_api::mailbox::{
     MailboxReqHeader, MailboxRespHeader, QuotePcrsEcc384Req, QuotePcrsEcc384Resp,
     QuotePcrsMldsa87Req, QuotePcrsMldsa87Resp, Request,
 };

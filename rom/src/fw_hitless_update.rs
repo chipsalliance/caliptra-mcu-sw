@@ -17,7 +17,7 @@ Abstract:
 #[cfg(target_arch = "riscv32")]
 use crate::MCU_MEMORY_MAP;
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters};
-use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
+use caliptra_core_firmware::caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
 use core::fmt::Write;
 use mcu_error::McuError;
 use romtime::HexWord;

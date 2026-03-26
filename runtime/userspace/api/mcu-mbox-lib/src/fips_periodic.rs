@@ -5,7 +5,7 @@
 //! This module provides functionality to run FIPS self-tests periodically
 //! in the background. It can be enabled/disabled via MCU mailbox commands.
 
-use caliptra_api::mailbox::CommandId as CaliptraCommandId;
+use caliptra_core_firmware::caliptra_api::mailbox::CommandId as CaliptraCommandId;
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;

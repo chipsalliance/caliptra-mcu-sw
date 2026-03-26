@@ -8,9 +8,9 @@ mod test {
 
     use crate::jtag::test::ss_setup;
 
-    use caliptra_hw_model::jtag::CaliptraCoreReg;
-    use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
-    use caliptra_hw_model::HwModel;
+    use caliptra_core_tools::caliptra_hw_model::jtag::CaliptraCoreReg;
+    use caliptra_core_tools::caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
+    use caliptra_core_tools::caliptra_hw_model::HwModel;
     use mcu_hw_model::McuHwModel;
     use mcu_rom_common::LifecycleControllerState;
     use registers_generated::fuses::{

@@ -5,14 +5,24 @@
 #[allow(unused_imports)]
 use tock_registers::interfaces::{Readable, Writeable};
 pub trait SocPeripheral {
-    fn set_dma_ram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
-    fn set_dma_rom_sram(&mut self, _ram: std::rc::Rc<std::cell::RefCell<caliptra_emu_bus::Ram>>) {}
+    fn set_dma_ram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
+    fn set_dma_rom_sram(
+        &mut self,
+        _ram: std::rc::Rc<std::cell::RefCell<caliptra_core_tools::caliptra_emu_bus::Ram>>,
+    ) {
+    }
     fn register_event_channels(
         &mut self,
-        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_caliptra: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
-        _events_to_mcu: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
-        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
+        _events_to_caliptra: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_caliptra: std::sync::mpsc::Receiver<
+            caliptra_core_tools::caliptra_emu_bus::Event,
+        >,
+        _events_to_mcu: std::sync::mpsc::Sender<caliptra_core_tools::caliptra_emu_bus::Event>,
+        _events_from_mcu: std::sync::mpsc::Receiver<caliptra_core_tools::caliptra_emu_bus::Event>,
     ) {
     }
     fn poll(&mut self) {}
@@ -23,7 +33,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_hw_error_fatal(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraHwErrorFatal::Register,
     > {
@@ -33,11 +43,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_hw_error_fatal();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_hw_error_fatal(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraHwErrorFatal::Register,
         >,
@@ -54,7 +64,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_hw_error_non_fatal(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
     > {
@@ -64,11 +74,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_hw_error_non_fatal();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_hw_error_non_fatal(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
         >,
@@ -80,7 +90,7 @@ pub trait SocPeripheral {
             generated.write_cptra_hw_error_non_fatal(val);
         }
     }
-    fn read_cptra_fw_error_fatal(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_fw_error_fatal(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_fw_error_fatal");
         }
@@ -89,7 +99,7 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_fw_error_fatal(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_fw_error_fatal(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::cptra_fw_error_fatal = 0x{:08x}",
@@ -100,7 +110,7 @@ pub trait SocPeripheral {
             generated.write_cptra_fw_error_fatal(val);
         }
     }
-    fn read_cptra_fw_error_non_fatal(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_fw_error_non_fatal(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_fw_error_non_fatal");
         }
@@ -109,7 +119,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_fw_error_non_fatal(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_fw_error_non_fatal(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_fw_error_non_fatal = 0x{:08x}" , val);
         }
@@ -117,7 +130,7 @@ pub trait SocPeripheral {
             generated.write_cptra_fw_error_non_fatal(val);
         }
     }
-    fn read_cptra_hw_error_enc(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_hw_error_enc(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_hw_error_enc");
         }
@@ -126,7 +139,7 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_hw_error_enc(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_hw_error_enc(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::cptra_hw_error_enc = 0x{:08x}",
@@ -137,7 +150,7 @@ pub trait SocPeripheral {
             generated.write_cptra_hw_error_enc(val);
         }
     }
-    fn read_cptra_fw_error_enc(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_fw_error_enc(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_fw_error_enc");
         }
@@ -146,7 +159,7 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_fw_error_enc(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_fw_error_enc(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::cptra_fw_error_enc = 0x{:08x}",
@@ -157,7 +170,10 @@ pub trait SocPeripheral {
             generated.write_cptra_fw_error_enc(val);
         }
     }
-    fn read_cptra_fw_extended_error_info(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_fw_extended_error_info(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::cptra_fw_extended_error_info[{}]",
@@ -171,7 +187,7 @@ pub trait SocPeripheral {
     }
     fn write_cptra_fw_extended_error_info(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -181,7 +197,7 @@ pub trait SocPeripheral {
             generated.write_cptra_fw_extended_error_info(val, index);
         }
     }
-    fn read_cptra_boot_status(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_boot_status(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_boot_status");
         }
@@ -190,7 +206,7 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_boot_status(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_boot_status(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::cptra_boot_status = 0x{:08x}",
@@ -203,7 +219,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_flow_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraFlowStatus::Register,
     > {
@@ -213,11 +229,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_flow_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_flow_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraFlowStatus::Register,
         >,
@@ -234,7 +250,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_reset_reason(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraResetReason::Register,
     > {
@@ -244,11 +260,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_reset_reason();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_cptra_security_state(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraSecurityState::Register,
     > {
@@ -258,9 +274,12 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_security_state();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_cptra_mbox_valid_axi_user(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_mbox_valid_axi_user(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::cptra_mbox_valid_axi_user[{}]",
@@ -272,7 +291,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_mbox_valid_axi_user(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_mbox_valid_axi_user(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_mbox_valid_axi_user[{}] = 0x{:08x}" , index , val);
         }
@@ -283,7 +306,7 @@ pub trait SocPeripheral {
     fn read_cptra_mbox_axi_user_lock(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
@@ -296,11 +319,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_mbox_axi_user_lock(index);
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_mbox_axi_user_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
@@ -313,7 +336,9 @@ pub trait SocPeripheral {
             generated.write_cptra_mbox_axi_user_lock(val, index);
         }
     }
-    fn read_cptra_trng_valid_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_trng_valid_axi_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_trng_valid_axi_user");
         }
@@ -322,7 +347,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_trng_valid_axi_user(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_trng_valid_axi_user(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_trng_valid_axi_user = 0x{:08x}" , val);
         }
@@ -332,7 +360,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_trng_axi_user_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
@@ -342,11 +370,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_trng_axi_user_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_trng_axi_user_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
@@ -358,7 +386,10 @@ pub trait SocPeripheral {
             generated.write_cptra_trng_axi_user_lock(val);
         }
     }
-    fn read_cptra_trng_data(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_trng_data(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::cptra_trng_data[{}]",
@@ -370,7 +401,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_trng_data(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_trng_data(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::cptra_trng_data[{}] = 0x{:08x}",
@@ -383,7 +418,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_trng_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraTrngCtrl::Register,
     > {
@@ -393,11 +428,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_trng_ctrl();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_trng_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraTrngCtrl::Register,
         >,
@@ -414,7 +449,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_trng_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraTrngStatus::Register,
     > {
@@ -424,11 +459,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_trng_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_trng_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraTrngStatus::Register,
         >,
@@ -445,7 +480,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_fuse_wr_done(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraFuseWrDone::Register,
     > {
@@ -455,11 +490,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_fuse_wr_done();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_fuse_wr_done(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraFuseWrDone::Register,
         >,
@@ -474,7 +509,7 @@ pub trait SocPeripheral {
             generated.write_cptra_fuse_wr_done(val);
         }
     }
-    fn read_cptra_timer_config(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_timer_config(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_timer_config");
         }
@@ -483,7 +518,7 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_timer_config(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_timer_config(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::cptra_timer_config = 0x{:08x}",
@@ -496,7 +531,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_bootfsm_go(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraBootfsmGo::Register,
     > {
@@ -506,11 +541,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_bootfsm_go();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_bootfsm_go(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraBootfsmGo::Register,
         >,
@@ -525,7 +560,9 @@ pub trait SocPeripheral {
             generated.write_cptra_bootfsm_go(val);
         }
     }
-    fn read_cptra_dbg_manuf_service_reg(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_dbg_manuf_service_reg(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_dbg_manuf_service_reg");
         }
@@ -534,7 +571,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_dbg_manuf_service_reg(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_dbg_manuf_service_reg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_dbg_manuf_service_reg = 0x{:08x}" , val);
         }
@@ -544,7 +584,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_clk_gating_en(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraClkGatingEn::Register,
     > {
@@ -554,11 +594,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_clk_gating_en();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_clk_gating_en(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraClkGatingEn::Register,
         >,
@@ -573,7 +613,10 @@ pub trait SocPeripheral {
             generated.write_cptra_clk_gating_en(val);
         }
     }
-    fn read_cptra_generic_input_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_generic_input_wires(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::cptra_generic_input_wires[{}]",
@@ -585,7 +628,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn read_cptra_generic_output_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_generic_output_wires(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::cptra_generic_output_wires[{}]",
@@ -597,7 +643,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_generic_output_wires(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_generic_output_wires(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_generic_output_wires[{}] = 0x{:08x}" , index , val);
         }
@@ -607,7 +657,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_hw_rev_id(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraHwRevId::Register,
     > {
@@ -617,9 +667,12 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_hw_rev_id();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_cptra_fw_rev_id(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_fw_rev_id(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::cptra_fw_rev_id[{}]",
@@ -631,7 +684,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_fw_rev_id(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_fw_rev_id(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::cptra_fw_rev_id[{}] = 0x{:08x}",
@@ -644,7 +701,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_hw_config(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraHwConfig::Register,
     > {
@@ -654,11 +711,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_hw_config();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn read_cptra_wdt_timer1_en(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraWdtTimer1En::Register,
     > {
@@ -668,11 +725,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_wdt_timer1_en();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_wdt_timer1_en(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraWdtTimer1En::Register,
         >,
@@ -689,7 +746,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_wdt_timer1_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
     > {
@@ -699,11 +756,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_wdt_timer1_ctrl();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_wdt_timer1_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
         >,
@@ -718,7 +775,10 @@ pub trait SocPeripheral {
             generated.write_cptra_wdt_timer1_ctrl(val);
         }
     }
-    fn read_cptra_wdt_timer1_timeout_period(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_wdt_timer1_timeout_period(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::cptra_wdt_timer1_timeout_period[{}]",
@@ -732,7 +792,7 @@ pub trait SocPeripheral {
     }
     fn write_cptra_wdt_timer1_timeout_period(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -744,7 +804,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_wdt_timer2_en(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraWdtTimer2En::Register,
     > {
@@ -754,11 +814,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_wdt_timer2_en();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_wdt_timer2_en(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraWdtTimer2En::Register,
         >,
@@ -775,7 +835,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_wdt_timer2_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
     > {
@@ -785,11 +845,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_wdt_timer2_ctrl();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_wdt_timer2_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
         >,
@@ -804,7 +864,10 @@ pub trait SocPeripheral {
             generated.write_cptra_wdt_timer2_ctrl(val);
         }
     }
-    fn read_cptra_wdt_timer2_timeout_period(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_wdt_timer2_timeout_period(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::cptra_wdt_timer2_timeout_period[{}]",
@@ -818,7 +881,7 @@ pub trait SocPeripheral {
     }
     fn write_cptra_wdt_timer2_timeout_period(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -830,7 +893,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_wdt_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraWdtStatus::Register,
     > {
@@ -840,11 +903,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_wdt_status();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_wdt_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraWdtStatus::Register,
         >,
@@ -859,7 +922,9 @@ pub trait SocPeripheral {
             generated.write_cptra_wdt_status(val);
         }
     }
-    fn read_cptra_fuse_valid_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_fuse_valid_axi_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_fuse_valid_axi_user");
         }
@@ -868,7 +933,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_fuse_valid_axi_user(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_fuse_valid_axi_user(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::cptra_fuse_valid_axi_user = 0x{:08x}" , val);
         }
@@ -878,7 +946,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_fuse_axi_user_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
@@ -888,11 +956,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_fuse_axi_user_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_fuse_axi_user_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
@@ -904,7 +972,10 @@ pub trait SocPeripheral {
             generated.write_cptra_fuse_axi_user_lock(val);
         }
     }
-    fn read_cptra_wdt_cfg(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_wdt_cfg(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::cptra_wdt_cfg[{}]",
@@ -916,7 +987,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_wdt_cfg(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_wdt_cfg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::cptra_wdt_cfg[{}] = 0x{:08x}",
@@ -929,7 +1004,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_i_trng_entropy_config_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
     > {
@@ -941,11 +1016,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_i_trng_entropy_config_0();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_i_trng_entropy_config_0(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
         >,
@@ -959,7 +1034,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_i_trng_entropy_config_1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
     > {
@@ -971,11 +1046,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_i_trng_entropy_config_1();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_i_trng_entropy_config_1(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
         >,
@@ -987,7 +1062,10 @@ pub trait SocPeripheral {
             generated.write_cptra_i_trng_entropy_config_1(val);
         }
     }
-    fn read_cptra_rsvd_reg(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_rsvd_reg(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::cptra_rsvd_reg[{}]",
@@ -999,7 +1077,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_rsvd_reg(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_rsvd_reg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::cptra_rsvd_reg[{}] = 0x{:08x}",
@@ -1010,7 +1092,7 @@ pub trait SocPeripheral {
             generated.write_cptra_rsvd_reg(val, index);
         }
     }
-    fn read_cptra_hw_capabilities(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_hw_capabilities(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_hw_capabilities");
         }
@@ -1019,7 +1101,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_hw_capabilities(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_hw_capabilities(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::cptra_hw_capabilities = 0x{:08x}",
@@ -1030,7 +1115,7 @@ pub trait SocPeripheral {
             generated.write_cptra_hw_capabilities(val);
         }
     }
-    fn read_cptra_fw_capabilities(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_fw_capabilities(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_fw_capabilities");
         }
@@ -1039,7 +1124,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_fw_capabilities(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_fw_capabilities(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::cptra_fw_capabilities = 0x{:08x}",
@@ -1052,7 +1140,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_cap_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraXxxxxxxk::Register,
     > {
@@ -1062,11 +1150,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_cap_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_cap_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraXxxxxxxk::Register,
         >,
@@ -1081,7 +1169,10 @@ pub trait SocPeripheral {
             generated.write_cptra_cap_lock(val);
         }
     }
-    fn read_cptra_owner_pk_hash(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_owner_pk_hash(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::cptra_owner_pk_hash[{}]",
@@ -1093,7 +1184,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_cptra_owner_pk_hash(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_owner_pk_hash(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::cptra_owner_pk_hash[{}] = 0x{:08x}",
@@ -1106,7 +1201,7 @@ pub trait SocPeripheral {
     }
     fn read_cptra_owner_pk_hash_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraXxxxxxxk::Register,
     > {
@@ -1116,11 +1211,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_cptra_owner_pk_hash_lock();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_cptra_owner_pk_hash_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraXxxxxxxk::Register,
         >,
@@ -1132,7 +1227,11 @@ pub trait SocPeripheral {
             generated.write_cptra_owner_pk_hash_lock(val);
         }
     }
-    fn write_fuse_uds_seed(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_uds_seed(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::fuse_uds_seed[{}] = 0x{:08x}",
@@ -1143,7 +1242,11 @@ pub trait SocPeripheral {
             generated.write_fuse_uds_seed(val, index);
         }
     }
-    fn write_fuse_field_entropy(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_field_entropy(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::fuse_field_entropy[{}] = 0x{:08x}",
@@ -1154,7 +1257,10 @@ pub trait SocPeripheral {
             generated.write_fuse_field_entropy(val, index);
         }
     }
-    fn read_fuse_vendor_pk_hash(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_fuse_vendor_pk_hash(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::fuse_vendor_pk_hash[{}]",
@@ -1166,7 +1272,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_fuse_vendor_pk_hash(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_vendor_pk_hash(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::fuse_vendor_pk_hash[{}] = 0x{:08x}",
@@ -1179,7 +1289,7 @@ pub trait SocPeripheral {
     }
     fn read_fuse_ecc_revocation(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::FuseEccRevocation::Register,
     > {
@@ -1189,11 +1299,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_fuse_ecc_revocation();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_fuse_ecc_revocation(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::FuseEccRevocation::Register,
         >,
@@ -1208,7 +1318,9 @@ pub trait SocPeripheral {
             generated.write_fuse_ecc_revocation(val);
         }
     }
-    fn read_fuse_fmc_key_manifest_svn(&mut self) -> caliptra_emu_types::RvData {
+    fn read_fuse_fmc_key_manifest_svn(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::fuse_fmc_key_manifest_svn");
         }
@@ -1217,7 +1329,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_fuse_fmc_key_manifest_svn(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_fuse_fmc_key_manifest_svn(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::fuse_fmc_key_manifest_svn = 0x{:08x}" , val);
         }
@@ -1225,7 +1340,10 @@ pub trait SocPeripheral {
             generated.write_fuse_fmc_key_manifest_svn(val);
         }
     }
-    fn read_fuse_runtime_svn(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_fuse_runtime_svn(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::fuse_runtime_svn[{}]",
@@ -1237,7 +1355,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_fuse_runtime_svn(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_runtime_svn(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::fuse_runtime_svn[{}] = 0x{:08x}",
@@ -1250,7 +1372,7 @@ pub trait SocPeripheral {
     }
     fn read_fuse_anti_rollback_disable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
     > {
@@ -1260,11 +1382,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_fuse_anti_rollback_disable();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_fuse_anti_rollback_disable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
         >,
@@ -1276,7 +1398,10 @@ pub trait SocPeripheral {
             generated.write_fuse_anti_rollback_disable(val);
         }
     }
-    fn read_fuse_idevid_cert_attr(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_fuse_idevid_cert_attr(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::fuse_idevid_cert_attr[{}]",
@@ -1288,7 +1413,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_fuse_idevid_cert_attr(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_idevid_cert_attr(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::fuse_idevid_cert_attr[{}] = 0x{:08x}" , index , val);
         }
@@ -1296,7 +1425,10 @@ pub trait SocPeripheral {
             generated.write_fuse_idevid_cert_attr(val, index);
         }
     }
-    fn read_fuse_idevid_manuf_hsm_id(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_fuse_idevid_manuf_hsm_id(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::fuse_idevid_manuf_hsm_id[{}]",
@@ -1308,7 +1440,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_fuse_idevid_manuf_hsm_id(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_idevid_manuf_hsm_id(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::fuse_idevid_manuf_hsm_id[{}] = 0x{:08x}" , index , val);
         }
@@ -1316,7 +1452,7 @@ pub trait SocPeripheral {
             generated.write_fuse_idevid_manuf_hsm_id(val, index);
         }
     }
-    fn read_fuse_lms_revocation(&mut self) -> caliptra_emu_types::RvData {
+    fn read_fuse_lms_revocation(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::fuse_lms_revocation");
         }
@@ -1325,7 +1461,7 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_fuse_lms_revocation(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_fuse_lms_revocation(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::fuse_lms_revocation = 0x{:08x}",
@@ -1338,7 +1474,7 @@ pub trait SocPeripheral {
     }
     fn read_fuse_mldsa_revocation(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::FuseMldsaRevocation::Register,
     > {
@@ -1348,11 +1484,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_fuse_mldsa_revocation();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_fuse_mldsa_revocation(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::FuseMldsaRevocation::Register,
         >,
@@ -1369,7 +1505,7 @@ pub trait SocPeripheral {
     }
     fn read_fuse_soc_stepping_id(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::FuseSocSteppingId::Register,
     > {
@@ -1379,11 +1515,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_fuse_soc_stepping_id();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_fuse_soc_stepping_id(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::FuseSocSteppingId::Register,
         >,
@@ -1398,7 +1534,10 @@ pub trait SocPeripheral {
             generated.write_fuse_soc_stepping_id(val);
         }
     }
-    fn read_fuse_manuf_dbg_unlock_token(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_fuse_manuf_dbg_unlock_token(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::fuse_manuf_dbg_unlock_token[{}]",
@@ -1410,7 +1549,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_fuse_manuf_dbg_unlock_token(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_manuf_dbg_unlock_token(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::fuse_manuf_dbg_unlock_token[{}] = 0x{:08x}" , index , val);
         }
@@ -1420,7 +1563,7 @@ pub trait SocPeripheral {
     }
     fn read_fuse_pqc_key_type(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::FusePqcKeyType::Register,
     > {
@@ -1430,11 +1573,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_fuse_pqc_key_type();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_fuse_pqc_key_type(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::FusePqcKeyType::Register,
         >,
@@ -1449,7 +1592,10 @@ pub trait SocPeripheral {
             generated.write_fuse_pqc_key_type(val);
         }
     }
-    fn read_fuse_soc_manifest_svn(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_fuse_soc_manifest_svn(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::fuse_soc_manifest_svn[{}]",
@@ -1461,7 +1607,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_fuse_soc_manifest_svn(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_soc_manifest_svn(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::fuse_soc_manifest_svn[{}] = 0x{:08x}" , index , val);
         }
@@ -1471,7 +1621,7 @@ pub trait SocPeripheral {
     }
     fn read_fuse_soc_manifest_max_svn(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
     > {
@@ -1481,11 +1631,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_fuse_soc_manifest_max_svn();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_fuse_soc_manifest_max_svn(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
         >,
@@ -1497,7 +1647,7 @@ pub trait SocPeripheral {
             generated.write_fuse_soc_manifest_max_svn(val);
         }
     }
-    fn read_ss_caliptra_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_caliptra_base_addr_l(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_caliptra_base_addr_l");
         }
@@ -1506,7 +1656,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_caliptra_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_caliptra_base_addr_l(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::ss_caliptra_base_addr_l = 0x{:08x}",
@@ -1517,7 +1670,7 @@ pub trait SocPeripheral {
             generated.write_ss_caliptra_base_addr_l(val);
         }
     }
-    fn read_ss_caliptra_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_caliptra_base_addr_h(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_caliptra_base_addr_h");
         }
@@ -1526,7 +1679,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_caliptra_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_caliptra_base_addr_h(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::ss_caliptra_base_addr_h = 0x{:08x}",
@@ -1537,7 +1693,7 @@ pub trait SocPeripheral {
             generated.write_ss_caliptra_base_addr_h(val);
         }
     }
-    fn read_ss_mci_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_mci_base_addr_l(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_mci_base_addr_l");
         }
@@ -1546,7 +1702,7 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_mci_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_mci_base_addr_l(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::ss_mci_base_addr_l = 0x{:08x}",
@@ -1557,7 +1713,7 @@ pub trait SocPeripheral {
             generated.write_ss_mci_base_addr_l(val);
         }
     }
-    fn read_ss_mci_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_mci_base_addr_h(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_mci_base_addr_h");
         }
@@ -1566,7 +1722,7 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_mci_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_mci_base_addr_h(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::ss_mci_base_addr_h = 0x{:08x}",
@@ -1577,7 +1733,9 @@ pub trait SocPeripheral {
             generated.write_ss_mci_base_addr_h(val);
         }
     }
-    fn read_ss_recovery_ifc_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_recovery_ifc_base_addr_l(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_recovery_ifc_base_addr_l");
         }
@@ -1586,7 +1744,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_recovery_ifc_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_recovery_ifc_base_addr_l(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::ss_recovery_ifc_base_addr_l = 0x{:08x}" , val);
         }
@@ -1594,7 +1755,9 @@ pub trait SocPeripheral {
             generated.write_ss_recovery_ifc_base_addr_l(val);
         }
     }
-    fn read_ss_recovery_ifc_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_recovery_ifc_base_addr_h(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_recovery_ifc_base_addr_h");
         }
@@ -1603,7 +1766,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_recovery_ifc_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_recovery_ifc_base_addr_h(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::ss_recovery_ifc_base_addr_h = 0x{:08x}" , val);
         }
@@ -1611,7 +1777,7 @@ pub trait SocPeripheral {
             generated.write_ss_recovery_ifc_base_addr_h(val);
         }
     }
-    fn read_ss_otp_fc_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_otp_fc_base_addr_l(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_otp_fc_base_addr_l");
         }
@@ -1620,7 +1786,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_otp_fc_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_otp_fc_base_addr_l(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::ss_otp_fc_base_addr_l = 0x{:08x}",
@@ -1631,7 +1800,7 @@ pub trait SocPeripheral {
             generated.write_ss_otp_fc_base_addr_l(val);
         }
     }
-    fn read_ss_otp_fc_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_otp_fc_base_addr_h(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_otp_fc_base_addr_h");
         }
@@ -1640,7 +1809,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_otp_fc_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_otp_fc_base_addr_h(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::ss_otp_fc_base_addr_h = 0x{:08x}",
@@ -1651,7 +1823,7 @@ pub trait SocPeripheral {
             generated.write_ss_otp_fc_base_addr_h(val);
         }
     }
-    fn read_ss_uds_seed_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_uds_seed_base_addr_l(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_uds_seed_base_addr_l");
         }
@@ -1660,7 +1832,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_uds_seed_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_uds_seed_base_addr_l(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::ss_uds_seed_base_addr_l = 0x{:08x}",
@@ -1671,7 +1846,7 @@ pub trait SocPeripheral {
             generated.write_ss_uds_seed_base_addr_l(val);
         }
     }
-    fn read_ss_uds_seed_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_uds_seed_base_addr_h(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_uds_seed_base_addr_h");
         }
@@ -1680,7 +1855,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_uds_seed_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_uds_seed_base_addr_h(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::ss_uds_seed_base_addr_h = 0x{:08x}",
@@ -1693,7 +1871,7 @@ pub trait SocPeripheral {
     }
     fn read_ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read soc::ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset");
         }
@@ -1704,7 +1882,7 @@ pub trait SocPeripheral {
     }
     fn write_ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset = 0x{:08x}" , val);
@@ -1713,7 +1891,9 @@ pub trait SocPeripheral {
             generated.write_ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset(val);
         }
     }
-    fn read_ss_num_of_prod_debug_unlock_auth_pk_hashes(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_num_of_prod_debug_unlock_auth_pk_hashes(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read soc::ss_num_of_prod_debug_unlock_auth_pk_hashes");
         }
@@ -1724,7 +1904,7 @@ pub trait SocPeripheral {
     }
     fn write_ss_num_of_prod_debug_unlock_auth_pk_hashes(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::ss_num_of_prod_debug_unlock_auth_pk_hashes = 0x{:08x}" , val);
@@ -1735,7 +1915,7 @@ pub trait SocPeripheral {
     }
     fn read_ss_debug_intent(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::SsDebugIntent::Register,
     > {
@@ -1745,9 +1925,9 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_ss_debug_intent();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
-    fn read_ss_caliptra_dma_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_caliptra_dma_axi_user(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_caliptra_dma_axi_user");
         }
@@ -1756,7 +1936,10 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_caliptra_dma_axi_user(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_caliptra_dma_axi_user(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::ss_caliptra_dma_axi_user = 0x{:08x}" , val);
         }
@@ -1764,7 +1947,10 @@ pub trait SocPeripheral {
             generated.write_ss_caliptra_dma_axi_user(val);
         }
     }
-    fn read_ss_strap_generic(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_ss_strap_generic(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::ss_strap_generic[{}]",
@@ -1776,7 +1962,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_strap_generic(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_ss_strap_generic(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: write soc::ss_strap_generic[{}] = 0x{:08x}",
@@ -1789,7 +1979,7 @@ pub trait SocPeripheral {
     }
     fn read_ss_dbg_manuf_service_reg_req(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
     > {
@@ -1799,11 +1989,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_ss_dbg_manuf_service_reg_req();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_ss_dbg_manuf_service_reg_req(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
         >,
@@ -1817,7 +2007,7 @@ pub trait SocPeripheral {
     }
     fn read_ss_dbg_manuf_service_reg_rsp(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
     > {
@@ -1827,11 +2017,11 @@ pub trait SocPeripheral {
         if let Some(generated) = self.generated() {
             return generated.read_ss_dbg_manuf_service_reg_rsp();
         }
-        caliptra_emu_bus::ReadWriteRegister::new(0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(0)
     }
     fn write_ss_dbg_manuf_service_reg_rsp(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
         >,
@@ -1843,7 +2033,10 @@ pub trait SocPeripheral {
             generated.write_ss_dbg_manuf_service_reg_rsp(val);
         }
     }
-    fn read_ss_soc_dbg_unlock_level(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_ss_soc_dbg_unlock_level(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::ss_soc_dbg_unlock_level[{}]",
@@ -1855,7 +2048,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_soc_dbg_unlock_level(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_ss_soc_dbg_unlock_level(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::ss_soc_dbg_unlock_level[{}] = 0x{:08x}" , index , val);
         }
@@ -1863,7 +2060,10 @@ pub trait SocPeripheral {
             generated.write_ss_soc_dbg_unlock_level(val, index);
         }
     }
-    fn read_ss_generic_fw_exec_ctrl(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_ss_generic_fw_exec_ctrl(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read soc::ss_generic_fw_exec_ctrl[{}]",
@@ -1875,7 +2075,11 @@ pub trait SocPeripheral {
         }
         0
     }
-    fn write_ss_generic_fw_exec_ctrl(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_ss_generic_fw_exec_ctrl(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write soc::ss_generic_fw_exec_ctrl[{}] = 0x{:08x}" , index , val);
         }
@@ -1886,172 +2090,195 @@ pub trait SocPeripheral {
 }
 #[derive(Clone, Debug)]
 pub struct SocGenerated {
-    cptra_hw_error_fatal: caliptra_emu_types::RvData,
-    cptra_hw_error_non_fatal: caliptra_emu_types::RvData,
-    cptra_fw_error_fatal: caliptra_emu_types::RvData,
-    cptra_fw_error_non_fatal: caliptra_emu_types::RvData,
-    cptra_hw_error_enc: caliptra_emu_types::RvData,
-    cptra_fw_error_enc: caliptra_emu_types::RvData,
-    cptra_fw_extended_error_info: Vec<caliptra_emu_types::RvData>,
-    cptra_boot_status: caliptra_emu_types::RvData,
-    cptra_flow_status: caliptra_emu_types::RvData,
-    cptra_reset_reason: caliptra_emu_types::RvData,
-    cptra_security_state: caliptra_emu_types::RvData,
-    cptra_mbox_valid_axi_user: Vec<caliptra_emu_types::RvData>,
-    cptra_mbox_axi_user_lock: Vec<caliptra_emu_types::RvData>,
-    cptra_trng_valid_axi_user: caliptra_emu_types::RvData,
-    cptra_trng_axi_user_lock: caliptra_emu_types::RvData,
-    cptra_trng_data: Vec<caliptra_emu_types::RvData>,
-    cptra_trng_ctrl: caliptra_emu_types::RvData,
-    cptra_trng_status: caliptra_emu_types::RvData,
-    cptra_fuse_wr_done: caliptra_emu_types::RvData,
-    cptra_timer_config: caliptra_emu_types::RvData,
-    cptra_bootfsm_go: caliptra_emu_types::RvData,
-    cptra_dbg_manuf_service_reg: caliptra_emu_types::RvData,
-    cptra_clk_gating_en: caliptra_emu_types::RvData,
-    cptra_generic_input_wires: Vec<caliptra_emu_types::RvData>,
-    cptra_generic_output_wires: Vec<caliptra_emu_types::RvData>,
-    cptra_hw_rev_id: caliptra_emu_types::RvData,
-    cptra_fw_rev_id: Vec<caliptra_emu_types::RvData>,
-    cptra_hw_config: caliptra_emu_types::RvData,
-    cptra_wdt_timer1_en: caliptra_emu_types::RvData,
-    cptra_wdt_timer1_ctrl: caliptra_emu_types::RvData,
-    cptra_wdt_timer1_timeout_period: Vec<caliptra_emu_types::RvData>,
-    cptra_wdt_timer2_en: caliptra_emu_types::RvData,
-    cptra_wdt_timer2_ctrl: caliptra_emu_types::RvData,
-    cptra_wdt_timer2_timeout_period: Vec<caliptra_emu_types::RvData>,
-    cptra_wdt_status: caliptra_emu_types::RvData,
-    cptra_fuse_valid_axi_user: caliptra_emu_types::RvData,
-    cptra_fuse_axi_user_lock: caliptra_emu_types::RvData,
-    cptra_wdt_cfg: Vec<caliptra_emu_types::RvData>,
-    cptra_i_trng_entropy_config_0: caliptra_emu_types::RvData,
-    cptra_i_trng_entropy_config_1: caliptra_emu_types::RvData,
-    cptra_rsvd_reg: Vec<caliptra_emu_types::RvData>,
-    cptra_hw_capabilities: caliptra_emu_types::RvData,
-    cptra_fw_capabilities: caliptra_emu_types::RvData,
-    cptra_cap_lock: caliptra_emu_types::RvData,
-    cptra_owner_pk_hash: Vec<caliptra_emu_types::RvData>,
-    cptra_owner_pk_hash_lock: caliptra_emu_types::RvData,
-    fuse_uds_seed: Vec<caliptra_emu_types::RvData>,
-    fuse_field_entropy: Vec<caliptra_emu_types::RvData>,
-    fuse_vendor_pk_hash: Vec<caliptra_emu_types::RvData>,
-    fuse_ecc_revocation: caliptra_emu_types::RvData,
-    fuse_fmc_key_manifest_svn: caliptra_emu_types::RvData,
-    fuse_runtime_svn: Vec<caliptra_emu_types::RvData>,
-    fuse_anti_rollback_disable: caliptra_emu_types::RvData,
-    fuse_idevid_cert_attr: Vec<caliptra_emu_types::RvData>,
-    fuse_idevid_manuf_hsm_id: Vec<caliptra_emu_types::RvData>,
-    fuse_lms_revocation: caliptra_emu_types::RvData,
-    fuse_mldsa_revocation: caliptra_emu_types::RvData,
-    fuse_soc_stepping_id: caliptra_emu_types::RvData,
-    fuse_manuf_dbg_unlock_token: Vec<caliptra_emu_types::RvData>,
-    fuse_pqc_key_type: caliptra_emu_types::RvData,
-    fuse_soc_manifest_svn: Vec<caliptra_emu_types::RvData>,
-    fuse_soc_manifest_max_svn: caliptra_emu_types::RvData,
-    ss_caliptra_base_addr_l: caliptra_emu_types::RvData,
-    ss_caliptra_base_addr_h: caliptra_emu_types::RvData,
-    ss_mci_base_addr_l: caliptra_emu_types::RvData,
-    ss_mci_base_addr_h: caliptra_emu_types::RvData,
-    ss_recovery_ifc_base_addr_l: caliptra_emu_types::RvData,
-    ss_recovery_ifc_base_addr_h: caliptra_emu_types::RvData,
-    ss_otp_fc_base_addr_l: caliptra_emu_types::RvData,
-    ss_otp_fc_base_addr_h: caliptra_emu_types::RvData,
-    ss_uds_seed_base_addr_l: caliptra_emu_types::RvData,
-    ss_uds_seed_base_addr_h: caliptra_emu_types::RvData,
-    ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset: caliptra_emu_types::RvData,
-    ss_num_of_prod_debug_unlock_auth_pk_hashes: caliptra_emu_types::RvData,
-    ss_debug_intent: caliptra_emu_types::RvData,
-    ss_caliptra_dma_axi_user: caliptra_emu_types::RvData,
-    ss_strap_generic: Vec<caliptra_emu_types::RvData>,
-    ss_dbg_manuf_service_reg_req: caliptra_emu_types::RvData,
-    ss_dbg_manuf_service_reg_rsp: caliptra_emu_types::RvData,
-    ss_soc_dbg_unlock_level: Vec<caliptra_emu_types::RvData>,
-    ss_generic_fw_exec_ctrl: Vec<caliptra_emu_types::RvData>,
+    cptra_hw_error_fatal: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_hw_error_non_fatal: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_fw_error_fatal: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_fw_error_non_fatal: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_hw_error_enc: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_fw_error_enc: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_fw_extended_error_info: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    cptra_boot_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_flow_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_reset_reason: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_security_state: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_mbox_valid_axi_user: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    cptra_mbox_axi_user_lock: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    cptra_trng_valid_axi_user: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_trng_axi_user_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_trng_data: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    cptra_trng_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_trng_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_fuse_wr_done: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_timer_config: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_bootfsm_go: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_dbg_manuf_service_reg: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_clk_gating_en: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_generic_input_wires: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    cptra_generic_output_wires: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    cptra_hw_rev_id: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_fw_rev_id: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    cptra_hw_config: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_wdt_timer1_en: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_wdt_timer1_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_wdt_timer1_timeout_period: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    cptra_wdt_timer2_en: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_wdt_timer2_ctrl: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_wdt_timer2_timeout_period: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    cptra_wdt_status: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_fuse_valid_axi_user: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_fuse_axi_user_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_wdt_cfg: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    cptra_i_trng_entropy_config_0: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_i_trng_entropy_config_1: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_rsvd_reg: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    cptra_hw_capabilities: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_fw_capabilities: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_cap_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    cptra_owner_pk_hash: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    cptra_owner_pk_hash_lock: caliptra_core_tools::caliptra_emu_types::RvData,
+    fuse_uds_seed: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    fuse_field_entropy: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    fuse_vendor_pk_hash: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    fuse_ecc_revocation: caliptra_core_tools::caliptra_emu_types::RvData,
+    fuse_fmc_key_manifest_svn: caliptra_core_tools::caliptra_emu_types::RvData,
+    fuse_runtime_svn: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    fuse_anti_rollback_disable: caliptra_core_tools::caliptra_emu_types::RvData,
+    fuse_idevid_cert_attr: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    fuse_idevid_manuf_hsm_id: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    fuse_lms_revocation: caliptra_core_tools::caliptra_emu_types::RvData,
+    fuse_mldsa_revocation: caliptra_core_tools::caliptra_emu_types::RvData,
+    fuse_soc_stepping_id: caliptra_core_tools::caliptra_emu_types::RvData,
+    fuse_manuf_dbg_unlock_token: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    fuse_pqc_key_type: caliptra_core_tools::caliptra_emu_types::RvData,
+    fuse_soc_manifest_svn: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    fuse_soc_manifest_max_svn: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_caliptra_base_addr_l: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_caliptra_base_addr_h: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_mci_base_addr_l: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_mci_base_addr_h: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_recovery_ifc_base_addr_l: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_recovery_ifc_base_addr_h: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_otp_fc_base_addr_l: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_otp_fc_base_addr_h: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_uds_seed_base_addr_l: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_uds_seed_base_addr_h: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset:
+        caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_num_of_prod_debug_unlock_auth_pk_hashes: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_debug_intent: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_caliptra_dma_axi_user: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_strap_generic: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    ss_dbg_manuf_service_reg_req: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_dbg_manuf_service_reg_rsp: caliptra_core_tools::caliptra_emu_types::RvData,
+    ss_soc_dbg_unlock_level: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
+    ss_generic_fw_exec_ctrl: Vec<caliptra_core_tools::caliptra_emu_types::RvData>,
 }
 impl Default for SocGenerated {
     fn default() -> Self {
         Self {
-            cptra_hw_error_fatal: 0 as caliptra_emu_types::RvData,
-            cptra_hw_error_non_fatal: 0 as caliptra_emu_types::RvData,
-            cptra_fw_error_fatal: 0 as caliptra_emu_types::RvData,
-            cptra_fw_error_non_fatal: 0 as caliptra_emu_types::RvData,
-            cptra_hw_error_enc: 0 as caliptra_emu_types::RvData,
-            cptra_fw_error_enc: 0 as caliptra_emu_types::RvData,
-            cptra_fw_extended_error_info: vec![0 as caliptra_emu_types::RvData; 8],
-            cptra_boot_status: 0 as caliptra_emu_types::RvData,
-            cptra_flow_status: 0 as caliptra_emu_types::RvData,
-            cptra_reset_reason: 0 as caliptra_emu_types::RvData,
-            cptra_security_state: 0 as caliptra_emu_types::RvData,
-            cptra_mbox_valid_axi_user: vec![0xffff_ffff as caliptra_emu_types::RvData; 5],
-            cptra_mbox_axi_user_lock: vec![0 as caliptra_emu_types::RvData; 5],
-            cptra_trng_valid_axi_user: 0xffff_ffff as caliptra_emu_types::RvData,
-            cptra_trng_axi_user_lock: 0 as caliptra_emu_types::RvData,
-            cptra_trng_data: vec![0 as caliptra_emu_types::RvData; 12],
-            cptra_trng_ctrl: 0 as caliptra_emu_types::RvData,
-            cptra_trng_status: 0 as caliptra_emu_types::RvData,
-            cptra_fuse_wr_done: 0 as caliptra_emu_types::RvData,
-            cptra_timer_config: 0 as caliptra_emu_types::RvData,
-            cptra_bootfsm_go: 0 as caliptra_emu_types::RvData,
-            cptra_dbg_manuf_service_reg: 0 as caliptra_emu_types::RvData,
-            cptra_clk_gating_en: 0 as caliptra_emu_types::RvData,
-            cptra_generic_input_wires: vec![0 as caliptra_emu_types::RvData; 2],
-            cptra_generic_output_wires: vec![0 as caliptra_emu_types::RvData; 2],
-            cptra_hw_rev_id: 0x302 as caliptra_emu_types::RvData,
-            cptra_fw_rev_id: vec![0 as caliptra_emu_types::RvData; 2],
-            cptra_hw_config: 0 as caliptra_emu_types::RvData,
-            cptra_wdt_timer1_en: 0 as caliptra_emu_types::RvData,
-            cptra_wdt_timer1_ctrl: 0 as caliptra_emu_types::RvData,
-            cptra_wdt_timer1_timeout_period: vec![0xffff_ffff as caliptra_emu_types::RvData; 2],
-            cptra_wdt_timer2_en: 0 as caliptra_emu_types::RvData,
-            cptra_wdt_timer2_ctrl: 0 as caliptra_emu_types::RvData,
-            cptra_wdt_timer2_timeout_period: vec![0xffff_ffff as caliptra_emu_types::RvData; 2],
-            cptra_wdt_status: 0 as caliptra_emu_types::RvData,
-            cptra_fuse_valid_axi_user: 0xffff_ffff as caliptra_emu_types::RvData,
-            cptra_fuse_axi_user_lock: 0 as caliptra_emu_types::RvData,
-            cptra_wdt_cfg: vec![0 as caliptra_emu_types::RvData; 2],
-            cptra_i_trng_entropy_config_0: 0 as caliptra_emu_types::RvData,
-            cptra_i_trng_entropy_config_1: 0 as caliptra_emu_types::RvData,
-            cptra_rsvd_reg: vec![0 as caliptra_emu_types::RvData; 2],
-            cptra_hw_capabilities: 0 as caliptra_emu_types::RvData,
-            cptra_fw_capabilities: 0 as caliptra_emu_types::RvData,
-            cptra_cap_lock: 0 as caliptra_emu_types::RvData,
-            cptra_owner_pk_hash: vec![0 as caliptra_emu_types::RvData; 12],
-            cptra_owner_pk_hash_lock: 0 as caliptra_emu_types::RvData,
-            fuse_uds_seed: vec![0 as caliptra_emu_types::RvData; 16],
-            fuse_field_entropy: vec![0 as caliptra_emu_types::RvData; 8],
-            fuse_vendor_pk_hash: vec![0 as caliptra_emu_types::RvData; 12],
-            fuse_ecc_revocation: 0 as caliptra_emu_types::RvData,
-            fuse_fmc_key_manifest_svn: 0 as caliptra_emu_types::RvData,
-            fuse_runtime_svn: vec![0 as caliptra_emu_types::RvData; 4],
-            fuse_anti_rollback_disable: 0 as caliptra_emu_types::RvData,
-            fuse_idevid_cert_attr: vec![0 as caliptra_emu_types::RvData; 24],
-            fuse_idevid_manuf_hsm_id: vec![0 as caliptra_emu_types::RvData; 4],
-            fuse_lms_revocation: 0 as caliptra_emu_types::RvData,
-            fuse_mldsa_revocation: 0 as caliptra_emu_types::RvData,
-            fuse_soc_stepping_id: 0 as caliptra_emu_types::RvData,
-            fuse_manuf_dbg_unlock_token: vec![0 as caliptra_emu_types::RvData; 16],
-            fuse_pqc_key_type: 0 as caliptra_emu_types::RvData,
-            fuse_soc_manifest_svn: vec![0 as caliptra_emu_types::RvData; 4],
-            fuse_soc_manifest_max_svn: 0 as caliptra_emu_types::RvData,
-            ss_caliptra_base_addr_l: 0 as caliptra_emu_types::RvData,
-            ss_caliptra_base_addr_h: 0 as caliptra_emu_types::RvData,
-            ss_mci_base_addr_l: 0 as caliptra_emu_types::RvData,
-            ss_mci_base_addr_h: 0 as caliptra_emu_types::RvData,
-            ss_recovery_ifc_base_addr_l: 0 as caliptra_emu_types::RvData,
-            ss_recovery_ifc_base_addr_h: 0 as caliptra_emu_types::RvData,
-            ss_otp_fc_base_addr_l: 0 as caliptra_emu_types::RvData,
-            ss_otp_fc_base_addr_h: 0 as caliptra_emu_types::RvData,
-            ss_uds_seed_base_addr_l: 0 as caliptra_emu_types::RvData,
-            ss_uds_seed_base_addr_h: 0 as caliptra_emu_types::RvData,
-            ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset: 0 as caliptra_emu_types::RvData,
-            ss_num_of_prod_debug_unlock_auth_pk_hashes: 8 as caliptra_emu_types::RvData,
-            ss_debug_intent: 0 as caliptra_emu_types::RvData,
-            ss_caliptra_dma_axi_user: 0 as caliptra_emu_types::RvData,
-            ss_strap_generic: vec![0 as caliptra_emu_types::RvData; 4],
-            ss_dbg_manuf_service_reg_req: 0 as caliptra_emu_types::RvData,
-            ss_dbg_manuf_service_reg_rsp: 0 as caliptra_emu_types::RvData,
-            ss_soc_dbg_unlock_level: vec![0 as caliptra_emu_types::RvData; 2],
-            ss_generic_fw_exec_ctrl: vec![0 as caliptra_emu_types::RvData; 4],
+            cptra_hw_error_fatal: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_hw_error_non_fatal: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_fw_error_fatal: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_fw_error_non_fatal: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_hw_error_enc: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_fw_error_enc: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_fw_extended_error_info: vec![
+                0 as caliptra_core_tools::caliptra_emu_types::RvData;
+                8
+            ],
+            cptra_boot_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_flow_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_reset_reason: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_security_state: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_mbox_valid_axi_user: vec![
+                0xffff_ffff
+                    as caliptra_core_tools::caliptra_emu_types::RvData;
+                5
+            ],
+            cptra_mbox_axi_user_lock: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 5],
+            cptra_trng_valid_axi_user: 0xffff_ffff
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_trng_axi_user_lock: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_trng_data: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 12],
+            cptra_trng_ctrl: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_trng_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_fuse_wr_done: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_timer_config: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_bootfsm_go: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_dbg_manuf_service_reg: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_clk_gating_en: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_generic_input_wires: vec![
+                0 as caliptra_core_tools::caliptra_emu_types::RvData;
+                2
+            ],
+            cptra_generic_output_wires: vec![
+                0 as caliptra_core_tools::caliptra_emu_types::RvData;
+                2
+            ],
+            cptra_hw_rev_id: 0x302 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_fw_rev_id: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 2],
+            cptra_hw_config: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_wdt_timer1_en: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_wdt_timer1_ctrl: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_wdt_timer1_timeout_period:
+                vec![0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData; 2],
+            cptra_wdt_timer2_en: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_wdt_timer2_ctrl: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_wdt_timer2_timeout_period:
+                vec![0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData; 2],
+            cptra_wdt_status: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_fuse_valid_axi_user: 0xffff_ffff
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_fuse_axi_user_lock: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_wdt_cfg: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 2],
+            cptra_i_trng_entropy_config_0: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_i_trng_entropy_config_1: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_rsvd_reg: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 2],
+            cptra_hw_capabilities: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_fw_capabilities: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_cap_lock: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            cptra_owner_pk_hash: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 12],
+            cptra_owner_pk_hash_lock: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            fuse_uds_seed: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 16],
+            fuse_field_entropy: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 8],
+            fuse_vendor_pk_hash: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 12],
+            fuse_ecc_revocation: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            fuse_fmc_key_manifest_svn: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            fuse_runtime_svn: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 4],
+            fuse_anti_rollback_disable: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            fuse_idevid_cert_attr: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 24],
+            fuse_idevid_manuf_hsm_id: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 4],
+            fuse_lms_revocation: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            fuse_mldsa_revocation: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            fuse_soc_stepping_id: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            fuse_manuf_dbg_unlock_token: vec![
+                0 as caliptra_core_tools::caliptra_emu_types::RvData;
+                16
+            ],
+            fuse_pqc_key_type: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            fuse_soc_manifest_svn: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 4],
+            fuse_soc_manifest_max_svn: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_caliptra_base_addr_l: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_caliptra_base_addr_h: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_mci_base_addr_l: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_mci_base_addr_h: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_recovery_ifc_base_addr_l: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_recovery_ifc_base_addr_h: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_otp_fc_base_addr_l: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_otp_fc_base_addr_h: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_uds_seed_base_addr_l: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_uds_seed_base_addr_h: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset: 0
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_num_of_prod_debug_unlock_auth_pk_hashes: 8
+                as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_debug_intent: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_caliptra_dma_axi_user: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_strap_generic: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 4],
+            ss_dbg_manuf_service_reg_req: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_dbg_manuf_service_reg_rsp: 0 as caliptra_core_tools::caliptra_emu_types::RvData,
+            ss_soc_dbg_unlock_level: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 2],
+            ss_generic_fw_exec_ctrl: vec![0 as caliptra_core_tools::caliptra_emu_types::RvData; 4],
         }
     }
 }
@@ -2075,18 +2302,18 @@ impl SocPeripheral for SocGenerated {
     }
     fn read_cptra_hw_error_fatal(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraHwErrorFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_hw_error_fatal");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_hw_error_fatal)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_hw_error_fatal)
     }
     fn write_cptra_hw_error_fatal(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraHwErrorFatal::Register,
         >,
@@ -2094,22 +2321,22 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_hw_error_fatal = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_hw_error_fatal;
         let mut new_val = current_val;
-        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_clear_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_0;
-        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_clear_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_1;
-        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_clear_2 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_2;
-        let bits_to_clear_3 = write_val & (8 as caliptra_emu_types::RvData);
+        let bits_to_clear_3 = write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_3;
         self.cptra_hw_error_fatal = new_val;
     }
     fn read_cptra_hw_error_non_fatal(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
     > {
@@ -2118,11 +2345,11 @@ impl SocPeripheral for SocGenerated {
                 "[EMU] Generated default register handler: read soc::cptra_hw_error_non_fatal"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_hw_error_non_fatal)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_hw_error_non_fatal)
     }
     fn write_cptra_hw_error_non_fatal(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
         >,
@@ -2130,35 +2357,35 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_hw_error_non_fatal = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_hw_error_non_fatal;
         let mut new_val = current_val;
-        let bits_to_clear_0 = write_val & (1 as caliptra_emu_types::RvData);
+        let bits_to_clear_0 = write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_0;
-        let bits_to_clear_1 = write_val & (2 as caliptra_emu_types::RvData);
+        let bits_to_clear_1 = write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_1;
-        let bits_to_clear_2 = write_val & (4 as caliptra_emu_types::RvData);
+        let bits_to_clear_2 = write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData);
         new_val &= !bits_to_clear_2;
         self.cptra_hw_error_non_fatal = new_val;
     }
-    fn read_cptra_fw_error_fatal(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_fw_error_fatal(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_fw_error_fatal");
         }
         self.cptra_fw_error_fatal
     }
-    fn write_cptra_fw_error_fatal(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_fw_error_fatal(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fw_error_fatal = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_fw_error_fatal;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_fw_error_fatal = new_val;
     }
-    fn read_cptra_fw_error_non_fatal(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_fw_error_non_fatal(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::cptra_fw_error_non_fatal"
@@ -2166,52 +2393,58 @@ impl SocPeripheral for SocGenerated {
         }
         self.cptra_fw_error_non_fatal
     }
-    fn write_cptra_fw_error_non_fatal(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_fw_error_non_fatal(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fw_error_non_fatal = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_fw_error_non_fatal;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_fw_error_non_fatal = new_val;
     }
-    fn read_cptra_hw_error_enc(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_hw_error_enc(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_hw_error_enc");
         }
         self.cptra_hw_error_enc
     }
-    fn write_cptra_hw_error_enc(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_hw_error_enc(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_hw_error_enc = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_hw_error_enc;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_hw_error_enc = new_val;
     }
-    fn read_cptra_fw_error_enc(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_fw_error_enc(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_fw_error_enc");
         }
         self.cptra_fw_error_enc
     }
-    fn write_cptra_fw_error_enc(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_fw_error_enc(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fw_error_enc = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_fw_error_enc;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_fw_error_enc = new_val;
     }
-    fn read_cptra_fw_extended_error_info(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_fw_extended_error_info(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read soc::cptra_fw_extended_error_info[{}]" , index);
         }
@@ -2219,53 +2452,53 @@ impl SocPeripheral for SocGenerated {
     }
     fn write_cptra_fw_extended_error_info(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fw_extended_error_info[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_fw_extended_error_info[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_fw_extended_error_info[index] = new_val;
     }
-    fn read_cptra_boot_status(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_boot_status(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_boot_status");
         }
         self.cptra_boot_status
     }
-    fn write_cptra_boot_status(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_boot_status(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write soc::cptra_boot_status = 0x{:08x}",
                 val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_boot_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_boot_status = new_val;
     }
     fn read_cptra_flow_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraFlowStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_flow_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_flow_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_flow_status)
     }
     fn write_cptra_flow_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraFlowStatus::Register,
         >,
@@ -2276,44 +2509,47 @@ impl SocPeripheral for SocGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_flow_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xff_ffff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x100_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x1000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x1000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x2000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x2000_0000 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x8000_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0x8000_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x1000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x2000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x8000_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_flow_status = new_val;
     }
     fn read_cptra_reset_reason(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraResetReason::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_reset_reason");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_reset_reason)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_reset_reason)
     }
     fn read_cptra_security_state(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraSecurityState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_security_state");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_security_state)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_security_state)
     }
-    fn read_cptra_mbox_valid_axi_user(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_mbox_valid_axi_user(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::cptra_mbox_valid_axi_user[{}]",
@@ -2322,21 +2558,25 @@ impl SocPeripheral for SocGenerated {
         }
         self.cptra_mbox_valid_axi_user[index]
     }
-    fn write_cptra_mbox_valid_axi_user(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_mbox_valid_axi_user(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_mbox_valid_axi_user[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_mbox_valid_axi_user[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_mbox_valid_axi_user[index] = new_val;
     }
     fn read_cptra_mbox_axi_user_lock(
         &mut self,
         index: usize,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
@@ -2346,11 +2586,13 @@ impl SocPeripheral for SocGenerated {
                 index
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_mbox_axi_user_lock[index])
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.cptra_mbox_axi_user_lock[index],
+        )
     }
     fn write_cptra_mbox_axi_user_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
@@ -2359,14 +2601,16 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_mbox_axi_user_lock[{}] = 0x{:08x}" , index , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_mbox_axi_user_lock[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_mbox_axi_user_lock[index] = new_val;
     }
-    fn read_cptra_trng_valid_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_trng_valid_axi_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::cptra_trng_valid_axi_user"
@@ -2374,20 +2618,23 @@ impl SocPeripheral for SocGenerated {
         }
         self.cptra_trng_valid_axi_user
     }
-    fn write_cptra_trng_valid_axi_user(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_trng_valid_axi_user(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_trng_valid_axi_user = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_trng_valid_axi_user;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_trng_valid_axi_user = new_val;
     }
     fn read_cptra_trng_axi_user_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
@@ -2396,11 +2643,11 @@ impl SocPeripheral for SocGenerated {
                 "[EMU] Generated default register handler: read soc::cptra_trng_axi_user_lock"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_trng_axi_user_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_trng_axi_user_lock)
     }
     fn write_cptra_trng_axi_user_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
@@ -2408,14 +2655,17 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_trng_axi_user_lock = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_trng_axi_user_lock;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_trng_axi_user_lock = new_val;
     }
-    fn read_cptra_trng_data(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_trng_data(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::cptra_trng_data[{}]",
@@ -2424,31 +2674,35 @@ impl SocPeripheral for SocGenerated {
         }
         self.cptra_trng_data[index]
     }
-    fn write_cptra_trng_data(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_trng_data(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_trng_data[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_trng_data[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_trng_data[index] = new_val;
     }
     fn read_cptra_trng_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraTrngCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_trng_ctrl");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_trng_ctrl)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_trng_ctrl)
     }
     fn write_cptra_trng_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraTrngCtrl::Register,
         >,
@@ -2459,27 +2713,27 @@ impl SocPeripheral for SocGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_trng_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_trng_ctrl = new_val;
     }
     fn read_cptra_trng_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraTrngStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_trng_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_trng_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_trng_status)
     }
     fn write_cptra_trng_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraTrngStatus::Register,
         >,
@@ -2490,29 +2744,29 @@ impl SocPeripheral for SocGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_trng_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_trng_status = new_val;
     }
     fn read_cptra_fuse_wr_done(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraFuseWrDone::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_fuse_wr_done");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_fuse_wr_done)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_fuse_wr_done)
     }
     fn write_cptra_fuse_wr_done(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraFuseWrDone::Register,
         >,
@@ -2520,44 +2774,44 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fuse_wr_done = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_fuse_wr_done;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_fuse_wr_done = new_val;
     }
-    fn read_cptra_timer_config(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_timer_config(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_timer_config");
         }
         self.cptra_timer_config
     }
-    fn write_cptra_timer_config(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_timer_config(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_timer_config = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_timer_config;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_timer_config = new_val;
     }
     fn read_cptra_bootfsm_go(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraBootfsmGo::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_bootfsm_go");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_bootfsm_go)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_bootfsm_go)
     }
     fn write_cptra_bootfsm_go(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraBootfsmGo::Register,
         >,
@@ -2568,14 +2822,16 @@ impl SocPeripheral for SocGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_bootfsm_go;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_bootfsm_go = new_val;
     }
-    fn read_cptra_dbg_manuf_service_reg(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_dbg_manuf_service_reg(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::cptra_dbg_manuf_service_reg"
@@ -2583,31 +2839,34 @@ impl SocPeripheral for SocGenerated {
         }
         self.cptra_dbg_manuf_service_reg
     }
-    fn write_cptra_dbg_manuf_service_reg(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_dbg_manuf_service_reg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_dbg_manuf_service_reg = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_dbg_manuf_service_reg;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_dbg_manuf_service_reg = new_val;
     }
     fn read_cptra_clk_gating_en(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraClkGatingEn::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_clk_gating_en");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_clk_gating_en)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_clk_gating_en)
     }
     fn write_cptra_clk_gating_en(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraClkGatingEn::Register,
         >,
@@ -2615,14 +2874,17 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_clk_gating_en = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_clk_gating_en;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_clk_gating_en = new_val;
     }
-    fn read_cptra_generic_input_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_generic_input_wires(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::cptra_generic_input_wires[{}]",
@@ -2631,35 +2893,45 @@ impl SocPeripheral for SocGenerated {
         }
         self.cptra_generic_input_wires[index]
     }
-    fn read_cptra_generic_output_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_generic_output_wires(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read soc::cptra_generic_output_wires[{}]" , index);
         }
         self.cptra_generic_output_wires[index]
     }
-    fn write_cptra_generic_output_wires(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_generic_output_wires(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_generic_output_wires[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_generic_output_wires[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_generic_output_wires[index] = new_val;
     }
     fn read_cptra_hw_rev_id(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraHwRevId::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_hw_rev_id");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_hw_rev_id)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_hw_rev_id)
     }
-    fn read_cptra_fw_rev_id(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_fw_rev_id(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::cptra_fw_rev_id[{}]",
@@ -2668,42 +2940,46 @@ impl SocPeripheral for SocGenerated {
         }
         self.cptra_fw_rev_id[index]
     }
-    fn write_cptra_fw_rev_id(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_fw_rev_id(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fw_rev_id[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_fw_rev_id[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_fw_rev_id[index] = new_val;
     }
     fn read_cptra_hw_config(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraHwConfig::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_hw_config");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_hw_config)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_hw_config)
     }
     fn read_cptra_wdt_timer1_en(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraWdtTimer1En::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_timer1_en");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_timer1_en)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_timer1_en)
     }
     fn write_cptra_wdt_timer1_en(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraWdtTimer1En::Register,
         >,
@@ -2711,27 +2987,27 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_wdt_timer1_en = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_timer1_en;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_wdt_timer1_en = new_val;
     }
     fn read_cptra_wdt_timer1_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_timer1_ctrl");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_timer1_ctrl)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_timer1_ctrl)
     }
     fn write_cptra_wdt_timer1_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
         >,
@@ -2739,14 +3015,17 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_wdt_timer1_ctrl = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_timer1_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_wdt_timer1_ctrl = new_val;
     }
-    fn read_cptra_wdt_timer1_timeout_period(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_wdt_timer1_timeout_period(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read soc::cptra_wdt_timer1_timeout_period[{}]" , index);
         }
@@ -2754,33 +3033,33 @@ impl SocPeripheral for SocGenerated {
     }
     fn write_cptra_wdt_timer1_timeout_period(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_wdt_timer1_timeout_period[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_timer1_timeout_period[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_wdt_timer1_timeout_period[index] = new_val;
     }
     fn read_cptra_wdt_timer2_en(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraWdtTimer2En::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_timer2_en");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_timer2_en)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_timer2_en)
     }
     fn write_cptra_wdt_timer2_en(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraWdtTimer2En::Register,
         >,
@@ -2788,27 +3067,27 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_wdt_timer2_en = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_timer2_en;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_wdt_timer2_en = new_val;
     }
     fn read_cptra_wdt_timer2_ctrl(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_timer2_ctrl");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_timer2_ctrl)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_timer2_ctrl)
     }
     fn write_cptra_wdt_timer2_ctrl(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
         >,
@@ -2816,14 +3095,17 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_wdt_timer2_ctrl = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_timer2_ctrl;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_wdt_timer2_ctrl = new_val;
     }
-    fn read_cptra_wdt_timer2_timeout_period(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_wdt_timer2_timeout_period(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read soc::cptra_wdt_timer2_timeout_period[{}]" , index);
         }
@@ -2831,33 +3113,33 @@ impl SocPeripheral for SocGenerated {
     }
     fn write_cptra_wdt_timer2_timeout_period(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
         index: usize,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_wdt_timer2_timeout_period[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_timer2_timeout_period[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_wdt_timer2_timeout_period[index] = new_val;
     }
     fn read_cptra_wdt_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraWdtStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_status");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_status)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_wdt_status)
     }
     fn write_cptra_wdt_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraWdtStatus::Register,
         >,
@@ -2868,16 +3150,18 @@ impl SocPeripheral for SocGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_status;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_wdt_status = new_val;
     }
-    fn read_cptra_fuse_valid_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_fuse_valid_axi_user(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::cptra_fuse_valid_axi_user"
@@ -2885,20 +3169,23 @@ impl SocPeripheral for SocGenerated {
         }
         self.cptra_fuse_valid_axi_user
     }
-    fn write_cptra_fuse_valid_axi_user(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_fuse_valid_axi_user(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fuse_valid_axi_user = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_fuse_valid_axi_user;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_fuse_valid_axi_user = new_val;
     }
     fn read_cptra_fuse_axi_user_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
@@ -2907,11 +3194,11 @@ impl SocPeripheral for SocGenerated {
                 "[EMU] Generated default register handler: read soc::cptra_fuse_axi_user_lock"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_fuse_axi_user_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_fuse_axi_user_lock)
     }
     fn write_cptra_fuse_axi_user_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
@@ -2919,14 +3206,17 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fuse_axi_user_lock = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_fuse_axi_user_lock;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_fuse_axi_user_lock = new_val;
     }
-    fn read_cptra_wdt_cfg(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_wdt_cfg(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::cptra_wdt_cfg[{}]",
@@ -2935,23 +3225,27 @@ impl SocPeripheral for SocGenerated {
         }
         self.cptra_wdt_cfg[index]
     }
-    fn write_cptra_wdt_cfg(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_wdt_cfg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write soc::cptra_wdt_cfg[{}] = 0x{:08x}",
                 index, val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_wdt_cfg[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_wdt_cfg[index] = new_val;
     }
     fn read_cptra_i_trng_entropy_config_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
     > {
@@ -2960,11 +3254,13 @@ impl SocPeripheral for SocGenerated {
                 "[EMU] Generated default register handler: read soc::cptra_i_trng_entropy_config_0"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_i_trng_entropy_config_0)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.cptra_i_trng_entropy_config_0,
+        )
     }
     fn write_cptra_i_trng_entropy_config_0(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
         >,
@@ -2972,18 +3268,18 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_i_trng_entropy_config_0 = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_i_trng_entropy_config_0;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xffff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_i_trng_entropy_config_0 = new_val;
     }
     fn read_cptra_i_trng_entropy_config_1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
     > {
@@ -2992,11 +3288,13 @@ impl SocPeripheral for SocGenerated {
                 "[EMU] Generated default register handler: read soc::cptra_i_trng_entropy_config_1"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_i_trng_entropy_config_1)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.cptra_i_trng_entropy_config_1,
+        )
     }
     fn write_cptra_i_trng_entropy_config_1(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
         >,
@@ -3004,16 +3302,19 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_i_trng_entropy_config_1 = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_i_trng_entropy_config_1;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0xffff_0000 as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_0000 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_0000 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_i_trng_entropy_config_1 = new_val;
     }
-    fn read_cptra_rsvd_reg(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_rsvd_reg(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::cptra_rsvd_reg[{}]",
@@ -3022,65 +3323,75 @@ impl SocPeripheral for SocGenerated {
         }
         self.cptra_rsvd_reg[index]
     }
-    fn write_cptra_rsvd_reg(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_rsvd_reg(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_rsvd_reg[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_rsvd_reg[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_rsvd_reg[index] = new_val;
     }
-    fn read_cptra_hw_capabilities(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_hw_capabilities(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_hw_capabilities");
         }
         self.cptra_hw_capabilities
     }
-    fn write_cptra_hw_capabilities(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_hw_capabilities(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_hw_capabilities = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_hw_capabilities;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_hw_capabilities = new_val;
     }
-    fn read_cptra_fw_capabilities(&mut self) -> caliptra_emu_types::RvData {
+    fn read_cptra_fw_capabilities(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_fw_capabilities");
         }
         self.cptra_fw_capabilities
     }
-    fn write_cptra_fw_capabilities(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_cptra_fw_capabilities(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_fw_capabilities = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_fw_capabilities;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_fw_capabilities = new_val;
     }
     fn read_cptra_cap_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraXxxxxxxk::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_cap_lock");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_cap_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_cap_lock)
     }
     fn write_cptra_cap_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraXxxxxxxk::Register,
         >,
@@ -3091,14 +3402,17 @@ impl SocPeripheral for SocGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_cap_lock;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_cap_lock = new_val;
     }
-    fn read_cptra_owner_pk_hash(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_cptra_owner_pk_hash(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::cptra_owner_pk_hash[{}]",
@@ -3107,20 +3421,24 @@ impl SocPeripheral for SocGenerated {
         }
         self.cptra_owner_pk_hash[index]
     }
-    fn write_cptra_owner_pk_hash(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_cptra_owner_pk_hash(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_owner_pk_hash[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_owner_pk_hash[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_owner_pk_hash[index] = new_val;
     }
     fn read_cptra_owner_pk_hash_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::CptraXxxxxxxk::Register,
     > {
@@ -3129,11 +3447,11 @@ impl SocPeripheral for SocGenerated {
                 "[EMU] Generated default register handler: read soc::cptra_owner_pk_hash_lock"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.cptra_owner_pk_hash_lock)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.cptra_owner_pk_hash_lock)
     }
     fn write_cptra_owner_pk_hash_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::CptraXxxxxxxk::Register,
         >,
@@ -3141,39 +3459,50 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::cptra_owner_pk_hash_lock = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.cptra_owner_pk_hash_lock;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.cptra_owner_pk_hash_lock = new_val;
     }
-    fn write_fuse_uds_seed(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_uds_seed(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: write soc::fuse_uds_seed[{}] = 0x{:08x}",
                 index, val
             );
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_uds_seed[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_uds_seed[index] = new_val;
     }
-    fn write_fuse_field_entropy(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_field_entropy(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_field_entropy[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_field_entropy[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_field_entropy[index] = new_val;
     }
-    fn read_fuse_vendor_pk_hash(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_fuse_vendor_pk_hash(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::fuse_vendor_pk_hash[{}]",
@@ -3182,31 +3511,35 @@ impl SocPeripheral for SocGenerated {
         }
         self.fuse_vendor_pk_hash[index]
     }
-    fn write_fuse_vendor_pk_hash(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_vendor_pk_hash(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_vendor_pk_hash[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_vendor_pk_hash[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_vendor_pk_hash[index] = new_val;
     }
     fn read_fuse_ecc_revocation(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::FuseEccRevocation::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::fuse_ecc_revocation");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.fuse_ecc_revocation)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.fuse_ecc_revocation)
     }
     fn write_fuse_ecc_revocation(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::FuseEccRevocation::Register,
         >,
@@ -3214,14 +3547,16 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_ecc_revocation = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_ecc_revocation;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf as caliptra_emu_types::RvData))
-            | (write_val & (0xf as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_ecc_revocation = new_val;
     }
-    fn read_fuse_fmc_key_manifest_svn(&mut self) -> caliptra_emu_types::RvData {
+    fn read_fuse_fmc_key_manifest_svn(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::fuse_fmc_key_manifest_svn"
@@ -3229,18 +3564,24 @@ impl SocPeripheral for SocGenerated {
         }
         self.fuse_fmc_key_manifest_svn
     }
-    fn write_fuse_fmc_key_manifest_svn(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_fuse_fmc_key_manifest_svn(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_fmc_key_manifest_svn = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_fmc_key_manifest_svn;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_fmc_key_manifest_svn = new_val;
     }
-    fn read_fuse_runtime_svn(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_fuse_runtime_svn(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::fuse_runtime_svn[{}]",
@@ -3249,20 +3590,24 @@ impl SocPeripheral for SocGenerated {
         }
         self.fuse_runtime_svn[index]
     }
-    fn write_fuse_runtime_svn(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_runtime_svn(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_runtime_svn[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_runtime_svn[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_runtime_svn[index] = new_val;
     }
     fn read_fuse_anti_rollback_disable(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
     > {
@@ -3271,11 +3616,13 @@ impl SocPeripheral for SocGenerated {
                 "[EMU] Generated default register handler: read soc::fuse_anti_rollback_disable"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.fuse_anti_rollback_disable)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.fuse_anti_rollback_disable,
+        )
     }
     fn write_fuse_anti_rollback_disable(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
         >,
@@ -3283,14 +3630,17 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_anti_rollback_disable = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_anti_rollback_disable;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_anti_rollback_disable = new_val;
     }
-    fn read_fuse_idevid_cert_attr(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_fuse_idevid_cert_attr(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::fuse_idevid_cert_attr[{}]",
@@ -3299,18 +3649,25 @@ impl SocPeripheral for SocGenerated {
         }
         self.fuse_idevid_cert_attr[index]
     }
-    fn write_fuse_idevid_cert_attr(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_idevid_cert_attr(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_idevid_cert_attr[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_idevid_cert_attr[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_idevid_cert_attr[index] = new_val;
     }
-    fn read_fuse_idevid_manuf_hsm_id(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_fuse_idevid_manuf_hsm_id(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::fuse_idevid_manuf_hsm_id[{}]",
@@ -3319,48 +3676,52 @@ impl SocPeripheral for SocGenerated {
         }
         self.fuse_idevid_manuf_hsm_id[index]
     }
-    fn write_fuse_idevid_manuf_hsm_id(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_idevid_manuf_hsm_id(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_idevid_manuf_hsm_id[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_idevid_manuf_hsm_id[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_idevid_manuf_hsm_id[index] = new_val;
     }
-    fn read_fuse_lms_revocation(&mut self) -> caliptra_emu_types::RvData {
+    fn read_fuse_lms_revocation(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::fuse_lms_revocation");
         }
         self.fuse_lms_revocation
     }
-    fn write_fuse_lms_revocation(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_fuse_lms_revocation(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_lms_revocation = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_lms_revocation;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_lms_revocation = new_val;
     }
     fn read_fuse_mldsa_revocation(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::FuseMldsaRevocation::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::fuse_mldsa_revocation");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.fuse_mldsa_revocation)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.fuse_mldsa_revocation)
     }
     fn write_fuse_mldsa_revocation(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::FuseMldsaRevocation::Register,
         >,
@@ -3368,27 +3729,27 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_mldsa_revocation = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_mldsa_revocation;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xf as caliptra_emu_types::RvData))
-            | (write_val & (0xf as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xf as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xf as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_mldsa_revocation = new_val;
     }
     fn read_fuse_soc_stepping_id(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::FuseSocSteppingId::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::fuse_soc_stepping_id");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.fuse_soc_stepping_id)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.fuse_soc_stepping_id)
     }
     fn write_fuse_soc_stepping_id(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::FuseSocSteppingId::Register,
         >,
@@ -3396,44 +3757,51 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_soc_stepping_id = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_soc_stepping_id;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_soc_stepping_id = new_val;
     }
-    fn read_fuse_manuf_dbg_unlock_token(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_fuse_manuf_dbg_unlock_token(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read soc::fuse_manuf_dbg_unlock_token[{}]" , index);
         }
         self.fuse_manuf_dbg_unlock_token[index]
     }
-    fn write_fuse_manuf_dbg_unlock_token(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_manuf_dbg_unlock_token(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_manuf_dbg_unlock_token[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_manuf_dbg_unlock_token[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_manuf_dbg_unlock_token[index] = new_val;
     }
     fn read_fuse_pqc_key_type(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::FusePqcKeyType::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::fuse_pqc_key_type");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.fuse_pqc_key_type)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.fuse_pqc_key_type)
     }
     fn write_fuse_pqc_key_type(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::FusePqcKeyType::Register,
         >,
@@ -3444,14 +3812,17 @@ impl SocPeripheral for SocGenerated {
                 val.reg.get()
             );
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_pqc_key_type;
         let mut new_val = current_val;
-        new_val = (new_val & !(3 as caliptra_emu_types::RvData))
-            | (write_val & (3 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(3 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (3 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_pqc_key_type = new_val;
     }
-    fn read_fuse_soc_manifest_svn(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_fuse_soc_manifest_svn(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::fuse_soc_manifest_svn[{}]",
@@ -3460,20 +3831,24 @@ impl SocPeripheral for SocGenerated {
         }
         self.fuse_soc_manifest_svn[index]
     }
-    fn write_fuse_soc_manifest_svn(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_fuse_soc_manifest_svn(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_soc_manifest_svn[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_soc_manifest_svn[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_soc_manifest_svn[index] = new_val;
     }
     fn read_fuse_soc_manifest_max_svn(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
     > {
@@ -3482,11 +3857,13 @@ impl SocPeripheral for SocGenerated {
                 "[EMU] Generated default register handler: read soc::fuse_soc_manifest_max_svn"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.fuse_soc_manifest_max_svn)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.fuse_soc_manifest_max_svn,
+        )
     }
     fn write_fuse_soc_manifest_max_svn(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
         >,
@@ -3494,14 +3871,14 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::fuse_soc_manifest_max_svn = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.fuse_soc_manifest_max_svn;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xff as caliptra_emu_types::RvData))
-            | (write_val & (0xff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.fuse_soc_manifest_max_svn = new_val;
     }
-    fn read_ss_caliptra_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_caliptra_base_addr_l(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::ss_caliptra_base_addr_l"
@@ -3509,18 +3886,21 @@ impl SocPeripheral for SocGenerated {
         }
         self.ss_caliptra_base_addr_l
     }
-    fn write_ss_caliptra_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_caliptra_base_addr_l(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_caliptra_base_addr_l = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_caliptra_base_addr_l;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_caliptra_base_addr_l = new_val;
     }
-    fn read_ss_caliptra_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_caliptra_base_addr_h(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::ss_caliptra_base_addr_h"
@@ -3528,52 +3908,57 @@ impl SocPeripheral for SocGenerated {
         }
         self.ss_caliptra_base_addr_h
     }
-    fn write_ss_caliptra_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_caliptra_base_addr_h(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_caliptra_base_addr_h = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_caliptra_base_addr_h;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_caliptra_base_addr_h = new_val;
     }
-    fn read_ss_mci_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_mci_base_addr_l(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::ss_mci_base_addr_l");
         }
         self.ss_mci_base_addr_l
     }
-    fn write_ss_mci_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_mci_base_addr_l(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_mci_base_addr_l = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_mci_base_addr_l;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_mci_base_addr_l = new_val;
     }
-    fn read_ss_mci_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_mci_base_addr_h(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::ss_mci_base_addr_h");
         }
         self.ss_mci_base_addr_h
     }
-    fn write_ss_mci_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_mci_base_addr_h(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_mci_base_addr_h = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_mci_base_addr_h;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_mci_base_addr_h = new_val;
     }
-    fn read_ss_recovery_ifc_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_recovery_ifc_base_addr_l(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::ss_recovery_ifc_base_addr_l"
@@ -3581,18 +3966,23 @@ impl SocPeripheral for SocGenerated {
         }
         self.ss_recovery_ifc_base_addr_l
     }
-    fn write_ss_recovery_ifc_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_recovery_ifc_base_addr_l(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_recovery_ifc_base_addr_l = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_recovery_ifc_base_addr_l;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_recovery_ifc_base_addr_l = new_val;
     }
-    fn read_ss_recovery_ifc_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_recovery_ifc_base_addr_h(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::ss_recovery_ifc_base_addr_h"
@@ -3600,52 +3990,61 @@ impl SocPeripheral for SocGenerated {
         }
         self.ss_recovery_ifc_base_addr_h
     }
-    fn write_ss_recovery_ifc_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_recovery_ifc_base_addr_h(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_recovery_ifc_base_addr_h = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_recovery_ifc_base_addr_h;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_recovery_ifc_base_addr_h = new_val;
     }
-    fn read_ss_otp_fc_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_otp_fc_base_addr_l(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::ss_otp_fc_base_addr_l");
         }
         self.ss_otp_fc_base_addr_l
     }
-    fn write_ss_otp_fc_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_otp_fc_base_addr_l(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_otp_fc_base_addr_l = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_otp_fc_base_addr_l;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_otp_fc_base_addr_l = new_val;
     }
-    fn read_ss_otp_fc_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_otp_fc_base_addr_h(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::ss_otp_fc_base_addr_h");
         }
         self.ss_otp_fc_base_addr_h
     }
-    fn write_ss_otp_fc_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_otp_fc_base_addr_h(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_otp_fc_base_addr_h = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_otp_fc_base_addr_h;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_otp_fc_base_addr_h = new_val;
     }
-    fn read_ss_uds_seed_base_addr_l(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_uds_seed_base_addr_l(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::ss_uds_seed_base_addr_l"
@@ -3653,18 +4052,21 @@ impl SocPeripheral for SocGenerated {
         }
         self.ss_uds_seed_base_addr_l
     }
-    fn write_ss_uds_seed_base_addr_l(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_uds_seed_base_addr_l(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_uds_seed_base_addr_l = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_uds_seed_base_addr_l;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_uds_seed_base_addr_l = new_val;
     }
-    fn read_ss_uds_seed_base_addr_h(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_uds_seed_base_addr_h(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::ss_uds_seed_base_addr_h"
@@ -3672,20 +4074,23 @@ impl SocPeripheral for SocGenerated {
         }
         self.ss_uds_seed_base_addr_h
     }
-    fn write_ss_uds_seed_base_addr_h(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_uds_seed_base_addr_h(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_uds_seed_base_addr_h = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_uds_seed_base_addr_h;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_uds_seed_base_addr_h = new_val;
     }
     fn read_ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset(
         &mut self,
-    ) -> caliptra_emu_types::RvData {
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read soc::ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset");
         }
@@ -3693,19 +4098,21 @@ impl SocPeripheral for SocGenerated {
     }
     fn write_ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_prod_debug_unlock_auth_pk_hash_reg_bank_offset = new_val;
     }
-    fn read_ss_num_of_prod_debug_unlock_auth_pk_hashes(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_num_of_prod_debug_unlock_auth_pk_hashes(
+        &mut self,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read soc::ss_num_of_prod_debug_unlock_auth_pk_hashes");
         }
@@ -3713,30 +4120,30 @@ impl SocPeripheral for SocGenerated {
     }
     fn write_ss_num_of_prod_debug_unlock_auth_pk_hashes(
         &mut self,
-        val: caliptra_emu_types::RvData,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_num_of_prod_debug_unlock_auth_pk_hashes = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_num_of_prod_debug_unlock_auth_pk_hashes;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_num_of_prod_debug_unlock_auth_pk_hashes = new_val;
     }
     fn read_ss_debug_intent(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::SsDebugIntent::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::ss_debug_intent");
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.ss_debug_intent)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(self.ss_debug_intent)
     }
-    fn read_ss_caliptra_dma_axi_user(&mut self) -> caliptra_emu_types::RvData {
+    fn read_ss_caliptra_dma_axi_user(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::ss_caliptra_dma_axi_user"
@@ -3744,18 +4151,24 @@ impl SocPeripheral for SocGenerated {
         }
         self.ss_caliptra_dma_axi_user
     }
-    fn write_ss_caliptra_dma_axi_user(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_ss_caliptra_dma_axi_user(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_caliptra_dma_axi_user = 0x{:08x}" , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_caliptra_dma_axi_user;
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_caliptra_dma_axi_user = new_val;
     }
-    fn read_ss_strap_generic(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_ss_strap_generic(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::ss_strap_generic[{}]",
@@ -3764,20 +4177,24 @@ impl SocPeripheral for SocGenerated {
         }
         self.ss_strap_generic[index]
     }
-    fn write_ss_strap_generic(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_ss_strap_generic(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_strap_generic[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_strap_generic[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_strap_generic[index] = new_val;
     }
     fn read_ss_dbg_manuf_service_reg_req(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
     > {
@@ -3786,11 +4203,13 @@ impl SocPeripheral for SocGenerated {
                 "[EMU] Generated default register handler: read soc::ss_dbg_manuf_service_reg_req"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.ss_dbg_manuf_service_reg_req)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.ss_dbg_manuf_service_reg_req,
+        )
     }
     fn write_ss_dbg_manuf_service_reg_req(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
         >,
@@ -3798,20 +4217,20 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_dbg_manuf_service_reg_req = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_dbg_manuf_service_reg_req;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_dbg_manuf_service_reg_req = new_val;
     }
     fn read_ss_dbg_manuf_service_reg_rsp(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
     > {
@@ -3820,11 +4239,13 @@ impl SocPeripheral for SocGenerated {
                 "[EMU] Generated default register handler: read soc::ss_dbg_manuf_service_reg_rsp"
             );
         }
-        caliptra_emu_bus::ReadWriteRegister::new(self.ss_dbg_manuf_service_reg_rsp)
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
+            self.ss_dbg_manuf_service_reg_rsp,
+        )
     }
     fn write_ss_dbg_manuf_service_reg_rsp(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
         >,
@@ -3832,32 +4253,35 @@ impl SocPeripheral for SocGenerated {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_dbg_manuf_service_reg_rsp = 0x{:08x}" , val . reg . get ());
         }
-        let write_val = (val.reg.get()) as caliptra_emu_types::RvData;
+        let write_val = (val.reg.get()) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_dbg_manuf_service_reg_rsp;
         let mut new_val = current_val;
-        new_val = (new_val & !(1 as caliptra_emu_types::RvData))
-            | (write_val & (1 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(2 as caliptra_emu_types::RvData))
-            | (write_val & (2 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(4 as caliptra_emu_types::RvData))
-            | (write_val & (4 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(8 as caliptra_emu_types::RvData))
-            | (write_val & (8 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x10 as caliptra_emu_types::RvData))
-            | (write_val & (0x10 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x20 as caliptra_emu_types::RvData))
-            | (write_val & (0x20 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x40 as caliptra_emu_types::RvData))
-            | (write_val & (0x40 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x80 as caliptra_emu_types::RvData))
-            | (write_val & (0x80 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x100 as caliptra_emu_types::RvData))
-            | (write_val & (0x100 as caliptra_emu_types::RvData));
-        new_val = (new_val & !(0x200 as caliptra_emu_types::RvData))
-            | (write_val & (0x200 as caliptra_emu_types::RvData));
+        new_val = (new_val & !(1 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (1 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(2 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (2 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(4 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (4 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(8 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (8 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x10 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x10 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x20 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x20 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x40 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x40 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x80 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x80 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x100 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x100 as caliptra_core_tools::caliptra_emu_types::RvData));
+        new_val = (new_val & !(0x200 as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0x200 as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_dbg_manuf_service_reg_rsp = new_val;
     }
-    fn read_ss_soc_dbg_unlock_level(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_ss_soc_dbg_unlock_level(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::ss_soc_dbg_unlock_level[{}]",
@@ -3866,18 +4290,25 @@ impl SocPeripheral for SocGenerated {
         }
         self.ss_soc_dbg_unlock_level[index]
     }
-    fn write_ss_soc_dbg_unlock_level(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_ss_soc_dbg_unlock_level(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_soc_dbg_unlock_level[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_soc_dbg_unlock_level[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_soc_dbg_unlock_level[index] = new_val;
     }
-    fn read_ss_generic_fw_exec_ctrl(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_ss_generic_fw_exec_ctrl(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read soc::ss_generic_fw_exec_ctrl[{}]",
@@ -3886,35 +4317,42 @@ impl SocPeripheral for SocGenerated {
         }
         self.ss_generic_fw_exec_ctrl[index]
     }
-    fn write_ss_generic_fw_exec_ctrl(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_ss_generic_fw_exec_ctrl(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write soc::ss_generic_fw_exec_ctrl[{}] = 0x{:08x}" , index , val);
         }
-        let write_val = (val) as caliptra_emu_types::RvData;
+        let write_val = (val) as caliptra_core_tools::caliptra_emu_types::RvData;
         let current_val = self.ss_generic_fw_exec_ctrl[index];
         let mut new_val = current_val;
-        new_val = (new_val & !(0xffff_ffff as caliptra_emu_types::RvData))
-            | (write_val & (0xffff_ffff as caliptra_emu_types::RvData));
+        new_val = (new_val & !(0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData))
+            | (write_val & (0xffff_ffff as caliptra_core_tools::caliptra_emu_types::RvData));
         self.ss_generic_fw_exec_ctrl[index] = new_val;
     }
 }
 pub struct SocBus {
     pub periph: Box<dyn SocPeripheral>,
 }
-impl caliptra_emu_bus::Bus for SocBus {
+impl caliptra_core_tools::caliptra_emu_bus::Bus for SocBus {
     fn read(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-    ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+    ) -> Result<
+        caliptra_core_tools::caliptra_emu_types::RvData,
+        caliptra_core_tools::caliptra_emu_bus::BusError,
+    > {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
         match addr {
-            0..4 => Ok(caliptra_emu_types::RvData::from(
+            0..4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_hw_error_fatal().reg.get(),
             )),
-            4..8 => Ok(caliptra_emu_types::RvData::from(
+            4..8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_hw_error_non_fatal().reg.get(),
             )),
             8..0xc => Ok(self.periph.read_cptra_fw_error_fatal()),
@@ -3925,44 +4363,44 @@ impl caliptra_emu_bus::Bus for SocBus {
                 .periph
                 .read_cptra_fw_extended_error_info((addr as usize - 0x18) / 4)),
             0x38..0x3c => Ok(self.periph.read_cptra_boot_status()),
-            0x3c..0x40 => Ok(caliptra_emu_types::RvData::from(
+            0x3c..0x40 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_flow_status().reg.get(),
             )),
-            0x40..0x44 => Ok(caliptra_emu_types::RvData::from(
+            0x40..0x44 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_reset_reason().reg.get(),
             )),
-            0x44..0x48 => Ok(caliptra_emu_types::RvData::from(
+            0x44..0x48 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_security_state().reg.get(),
             )),
             0x48..0x5c => Ok(self
                 .periph
                 .read_cptra_mbox_valid_axi_user((addr as usize - 0x48) / 4)),
-            0x5c..0x70 => Ok(caliptra_emu_types::RvData::from(
+            0x5c..0x70 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph
                     .read_cptra_mbox_axi_user_lock((addr as usize - 0x5c) / 4)
                     .reg
                     .get(),
             )),
             0x70..0x74 => Ok(self.periph.read_cptra_trng_valid_axi_user()),
-            0x74..0x78 => Ok(caliptra_emu_types::RvData::from(
+            0x74..0x78 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_trng_axi_user_lock().reg.get(),
             )),
             0x78..0xa8 => Ok(self.periph.read_cptra_trng_data((addr as usize - 0x78) / 4)),
-            0xa8..0xac => Ok(caliptra_emu_types::RvData::from(
+            0xa8..0xac => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_trng_ctrl().reg.get(),
             )),
-            0xac..0xb0 => Ok(caliptra_emu_types::RvData::from(
+            0xac..0xb0 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_trng_status().reg.get(),
             )),
-            0xb0..0xb4 => Ok(caliptra_emu_types::RvData::from(
+            0xb0..0xb4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_fuse_wr_done().reg.get(),
             )),
             0xb4..0xb8 => Ok(self.periph.read_cptra_timer_config()),
-            0xb8..0xbc => Ok(caliptra_emu_types::RvData::from(
+            0xb8..0xbc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_bootfsm_go().reg.get(),
             )),
             0xbc..0xc0 => Ok(self.periph.read_cptra_dbg_manuf_service_reg()),
-            0xc0..0xc4 => Ok(caliptra_emu_types::RvData::from(
+            0xc0..0xc4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_clk_gating_en().reg.get(),
             )),
             0xc4..0xcc => Ok(self
@@ -3971,68 +4409,68 @@ impl caliptra_emu_bus::Bus for SocBus {
             0xcc..0xd4 => Ok(self
                 .periph
                 .read_cptra_generic_output_wires((addr as usize - 0xcc) / 4)),
-            0xd4..0xd8 => Ok(caliptra_emu_types::RvData::from(
+            0xd4..0xd8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_hw_rev_id().reg.get(),
             )),
             0xd8..0xe0 => Ok(self.periph.read_cptra_fw_rev_id((addr as usize - 0xd8) / 4)),
-            0xe0..0xe4 => Ok(caliptra_emu_types::RvData::from(
+            0xe0..0xe4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_hw_config().reg.get(),
             )),
-            0xe4..0xe8 => Ok(caliptra_emu_types::RvData::from(
+            0xe4..0xe8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_wdt_timer1_en().reg.get(),
             )),
-            0xe8..0xec => Ok(caliptra_emu_types::RvData::from(
+            0xe8..0xec => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_wdt_timer1_ctrl().reg.get(),
             )),
             0xec..0xf4 => Ok(self
                 .periph
                 .read_cptra_wdt_timer1_timeout_period((addr as usize - 0xec) / 4)),
-            0xf4..0xf8 => Ok(caliptra_emu_types::RvData::from(
+            0xf4..0xf8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_wdt_timer2_en().reg.get(),
             )),
-            0xf8..0xfc => Ok(caliptra_emu_types::RvData::from(
+            0xf8..0xfc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_wdt_timer2_ctrl().reg.get(),
             )),
             0xfc..0x104 => Ok(self
                 .periph
                 .read_cptra_wdt_timer2_timeout_period((addr as usize - 0xfc) / 4)),
-            0x104..0x108 => Ok(caliptra_emu_types::RvData::from(
+            0x104..0x108 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_wdt_status().reg.get(),
             )),
             0x108..0x10c => Ok(self.periph.read_cptra_fuse_valid_axi_user()),
-            0x10c..0x110 => Ok(caliptra_emu_types::RvData::from(
+            0x10c..0x110 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_fuse_axi_user_lock().reg.get(),
             )),
             0x110..0x118 => Ok(self.periph.read_cptra_wdt_cfg((addr as usize - 0x110) / 4)),
-            0x118..0x11c => Ok(caliptra_emu_types::RvData::from(
+            0x118..0x11c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_i_trng_entropy_config_0().reg.get(),
             )),
-            0x11c..0x120 => Ok(caliptra_emu_types::RvData::from(
+            0x11c..0x120 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_i_trng_entropy_config_1().reg.get(),
             )),
             0x120..0x128 => Ok(self.periph.read_cptra_rsvd_reg((addr as usize - 0x120) / 4)),
             0x128..0x12c => Ok(self.periph.read_cptra_hw_capabilities()),
             0x12c..0x130 => Ok(self.periph.read_cptra_fw_capabilities()),
-            0x130..0x134 => Ok(caliptra_emu_types::RvData::from(
+            0x130..0x134 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_cap_lock().reg.get(),
             )),
             0x140..0x170 => Ok(self
                 .periph
                 .read_cptra_owner_pk_hash((addr as usize - 0x140) / 4)),
-            0x170..0x174 => Ok(caliptra_emu_types::RvData::from(
+            0x170..0x174 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_cptra_owner_pk_hash_lock().reg.get(),
             )),
             0x260..0x290 => Ok(self
                 .periph
                 .read_fuse_vendor_pk_hash((addr as usize - 0x260) / 4)),
-            0x290..0x294 => Ok(caliptra_emu_types::RvData::from(
+            0x290..0x294 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_fuse_ecc_revocation().reg.get(),
             )),
             0x2b4..0x2b8 => Ok(self.periph.read_fuse_fmc_key_manifest_svn()),
             0x2b8..0x2c8 => Ok(self
                 .periph
                 .read_fuse_runtime_svn((addr as usize - 0x2b8) / 4)),
-            0x2c8..0x2cc => Ok(caliptra_emu_types::RvData::from(
+            0x2c8..0x2cc => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_fuse_anti_rollback_disable().reg.get(),
             )),
             0x2cc..0x32c => Ok(self
@@ -4042,22 +4480,22 @@ impl caliptra_emu_bus::Bus for SocBus {
                 .periph
                 .read_fuse_idevid_manuf_hsm_id((addr as usize - 0x32c) / 4)),
             0x340..0x344 => Ok(self.periph.read_fuse_lms_revocation()),
-            0x344..0x348 => Ok(caliptra_emu_types::RvData::from(
+            0x344..0x348 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_fuse_mldsa_revocation().reg.get(),
             )),
-            0x348..0x34c => Ok(caliptra_emu_types::RvData::from(
+            0x348..0x34c => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_fuse_soc_stepping_id().reg.get(),
             )),
             0x34c..0x38c => Ok(self
                 .periph
                 .read_fuse_manuf_dbg_unlock_token((addr as usize - 0x34c) / 4)),
-            0x38c..0x390 => Ok(caliptra_emu_types::RvData::from(
+            0x38c..0x390 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_fuse_pqc_key_type().reg.get(),
             )),
             0x390..0x3a0 => Ok(self
                 .periph
                 .read_fuse_soc_manifest_svn((addr as usize - 0x390) / 4)),
-            0x3a0..0x3a4 => Ok(caliptra_emu_types::RvData::from(
+            0x3a0..0x3a4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_fuse_soc_manifest_max_svn().reg.get(),
             )),
             0x500..0x504 => Ok(self.periph.read_ss_caliptra_base_addr_l()),
@@ -4076,17 +4514,17 @@ impl caliptra_emu_bus::Bus for SocBus {
             0x52c..0x530 => Ok(self
                 .periph
                 .read_ss_num_of_prod_debug_unlock_auth_pk_hashes()),
-            0x530..0x534 => Ok(caliptra_emu_types::RvData::from(
+            0x530..0x534 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_ss_debug_intent().reg.get(),
             )),
             0x534..0x538 => Ok(self.periph.read_ss_caliptra_dma_axi_user()),
             0x5a0..0x5b0 => Ok(self
                 .periph
                 .read_ss_strap_generic((addr as usize - 0x5a0) / 4)),
-            0x5c0..0x5c4 => Ok(caliptra_emu_types::RvData::from(
+            0x5c0..0x5c4 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_ss_dbg_manuf_service_reg_req().reg.get(),
             )),
-            0x5c4..0x5c8 => Ok(caliptra_emu_types::RvData::from(
+            0x5c4..0x5c8 => Ok(caliptra_core_tools::caliptra_emu_types::RvData::from(
                 self.periph.read_ss_dbg_manuf_service_reg_rsp().reg.get(),
             )),
             0x5c8..0x5d0 => Ok(self
@@ -4095,27 +4533,29 @@ impl caliptra_emu_bus::Bus for SocBus {
             0x5d0..0x5e0 => Ok(self
                 .periph
                 .read_ss_generic_fw_exec_ctrl((addr as usize - 0x5d0) / 4)),
-            _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::LoadAccessFault),
         }
     }
     fn write(
         &mut self,
-        size: caliptra_emu_types::RvSize,
-        addr: caliptra_emu_types::RvAddr,
-        val: caliptra_emu_types::RvData,
-    ) -> Result<(), caliptra_emu_bus::BusError> {
-        if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
-            return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
+        size: caliptra_core_tools::caliptra_emu_types::RvSize,
+        addr: caliptra_core_tools::caliptra_emu_types::RvAddr,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+    ) -> Result<(), caliptra_core_tools::caliptra_emu_bus::BusError> {
+        if addr & 0x3 != 0 || size != caliptra_core_tools::caliptra_emu_types::RvSize::Word {
+            return Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }
         match addr {
             0..4 => {
-                self.periph
-                    .write_cptra_hw_error_fatal(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_hw_error_fatal(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             4..8 => {
-                self.periph
-                    .write_cptra_hw_error_non_fatal(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_hw_error_non_fatal(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             8..0xc => {
@@ -4144,8 +4584,9 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0x3c..0x40 => {
-                self.periph
-                    .write_cptra_flow_status(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_flow_status(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x40..0x44 => Ok(()),
@@ -4157,7 +4598,7 @@ impl caliptra_emu_bus::Bus for SocBus {
             }
             0x5c..0x70 => {
                 self.periph.write_cptra_mbox_axi_user_lock(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                     (addr as usize - 0x5c) / 4,
                 );
                 Ok(())
@@ -4167,8 +4608,9 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0x74..0x78 => {
-                self.periph
-                    .write_cptra_trng_axi_user_lock(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_trng_axi_user_lock(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x78..0xa8 => {
@@ -4177,18 +4619,21 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0xa8..0xac => {
-                self.periph
-                    .write_cptra_trng_ctrl(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_trng_ctrl(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xac..0xb0 => {
-                self.periph
-                    .write_cptra_trng_status(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_trng_status(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xb0..0xb4 => {
-                self.periph
-                    .write_cptra_fuse_wr_done(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_fuse_wr_done(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xb4..0xb8 => {
@@ -4196,8 +4641,9 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0xb8..0xbc => {
-                self.periph
-                    .write_cptra_bootfsm_go(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_bootfsm_go(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xbc..0xc0 => {
@@ -4205,8 +4651,9 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0xc0..0xc4 => {
-                self.periph
-                    .write_cptra_clk_gating_en(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_clk_gating_en(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xc4..0xcc => Ok(()),
@@ -4223,13 +4670,15 @@ impl caliptra_emu_bus::Bus for SocBus {
             }
             0xe0..0xe4 => Ok(()),
             0xe4..0xe8 => {
-                self.periph
-                    .write_cptra_wdt_timer1_en(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_wdt_timer1_en(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xe8..0xec => {
-                self.periph
-                    .write_cptra_wdt_timer1_ctrl(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_wdt_timer1_ctrl(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xec..0xf4 => {
@@ -4238,13 +4687,15 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0xf4..0xf8 => {
-                self.periph
-                    .write_cptra_wdt_timer2_en(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_wdt_timer2_en(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xf8..0xfc => {
-                self.periph
-                    .write_cptra_wdt_timer2_ctrl(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_wdt_timer2_ctrl(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0xfc..0x104 => {
@@ -4253,8 +4704,9 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0x104..0x108 => {
-                self.periph
-                    .write_cptra_wdt_status(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_wdt_status(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x108..0x10c => {
@@ -4262,8 +4714,9 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0x10c..0x110 => {
-                self.periph
-                    .write_cptra_fuse_axi_user_lock(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_fuse_axi_user_lock(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x110..0x118 => {
@@ -4273,13 +4726,13 @@ impl caliptra_emu_bus::Bus for SocBus {
             }
             0x118..0x11c => {
                 self.periph.write_cptra_i_trng_entropy_config_0(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x11c..0x120 => {
                 self.periph.write_cptra_i_trng_entropy_config_1(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -4297,8 +4750,9 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0x130..0x134 => {
-                self.periph
-                    .write_cptra_cap_lock(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_cap_lock(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x140..0x170 => {
@@ -4307,8 +4761,9 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0x170..0x174 => {
-                self.periph
-                    .write_cptra_owner_pk_hash_lock(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_cptra_owner_pk_hash_lock(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x200..0x240 => {
@@ -4327,8 +4782,9 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0x290..0x294 => {
-                self.periph
-                    .write_fuse_ecc_revocation(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_fuse_ecc_revocation(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x2b4..0x2b8 => {
@@ -4342,7 +4798,7 @@ impl caliptra_emu_bus::Bus for SocBus {
             }
             0x2c8..0x2cc => {
                 self.periph.write_fuse_anti_rollback_disable(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -4361,13 +4817,15 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0x344..0x348 => {
-                self.periph
-                    .write_fuse_mldsa_revocation(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_fuse_mldsa_revocation(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x348..0x34c => {
-                self.periph
-                    .write_fuse_soc_stepping_id(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_fuse_soc_stepping_id(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x34c..0x38c => {
@@ -4376,8 +4834,9 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0x38c..0x390 => {
-                self.periph
-                    .write_fuse_pqc_key_type(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_fuse_pqc_key_type(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x390..0x3a0 => {
@@ -4386,8 +4845,9 @@ impl caliptra_emu_bus::Bus for SocBus {
                 Ok(())
             }
             0x3a0..0x3a4 => {
-                self.periph
-                    .write_fuse_soc_manifest_max_svn(caliptra_emu_bus::ReadWriteRegister::new(val));
+                self.periph.write_fuse_soc_manifest_max_svn(
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
                 Ok(())
             }
             0x500..0x504 => {
@@ -4452,13 +4912,13 @@ impl caliptra_emu_bus::Bus for SocBus {
             }
             0x5c0..0x5c4 => {
                 self.periph.write_ss_dbg_manuf_service_reg_req(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
             0x5c4..0x5c8 => {
                 self.periph.write_ss_dbg_manuf_service_reg_rsp(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                    caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(val),
                 );
                 Ok(())
             }
@@ -4472,7 +4932,7 @@ impl caliptra_emu_bus::Bus for SocBus {
                     .write_ss_generic_fw_exec_ctrl(val, (addr as usize - 0x5d0) / 4);
                 Ok(())
             }
-            _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
+            _ => Err(caliptra_core_tools::caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
     fn poll(&mut self) {

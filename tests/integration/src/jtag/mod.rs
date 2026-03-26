@@ -8,9 +8,9 @@ mod test_uds;
 
 #[cfg(test)]
 mod test {
-    use caliptra_hw_model::jtag::{CsrReg, DmReg};
-    use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
-    use caliptra_hw_model::Fuses;
+    use caliptra_core_tools::caliptra_hw_model::jtag::{CsrReg, DmReg};
+    use caliptra_core_tools::caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
+    use caliptra_core_tools::caliptra_hw_model::Fuses;
     use mcu_builder::FirmwareBinaries;
     use mcu_config_fpga::FPGA_MEMORY_MAP;
     use mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel};

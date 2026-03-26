@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
-use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
-use caliptra_emu_cpu::Irq;
+use caliptra_core_tools::caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
+use caliptra_core_tools::caliptra_emu_cpu::Irq;
 use emulator_registers_generated::doe_mbox::{DoeMboxGenerated, DoeMboxPeripheral};
 use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
 use std::sync::{Arc, Mutex};
@@ -67,27 +67,27 @@ impl DoeMboxPeripheral for DummyDoeMbox {
         self.timer.schedule_poll_in(Self::DOE_MBOX_TICKS);
     }
 
-    fn read_doe_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
+    fn read_doe_mbox_dlen(&mut self) -> caliptra_core_tools::caliptra_emu_types::RvData {
         self.periph.inner.lock().unwrap().mbox_dlen.reg.get()
     }
-    fn write_doe_mbox_dlen(&mut self, val: caliptra_emu_types::RvData) {
+    fn write_doe_mbox_dlen(&mut self, val: caliptra_core_tools::caliptra_emu_types::RvData) {
         self.periph.inner.lock().unwrap().mbox_dlen.reg.set(val);
     }
 
     fn read_doe_mbox_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.periph.inner.lock().unwrap().mbox_status.reg.get(),
         )
     }
 
     fn write_doe_mbox_status(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
         >,
@@ -105,18 +105,18 @@ impl DoeMboxPeripheral for DummyDoeMbox {
 
     fn read_doe_mbox_event(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
+    ) -> caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
         u32,
         registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
     > {
-        caliptra_emu_bus::ReadWriteRegister::new(
+        caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister::new(
             self.periph.inner.lock().unwrap().mbox_event.reg.get(),
         )
     }
 
     fn write_doe_mbox_event(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
+        val: caliptra_core_tools::caliptra_emu_bus::ReadWriteRegister<
             u32,
             registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
         >,
@@ -129,11 +129,18 @@ impl DoeMboxPeripheral for DummyDoeMbox {
         self.timer.schedule_poll_in(1);
     }
 
-    fn read_doe_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_doe_mbox_sram(
+        &mut self,
+        index: usize,
+    ) -> caliptra_core_tools::caliptra_emu_types::RvData {
         self.periph.inner.lock().unwrap().read_doe_sram(index)
     }
 
-    fn write_doe_mbox_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_doe_mbox_sram(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         self.periph.inner.lock().unwrap().write_doe_sram(val, index);
     }
 }
@@ -287,7 +294,7 @@ impl DoeMboxInner {
             || (event_val & DoeMboxEvent::ResetReq::SET.value != 0)
     }
 
-    fn read_doe_sram(&self, index: usize) -> caliptra_emu_types::RvData {
+    fn read_doe_sram(&self, index: usize) -> caliptra_core_tools::caliptra_emu_types::RvData {
         if index >= self.max_sram_dword_size {
             panic!("Index out of bounds for DOE mailbox SRAM");
         }
@@ -299,7 +306,11 @@ impl DoeMboxInner {
         }
     }
 
-    fn write_doe_sram(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+    fn write_doe_sram(
+        &mut self,
+        val: caliptra_core_tools::caliptra_emu_types::RvData,
+        index: usize,
+    ) {
         if index >= self.max_sram_dword_size {
             panic!("Index out of bounds for DOE mailbox SRAM");
         }
@@ -358,9 +369,9 @@ impl DoeMboxInner {
 mod tests {
     use super::*;
     use crate::McuRootBus;
-    use caliptra_emu_bus::{Bus, Clock};
-    use caliptra_emu_cpu::Pic;
-    use caliptra_emu_types::RvSize;
+    use caliptra_core_tools::caliptra_emu_bus::{Bus, Clock};
+    use caliptra_core_tools::caliptra_emu_cpu::Pic;
+    use caliptra_core_tools::caliptra_emu_types::RvSize;
     use emulator_registers_generated::root_bus::AutoRootBus;
     use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
     use registers_generated::doe_mbox::DOE_MBOX_ADDR;

@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::recovery;
-use caliptra_emu_bus::{Device, Event, EventData, RecoveryCommandCode};
+use caliptra_core_tools::caliptra_emu_bus::{Device, Event, EventData, RecoveryCommandCode};
 use std::sync::mpsc;
 
 pub struct Bmc {

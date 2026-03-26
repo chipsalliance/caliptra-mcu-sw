@@ -16,7 +16,7 @@ use crate::fuses::OwnerPkHash;
 use crate::hil::FlashStorage;
 use crate::otp::Otp;
 use crate::{McuRomBootStatus, RomEnv};
-use caliptra_api::mailbox::{
+use caliptra_core_firmware::caliptra_api::mailbox::{
     CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacResp, CmShaReqHdr,
     CmShaResp, CmStableKeyType, CommandId, EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader,
 };

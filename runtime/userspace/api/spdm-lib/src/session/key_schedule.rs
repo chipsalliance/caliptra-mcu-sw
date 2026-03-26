@@ -6,7 +6,7 @@
 
 use crate::protocol::SpdmVersion;
 use arrayvec::ArrayVec;
-use caliptra_api::mailbox::Cmk;
+use caliptra_core_firmware::caliptra_api::mailbox::Cmk;
 use libapi_caliptra::crypto::aes_gcm::{Aes256GcmTag, AesGcm};
 use libapi_caliptra::crypto::asym::ecdh::{CmKeyUsage, Ecdh, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE};
 use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
