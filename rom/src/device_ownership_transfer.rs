@@ -290,16 +290,14 @@ fn cm_derive_stable_key(
     }
 
     // Extract CMK (128 bytes = 32 u32 words) from response after the 8-byte header.
-    let mut cmk = [0u32; 32];
-    match resp_buf.get(8..8 + CMK_SIZE_BYTES) {
-        Some(src) => {
-            for (i, chunk) in src.chunks_exact(4).enumerate() {
-                cmk[i] = u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-            }
-        }
+    let cmk_bytes: [u8; CMK_SIZE_BYTES] = match resp_buf.get(8..8 + CMK_SIZE_BYTES) {
+        Some(src) => match src.try_into() {
+            Ok(arr) => arr,
+            Err(_) => return Err(McuError::ROM_COLD_BOOT_DOT_ERROR),
+        },
         None => return Err(McuError::ROM_COLD_BOOT_DOT_ERROR),
-    }
-    Ok(DotEffectiveKey(Cmk(cmk)))
+    };
+    Ok(DotEffectiveKey(Cmk(zerocopy::transmute!(cmk_bytes))))
 }
 
 /// Calls Caliptra to compute an HMAC.  Builds the request in a flat byte
@@ -382,15 +380,14 @@ fn cm_hmac(env: &mut RomEnv, key: &Cmk, data: &[u8]) -> McuResult<[u32; 16]> {
     }
 
     // Extract the 64-byte MAC starting after the var-size header (12 bytes).
-    let mut mac = [0u32; 16];
-    let mac_bytes = match resp_buf.get(12..76) {
-        Some(b) => b,
+    let mac_bytes: [u8; 64] = match resp_buf.get(12..76) {
+        Some(b) => match b.try_into() {
+            Ok(arr) => arr,
+            Err(_) => return Err(McuError::ROM_COLD_BOOT_DOT_ERROR),
+        },
         None => return Err(McuError::ROM_COLD_BOOT_DOT_ERROR),
     };
-    for (i, chunk) in mac_bytes.chunks_exact(4).enumerate() {
-        mac[i] = u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-    }
-    Ok(mac)
+    Ok(zerocopy::transmute!(mac_bytes))
 }
 
 /// Verifies the authenticity of a DOT blob using HMAC.

@@ -379,7 +379,7 @@ impl McuError {
         ),
         (
             ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR,
-            0x1_0017,
+            0x1_0018,
             "Firmware manifest DOT command processing error"
         ),
         (

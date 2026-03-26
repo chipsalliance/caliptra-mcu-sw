@@ -173,6 +173,14 @@ pub extern "C" fn rom_entry() -> ! {
             dot_flash: Some(dot_flash),
             mcu_image_header_size: core::mem::size_of::<mcu_rom_common::FwManifestDotSection>(),
             fw_manifest_dot_enabled: true,
+            otp_enable_integrity_check: true,
+            otp_enable_consistency_check: true,
+            cptra_mbox_axi_users: mbox_axi_users,
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            cptra_dma_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         });
     } else if cfg!(feature = "hw-2-1") {

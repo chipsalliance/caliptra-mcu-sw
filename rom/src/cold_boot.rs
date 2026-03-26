@@ -1089,18 +1089,18 @@ impl BootFlow for ColdBoot {
             mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
         }
 
-<<<<<<< HEAD
         let stash_rom_digest = params.stash_rom_digest.unwrap_or(true);
         Self::rom_digest_integrity(&mut env.soc_manager, stash_rom_digest);
 
         // --- Process optional firmware manifest DOT commands ---
-        // Always scan the start of MCU SRAM for the DOT manifest magic.
+        // Scan the start of MCU SRAM for the DOT manifest magic.
         // Skip during encrypted boot: in-place decryption overwrites the
         // header region so the manifest bytes would be invalid.
         //
         // This block must run before the `mci`/`soc` re-borrows below because
         // `process_fw_manifest_dot_commands` needs `&mut env` (for Caliptra
         // mailbox access when creating DOT blobs).
+        #[cfg(feature = "fw-manifest-dot")]
         if !encrypted_boot {
             let manifest_size =
                 core::mem::size_of::<device_ownership_transfer::FwManifestDotSection>();

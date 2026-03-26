@@ -4,11 +4,6 @@
 
 #[cfg(test)]
 mod test {
-    use std::{
-        collections::HashMap,
-        sync::{LazyLock, Mutex},
-    };
-
     use crate::test::{start_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK};
     use caliptra_api::{
         calc_checksum,
@@ -150,20 +145,8 @@ mod test {
         blob.with_hmac(&hmac)
     }
 
-    static HMACS: LazyLock<Mutex<HashMap<Vec<u8>, Vec<u8>>>> =
-        LazyLock::new(|| Mutex::new(HashMap::new()));
-
     fn compute_hmac_cached(blob: &[u8]) -> Vec<u8> {
-        let mut hmacs = HMACS.lock().unwrap();
-
-        match hmacs.get(blob) {
-            Some(h) => h.clone(),
-            None => {
-                let h = compute_hmac(blob);
-                hmacs.insert(blob.to_vec(), h.clone());
-                h
-            }
-        }
+        compute_hmac(blob)
     }
 
     /// Computes an HMAC of the blob using the Caliptra DOT stable key. Used to make HMACs of DOT blobs.
@@ -1061,7 +1044,7 @@ mod test {
     #[test]
     fn test_fw_manifest_dot_lock() {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_LOCK};
-        use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
+        use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1096,15 +1079,15 @@ mod test {
         );
 
         let otp_memory = hw.read_otp_memory();
-        let fuse_byte = otp_memory[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 1];
+        let fuse_byte = otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset];
         assert!(
             fuse_byte & 0x01 != 0,
             "Manifest LOCK should have burned the lock fuse, got 0x{:02x}",
             fuse_byte
         );
 
-        let fuse_array = &otp_memory[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 1
-            ..VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 33];
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
         let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
         assert_eq!(
             burned, 1,
@@ -1127,7 +1110,7 @@ mod test {
     #[test]
     fn test_fw_manifest_dot_lock_idempotent() {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_LOCK};
-        use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
+        use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -1163,8 +1146,8 @@ mod test {
 
         // Verify still exactly 1 fuse burned (no additional fuse from manifest)
         let otp_memory = hw.read_otp_memory();
-        let fuse_array = &otp_memory[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 1
-            ..VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 33];
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
         let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
         assert_eq!(
             burned, 1,
@@ -1187,7 +1170,7 @@ mod test {
     #[test]
     fn test_fw_manifest_dot_unlock() {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_UNLOCK};
-        use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
+        use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -1223,8 +1206,8 @@ mod test {
         );
 
         let otp_memory = hw.read_otp_memory();
-        let fuse_array = &otp_memory[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 1
-            ..VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 33];
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
         let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
         assert_eq!(
             burned, 2,
@@ -1240,7 +1223,7 @@ mod test {
     #[test]
     fn test_fw_manifest_dot_unlock_idempotent() {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_UNLOCK};
-        use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
+        use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1276,8 +1259,8 @@ mod test {
 
         // Verify 0 fuses burned (UNLOCK on EVEN state is a no-op)
         let otp_memory = hw.read_otp_memory();
-        let fuse_array = &otp_memory[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 1
-            ..VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 33];
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
         let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
         assert_eq!(
             burned, 0,
@@ -1293,7 +1276,7 @@ mod test {
     #[test]
     fn test_fw_manifest_dot_disable() {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_DISABLE};
-        use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
+        use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1328,7 +1311,7 @@ mod test {
         );
 
         let otp_memory = hw.read_otp_memory();
-        let fuse_byte = otp_memory[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 1];
+        let fuse_byte = otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset];
         assert!(
             fuse_byte & 0x01 != 0,
             "DISABLE should burn lock fuse, got 0x{:02x}",
@@ -1343,7 +1326,7 @@ mod test {
     #[test]
     fn test_fw_manifest_dot_no_magic_skipped() {
         use mcu_rom_common::McuBootMilestones;
-        use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
+        use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1380,8 +1363,8 @@ mod test {
 
         // No fuses should be burned (manifest was skipped)
         let otp_memory = hw.read_otp_memory();
-        let fuse_array = &otp_memory[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 1
-            ..VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 33];
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
         let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
         assert_eq!(
             burned, 0,
@@ -1397,7 +1380,7 @@ mod test {
     #[test]
     fn test_fw_manifest_dot_rotate() {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_ROTATE};
-        use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
+        use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1434,8 +1417,8 @@ mod test {
 
         // Verify 2 fuses burned (rotation = 2 fuse burns, preserving parity)
         let otp_memory = hw.read_otp_memory();
-        let fuse_array = &otp_memory[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 1
-            ..VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 33];
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
         let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
         assert_eq!(burned, 2, "ROTATE should burn 2 fuses, found {}", burned);
 
@@ -1447,7 +1430,7 @@ mod test {
     #[test]
     fn test_fw_manifest_dot_rotate_idempotent() {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_ROTATE};
-        use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
+        use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -1484,8 +1467,8 @@ mod test {
 
         // Verify still exactly 1 fuse burned (rotation not applied)
         let otp_memory = hw.read_otp_memory();
-        let fuse_array = &otp_memory[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 1
-            ..VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 33];
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
         let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
         assert_eq!(
             burned, 1,

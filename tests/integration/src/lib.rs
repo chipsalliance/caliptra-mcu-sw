@@ -118,8 +118,8 @@ mod test {
 
     // only build the default ROM once
     pub static ROM: LazyLock<PathBuf> = LazyLock::new(|| get_or_compile_rom(""));
-    pub static ROM_FW_MANIFEST_DOT: LazyLock<PathBuf> =
-        LazyLock::new(|| get_or_compile_rom("test-fw-manifest-dot"));
+    pub static ROM_FW_MANIFEST_DOT: LazyLock<Vec<u8>> =
+        LazyLock::new(|| std::fs::read(get_or_compile_rom("test-fw-manifest-dot")).unwrap());
 
     pub static TEST_LOCK: LazyLock<Mutex<AtomicU32>> =
         LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
@@ -291,16 +291,15 @@ mod test {
         )
         .unwrap();
 
-        let mcu_rom_path = if params.firmware_prefix.is_some() {
+        let mcu_rom = if params.firmware_prefix.is_some() {
             ROM_FW_MANIFEST_DOT.clone()
         } else if let Some(f) = params.rom_feature {
-            compile_rom(f)
+            std::fs::read(compile_rom(f)).unwrap()
         } else if params.rom_only && params.feature.is_some() {
-            compile_rom(params.feature.unwrap())
+            std::fs::read(compile_rom(params.feature.unwrap())).unwrap()
         } else {
-            ROM.to_path_buf()
+            std::fs::read(ROM.to_path_buf()).unwrap()
         };
-        let mcu_rom = std::fs::read(mcu_rom_path).unwrap();
         let soc_manifest = std::fs::read(
             builder
                 .get_soc_manifest(None)
@@ -340,14 +339,7 @@ mod test {
             mcu_runtime,
             network_rom,
         } = match FirmwareBinaries::from_env() {
-            Ok(binaries) => {
-                // NOTE: firmware_prefix is not supported with prebuilt binaries because the
-                // SOC manifest digest must cover the prefixed firmware. Tests that use
-                // firmware_prefix must not set a `feature` that has prebuilt binaries.
-                assert!(
-                    params.firmware_prefix.is_none() || params.feature.is_none(),
-                    "firmware_prefix with prebuilt feature binaries is not supported"
-                );
+            Ok(binaries) if params.firmware_prefix.is_none() => {
                 prebuilt_binaries(&params, binaries)
             }
             _ => {
