@@ -36,8 +36,7 @@ jobs:
         run: cargo xtask precheckin
 
   build-firmware:
-    # Don't re-use the machine instance shape with non-big-disk jobs, they will steal the worker we need.
-    runs-on: [e2-standard-32, big-disk]
+    runs-on: [e2-standard-16-big-disk]
     timeout-minutes: 60
 
     env:
