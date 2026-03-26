@@ -461,18 +461,18 @@ fn main() {
             mcu_cfgs,
             pldm_manifest,
         } => mcu_builder::all_build(mcu_builder::AllBuildArgs {
-            output: output.as_deref(),
-            platform: platform.as_deref(),
-            rom_features: rom_features.as_deref(),
-            runtime_features: runtime_features.as_deref(),
+            output: output.clone(),
+            platform: platform.clone(),
+            rom_features: rom_features.clone(),
+            runtime_features: runtime_features.clone(),
             separate_runtimes: *separate_runtimes,
             soc_images: soc_images.clone(),
             mcu_cfgs: mcu_cfgs.clone(),
-            pldm_manifest: pldm_manifest.as_deref(),
+            pldm_manifest: pldm_manifest.clone(),
         }),
         Commands::EmulatorBuild { output } => {
             mcu_builder::emulator_build(mcu_builder::EmulatorBuildArgs {
-                output: output.as_deref(),
+                output: output.clone(),
             })
         }
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),

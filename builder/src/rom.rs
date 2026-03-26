@@ -12,6 +12,7 @@ use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
 use mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 
+/// Build ROM file for a given `platform` with a set of `features` into a `target_dir`.
 pub fn rom_build(
     platform: Option<String>,
     features: Option<String>,
