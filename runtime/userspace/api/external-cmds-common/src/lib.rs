@@ -13,6 +13,16 @@ pub const MAX_UID_LEN: usize = 32;
 // TODO: Replace with imported constant from Caliptra core crate when available.
 pub const MAX_ATTESTED_CSR_DATA_LEN: usize = 12800;
 
+// Request Debug Unlock / Authorize Debug Unlock Token (external_mctp_vdm_cmds.md)
+pub const DEBUG_UNLOCK_LEVEL_MIN: u8 = 1;
+pub const DEBUG_UNLOCK_LEVEL_MAX: u8 = 8;
+pub const UNIQUE_DEVICE_ID_LEN: usize = 32;
+pub const DEBUG_UNLOCK_CHALLENGE_LEN: usize = 48;
+pub const DEBUG_UNLOCK_ECC_PUBLIC_KEY_DWORDS: usize = 24;
+pub const DEBUG_UNLOCK_MLDSA_PUBLIC_KEY_DWORDS: usize = 648;
+pub const DEBUG_UNLOCK_ECC_SIGNATURE_DWORDS: usize = 24;
+pub const DEBUG_UNLOCK_MLDSA_SIGNATURE_DWORDS: usize = 1157;
+
 /// Common error type for unified commands.
 #[derive(Debug)]
 pub enum CommandError {
@@ -74,6 +84,78 @@ pub struct DeviceCapabilities {
     pub mcu_rt: [u8; 8],       // Bytes [16:23]
     pub mcu_rom: [u8; 4],      // Bytes [24:27]
     pub reserved: [u8; 4],     // Bytes [28:31]
+}
+
+/// Request payload for Request Debug Unlock (command 0x0A).
+/// Byte layout: length (u32), unlock_level (u8), reserved (u8[3]).
+#[repr(C)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct RequestDebugUnlockReq {
+    pub length_dwords: u32,
+    pub unlock_level: u8,
+    pub reserved: [u8; 3],
+}
+
+/// Response payload for Request Debug Unlock (command 0x0A).
+/// Byte layout: completion_code (u32), length (u32), unique_device_identifier (u8[32]), challenge (u8[48]).
+#[repr(C)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestDebugUnlockResp {
+    pub completion_code: u32,
+    pub length_dwords: u32,
+    pub unique_device_identifier: [u8; UNIQUE_DEVICE_ID_LEN],
+    pub challenge: [u8; DEBUG_UNLOCK_CHALLENGE_LEN],
+}
+
+impl Default for RequestDebugUnlockResp {
+    fn default() -> Self {
+        Self {
+            completion_code: 0,
+            length_dwords: 0,
+            unique_device_identifier: [0u8; UNIQUE_DEVICE_ID_LEN],
+            challenge: [0u8; DEBUG_UNLOCK_CHALLENGE_LEN],
+        }
+    }
+}
+
+/// Request payload for Authorize Debug Unlock Token (command 0x0B).
+/// Layout per external_mctp_vdm_cmds.md: length, unique_device_identifier, unlock_level, reserved,
+/// challenge, ecc_public_key, mldsa_public_key, ecc_signature, mldsa_signature.
+#[repr(C)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthorizeDebugUnlockTokenReq {
+    pub length_dwords: u32,
+    pub unique_device_identifier: [u8; UNIQUE_DEVICE_ID_LEN],
+    pub unlock_level: u8,
+    pub reserved: [u8; 3],
+    pub challenge: [u8; DEBUG_UNLOCK_CHALLENGE_LEN],
+    pub ecc_public_key: [u32; DEBUG_UNLOCK_ECC_PUBLIC_KEY_DWORDS],
+    pub mldsa_public_key: [u32; DEBUG_UNLOCK_MLDSA_PUBLIC_KEY_DWORDS],
+    pub ecc_signature: [u32; DEBUG_UNLOCK_ECC_SIGNATURE_DWORDS],
+    pub mldsa_signature: [u32; DEBUG_UNLOCK_MLDSA_SIGNATURE_DWORDS],
+}
+
+impl Default for AuthorizeDebugUnlockTokenReq {
+    fn default() -> Self {
+        Self {
+            length_dwords: 0,
+            unique_device_identifier: [0u8; UNIQUE_DEVICE_ID_LEN],
+            unlock_level: 0,
+            reserved: [0; 3],
+            challenge: [0u8; DEBUG_UNLOCK_CHALLENGE_LEN],
+            ecc_public_key: [0u32; DEBUG_UNLOCK_ECC_PUBLIC_KEY_DWORDS],
+            mldsa_public_key: [0u32; DEBUG_UNLOCK_MLDSA_PUBLIC_KEY_DWORDS],
+            ecc_signature: [0u32; DEBUG_UNLOCK_ECC_SIGNATURE_DWORDS],
+            mldsa_signature: [0u32; DEBUG_UNLOCK_MLDSA_SIGNATURE_DWORDS],
+        }
+    }
+}
+
+/// Response payload for Authorize Debug Unlock Token (command 0x0B).
+#[repr(C)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct AuthorizeDebugUnlockTokenResp {
+    pub completion_code: u32,
 }
 
 /// Asynchronous trait for handling commands common to both external MCU mailbox and MCTP VDM protocols.
@@ -141,5 +223,35 @@ pub trait UnifiedCommandHandler {
         device_key_id: u32,
         algorithm: u32,
         csr_data: &mut AttestedCsrData,
+    ) -> Result<(), CommandError>;
+
+    /// Request debug unlock in production (command 0x0A).
+    /// Returns challenge and device identifier for the host to sign.
+    ///
+    /// # Arguments
+    /// * `req` - Request payload (length in DWORDs, unlock_level 1–8).
+    /// * `resp` - Mutable reference to fill with completion_code, length, unique_device_identifier, challenge.
+    ///
+    /// # Returns
+    /// * `Result<(), CommandError>` - Ok on success, or an error.
+    async fn request_debug_unlock(
+        &self,
+        req: &RequestDebugUnlockReq,
+        resp: &mut RequestDebugUnlockResp,
+    ) -> Result<(), CommandError>;
+
+    /// Authorize debug unlock token (command 0x0B).
+    /// Sends the signed token (ECC + MLDSA) for the device to verify.
+    ///
+    /// # Arguments
+    /// * `req` - Request payload (identifier, level, challenge, keys, signatures).
+    /// * `resp` - Mutable reference to fill with completion_code.
+    ///
+    /// # Returns
+    /// * `Result<(), CommandError>` - Ok on success, or an error.
+    async fn authorize_debug_unlock_token(
+        &self,
+        req: &AuthorizeDebugUnlockTokenReq,
+        resp: &mut AuthorizeDebugUnlockTokenResp,
     ) -> Result<(), CommandError>;
 }

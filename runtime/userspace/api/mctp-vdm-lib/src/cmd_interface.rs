@@ -4,14 +4,17 @@ use crate::error::VdmLibError;
 use crate::transport::MctpVdmTransport;
 use core::convert::TryFrom;
 use external_cmds_common::{
-    AttestedCsrData, CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
-    UnifiedCommandHandler, MAX_ATTESTED_CSR_DATA_LEN, MAX_UID_LEN,
+    AttestedCsrData, AuthorizeDebugUnlockTokenReq, AuthorizeDebugUnlockTokenResp, CommandError,
+    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, RequestDebugUnlockReq,
+    RequestDebugUnlockResp, Uid, UnifiedCommandHandler, MAX_ATTESTED_CSR_DATA_LEN, MAX_UID_LEN,
 };
 use mctp_vdm_common::codec::VdmCodec;
 use mctp_vdm_common::message::{
-    AsymAlgorithm, DeviceCapabilitiesResponse, DeviceIdResponse, DeviceInfoRequest,
-    DeviceInfoResponse, ExportAttestedCsrRequest, ExportAttestedCsrResponse,
-    FirmwareVersionRequest, FirmwareVersionResponse, DEVICE_CAPS_SIZE,
+    AsymAlgorithm, AuthorizeDebugUnlockTokenRequest, AuthorizeDebugUnlockTokenResponse,
+    DeviceCapabilitiesResponse, DeviceIdResponse, DeviceInfoRequest, DeviceInfoResponse,
+    ExportAttestedCsrRequest, ExportAttestedCsrResponse, FirmwareVersionRequest,
+    FirmwareVersionResponse, RequestDebugUnlockRequest, RequestDebugUnlockResponse,
+    DEVICE_CAPS_SIZE,
 };
 use mctp_vdm_common::protocol::{
     VdmCommand, VdmCompletionCode, VdmFailureResponse, VdmMsgHeader, VDM_MSG_HEADER_LEN,
@@ -120,6 +123,13 @@ impl<'a> CmdInterface<'a> {
             }
             VdmCommand::DeviceId => self.handle_device_id(msg_buf, vdm_req_len).await,
             VdmCommand::DeviceInfo => self.handle_device_info(msg_buf, vdm_req_len).await,
+            VdmCommand::RequestDebugUnlock => {
+                self.handle_request_debug_unlock(msg_buf, vdm_req_len).await
+            }
+            VdmCommand::AuthorizeDebugUnlockToken => {
+                self.handle_authorize_debug_unlock_token(msg_buf, vdm_req_len)
+                    .await
+            }
             VdmCommand::ExportAttestedCsr => {
                 self.handle_export_attested_csr(msg_buf, vdm_req_len).await
             }
@@ -264,6 +274,85 @@ impl<'a> CmdInterface<'a> {
 
         // Encode the response into the MCTP payload.
         self.encode_device_info_response(msg_buf, &resp)
+    }
+
+    /// Handle Request Debug Unlock command (0x0A).
+    async fn handle_request_debug_unlock(
+        &self,
+        msg_buf: &mut [u8],
+        req_len: usize,
+    ) -> Result<usize, VdmLibError> {
+        let vdm_msg = extract_vdm_msg(msg_buf).map_err(|_| VdmLibError::DecodingError)?;
+
+        let req = RequestDebugUnlockRequest::decode(&vdm_msg[..req_len])
+            .map_err(|_| VdmLibError::DecodingError)?;
+
+        let common_req = RequestDebugUnlockReq {
+            length_dwords: req.length_dwords,
+            unlock_level: req.unlock_level,
+            reserved: req.reserved,
+        };
+        let mut common_resp = RequestDebugUnlockResp::default();
+
+        let result = self
+            .unified_handler
+            .request_debug_unlock(&common_req, &mut common_resp)
+            .await;
+
+        let resp = match result {
+            Ok(()) => RequestDebugUnlockResponse::new(
+                common_resp.completion_code,
+                common_resp.length_dwords,
+                &common_resp.unique_device_identifier,
+                &common_resp.challenge,
+            ),
+            Err(_) => RequestDebugUnlockResponse::new(
+                VdmCompletionCode::GeneralError as u32,
+                0,
+                &[0u8; 32],
+                &[0u8; 48],
+            ),
+        };
+
+        self.encode_response(msg_buf, &resp)
+    }
+
+    /// Handle Authorize Debug Unlock Token command (0x0B).
+    async fn handle_authorize_debug_unlock_token(
+        &self,
+        msg_buf: &mut [u8],
+        req_len: usize,
+    ) -> Result<usize, VdmLibError> {
+        let vdm_msg = extract_vdm_msg(msg_buf).map_err(|_| VdmLibError::DecodingError)?;
+
+        let req = AuthorizeDebugUnlockTokenRequest::decode(&vdm_msg[..req_len])
+            .map_err(|_| VdmLibError::DecodingError)?;
+
+        let common_req = AuthorizeDebugUnlockTokenReq {
+            length_dwords: req.length_dwords,
+            unique_device_identifier: req.unique_device_identifier,
+            unlock_level: req.unlock_level,
+            reserved: req.reserved,
+            challenge: req.challenge,
+            ecc_public_key: req.ecc_public_key,
+            mldsa_public_key: req.mldsa_public_key,
+            ecc_signature: req.ecc_signature,
+            mldsa_signature: req.mldsa_signature,
+        };
+        let mut common_resp = AuthorizeDebugUnlockTokenResp::default();
+
+        let result = self
+            .unified_handler
+            .authorize_debug_unlock_token(&common_req, &mut common_resp)
+            .await;
+
+        let completion_code = match result {
+            Ok(()) => common_resp.completion_code,
+            Err(_) => VdmCompletionCode::GeneralError as u32,
+        };
+        let resp = AuthorizeDebugUnlockTokenResponse::new(completion_code);
+
+        self.encode_response(msg_buf, &resp)
     }
 
     /// Send an error response.
