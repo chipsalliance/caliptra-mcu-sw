@@ -14,3 +14,6 @@ path = "src/main.rs"
 ocptoken.workspace = true
 clap.workspace = true
 coset.workspace = true
+corim-rs.workspace = true
+hex.workspace = true
+chrono.workspace = true

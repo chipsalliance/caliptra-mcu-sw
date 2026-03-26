@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use super::decode::{DecodedCoseSign1, VerifiedCoseSign1};
-use super::{CoseSign1Error, CoseSign1Result, CryptoBackend, SigningAlgorithm};
+use crate::cose_verify::decode::{DecodedCoseSign1, VerifiedCoseSign1};
+use crate::cose_verify::{CoseSign1Error, CoseSign1Result, CryptoBackend, SigningAlgorithm};
 
 /// The main entry point for COSE_Sign1 signature verification.
 ///
@@ -43,19 +43,11 @@ impl<C: CryptoBackend> CoseSign1Verifier<C> {
 
     /// Verify the signature without consuming the decoded token.
     /// Returns `Ok(())` on success.
-    pub fn verify_ref(
-        &self,
-        decoded: &DecodedCoseSign1,
-        cert_der: &[u8],
-    ) -> CoseSign1Result<()> {
+    pub fn verify_ref(&self, decoded: &DecodedCoseSign1, cert_der: &[u8]) -> CoseSign1Result<()> {
         self.verify_inner(decoded, cert_der)
     }
 
-    fn verify_inner(
-        &self,
-        decoded: &DecodedCoseSign1,
-        cert_der: &[u8],
-    ) -> CoseSign1Result<()> {
+    fn verify_inner(&self, decoded: &DecodedCoseSign1, cert_der: &[u8]) -> CoseSign1Result<()> {
         // 1. Extract and validate algorithm
         let cose_alg = decoded
             .protected_header()
