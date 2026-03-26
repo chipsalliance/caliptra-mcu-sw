@@ -6,7 +6,7 @@
 use clap::Parser;
 use std::path::PathBuf;
 
-use ocptoken::cose_verify::{CoseSign1Verifier, DecodedCoseSign1, OpenSslBackend};
+use ocptoken::cose_verify::{CoseSign1Verifier, CryptoBackend, DecodedCoseSign1};
 use ocptoken::token::evidence::OCP_EAT_TAGS;
 
 use crate::common::{extract_x5chain_leaf, load_evidence};
@@ -24,7 +24,7 @@ pub(crate) struct VerifyArgs {
 
 /// Verify only: decode the EAT, extract the x5chain leaf, and
 /// cryptographically verify the COSE_Sign1 signature.
-pub(crate) fn run(args: &VerifyArgs) {
+pub(crate) fn run(args: &VerifyArgs, verifier: &CoseSign1Verifier<impl CryptoBackend>) {
     // 1. Load the binary evidence file
     let encoded = load_evidence(&args.evidence);
 
@@ -50,7 +50,6 @@ pub(crate) fn run(args: &VerifyArgs) {
     };
 
     // 4. Verify the COSE_Sign1 signature
-    let verifier = CoseSign1Verifier::new(OpenSslBackend);
     match verifier.verify_ref(&decoded, &leaf_cert) {
         Ok(()) => {
             println!("Signature verification successful");

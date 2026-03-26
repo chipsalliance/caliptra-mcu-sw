@@ -18,6 +18,7 @@ coset.workspace = true
 hex.workspace = true
 thiserror.workspace = true
 openssl = { workspace = true, optional = true }
+corim-rs.workspace = true
 
 [dev-dependencies]
 openssl.workspace = true
