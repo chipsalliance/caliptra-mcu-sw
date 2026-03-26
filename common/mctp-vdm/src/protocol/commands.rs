@@ -55,6 +55,8 @@ pub const SUPPORTED_COMMANDS: &[VdmCommand] = &[
     VdmCommand::DeviceCapabilities,
     VdmCommand::DeviceId,
     VdmCommand::DeviceInfo,
+    VdmCommand::RequestDebugUnlock,
+    VdmCommand::AuthorizeDebugUnlockToken,
 ];
 
 /// Check if a command is supported in the current implementation.
