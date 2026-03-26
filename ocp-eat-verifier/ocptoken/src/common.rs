@@ -1,9 +1,50 @@
 // Licensed under the Apache-2.0 license
 
-//! Shared display helpers and utility functions used across CLI subcommands.
+//! Shared utility functions used across CLI subcommands.
 
+use std::env;
 use std::fs;
 use std::path::PathBuf;
+
+use ocptoken::ta_store::{FsTrustAnchorStore, TrustAnchorStore};
+
+/// Environment variable for the trust anchor store path.
+const TA_STORE_PATH_ENV: &str = "TA_STORE_PATH";
+
+/// Load the Trust Anchor Store from a local directory specified by
+/// the TA_STORE_PATH environment variable.  Exits the process on failure.
+pub(crate) fn load_fs_ta_store() -> Box<dyn TrustAnchorStore> {
+    let ta_store_path = match env::var(TA_STORE_PATH_ENV) {
+        Ok(p) => PathBuf::from(p),
+        Err(_) => {
+            eprintln!(
+                "Environment variable {} is not set. \
+                 Set it to the path of the trust anchor store directory \
+                 (containing roots/ and optionally endorsement-certs/).",
+                TA_STORE_PATH_ENV
+            );
+            std::process::exit(1);
+        }
+    };
+
+    match FsTrustAnchorStore::load(&ta_store_path) {
+        Ok(s) => {
+            println!(
+                "Loaded trust anchor store from '{}'",
+                ta_store_path.display()
+            );
+            Box::new(s)
+        }
+        Err(e) => {
+            eprintln!(
+                "Failed to load trust anchor store '{}': {}",
+                ta_store_path.display(),
+                e
+            );
+            std::process::exit(1);
+        }
+    }
+}
 
 /// Load a binary evidence file from disk, printing its name and size.
 /// Exits the process on failure.

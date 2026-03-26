@@ -2,9 +2,13 @@
 
 mod authenticate;
 mod common;
+mod display;
 mod verify;
 
 use clap::{Parser, Subcommand};
+use ocptoken::cose_verify::{CoseSign1Verifier, OpenSslBackend};
+
+use crate::common::load_fs_ta_store;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -31,9 +35,13 @@ enum Commands {
 
 fn main() {
     let cli = Cli::parse();
+    let verifier = CoseSign1Verifier::new(OpenSslBackend);
 
     match cli.command {
-        Commands::Verify(args) => verify::run(&args),
-        Commands::Authenticate(args) => authenticate::run(&args),
+        Commands::Verify(args) => verify::run(&args, &verifier),
+        Commands::Authenticate(args) => {
+            let ta_store = load_fs_ta_store();
+            authenticate::run(&args, ta_store.as_ref(), &verifier);
+        }
     }
 }

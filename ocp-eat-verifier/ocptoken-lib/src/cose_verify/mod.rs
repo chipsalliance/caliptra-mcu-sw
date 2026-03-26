@@ -1,13 +1,16 @@
 // Licensed under the Apache-2.0 license
 
+use crate::ta_store::TrustAnchorError;
 use thiserror::Error;
 
+pub mod authenticate;
 #[cfg(feature = "openssl")]
 pub mod backends;
 pub mod decode;
 pub mod verifier;
 
 // Convenience re-exports
+pub use authenticate::{authenticate_signer, extract_signer_key_cert, AuthenticateOptions};
 #[cfg(feature = "openssl")]
 pub use backends::openssl::OpenSslBackend;
 pub use decode::{DecodedCoseSign1, VerifiedCoseSign1};
@@ -51,6 +54,14 @@ pub enum CoseSign1Error {
     /// An error from the underlying crypto backend.
     #[error("Crypto backend error: {0}")]
     CryptoError(String),
+
+    /// No signer key identification (x5chain or kid) found in COSE headers.
+    #[error("no x5chain or kid found in COSE headers")]
+    SignerNotFound,
+
+    /// Signer authentication against the trust anchor store failed.
+    #[error("signer authentication failed: {0}")]
+    Authentication(#[from] TrustAnchorError),
 }
 
 /// Result type alias for this module.

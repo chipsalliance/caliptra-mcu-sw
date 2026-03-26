@@ -151,33 +151,26 @@ jobs:
         run: |
           cat $SPDM_VALIDATOR_DIR/spdm_requester_emu_output.txt
 
-      # ---- Verify COSE_Sign1 signature on EAT using ocptoken -------------------------------
-      - name: Verify EAT COSE_Sign1 signature
-        working-directory: ocp-eat-verifier
-        env:
-          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
-        run: |
-          cargo build --release -p ocptoken
-          ./target/release/ocptoken verify \
-            -e $SPDM_VALIDATOR_DIR/measurement_block_fd.bin
-
       # ---- Authenticate evidence against Trust Anchor Store -------------------------------
       - name: Prepare Attestation Artifacts and Build Trust Anchor Store
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
-          CORIM_DIR: attestation-artifacts/refval-corim
+          CORIM_DIR: ${{ github.workspace }}/attestation-artifacts/refval-corim
+          SIGNED_CORIM_DIR: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
         run: |
           # Copy evidence artifacts
           EVIDENCE_DIR="attestation-artifacts/evidence"
           mkdir -p "$EVIDENCE_DIR"
           cp $SPDM_VALIDATOR_DIR/measurement_block_fd.bin "$EVIDENCE_DIR/"
           cp $SPDM_VALIDATOR_DIR/certificate_chain_slot_00.der "$EVIDENCE_DIR/"
-          echo "Evidence artifacts:"
+          echo "Copied evidence artifacts:"
           ls -la "$EVIDENCE_DIR"
 
-          #  Signed Reference CoRIMs
-          echo "Reference CoRIM artifacts:"
-          ls -la "$CORIM_DIR"/signed-*.cbor | sort
+          # Copy only the signed CoRIM files into a dedicated directory.
+          mkdir -p "$SIGNED_CORIM_DIR"
+          cp "$CORIM_DIR"/signed-*.cbor "$SIGNED_CORIM_DIR/"
+          echo "Copied signed Reference CoRIM artifacts:"
+          ls -la "$SIGNED_CORIM_DIR" | sort
 
           # Build Trust Anchor Store
           TA_STORE_DIR="attestation-artifacts/ta_store"
@@ -194,12 +187,13 @@ jobs:
           echo "Trust Anchor Store contents:"
           find "$TA_STORE_DIR" -type f | sort
 
-      # ---- Authenticate and verify EAT evidence -------------------------------
-      - name: Authenticate and verify EAT evidence
+      # ---- Authenticate and verify attestation inputs -------------------------------
+      - name: Authenticate and verify verifier inputs
         working-directory: ocp-eat-verifier
         env:
           EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
-          OCP_TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
+          TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
+          SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
         run: |
           ./target/release/ocptoken authenticate \
             -e $EVIDENCE_DIR/measurement_block_fd.bin \
