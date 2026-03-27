@@ -322,6 +322,10 @@ ocp-eat = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "8bfab8d
 # dpe = { path = "../caliptra-sw/dpe/dpe", default-features = false, features = ["dpe_profile_p384_sha384"] }
 # ocp-eat = { path = "../caliptra-sw/common/eat",  default-features = false  }
 
+# caliptra-infra dependencies
+size-history = { git = "https://github.com/leongross/caliptra-infra.git", package = "caliptra-size-history", branch = "leongross/size-history-refactor" }
+# size-history = { path = "../caliptra-infra/ci-tools/size-history", package = "caliptra-size-history" }
+
 # tock dependencies; keep git revs in sync
 capsules-core = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }
 capsules-extra = { git = "https://github.com/tock/tock.git", rev = "release-2.2" }

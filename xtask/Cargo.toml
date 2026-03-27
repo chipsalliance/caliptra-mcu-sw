@@ -58,10 +58,7 @@ zerocopy.workspace = true
 zip.workspace = true
 caliptra-bitstream-downloader.workspace = true
 
-# Size history library from caliptra-infra
-# TODO: Update to use a git dependency once the library is published
-# size-history = { git = "https://github.com/chipsalliance/caliptra-infra.git", package = "caliptra-size-history", branch = "main" }
-size-history = { path = "../../caliptra-infra/ci-tools/size-history", package = "caliptra-size-history" }
+size-history.workspace = true
 
 [build-dependencies]
 cc.workspace = true
