@@ -573,6 +573,26 @@ fn burn_dot_lock_fuse(otp: &Otp, dot_fuses: &DotFuses) -> McuResult<()> {
     Ok(())
 }
 
+/// Writes a recovery DOT blob to flash when DOT is enabled but the existing
+/// blob is blank or corrupted.  The recovery blob uses a zeroed CAK (no owner)
+/// and zeroed LAK, sealed with the current DOT effective key so that the
+/// device can proceed through the normal DOT flow on next boot and recover
+/// via a DOT recovery operation.
+pub fn write_recovery_dot_blob(
+    env: &mut RomEnv,
+    dot_fuses: &DotFuses,
+    dot_flash: Option<&dyn crate::flash::hil::FlashStorage>,
+) -> McuResult<()> {
+    romtime::println!("[mcu-rom-dot] Writing recovery DOT blob for blank/corrupt flash");
+    create_and_seal_dot_blob(
+        env,
+        dot_fuses,
+        &ZERO_OWNER_PK_HASH,
+        &LakPkHash([0u32; 12]),
+        dot_flash,
+    )
+}
+
 /// Creates, HMAC-seals, and writes a DOT blob to flash storage.
 ///
 /// This is used by manifest DOT commands (LOCK, DISABLE, ROTATE) to persist

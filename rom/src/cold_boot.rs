@@ -915,11 +915,22 @@ impl BootFlow for ColdBoot {
 
             if dot_blob.iter().all(|&b| b == 0) || dot_blob.iter().all(|&b| b == 0xFF) {
                 if dot_fuses.enabled {
-                    // DOT is initialized but blob is empty/corrupt - this is a fatal error
-                    // TODO: Add recovery mechanism for this case
+                    // DOT is initialized but blob is blank/corrupt.  Write a
+                    // recovery DOT blob so the device can recover via a DOT
+                    // recovery operation on the next boot, then halt.
                     romtime::println!(
                         "[mcu-rom] DOT fuses are initialized but DOT blob is empty/corrupt"
                     );
+                    if let Err(err) = device_ownership_transfer::write_recovery_dot_blob(
+                        env,
+                        &dot_fuses,
+                        Some(dot_flash),
+                    ) {
+                        romtime::println!(
+                            "[mcu-rom] Failed to write recovery DOT blob: {}",
+                            HexWord(err.into())
+                        );
+                    }
                     fatal_error(McuError::ROM_COLD_BOOT_DOT_ERROR);
                 }
                 romtime::println!("[mcu-rom] DOT blob is empty; skipping DOT flow");
@@ -1092,45 +1103,11 @@ impl BootFlow for ColdBoot {
         let stash_rom_digest = params.stash_rom_digest.unwrap_or(true);
         Self::rom_digest_integrity(&mut env.soc_manager, stash_rom_digest);
 
-        // --- Process optional firmware manifest DOT commands ---
-        // Scan the start of MCU SRAM for the DOT manifest magic.
-        // Skip during encrypted boot: in-place decryption overwrites the
-        // header region so the manifest bytes would be invalid.
-        //
-        // This block must run before the `mci`/`soc` re-borrows below because
-        // `process_fw_manifest_dot_commands` needs `&mut env` (for Caliptra
-        // mailbox access when creating DOT blobs).
-        #[cfg(feature = "fw-manifest-dot")]
-        if !encrypted_boot {
-            let manifest_size =
-                core::mem::size_of::<device_ownership_transfer::FwManifestDotSection>();
-            let sram = unsafe {
-                core::slice::from_raw_parts(MCU_MEMORY_MAP.sram_offset as *const u8, manifest_size)
-            };
-            if let Ok((section, _)) =
-                device_ownership_transfer::FwManifestDotSection::ref_from_prefix(sram)
-            {
-                if section.magic == device_ownership_transfer::FW_MANIFEST_DOT_MAGIC {
-                    env.mci.set_flow_checkpoint(
-                        McuRomBootStatus::FwManifestDotProcessingStarted.into(),
-                    );
-                    if let Err(err) = device_ownership_transfer::process_fw_manifest_dot_commands(
-                        env,
-                        section,
-                        params.dot_flash,
-                    ) {
-                        romtime::println!(
-                            "[mcu-rom] Error in firmware manifest DOT: {}",
-                            HexWord(err.into())
-                        );
-                        fatal_error(err);
-                    }
-                    env.mci.set_flow_checkpoint(
-                        McuRomBootStatus::FwManifestDotProcessingComplete.into(),
-                    );
-                }
-            }
-        }
+        // NOTE: Firmware manifest DOT command processing is intentionally
+        // handled in FwBoot (fw_boot.rs), not here.  FwBoot runs after the
+        // warm-reset chain, so firmware in MCU SRAM is always decrypted by
+        // that point – even during encrypted boot.  Processing is gated by
+        // `params.fw_manifest_dot_enabled` so integrators can opt in.
 
         // Re-borrow for the common tail section.
         let mci = &env.mci;
