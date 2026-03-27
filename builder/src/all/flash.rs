@@ -8,7 +8,7 @@
 use anyhow::Result;
 use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
 use mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Create a flash image from firmware components.
 ///
@@ -77,7 +77,7 @@ pub fn create_flash_image(
 ///
 /// - `Ok(())`: If the partition table was written successfully.
 /// - `Err(anyhow::Error)`: If writing fails.
-fn write_partition_table(flash_image_path: &PathBuf) -> Result<()> {
+fn write_partition_table(flash_image_path: &Path) -> Result<()> {
     let mut partition_table = PartitionTable {
         active_partition: PartitionId::A as u32,
         partition_a_status: PartitionStatus::Valid as u16,

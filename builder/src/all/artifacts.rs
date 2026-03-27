@@ -64,7 +64,6 @@ impl BaseArtifacts {
         let runtime_file = NamedTempFile::new()?;
         let runtime_path = runtime_file.path().to_str().unwrap().to_string();
 
-        // Convert Vec<String> to Vec<&str> for the API
         let base_features: Vec<&str> = ctx
             .base_runtime_features
             .iter()
@@ -84,7 +83,7 @@ impl BaseArtifacts {
         // Build Caliptra artifacts
         let mcu_image_cfg = ctx.get_image_cfg_for_feature("none");
         let mut caliptra_builder = CaliptraBuilder::new(
-            ctx.runtime_type,
+            ctx.fpga,
             None,
             None,
             None,

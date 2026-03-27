@@ -24,6 +24,7 @@ mod precheckin;
 mod registers;
 mod rom;
 mod runtime;
+mod size_history;
 mod test;
 
 #[cfg(feature = "fpga_realtime")]
@@ -308,6 +309,8 @@ enum Commands {
         #[command(subcommand)]
         cmd: BundleCommands,
     },
+    /// Track firmware binary sizes across git history
+    SizeHistory,
 }
 
 #[derive(Subcommand)]
@@ -587,6 +590,7 @@ fn main() {
             }
         },
         Commands::FirmwareBundler { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
+        Commands::SizeHistory => size_history::run().map_err(|e| anyhow::anyhow!("{}", e)),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);

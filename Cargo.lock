@@ -804,6 +804,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-size-history"
+version = "0.1.0"
+dependencies = [
+ "ghac",
+ "prost",
+ "prost-derive",
+ "serde",
+ "serde_json",
+ "tinytemplate",
+]
+
+[[package]]
 name = "caliptra-test"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=8bfab8d1fa6dda44c86300c6d9d2de6919482644#8bfab8d1fa6dda44c86300c6d9d2de6919482644"
@@ -2189,6 +2201,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ghac"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a10bd5b898cac1a4de4a882a754b2ccaafead449348cfb420b48cd5c00ffd08b"
+dependencies = [
+ "prost",
+]
+
+[[package]]
 name = "ghash"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2593,6 +2614,15 @@ name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+
+[[package]]
+name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+dependencies = [
+ "either",
+]
 
 [[package]]
 name = "itoa"
@@ -3888,6 +3918,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "prost"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b2ecbe40f08db5c006b5764a2645f7f3f141ce756412ac9e1dd6087e6d32995"
+dependencies = [
+ "bytes",
+ "prost-derive",
+]
+
+[[package]]
+name = "prost-derive"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acf0c195eebb4af52c752bec4f52f645da98b6e92077a04110c7f349477ae5ac"
+dependencies = [
+ "anyhow",
+ "itertools",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.109",
+]
+
+[[package]]
 name = "provisioning-fuses"
 version = "0.1.0"
 dependencies = [
@@ -4969,6 +5022,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinytemplate"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be4d6b5f19ff7664e8c98d03e2139cb510db9b0a60b55f8e8709b689d939b6bc"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "tinyvec"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5847,6 +5910,7 @@ dependencies = [
  "caliptra-hw-model",
  "caliptra-image-gen",
  "caliptra-image-types",
+ "caliptra-size-history",
  "cargo_metadata",
  "cc",
  "clap 4.5.51",
