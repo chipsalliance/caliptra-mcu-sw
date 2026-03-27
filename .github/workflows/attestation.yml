@@ -151,7 +151,7 @@ jobs:
         run: |
           cat $SPDM_VALIDATOR_DIR/spdm_requester_emu_output.txt
 
-      # ---- Authenticate evidence against Trust Anchor Store -------------------------------
+      # ---- Authenticate attestation inputs against Trust Anchor Store -------------------------------
       - name: Prepare Attestation Artifacts and Build Trust Anchor Store
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
@@ -188,13 +188,14 @@ jobs:
           find "$TA_STORE_DIR" -type f | sort
 
       # ---- Authenticate and verify attestation inputs -------------------------------
-      - name: Authenticate and verify verifier inputs
+      - name: Authenticate and verify attestation inputs
         working-directory: ocp-eat-verifier
         env:
           EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
           TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
           SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
         run: |
+          cargo build --release -p ocptoken
           ./target/release/ocptoken authenticate \
             -e $EVIDENCE_DIR/measurement_block_fd.bin \
             -c $EVIDENCE_DIR/certificate_chain_slot_00.der

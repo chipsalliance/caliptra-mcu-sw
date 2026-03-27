@@ -1,14 +1,11 @@
 // Licensed under the Apache-2.0 license
 
 use crate::error::{CaliptraApiError, CaliptraApiResult};
-use crate::mailbox_api::{
-    execute_mailbox_cmd, CertificateChainResp, CertifyEcKeyResp, DpeEcResp, DpeResponse,
-    MAX_DPE_RESP_DATA_SIZE,
-};
+use crate::mailbox_api::{execute_mailbox_cmd, CertificateChainResp, CertifyKeyRespHdr};
 use caliptra_api::mailbox::{
     CommandId, GetFmcAliasEcc384CertReq, GetIdevCsrReq, GetIdevCsrResp, GetLdevCertResp,
-    GetLdevEcc384CertReq, GetRtAliasEcc384CertReq, InvokeDpeReq, MailboxRespHeader,
-    PopulateIdevEcc384CertReq, Request,
+    GetLdevEcc384CertReq, GetRtAliasEcc384CertReq, InvokeDpeReq, InvokeDpeResp, MailboxRespHeader,
+    PopulateIdevEcc384CertReq, Request, VarSizeDataResp,
 };
 use dpe::commands::{
     CertifyKeyCmd, CertifyKeyFlags, Command, CommandHdr, GetCertificateChainCmd, SignCmd, SignFlags,
@@ -99,36 +96,21 @@ impl CertContext {
         &mut self,
         cert: &mut [u8; MAX_ECC_CERT_SIZE],
     ) -> CaliptraApiResult<usize> {
-        let resp = self.get_cert::<GetLdevEcc384CertReq>().await?;
-        if resp.data_size > MAX_ECC_CERT_SIZE as u32 {
-            return Err(CaliptraApiError::InvalidResponse);
-        }
-        cert[..resp.data_size as usize].copy_from_slice(&resp.data[..resp.data_size as usize]);
-        Ok(resp.data_size as usize)
+        self.get_ecc384_cert::<GetLdevEcc384CertReq>(cert).await
     }
 
     pub async fn get_fmc_alias_ecc384_cert(
         &mut self,
         cert: &mut [u8; MAX_ECC_CERT_SIZE],
     ) -> CaliptraApiResult<usize> {
-        let resp = self.get_cert::<GetFmcAliasEcc384CertReq>().await?;
-        if resp.data_size > MAX_ECC_CERT_SIZE as u32 {
-            return Err(CaliptraApiError::InvalidResponse);
-        }
-        cert[..resp.data_size as usize].copy_from_slice(&resp.data[..resp.data_size as usize]);
-        Ok(resp.data_size as usize)
+        self.get_ecc384_cert::<GetFmcAliasEcc384CertReq>(cert).await
     }
 
     pub async fn get_rt_alias_384cert(
         &mut self,
         cert: &mut [u8; MAX_ECC_CERT_SIZE],
     ) -> CaliptraApiResult<usize> {
-        let resp = self.get_cert::<GetRtAliasEcc384CertReq>().await?;
-        if resp.data_size > MAX_ECC_CERT_SIZE as u32 {
-            return Err(CaliptraApiError::InvalidResponse);
-        }
-        cert[..resp.data_size as usize].copy_from_slice(&resp.data[..resp.data_size as usize]);
-        Ok(resp.data_size as usize)
+        self.get_ecc384_cert::<GetRtAliasEcc384CertReq>(cert).await
     }
 
     pub async fn certify_key(
@@ -160,28 +142,40 @@ impl CertContext {
             dpe_cmd.label[..label.len()].copy_from_slice(label);
         }
 
-        let resp = self
-            .execute_dpe_cmd(&mut Command::CertifyKey(&dpe_cmd))
+        let mut mbox_resp = InvokeDpeResp::default();
+        self.send_dpe_cmd(&mut Command::CertifyKey(&dpe_cmd), &mut mbox_resp)
             .await?;
 
-        if let DpeResponse::CertifyKey(certify_key_resp) = resp {
-            let cert_len = certify_key_resp.cert_size as usize;
-            if cert_len > cert.len() {
-                return Err(CaliptraApiError::InvalidResponse);
-            }
+        let data_size = InvokeDpeResp::DATA_MAX_SIZE.min(mbox_resp.data_size as usize);
+        let data = &mbox_resp.data[..data_size];
 
-            cert[..cert_len].copy_from_slice(&certify_key_resp.cert[..cert_len]);
+        // Parse the fixed-size header (144 bytes) without copying the cert data
+        let hdr = CertifyKeyRespHdr::read_from_bytes(
+            data.get(..size_of::<CertifyKeyRespHdr>())
+                .ok_or(CaliptraApiError::InvalidResponse)?,
+        )
+        .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
-            if let Some(derived_pubkey_x) = derived_pubkey_x {
-                derived_pubkey_x.copy_from_slice(&certify_key_resp.derived_pubkey_x);
-            }
-            if let Some(derived_pubkey_y) = derived_pubkey_y {
-                derived_pubkey_y.copy_from_slice(&certify_key_resp.derived_pubkey_y);
-            }
-            Ok(cert_len)
-        } else {
-            Err(CaliptraApiError::InvalidResponse)
+        let cert_len = hdr.cert_size as usize;
+        let cert_offset = size_of::<CertifyKeyRespHdr>();
+
+        if cert_len > cert.len() {
+            return Err(CaliptraApiError::InvalidResponse);
         }
+
+        // Copy cert directly from mailbox response to caller's buffer — no intermediate
+        let cert_data = data
+            .get(cert_offset..cert_offset + cert_len)
+            .ok_or(CaliptraApiError::InvalidResponse)?;
+        cert[..cert_len].copy_from_slice(cert_data);
+
+        if let Some(derived_pubkey_x) = derived_pubkey_x {
+            derived_pubkey_x.copy_from_slice(&hdr.derived_pubkey_x);
+        }
+        if let Some(derived_pubkey_y) = derived_pubkey_y {
+            derived_pubkey_y.copy_from_slice(&hdr.derived_pubkey_y);
+        }
+        Ok(cert_len)
     }
 
     pub async fn sign(
@@ -209,18 +203,24 @@ impl CertContext {
             dpe_cmd.label[..label.len()].copy_from_slice(label);
         }
 
-        let resp = self.execute_dpe_cmd(&mut Command::Sign(&dpe_cmd)).await?;
-        match resp {
-            DpeResponse::Sign(sign_resp) => {
-                let sig_r_size = sign_resp.sig_r.len();
-                let sig_s_size = sign_resp.sig_s.len();
-                signature[..sig_r_size].copy_from_slice(&sign_resp.sig_r[..]);
-                signature[sig_r_size..sig_r_size + sig_s_size]
-                    .copy_from_slice(&sign_resp.sig_s[..]);
-                Ok(sig_r_size + sig_s_size)
-            }
-            _ => Err(CaliptraApiError::InvalidResponse),
-        }
+        let mut mbox_resp = InvokeDpeResp::default();
+        self.send_dpe_cmd(&mut Command::Sign(&dpe_cmd), &mut mbox_resp)
+            .await?;
+
+        let data_size = InvokeDpeResp::DATA_MAX_SIZE.min(mbox_resp.data_size as usize);
+        let data = &mbox_resp.data[..data_size];
+
+        let sign_resp = SignResp::read_from_bytes(
+            data.get(..size_of::<SignResp>())
+                .ok_or(CaliptraApiError::InvalidResponse)?,
+        )
+        .map_err(|_| CaliptraApiError::InvalidResponse)?;
+
+        let sig_r_size = sign_resp.sig_r.len();
+        let sig_s_size = sign_resp.sig_s.len();
+        signature[..sig_r_size].copy_from_slice(&sign_resp.sig_r[..]);
+        signature[sig_r_size..sig_r_size + sig_s_size].copy_from_slice(&sign_resp.sig_s[..]);
+        Ok(sig_r_size + sig_s_size)
     }
 
     pub fn max_cert_chain_chunk_size(&mut self) -> usize {
@@ -242,59 +242,66 @@ impl CertContext {
             size: size as u32,
         };
 
-        let resp = self
-            .execute_dpe_cmd(&mut Command::GetCertificateChain(&dpe_cmd))
+        let mut mbox_resp = InvokeDpeResp::default();
+        self.send_dpe_cmd(&mut Command::GetCertificateChain(&dpe_cmd), &mut mbox_resp)
             .await?;
 
-        match resp {
-            DpeResponse::GetCertificateChain(cert_chain_resp) => {
-                if cert_chain_resp.certificate_size > cert_chunk.len() as u32 {
-                    return Err(CaliptraApiError::InvalidResponse);
-                }
+        let data_size = InvokeDpeResp::DATA_MAX_SIZE.min(mbox_resp.data_size as usize);
+        let data = &mbox_resp.data[..data_size];
 
-                let cert_chain_resp_len = cert_chain_resp.certificate_size as usize;
+        let cert_chain_resp = CertificateChainResp::read_from_bytes(
+            data.get(..size_of::<CertificateChainResp>())
+                .ok_or(CaliptraApiError::InvalidResponse)?,
+        )
+        .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
-                cert_chunk[..cert_chain_resp_len]
-                    .copy_from_slice(&cert_chain_resp.certificate_chain[..cert_chain_resp_len]);
-                Ok(cert_chain_resp_len)
-            }
-            _ => Err(CaliptraApiError::InvalidResponse),
+        if cert_chain_resp.certificate_size > cert_chunk.len() as u32 {
+            return Err(CaliptraApiError::InvalidResponse);
         }
+
+        let cert_chain_resp_len = cert_chain_resp.certificate_size as usize;
+
+        cert_chunk[..cert_chain_resp_len]
+            .copy_from_slice(&cert_chain_resp.certificate_chain[..cert_chain_resp_len]);
+        Ok(cert_chain_resp_len)
     }
 
-    async fn get_cert<R: Request + Default>(&mut self) -> CaliptraApiResult<R::Resp> {
+    async fn get_ecc384_cert<R: Request<Resp = VarSizeDataResp> + Default>(
+        &mut self,
+        cert: &mut [u8; MAX_ECC_CERT_SIZE],
+    ) -> CaliptraApiResult<usize> {
         let mut req = R::default();
-        let mut resp = R::Resp::new_zeroed();
-        let resp_bytes = resp.as_mut_bytes();
+        let mut resp = VarSizeDataResp::new_zeroed();
         let req_bytes = req.as_mut_bytes();
-        // let resp_bytes = resp.as_mut_bytes();
+        let resp_bytes = resp.as_mut_bytes();
         let cmd = R::ID.into();
         execute_mailbox_cmd(&self.mbox, cmd, req_bytes, resp_bytes).await?;
 
-        let mut resp = R::Resp::new_zeroed();
-        resp.as_mut_bytes()[..].copy_from_slice(&resp_bytes[..]);
-
-        Ok(resp)
+        let resp = VarSizeDataResp::ref_from_bytes(resp_bytes)
+            .map_err(|_| CaliptraApiError::InvalidResponse)?;
+        if resp.data_size > MAX_ECC_CERT_SIZE as u32 {
+            return Err(CaliptraApiError::InvalidResponse);
+        }
+        cert[..resp.data_size as usize].copy_from_slice(&resp.data[..resp.data_size as usize]);
+        Ok(resp.data_size as usize)
     }
 
-    async fn execute_dpe_cmd(
+    async fn send_dpe_cmd(
         &mut self,
         dpe_cmd: &mut Command<'_>,
-    ) -> CaliptraApiResult<DpeResponse> {
+        mbox_resp: &mut InvokeDpeResp,
+    ) -> CaliptraApiResult<()> {
         let mut mbox_req = InvokeDpeReq::new_zeroed();
 
-        let dpe_cmd_id: u32 = Self::dpe_cmd_id(dpe_cmd);
+        let (dpe_cmd_id, dpe_cmd_bytes) = Self::dpe_cmd_info(dpe_cmd);
         let cmd_hdr = CommandHdr::new_for_test(dpe_cmd_id);
 
         let cmd_hdr_bytes = cmd_hdr.as_bytes();
         mbox_req.data[..cmd_hdr_bytes.len()].copy_from_slice(cmd_hdr_bytes);
 
-        let dpe_cmd_bytes = Self::dpe_cmd_as_bytes(dpe_cmd);
         mbox_req.data[cmd_hdr_bytes.len()..cmd_hdr_bytes.len() + dpe_cmd_bytes.len()]
             .copy_from_slice(dpe_cmd_bytes);
         mbox_req.data_size = (cmd_hdr_bytes.len() + dpe_cmd_bytes.len()) as u32;
-
-        let mut mbox_resp = DpeEcResp::default();
 
         execute_mailbox_cmd(
             &self.mbox,
@@ -304,57 +311,19 @@ impl CertContext {
         )
         .await?;
 
-        self.parse_dpe_response(dpe_cmd, &mbox_resp)
+        Ok(())
     }
 
-    fn dpe_cmd_id(dpe_cmd: &mut Command) -> u32 {
+    fn dpe_cmd_info<'a>(dpe_cmd: &'a mut Command) -> (u32, &'a [u8]) {
         match dpe_cmd {
-            Command::GetProfile => Command::GET_PROFILE,
-            Command::InitCtx(_) => Command::INITIALIZE_CONTEXT,
-            Command::DeriveContext(_) => Command::DERIVE_CONTEXT,
-            Command::CertifyKey(_) => Command::CERTIFY_KEY,
-            Command::Sign(_) => Command::SIGN,
-            Command::RotateCtx(_) => Command::ROTATE_CONTEXT_HANDLE,
-            Command::DestroyCtx(_) => Command::DESTROY_CONTEXT,
-            Command::GetCertificateChain(_) => Command::GET_CERTIFICATE_CHAIN,
-        }
-    }
-
-    fn dpe_cmd_as_bytes<'a>(dpe_cmd: &'a mut Command) -> &'a [u8] {
-        match dpe_cmd {
-            Command::CertifyKey(cmd) => cmd.as_bytes(),
-            Command::DeriveContext(cmd) => cmd.as_bytes(),
-            Command::GetCertificateChain(cmd) => cmd.as_bytes(),
-            Command::DestroyCtx(cmd) => cmd.as_bytes(),
-            Command::GetProfile => &[],
-            Command::InitCtx(cmd) => cmd.as_bytes(),
-            Command::RotateCtx(cmd) => cmd.as_bytes(),
-            Command::Sign(cmd) => cmd.as_bytes(),
-        }
-    }
-
-    fn parse_dpe_response(
-        &self,
-        cmd: &mut Command,
-        resp: &DpeEcResp,
-    ) -> CaliptraApiResult<DpeResponse> {
-        let data_size = MAX_DPE_RESP_DATA_SIZE.min(resp.data_size as usize);
-        let data = &resp.data[..data_size];
-
-        match cmd {
-            Command::CertifyKey(_) => Ok(DpeResponse::CertifyKey(
-                CertifyEcKeyResp::read_from_bytes(&data[..size_of::<CertifyEcKeyResp>()])
-                    .map_err(|_| CaliptraApiError::InvalidResponse)?,
-            )),
-            Command::Sign(_) => Ok(DpeResponse::Sign(
-                SignResp::read_from_bytes(&data[..size_of::<SignResp>()])
-                    .map_err(|_| CaliptraApiError::InvalidResponse)?,
-            )),
-            Command::GetCertificateChain(_) => Ok(DpeResponse::GetCertificateChain(
-                CertificateChainResp::read_from_bytes(&data[..size_of::<CertificateChainResp>()])
-                    .map_err(|_| CaliptraApiError::InvalidResponse)?,
-            )),
-            _ => Err(CaliptraApiError::InvalidResponse),
+            Command::GetProfile => (Command::GET_PROFILE, &[]),
+            Command::InitCtx(cmd) => (Command::INITIALIZE_CONTEXT, cmd.as_bytes()),
+            Command::DeriveContext(cmd) => (Command::DERIVE_CONTEXT, cmd.as_bytes()),
+            Command::CertifyKey(cmd) => (Command::CERTIFY_KEY, cmd.as_bytes()),
+            Command::Sign(cmd) => (Command::SIGN, cmd.as_bytes()),
+            Command::RotateCtx(cmd) => (Command::ROTATE_CONTEXT_HANDLE, cmd.as_bytes()),
+            Command::DestroyCtx(cmd) => (Command::DESTROY_CONTEXT, cmd.as_bytes()),
+            Command::GetCertificateChain(cmd) => (Command::GET_CERTIFICATE_CHAIN, cmd.as_bytes()),
         }
     }
 }
