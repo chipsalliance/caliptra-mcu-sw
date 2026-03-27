@@ -7,6 +7,7 @@
 
 use std::{env, error::Error, path::Path};
 
+use mcu_builder::Platform;
 use size_history::{
     ArtifactBuilder, Cache, FsCache, GitHubStepSummary, GithubActionCache, HtmlTableReport,
     OutputDestination, SizeHistory, Stdout,
@@ -31,20 +32,20 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         .with_pr_squashing(true)
         // MCU ROM
         .add_builder(Box::new(
-            McuRomBuilder::new("MCU ROM (emulator)").platform("emulator"),
+            McuRomBuilder::new("MCU ROM (emulator)").platform(Platform::Emulator),
         ))
         .add_builder(Box::new(
             McuRomBuilder::new("MCU ROM (fpga)")
-                .platform("fpga")
+                .platform(Platform::Fpga)
                 .features("fpga_realtime"),
         ))
         // MCU Runtime
         .add_builder(Box::new(
-            McuRuntimeBuilder::new("MCU Runtime (emulator)").platform("emulator"),
+            McuRuntimeBuilder::new("MCU Runtime (emulator)").platform(Platform::Emulator),
         ))
         .add_builder(Box::new(
             McuRuntimeBuilder::new("MCU Runtime (fpga)")
-                .platform("fpga")
+                .platform(Platform::Fpga)
                 .feature("fpga_realtime"),
         ))
         .run()?;
@@ -72,12 +73,12 @@ fn box_cache(val: impl Cache + 'static) -> Box<dyn Cache> {
 ///
 /// ```ignore
 /// McuRomBuilder::new("MCU ROM (emulator)")
-///     .platform("emulator")
+///     .platform(Platform::Emulator)
 ///     .features("feature1,feature2")
 /// ```
 pub struct McuRomBuilder {
     name: String,
-    platform: Option<String>,
+    platform: Platform,
     features: Option<String>,
 }
 
@@ -86,14 +87,14 @@ impl McuRomBuilder {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            platform: None,
+            platform: Platform::default(),
             features: None,
         }
     }
 
-    /// Set the target platform (e.g., "emulator", "fpga").
-    pub fn platform(mut self, platform: impl Into<String>) -> Self {
-        self.platform = Some(platform.into());
+    /// Set the target platform.
+    pub fn platform(mut self, platform: Platform) -> Self {
+        self.platform = platform;
         self
     }
 
@@ -111,7 +112,7 @@ impl ArtifactBuilder for McuRomBuilder {
 
     fn build_and_measure(&self, _workspace: &Path) -> Option<u64> {
         // Note: mcu_builder uses PROJECT_ROOT internally, not the workspace parameter
-        match mcu_builder::rom_build(self.platform.clone(), self.features.clone(), None) {
+        match mcu_builder::rom_build(self.platform, self.features.clone(), None) {
             Ok(bin_path) => match std::fs::metadata(&bin_path) {
                 Ok(metadata) => {
                     let size = metadata.len();
@@ -137,7 +138,7 @@ impl ArtifactBuilder for McuRomBuilder {
 ///
 /// ```ignore
 /// McuRuntimeBuilder::new("MCU Runtime (emulator)")
-///     .platform("emulator")
+///     .platform(Platform::Emulator)
 ///     .feature("feature1")
 ///     .feature("feature2")
 ///     .example_app(false)
@@ -145,7 +146,7 @@ impl ArtifactBuilder for McuRomBuilder {
 /// ```
 pub struct McuRuntimeBuilder {
     name: String,
-    platform: Option<String>,
+    platform: Platform,
     features: Vec<String>,
     example_app: bool,
     svn: Option<u16>,
@@ -156,16 +157,16 @@ impl McuRuntimeBuilder {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            platform: None,
+            platform: Platform::default(),
             features: Vec::new(),
             example_app: false,
             svn: None,
         }
     }
 
-    /// Set the target platform (e.g., "emulator", "fpga").
-    pub fn platform(mut self, platform: impl Into<String>) -> Self {
-        self.platform = Some(platform.into());
+    /// Set the target platform.
+    pub fn platform(mut self, platform: Platform) -> Self {
+        self.platform = platform;
         self
     }
 
@@ -202,7 +203,7 @@ impl ArtifactBuilder for McuRuntimeBuilder {
             &features,
             None, // output_name - use default
             self.example_app,
-            self.platform.as_deref(),
+            self.platform,
             self.svn,
             None, // target_dir - use default
         ) {

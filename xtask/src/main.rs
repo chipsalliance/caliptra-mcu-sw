@@ -3,7 +3,7 @@
 use caliptra_api_types::DeviceLifecycle;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
-use mcu_builder::ImageCfg;
+use mcu_builder::{ImageCfg, Platform};
 use mcu_firmware_bundler::args::Commands as BundleCommands;
 use std::path::PathBuf;
 
@@ -110,14 +110,14 @@ enum Commands {
         output: Option<String>,
 
         /// Platform to build for. Default: emulator
-        #[arg(long)]
-        platform: Option<String>,
+        #[arg(long, value_enum, default_value_t = Platform::Emulator)]
+        platform: Platform,
     },
     /// Build ROM
     RomBuild {
         /// Platform to build for. Default: emulator
-        #[arg(long)]
-        platform: Option<String>,
+        #[arg(long, value_enum, default_value_t = Platform::Emulator)]
+        platform: Platform,
 
         /// Features to build ROM with.
         #[arg(long)]
@@ -140,8 +140,8 @@ enum Commands {
         output: Option<String>,
 
         /// Platform to build for. Default: emulator
-        #[arg(long)]
-        platform: Option<String>,
+        #[arg(long, value_enum, default_value_t = Platform::Emulator)]
+        platform: Platform,
 
         #[arg(long)]
         rom_features: Option<String>,
@@ -465,7 +465,7 @@ fn main() {
             pldm_manifest,
         } => mcu_builder::all_build(mcu_builder::AllBuildArgs {
             output: output.clone(),
-            platform: platform.clone(),
+            platform: *platform,
             rom_features: rom_features.clone(),
             runtime_features: runtime_features.clone(),
             separate_runtimes: *separate_runtimes,
@@ -489,7 +489,7 @@ fn main() {
                 &features,
                 output.clone(),
                 false,
-                platform.as_deref(),
+                *platform,
                 None,
                 None,
             )
@@ -497,7 +497,7 @@ fn main() {
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild { platform, features } => {
-            mcu_builder::rom_build(platform.clone(), features.clone(), None).map(|_| ())
+            mcu_builder::rom_build(*platform, features.clone(), None).map(|_| ())
         }
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {

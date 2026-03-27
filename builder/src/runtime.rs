@@ -11,7 +11,7 @@
 #![allow(dead_code)]
 
 use crate::utils::manifest_file;
-use crate::PROJECT_ROOT;
+use crate::{Platform, PROJECT_ROOT};
 use anyhow::Result;
 use mcu_firmware_bundler::args::{
     BuildArgs, BundleArgs, Commands as BundleCommands, Common, LdArgs,
@@ -22,12 +22,11 @@ pub fn runtime_build_with_apps(
     features: &[&str],
     output_name: Option<String>,
     example_app: bool,
-    platform: Option<&str>,
+    platform: Platform,
     svn: Option<u16>,
     target_dir: Option<PathBuf>,
 ) -> Result<PathBuf> {
     let manifest = manifest_file(platform, example_app)?;
-    let platform = platform.unwrap_or("emulator");
     let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform));
 
     let common = Common {

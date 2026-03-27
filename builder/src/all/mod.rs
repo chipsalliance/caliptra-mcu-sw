@@ -49,11 +49,11 @@ use test_roms::{build_all_test_roms, build_feature_roms};
 /// 6. Package everything into a ZIP archive
 pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let ctx = AllBuildContext::new(args);
-    let mut test_roms = build_all_test_roms(&ctx.platform)?;
+    let mut test_roms = build_all_test_roms(ctx.platform)?;
     let base = BaseArtifacts::build(&ctx)?;
     let separate_features: Vec<&str> = ctx.separate_features.iter().map(|s| s.as_str()).collect();
 
-    let feature_roms = build_feature_roms(&ctx.platform, &separate_features)?;
+    let feature_roms = build_feature_roms(ctx.platform, &separate_features)?;
     test_roms.extend(feature_roms);
 
     let feature_resources = build_feature_resources(&ctx, &base)?;
@@ -71,35 +71,34 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Platform;
 
     #[test]
     fn test_all_build_args_default() {
         let args = AllBuildArgs::default();
         assert!(args.output.is_none());
-        assert!(args.platform.is_none());
+        assert_eq!(args.platform, Platform::Emulator);
         assert!(!args.separate_runtimes);
     }
 
     #[test]
     fn test_context_creation() {
         let args = AllBuildArgs {
-            platform: Some("emulator".to_string()),
+            platform: Platform::Emulator,
             separate_runtimes: false,
             ..Default::default()
         };
         let ctx = AllBuildContext::new(args);
-        assert_eq!(ctx.platform, "emulator");
-        assert!(!ctx.runtime_type);
+        assert_eq!(ctx.platform, Platform::Emulator);
     }
 
     #[test]
     fn test_context_fpga() {
         let args = AllBuildArgs {
-            platform: Some("fpga".to_string()),
+            platform: Platform::Fpga,
             ..Default::default()
         };
         let ctx = AllBuildContext::new(args);
-        assert_eq!(ctx.platform, "fpga");
-        assert!(ctx.runtime_type);
+        assert_eq!(ctx.platform, Platform::Fpga);
     }
 }

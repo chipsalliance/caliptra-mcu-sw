@@ -3,7 +3,7 @@
 //! Wrappers around the Caliptra builder library to make it easier to build
 //! the ROM, firwmare, and SoC manifest.
 
-use crate::target_dir;
+use crate::{target_dir, Platform};
 use anyhow::{bail, Result};
 use caliptra_auth_man_gen::{
     AuthManifestGenerator, AuthManifestGeneratorConfig, AuthManifestGeneratorKeyConfig,
@@ -68,7 +68,7 @@ pub struct AuthManifestOwnerConfig {
 
 #[derive(Clone)]
 pub struct CaliptraBuilder {
-    fpga: bool,
+    platform: Platform,
     caliptra_rom: Option<PathBuf>,
     caliptra_firmware: Option<PathBuf>,
     soc_manifest: Option<PathBuf>,
@@ -91,7 +91,7 @@ pub struct CaliptraBuilder {
 impl CaliptraBuilder {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        fpga: bool,
+        platform: Platform,
         caliptra_rom: Option<PathBuf>,
         caliptra_firmware: Option<PathBuf>,
         soc_manifest: Option<PathBuf>,
@@ -104,7 +104,7 @@ impl CaliptraBuilder {
         model: Option<String>,
     ) -> Self {
         Self {
-            fpga,
+            platform,
             caliptra_rom,
             caliptra_firmware,
             soc_manifest,
@@ -150,7 +150,7 @@ impl CaliptraBuilder {
             }
             Ok(caliptra_rom.clone())
         } else {
-            Self::compile_caliptra_rom_cached(self.fpga)
+            Self::compile_caliptra_rom_cached(self.platform == Platform::Fpga)
         }
     }
 
@@ -162,7 +162,8 @@ impl CaliptraBuilder {
             }
             caliptra_firmware.clone()
         } else {
-            let (path, vendor_pk_hash) = Self::compile_caliptra_fw_cached(self.fpga)?;
+            let (path, vendor_pk_hash) =
+                Self::compile_caliptra_fw_cached(self.platform == Platform::Fpga)?;
             self.vendor_pk_hash = Some(vendor_pk_hash);
             self.caliptra_firmware = Some(path.clone());
             path
@@ -171,8 +172,11 @@ impl CaliptraBuilder {
         // If we have a custom owner_config, re-sign the bundle
         if let Some(owner_config) = self.owner_config.take() {
             let existing_bundle = std::fs::read(&base_bundle_path)?;
-            let (new_bundle, vendor_hash, owner_hash) =
-                Self::resign_fw_bundle(&existing_bundle, owner_config, self.fpga)?;
+            let (new_bundle, vendor_hash, owner_hash) = Self::resign_fw_bundle(
+                &existing_bundle,
+                owner_config,
+                self.platform == Platform::Fpga,
+            )?;
 
             // Write the re-signed bundle to a new path
             let path = target_dir().join("caliptra-fw-bundle-resigned.bin");
@@ -452,7 +456,11 @@ impl CaliptraBuilder {
     }
 
     fn compile_caliptra_rom_cached(fpga: bool) -> Result<PathBuf> {
-        let platform = if fpga { "fpga" } else { "emulator" };
+        let platform = if fpga {
+            Platform::Fpga
+        } else {
+            Platform::Emulator
+        };
         if let Some(version) = Self::caliptra_version() {
             let path = target_dir().join(format!("caliptra-rom-{}-{}.bin", version, platform));
             if path.exists() {
@@ -484,7 +492,11 @@ impl CaliptraBuilder {
     }
 
     fn compile_caliptra_fw_cached(fpga: bool) -> Result<(PathBuf, String)> {
-        let platform = if fpga { "fpga" } else { "emulator" };
+        let platform = if fpga {
+            Platform::Fpga
+        } else {
+            Platform::Emulator
+        };
         if let Some(version) = Self::caliptra_version() {
             let path =
                 target_dir().join(format!("caliptra-fw-bundle-{}-{}.bin", version, platform));

@@ -135,7 +135,7 @@ fn build_single_feature_resource(
 
     // Build Caliptra artifacts with feature-specific runtime
     let mut caliptra_builder = CaliptraBuilder::new(
-        ctx.fpga,
+        ctx.platform,
         Some(base.caliptra_rom.clone()),
         Some(base.caliptra_fw.clone()),
         None,
@@ -217,7 +217,7 @@ fn build_feature_runtime(ctx: &AllBuildContext, feature: &str) -> Result<(NamedT
         &[feature],
         Some(runtime_path_str),
         include_example_app,
-        Some(&ctx.platform),
+        ctx.platform,
         None,
         target_dir,
     )?;

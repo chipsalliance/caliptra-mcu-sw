@@ -54,11 +54,7 @@ impl BaseArtifacts {
     /// - `Err(anyhow::Error)`: If any build step fails.
     pub fn build(ctx: &AllBuildContext) -> Result<Self> {
         // Build MCU ROM
-        let mcu_rom = crate::rom_build(
-            Some(ctx.platform.clone()),
-            Some(ctx.rom_features.clone()),
-            None,
-        )?;
+        let mcu_rom = crate::rom_build(ctx.platform, Some(ctx.rom_features.clone()), None)?;
 
         // Build base MCU runtime
         let runtime_file = NamedTempFile::new()?;
@@ -74,7 +70,7 @@ impl BaseArtifacts {
             &base_features,
             Some(runtime_path),
             false,
-            Some(&ctx.platform),
+            ctx.platform,
             None,
             None,
         )?;
@@ -83,7 +79,7 @@ impl BaseArtifacts {
         // Build Caliptra artifacts
         let mcu_image_cfg = ctx.get_image_cfg_for_feature("none");
         let mut caliptra_builder = CaliptraBuilder::new(
-            ctx.fpga,
+            ctx.platform,
             None,
             None,
             None,

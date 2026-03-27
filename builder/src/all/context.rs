@@ -5,12 +5,12 @@
 //! This module provides the `AllBuildContext` struct which encapsulates
 //! the configuration and state needed throughout the build process.
 
-use crate::ImageCfg;
+use crate::{ImageCfg, Platform};
 
 #[derive(Default)]
 pub struct AllBuildArgs {
     pub output: Option<String>,
-    pub platform: Option<String>,
+    pub platform: Platform,
     pub rom_features: Option<String>,
     /// Feature flags for runtime build (comma-separated).
     pub runtime_features: Option<String>,
@@ -27,9 +27,7 @@ pub struct AllBuildArgs {
 /// the firmware build process, avoiding the need to thread parameters
 /// through multiple function calls.
 pub struct AllBuildContext {
-    pub platform: String,
-    /// Whether building for FPGA (vs emulator).
-    pub fpga: bool,
+    pub platform: Platform,
     /// Feature flags for ROM build.
     pub rom_features: String,
     /// SoC images configuration.
@@ -57,8 +55,7 @@ impl AllBuildContext {
     ///
     /// - `AllBuildContext`: Initialized build context.
     pub fn new(args: AllBuildArgs) -> Self {
-        let platform = args.platform.unwrap_or_else(|| "emulator".to_string());
-        let fpga = platform == "fpga";
+        let platform = args.platform;
         let rom_features = args.rom_features.unwrap_or_default();
 
         // Determine runtime features
@@ -66,7 +63,7 @@ impl AllBuildContext {
             Some(r) if !r.is_empty() => r.split(',').map(|s| s.to_string()).collect(),
             _ => {
                 if args.separate_runtimes {
-                    if fpga {
+                    if platform == Platform::Fpga {
                         crate::features::FPGA_RUNTIME_TEST_FEATURES
                             .iter()
                             .map(|s| s.to_string())
@@ -93,7 +90,6 @@ impl AllBuildContext {
 
         Self {
             platform,
-            fpga,
             rom_features,
             soc_images: args.soc_images,
             mcu_cfgs: args.mcu_cfgs,

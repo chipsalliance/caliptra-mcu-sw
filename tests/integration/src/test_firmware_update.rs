@@ -9,7 +9,7 @@ mod test {
     use chrono::{TimeZone, Utc};
     use flash_image::{MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER};
     use hex::ToHex;
-    use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
+    use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg, Platform};
     use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
@@ -257,7 +257,7 @@ mod test {
         };
 
         let mut update_builder = CaliptraBuilder::new(
-            false,
+            Platform::Emulator,
             None,
             None,
             None,
@@ -654,7 +654,7 @@ mod test {
 
         // Build the Caliptra builder with prebuilt paths
         let builder = CaliptraBuilder::new(
-            false,
+            Platform::Emulator,
             Some(caliptra_rom_path),
             Some(caliptra_fw_path.clone()),
             Some(soc_manifest_path.clone()),
@@ -772,7 +772,7 @@ mod test {
 
         // Build the Runtime image
         let mut builder = CaliptraBuilder::new(
-            false,
+            Platform::Emulator,
             None,
             None,
             None,

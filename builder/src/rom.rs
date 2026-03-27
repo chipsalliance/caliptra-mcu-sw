@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 
 use crate::utils::manifest_file;
-use crate::PROJECT_ROOT;
+use crate::{Platform, PROJECT_ROOT};
 use caliptra_builder::FwId;
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
@@ -14,7 +14,7 @@ use mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 
 /// Build ROM file for a given `platform` with a set of `features` into a `target_dir`.
 pub fn rom_build(
-    platform: Option<String>,
+    platform: Platform,
     features: Option<String>,
     target_dir: Option<PathBuf>,
 ) -> Result<PathBuf> {
@@ -23,18 +23,15 @@ pub fn rom_build(
         None => String::new(),
     };
 
-    let target_name = format!(
-        "mcu-rom-{}",
-        platform.clone().unwrap_or_else(|| "emulator".to_string())
-    );
+    let target_name = format!("mcu-rom-{}", platform);
     let rom = format!("{target_name}{feature_suffix}");
-    let manifest = manifest_file(platform.as_deref(), false)?;
+    let manifest = manifest_file(platform, false)?;
     let common = Common {
         manifest,
         target_dir,
         ..Default::default()
     };
-    let rom_size = rom_size_for_platform(platform.as_deref().unwrap_or("emulator"));
+    let rom_size = rom_size_for_platform(platform);
     let rom_binary = common.release_dir().map(|t| t.join(format!("{rom}.bin")))?;
     let build_cmd = Commands::Build {
         common,
@@ -69,21 +66,19 @@ fn append_rom_digest(binary: &PathBuf, rom_size: usize) -> Result<()> {
     Ok(())
 }
 
-fn rom_size_for_platform(platform: &str) -> usize {
+fn rom_size_for_platform(platform: Platform) -> usize {
     match platform {
-        "fpga" => mcu_config_fpga::FPGA_MEMORY_MAP.rom_size as usize,
-        _ => mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size as usize,
+        Platform::Fpga => mcu_config_fpga::FPGA_MEMORY_MAP.rom_size as usize,
+        Platform::Emulator => mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size as usize,
     }
 }
 
 pub fn test_rom_build(
-    platform: Option<&str>,
+    platform: Platform,
     fwid: &FwId,
     target_dir: Option<PathBuf>,
 ) -> Result<String> {
-    let platform = platform.unwrap_or("emulator");
-
-    let template_name = if platform == "fpga" {
+    let template_name = if platform == Platform::Fpga {
         "fpga.toml"
     } else {
         "emulator.toml"
@@ -111,7 +106,7 @@ pub fn test_rom_build(
     if !features.contains(&"riscv") {
         features.push("riscv");
     }
-    if platform != "emulator" {
+    if platform == Platform::Fpga {
         features.push("fpga_realtime");
     }
 
