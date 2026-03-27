@@ -9,7 +9,6 @@ on:
 jobs:
   caliptra-sw-mcu-rom-smoke-test:
     uses: chipsalliance/caliptra-sw/.github/workflows/fpga-subsystem.yml@caliptra-2.0
-    timeout-minutes: 120
     with:
       mcu-commit: ${{ github.event.pull_request.head.sha || github.sha }}
       branch: caliptra-2.0
