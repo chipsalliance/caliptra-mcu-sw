@@ -138,11 +138,6 @@ mod test {
     }
 
     fn compile_rom(feature: &str) -> PathBuf {
-        let target_name = if cfg!(feature = "fpga_realtime") {
-            "mcu-rom-fpga"
-        } else {
-            "mcu-rom-emulator"
-        };
         let feature = if TEST_HW_REVISION == "2.1.0" {
             if feature.is_empty() {
                 "hw-2-1".to_string()
@@ -152,12 +147,14 @@ mod test {
         } else {
             feature.to_string()
         };
+        // Return the feature-suffixed path directly from rom_build.
+        // Do NOT copy to a generic name: subsequent builds re-create the
+        // intermediate mcu-rom-<platform>.bin (without the appended ROM
+        // digest), which would silently clobber the copy.
         let output: PathBuf = mcu_builder::rom_build(Some(platform().to_string()), Some(feature))
             .expect("ROM build failed");
-        let stable_output = target_binary(&format!("{target_name}.bin"));
-        std::fs::copy(&output, &stable_output).expect("Failed to copy ROM binary");
-        assert!(stable_output.exists());
-        stable_output
+        assert!(output.exists());
+        output
     }
 
     pub fn compile_runtime(feature: Option<&str>, example_app: bool) -> PathBuf {

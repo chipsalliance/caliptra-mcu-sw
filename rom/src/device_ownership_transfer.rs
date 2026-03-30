@@ -22,7 +22,22 @@ use mcu_error::{McuError, McuResult};
 use romtime::otp::Otp;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
-const DOT_LABEL: &[u8] = b"Caliptra DOT stable key";
+const DOT_LABEL: &[u8; 23] = b"Caliptra DOT stable key";
+
+/// Copy `src` into `dst` without pulling in a panic path.
+///
+/// `[u8]::copy_from_slice` contains a length-mismatch panic that the
+/// compiler sometimes cannot optimise away.  This helper returns an
+/// error instead, keeping the ROM binary provably panic-free.
+fn copy_slice(dst: &mut [u8], src: &[u8]) -> McuResult<()> {
+    if dst.len() != src.len() {
+        return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
+    }
+    for (d, s) in dst.iter_mut().zip(src.iter()) {
+        *d = *s;
+    }
+    Ok(())
+}
 
 #[derive(Clone, Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
 pub struct LakPkHash(pub [u32; 12]);
@@ -268,7 +283,7 @@ fn cm_derive_stable_key(
         ..Default::default()
     };
     const LABEL_LEN: usize = DOT_LABEL.len();
-    req.info[..LABEL_LEN].copy_from_slice(DOT_LABEL);
+    copy_slice(&mut req.info[..LABEL_LEN], DOT_LABEL)?;
     let fuse_slice: [u8; 2] = derivation_value.to_le_bytes();
     req.info[LABEL_LEN] = fuse_slice[0];
     req.info[LABEL_LEN + 1] = fuse_slice[1];
@@ -331,23 +346,23 @@ fn cm_hmac(env: &mut RomEnv, key: &Cmk, data: &[u8]) -> McuResult<[u32; 16]> {
                        // cmk – serialise each u32 word in native byte order (matches write_data)
     for &w in key.0.iter() {
         if let Some(dst) = buf.get_mut(off..off + 4) {
-            dst.copy_from_slice(&w.to_ne_bytes());
+            copy_slice(dst, &w.to_ne_bytes())?;
         }
         off += 4;
     }
     // hash_algorithm (LE)
     if let Some(dst) = buf.get_mut(off..off + 4) {
-        dst.copy_from_slice(&hash_algorithm.to_le_bytes());
+        copy_slice(dst, &hash_algorithm.to_le_bytes())?;
     }
     off += 4;
     // data_size (LE)
     if let Some(dst) = buf.get_mut(off..off + 4) {
-        dst.copy_from_slice(&data_size.to_le_bytes());
+        copy_slice(dst, &data_size.to_le_bytes())?;
     }
     off += 4;
     // data
     if let Some(dst) = buf.get_mut(off..off + data.len()) {
-        dst.copy_from_slice(data);
+        copy_slice(dst, data)?;
     }
 
     // Compute and store checksum over payload bytes (everything after chksum).
@@ -359,7 +374,7 @@ fn cm_hmac(env: &mut RomEnv, key: &Cmk, data: &[u8]) -> McuResult<[u32; 16]> {
         },
     );
     if let Some(dst) = buf.get_mut(0..4) {
-        dst.copy_from_slice(&chksum.to_le_bytes());
+        copy_slice(dst, &chksum.to_le_bytes())?;
     }
 
     // Send the request using the same API as cm_derive_stable_key.
