@@ -95,13 +95,13 @@ mod external_memory {
     use libsyscall_caliptra::dma::{DMAMapping, DMASource, DMATransaction, DMA as DMASyscall};
     use libtock_platform::ErrorCode;
 
-    use crate::image_loader::EMULATED_DMA_MAPPING;
+    use user_app_common::IDENTITY_DMA_MAPPING;
 
     const DMA_TRANSFER_SIZE: usize = 512;
     const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0xB00C0000;
 
     pub static STAGING_MEMORY: embassy_sync::lazy_lock::LazyLock<ExternalRAM> =
-        embassy_sync::lazy_lock::LazyLock::new(|| ExternalRAM::new(&EMULATED_DMA_MAPPING));
+        embassy_sync::lazy_lock::LazyLock::new(|| ExternalRAM::new(&IDENTITY_DMA_MAPPING));
 
     pub struct ExternalRAM {
         dma_syscall: DMASyscall,
