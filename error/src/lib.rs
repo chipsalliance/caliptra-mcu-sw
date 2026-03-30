@@ -144,33 +144,38 @@ impl McuError {
             "DOT recovery flash write failed"
         ),
         (
-            ROM_DOT_RECOVERY_PK_HASH_MISMATCH,
-            0x1_0013,
-            "DOT recovery PK hash mismatch"
-        ),
-        (
-            ROM_DOT_RECOVERY_CHALLENGE_FAILED,
-            0x1_0014,
-            "DOT recovery challenge generation failed"
-        ),
-        (
-            ROM_DOT_RECOVERY_SIG_VERIFY_FAILED,
-            0x1_0015,
-            "DOT recovery signature verification failed"
-        ),
-        (
-            ROM_DOT_RECOVERY_NO_RECOVERY_PK_HASH,
-            0x1_0016,
-            "DOT recovery no recovery PK hash in fuses"
-        ),
-        (
             ROM_DOT_RECOVERY_TRANSPORT_ERROR,
-            0x1_0017,
+            0x1_0013,
             "DOT recovery transport error"
         ),
         (
-            ROM_COLD_BOOT_ROM_DIGEST_MISMATCH,
+            ROM_DOT_OVERRIDE_CHALLENGE_FAILED,
+            0x1_0014,
+            "DOT override challenge failed"
+        ),
+        (
+            ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED,
+            0x1_0015,
+            "DOT override signature verification failed"
+        ),
+        (
+            ROM_DOT_OVERRIDE_NOT_LOCKED,
+            0x1_0016,
+            "DOT override requested but device not in locked state"
+        ),
+        (
+            ROM_DOT_OVERRIDE_NO_RECOVERY_PK_HASH,
+            0x1_0017,
+            "DOT override no vendor recovery PK hash in OTP fuses"
+        ),
+        (
+            ROM_DOT_OVERRIDE_PK_HASH_MISMATCH,
             0x1_0018,
+            "DOT override vendor recovery PK hash mismatch"
+        ),
+        (
+            ROM_COLD_BOOT_ROM_DIGEST_MISMATCH,
+            0x1_0019,
             "Cold boot ROM integrity check failed"
         ),
         (
@@ -399,7 +404,7 @@ impl McuError {
         ),
         (
             ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR,
-            0x1_0018,
+            0x1_001a,
             "Firmware manifest DOT command processing error"
         ),
         (

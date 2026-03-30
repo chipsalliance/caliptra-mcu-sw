@@ -1170,12 +1170,8 @@ mod test {
     }
 
     // -----------------------------------------------------------------------
-    // Challenge/Response DOT Recovery Tests (ECDSA P-384 + MLDSA-87)
+    // DOT Override Challenge/Response Tests (ECDSA P-384)
     // -----------------------------------------------------------------------
-
-    /// MCI mbox0 command IDs matching the ROM's TestRecoveryTransport.
-    const CMD_DOT_RECOVERY_REQUEST: u32 = 0x444F_5451;
-    const CMD_DOT_CHALLENGE_RESPONSE: u32 = 0x444F_5452;
 
     /// Generates a random ECC P-384 key pair, returning the public key
     /// coordinates as raw big-endian bytes (SEC1 format) and the raw private
@@ -1207,7 +1203,7 @@ mod test {
         (pk_bytes.to_vec(), sk)
     }
 
-    /// Computes SHA-384 hash of the combined recovery public keys (ECC + MLDSA).
+    /// Computes SHA-384 hash of the combined vendor public keys (ECC + MLDSA).
     fn compute_recovery_pk_hash(
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],
@@ -1225,8 +1221,8 @@ mod test {
         hash
     }
 
-    /// Creates OTP memory for challenge/response recovery testing.
-    /// Includes locked state fuses AND the recovery PK hash.
+    /// Creates OTP memory for override testing.
+    /// Includes locked state fuses AND the vendor recovery PK hash.
     fn create_challenge_recovery_otp_memory(pk_hash: &[u8; 48]) -> Vec<u8> {
         use registers_generated::fuses;
 
@@ -1250,35 +1246,54 @@ mod test {
         otp
     }
 
-    /// Build the mbox0 SRAM payload for DOT_RECOVERY_REQUEST.
-    fn build_recovery_request_payload(
+    /// Compute the Caliptra-standard mailbox checksum.
+    fn calc_dot_checksum(cmd: u32, data: &[u8]) -> u32 {
+        let mut sum = 0u32;
+        for &b in cmd.to_le_bytes().iter() {
+            sum = sum.wrapping_add(b as u32);
+        }
+        for &b in data {
+            sum = sum.wrapping_add(b as u32);
+        }
+        0u32.wrapping_sub(sum)
+    }
+
+    /// MCI mbox0 command IDs for DOT_UNLOCK_CHALLENGE / DOT_OVERRIDE.
+    const CMD_DOT_UNLOCK_CHALLENGE: u32 = 0x444F_5457;
+    const CMD_DOT_OVERRIDE: u32 = 0x444F_5458;
+
+    /// Challenge type field values for DOT_UNLOCK_CHALLENGE.
+    const CHALLENGE_TYPE_OVERRIDE: u32 = 0x02;
+
+    /// Build the mbox0 SRAM payload for DOT_UNLOCK_CHALLENGE (override type).
+    fn build_override_challenge_payload(
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8],
-        cak: &[u8; 48],
-        lak: &[u8; 48],
     ) -> Vec<u8> {
         let mut payload = Vec::new();
         // Reserve space for checksum (filled below)
         payload.extend_from_slice(&[0u8; 4]);
+        // challenge_type = OVERRIDE
+        payload.extend_from_slice(&CHALLENGE_TYPE_OVERRIDE.to_le_bytes());
         payload.extend_from_slice(ecc_pub_x);
         payload.extend_from_slice(ecc_pub_y);
-        payload.extend_from_slice(mldsa_pub);
         let mldsa_expected = 2592;
+        payload.extend_from_slice(mldsa_pub);
         if mldsa_pub.len() < mldsa_expected {
             payload.resize(payload.len() + mldsa_expected - mldsa_pub.len(), 0);
         }
-        payload.extend_from_slice(cak);
-        payload.extend_from_slice(lak);
 
         // Compute and fill checksum
-        let chksum = calc_dot_checksum(CMD_DOT_RECOVERY_REQUEST, &payload[4..]);
+        let chksum = calc_dot_checksum(CMD_DOT_UNLOCK_CHALLENGE, &payload[4..]);
         payload[..4].copy_from_slice(&chksum.to_le_bytes());
         payload
     }
 
-    /// Build the mbox0 SRAM payload for DOT_CHALLENGE_RESPONSE.
-    fn build_challenge_response_payload(
+    /// Build the mbox0 SRAM payload for DOT_OVERRIDE.
+    fn build_override_response_payload(
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
         ecc_sig_r: &[u8; 48],
         ecc_sig_s: &[u8; 48],
         mldsa_pub: &[u8],
@@ -1287,6 +1302,8 @@ mod test {
         let mut payload = Vec::new();
         // Reserve space for checksum (filled below)
         payload.extend_from_slice(&[0u8; 4]);
+        payload.extend_from_slice(ecc_pub_x);
+        payload.extend_from_slice(ecc_pub_y);
         payload.extend_from_slice(ecc_sig_r);
         payload.extend_from_slice(ecc_sig_s);
         let mldsa_pk_expected = 2592;
@@ -1301,30 +1318,18 @@ mod test {
         }
 
         // Compute and fill checksum
-        let chksum = calc_dot_checksum(CMD_DOT_CHALLENGE_RESPONSE, &payload[4..]);
+        let chksum = calc_dot_checksum(CMD_DOT_OVERRIDE, &payload[4..]);
         payload[..4].copy_from_slice(&chksum.to_le_bytes());
         payload
     }
 
-    /// Compute the Caliptra-standard mailbox checksum.
-    fn calc_dot_checksum(cmd: u32, data: &[u8]) -> u32 {
-        let mut sum = 0u32;
-        for &b in cmd.to_le_bytes().iter() {
-            sum = sum.wrapping_add(b as u32);
-        }
-        for &b in data {
-            sum = sum.wrapping_add(b as u32);
-        }
-        0u32.wrapping_sub(sum)
-    }
-
-    /// Test challenge/response DOT recovery with both ECDSA and MLDSA signatures.
+    /// Test DOT override challenge/response success.
     ///
-    /// Host sends recovery request via MCI mbox0, ROM generates challenge,
-    /// host signs challenge with ECDSA + MLDSA, ROM verifies and writes new DOT blob.
-    /// Uses randomly generated keys each run.
+    /// Host sends override challenge request via MCI mbox0 with vendor public keys,
+    /// ROM generates challenge, host signs challenge with VendorKey.priv (ECDSA + MLDSA),
+    /// ROM verifies both signatures, burns fuse, and erases DOT blob.
     #[test]
-    fn test_dot_challenge_recovery_success() {
+    fn test_dot_override_challenge_success() {
         use ecdsa::signature::hazmat::PrehashSigner;
         use fips204::traits::Signer;
         use p384::ecdsa::SigningKey;
@@ -1333,68 +1338,64 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let owner_pk_hash = get_owner_pk_hash();
-        let cak: [u8; 48] = transmute!(owner_pk_hash);
-        let lak_u32 = test_lak();
-        let lak: [u8; 48] = transmute!(lak_u32);
+        // Generate random ECC P-384 key pair for VendorKey
+        println!("[TEST] Generating random VendorKey ECC key pair...");
+        let (vendor_pub_x, vendor_pub_y, vendor_priv_bytes) = generate_random_ecc_keys();
 
-        // Generate random key pairs
-        println!("[TEST] Generating random ECC key pair...");
-        let (ecc_pub_x, ecc_pub_y, ecc_priv_bytes) = generate_random_ecc_keys();
-        println!("[TEST] Generating random MLDSA key pair...");
+        // Generate random MLDSA-87 key pair for VendorKey
+        println!("[TEST] Generating random VendorKey MLDSA key pair...");
         let (mldsa_pub, mldsa_priv) = generate_random_mldsa_keys();
-        println!("[TEST] Key generation complete");
 
-        // Compute PK hash for OTP fuses
-        let pk_hash = compute_recovery_pk_hash(&ecc_pub_x, &ecc_pub_y, &mldsa_pub);
+        // Compute vendor PK hash (ECC + MLDSA) for OTP fuses
+        let vendor_pk_hash = compute_recovery_pk_hash(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
 
-        // DOT flash: offset 0 empty (triggers recovery), offset 2048 has valid backup blob
-        let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
-        let blob_bytes = blob.as_bytes();
-        let mut flash_contents = vec![0u8; 4096];
-        flash_contents[2048..2048 + DOT_BLOB_SIZE].copy_from_slice(blob_bytes);
+        // Set up recovery mode: corrupted/empty blob, locked fuses, vendor PK hash in OTP
+        let flash_contents = vec![0u8; DOT_BLOB_SIZE];
+
+        println!("[TEST] Created recovery mode setup for override test");
 
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(flash_contents),
             rom_only: true,
-            otp_memory: Some(create_challenge_recovery_otp_memory(&pk_hash)),
+            otp_memory: Some(create_challenge_recovery_otp_memory(&vendor_pk_hash)),
             rom_feature: Some("test-dot-recovery"),
             ..Default::default()
         });
 
-        // Step 1: Send recovery request via mbox0
-        let request_payload =
-            build_recovery_request_payload(&ecc_pub_x, &ecc_pub_y, &mldsa_pub, &cak, &lak);
-        hw.start_mailbox_execute(CMD_DOT_RECOVERY_REQUEST, &request_payload)
-            .expect("Failed to send DOT_RECOVERY_REQUEST");
+        // Step 1: Send DOT_OVERRIDE_CHALLENGE via mbox0 with vendor public keys
+        let override_payload =
+            build_override_challenge_payload(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
+        hw.start_mailbox_execute(CMD_DOT_UNLOCK_CHALLENGE, &override_payload)
+            .expect("Failed to send DOT_UNLOCK_CHALLENGE");
 
         // Step 2: Wait for ROM to process and send challenge via DataReady
         let challenge_data = hw
             .finish_mailbox_execute()
-            .expect("Failed to get challenge response");
+            .expect("Failed to get override challenge response");
         let challenge = challenge_data.expect("Expected challenge data from ROM");
         assert_eq!(challenge.len(), 48, "Challenge should be 48 bytes");
-        println!("[TEST] Received challenge ({} bytes)", challenge.len());
+        println!(
+            "[TEST] Received override challenge ({} bytes)",
+            challenge.len()
+        );
 
-        // Step 3: Sign the challenge
-        // ECDSA: sign SHA-384(challenge) with prehash
+        // Step 3: Sign the challenge with VendorKey.priv (ECDSA + MLDSA)
         println!("[TEST] Signing challenge with ECDSA...");
         let challenge_hash: [u8; 48] = {
             let mut hasher = Sha384::new();
             hasher.update(&challenge);
             hasher.finalize().into()
         };
-        let ecc_secret_key =
-            p384::SecretKey::from_slice(&ecc_priv_bytes).expect("Invalid ECC private key");
-        let ecc_signing_key = SigningKey::from(&ecc_secret_key);
-        let ecc_sig: p384::ecdsa::Signature = ecc_signing_key
+        let vendor_secret_key =
+            p384::SecretKey::from_slice(&vendor_priv_bytes).expect("Invalid vendor private key");
+        let vendor_signing_key = SigningKey::from(&vendor_secret_key);
+        let ecc_sig: p384::ecdsa::Signature = vendor_signing_key
             .sign_prehash(&challenge_hash)
             .expect("ECDSA signing failed");
         let ecc_r_bytes: [u8; 48] = ecc_sig.r().to_bytes().into();
         let ecc_s_bytes: [u8; 48] = ecc_sig.s().to_bytes().into();
         println!("[TEST] ECDSA signing complete");
 
-        // MLDSA: sign the raw challenge bytes
         println!("[TEST] Signing challenge with MLDSA...");
         let mldsa_sig_bytes = mldsa_priv
             .try_sign_with_seed(&[0u8; 32], &challenge, &[])
@@ -1402,87 +1403,201 @@ mod test {
         println!("[TEST] MLDSA signing complete");
 
         // Step 4: Send signed challenge response via mbox0
-        let response_payload = build_challenge_response_payload(
+        let response_payload = build_override_response_payload(
+            &vendor_pub_x,
+            &vendor_pub_y,
             &ecc_r_bytes,
             &ecc_s_bytes,
             &mldsa_pub,
             &mldsa_sig_bytes,
         );
-        hw.start_mailbox_execute(CMD_DOT_CHALLENGE_RESPONSE, &response_payload)
-            .expect("Failed to send DOT_CHALLENGE_RESPONSE");
+        hw.start_mailbox_execute(CMD_DOT_OVERRIDE, &response_payload)
+            .expect("Failed to send DOT_OVERRIDE");
 
-        // Step 5: Let the ROM verify signatures, write DOT blob, and complete.
-        // We don't call finish_mailbox_execute() because the ROM transport
-        // intentionally leaves the mbox0 transaction open so the SRAM data
-        // (MLDSA pub key and signature) stays valid during verification.
-        // The ROM will eventually trigger a warm reset or hit a fatal error.
+        // Step 5: Let the ROM verify signatures, burn fuse, write new blob, and complete.
         let start = hw.cycle_count();
         hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() - start > 20_000_000);
 
-        // Verify a DOT blob was written to flash at offset 0
+        // Verify a new DOT blob was written to flash (non-empty, HMAC'd for EVEN state)
         let dot_flash = hw.read_dot_flash();
         let written_blob = &dot_flash[..DOT_BLOB_SIZE];
         assert!(
-            !written_blob.iter().all(|&b| b == 0),
-            "Challenge recovery should have written a DOT blob to flash"
+            !written_blob.iter().all(|&b| b == 0) && !written_blob.iter().all(|&b| b == 0xFF),
+            "DOT blob should have been written (not erased) after override"
         );
+        // Verify the blob has empty CAK/LAK (unlocked state)
+        let blob_bytes: [u8; DOT_BLOB_SIZE] = written_blob.try_into().unwrap();
+        let blob: TestDotBlob = zerocopy::transmute!(blob_bytes);
+        assert_eq!(blob.cak, [0u32; 12], "Override blob should have empty CAK");
+        assert_eq!(
+            blob.lak_pub, [0u32; 12],
+            "Override blob should have empty LAK"
+        );
+        assert_eq!(blob.version, 1, "Override blob should have version 1");
+        // HMAC should be non-zero (computed with EVEN-state key)
+        assert!(
+            !blob.hmac.iter().all(|&w| w == 0),
+            "Override blob should have a valid HMAC"
+        );
+
+        // Verify the DOT fuse was burned (bit 1 should now be set, total burned = 2)
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array_offset = registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset;
+        let lock_fuse_byte = otp_memory[fuse_array_offset];
+        assert!(
+            lock_fuse_byte & 0x03 == 0x03,
+            "DOT fuse should have 2 bits burned after override (was 1, now 2), got: 0x{:02x}",
+            lock_fuse_byte
+        );
+
+        println!("[TEST] DOT override succeeded: new unlocked blob written and fuse burned");
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// Test that challenge/response recovery fails when the PK hash doesn't match fuses.
-    /// Uses randomly generated keys each run.
+    /// Test that DOT override fails when the vendor PK hash doesn't match OTP fuses.
     #[test]
-    fn test_dot_challenge_recovery_wrong_pk_hash() {
+    fn test_dot_override_wrong_pk_hash_fails() {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let owner_pk_hash = get_owner_pk_hash();
-        let cak: [u8; 48] = transmute!(owner_pk_hash);
-        let lak_u32 = test_lak();
-        let lak: [u8; 48] = transmute!(lak_u32);
-
-        // Generate random keys
-        let (ecc_pub_x, ecc_pub_y, _) = generate_random_ecc_keys();
+        // Generate vendor key pairs for the OTP fuses
+        let (vendor_pub_x, vendor_pub_y, _) = generate_random_ecc_keys();
         let (mldsa_pub, _) = generate_random_mldsa_keys();
+        let vendor_pk_hash = compute_recovery_pk_hash(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
 
-        // DOT flash: empty (no backup blob — only challenge recovery available)
-        let flash_contents = vec![0u8; 4096];
+        // Set up recovery mode: corrupted/empty blob, locked fuses
+        let flash_contents = vec![0u8; DOT_BLOB_SIZE];
 
-        // Burn a WRONG recovery PK hash in fuses — the generated keys won't
-        // match this hash, so the challenge flow should fail with PK_HASH_MISMATCH.
-        let wrong_pk_hash = [0xABu8; 48];
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(flash_contents),
             rom_only: true,
-            otp_memory: Some(create_challenge_recovery_otp_memory(&wrong_pk_hash)),
+            otp_memory: Some(create_challenge_recovery_otp_memory(&vendor_pk_hash)),
             rom_feature: Some("test-dot-recovery"),
             ..Default::default()
         });
 
-        // Send recovery request — the ROM should fail during PK hash verification
-        let request_payload =
-            build_recovery_request_payload(&ecc_pub_x, &ecc_pub_y, &mldsa_pub, &cak, &lak);
-        hw.start_mailbox_execute(CMD_DOT_RECOVERY_REQUEST, &request_payload)
-            .expect("Failed to send DOT_RECOVERY_REQUEST");
+        // Generate DIFFERENT key pairs for the override request (wrong vendor keys)
+        let (wrong_pub_x, wrong_pub_y, _) = generate_random_ecc_keys();
+        let (wrong_mldsa_pub, _) = generate_random_mldsa_keys();
 
-        // The ROM should detect PK hash mismatch and set a fatal error.
-        // The mbox0 transaction may complete with CmdFailure or the ROM may
-        // crash before responding. Either way, step until fatal error.
-        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 100_000_000);
+        // Send override challenge with wrong vendor public keys
+        let override_payload =
+            build_override_challenge_payload(&wrong_pub_x, &wrong_pub_y, &wrong_mldsa_pub);
+        hw.start_mailbox_execute(CMD_DOT_UNLOCK_CHALLENGE, &override_payload)
+            .expect("Failed to send DOT_UNLOCK_CHALLENGE");
 
-        let fatal_error = hw.mci_fw_fatal_error();
-        assert!(
-            fatal_error.is_some(),
-            "Challenge recovery with wrong PK hash should fail"
-        );
+        // The ROM should fail during vendor PK hash verification.
+        // In recovery mode (empty blob, locked fuses), override failure leads
+        // to a fatal error because no recovery mechanism remains.
+        let start = hw.cycle_count();
+        hw.step_until(|m| {
+            m.mci_fw_fatal_error().is_some()
+                || m.cmd_status().cmd_failure()
+                || m.cmd_status().data_ready()
+                || m.cycle_count() - start > 50_000_000
+        });
 
-        // Verify flash was not written
+        // Verify the DOT blob was NOT erased (should still be in flash)
         let dot_flash = hw.read_dot_flash();
         assert!(
             dot_flash[..DOT_BLOB_SIZE].iter().all(|&b| b == 0),
-            "Flash should not be written when PK hash doesn't match"
+            "DOT blob should still be empty (was already empty in recovery mode)"
         );
+
+        // Verify the fuse was NOT burned (should still be 1)
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array_offset = registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset;
+        let lock_fuse_byte = otp_memory[fuse_array_offset];
+        assert_eq!(
+            lock_fuse_byte & 0x03,
+            0x01,
+            "DOT fuse should still have only 1 bit burned, got: 0x{:02x}",
+            lock_fuse_byte
+        );
+
+        println!("[TEST] DOT override correctly failed with wrong vendor PK hash");
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test that DOT override aborts when PK hash matches but signatures are invalid.
+    ///
+    /// The ROM should accept the vendor public keys (PK hash matches OTP) and
+    /// issue a challenge, but reject the response because the signatures don't
+    /// verify. The fuse must NOT be burned.
+    #[test]
+    fn test_dot_override_invalid_signatures_fails() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        // Generate correct vendor key pairs and burn their PK hash into OTP.
+        let (vendor_pub_x, vendor_pub_y, _vendor_priv_bytes) = generate_random_ecc_keys();
+        let (mldsa_pub, _mldsa_priv) = generate_random_mldsa_keys();
+        let vendor_pk_hash = compute_recovery_pk_hash(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
+
+        let flash_contents = vec![0u8; DOT_BLOB_SIZE];
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(flash_contents),
+            rom_only: true,
+            otp_memory: Some(create_challenge_recovery_otp_memory(&vendor_pk_hash)),
+            rom_feature: Some("test-dot-recovery"),
+            ..Default::default()
+        });
+
+        // Send DOT_UNLOCK_CHALLENGE with correct vendor public keys.
+        let override_payload =
+            build_override_challenge_payload(&vendor_pub_x, &vendor_pub_y, &mldsa_pub);
+        hw.start_mailbox_execute(CMD_DOT_UNLOCK_CHALLENGE, &override_payload)
+            .expect("Failed to send DOT_UNLOCK_CHALLENGE");
+
+        // Wait for the ROM to verify PK hash and return a challenge.
+        let challenge_data = hw
+            .finish_mailbox_execute()
+            .expect("Failed to get override challenge response");
+        let challenge = challenge_data.expect("Expected challenge data from ROM");
+        assert_eq!(challenge.len(), 48, "Challenge should be 48 bytes");
+        println!(
+            "[TEST] Received override challenge ({} bytes), sending bogus signatures",
+            challenge.len()
+        );
+
+        // Send a response with garbage signatures (correct PK, wrong sigs).
+        let bogus_ecc_r = [0xABu8; 48];
+        let bogus_ecc_s = [0xCDu8; 48];
+        let bogus_mldsa_sig = vec![0xEFu8; 4628];
+        let response_payload = build_override_response_payload(
+            &vendor_pub_x,
+            &vendor_pub_y,
+            &bogus_ecc_r,
+            &bogus_ecc_s,
+            &mldsa_pub,
+            &bogus_mldsa_sig,
+        );
+        hw.start_mailbox_execute(CMD_DOT_OVERRIDE, &response_payload)
+            .expect("Failed to send DOT_OVERRIDE");
+
+        // The ROM should reject the signatures and hit a fatal error.
+        let start = hw.cycle_count();
+        hw.step_until(|m| {
+            m.mci_fw_fatal_error().is_some()
+                || m.cmd_status().cmd_failure()
+                || m.cycle_count() - start > 50_000_000
+        });
+
+        // Verify the fuse was NOT burned (should still be 1 = ODD/locked).
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array_offset = registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset;
+        let lock_fuse_byte = otp_memory[fuse_array_offset];
+        assert_eq!(
+            lock_fuse_byte & 0x03,
+            0x01,
+            "DOT fuse should still have only 1 bit burned after sig verify failure, got: 0x{:02x}",
+            lock_fuse_byte
+        );
+
+        println!("[TEST] DOT override correctly aborted with invalid signatures (fuse not burned)");
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }

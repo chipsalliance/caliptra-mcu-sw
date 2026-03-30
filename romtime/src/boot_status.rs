@@ -21,6 +21,7 @@ const CALIPTRA_SETUP_BASE: u16 = 193;
 const FIRMWARE_LOADING_BASE: u16 = 257;
 const FIELD_ENTROPY_BASE: u16 = 321;
 const DOT_RECOVERY_BASE: u16 = 385;
+const DOT_OVERRIDE_BASE: u16 = 417;
 const BOOT_FLOW_BASE: u16 = 449;
 
 /// Status codes used by MCU ROM to log boot progress.
@@ -92,9 +93,15 @@ pub enum McuRomBootStatus {
     DotRecoveryBlobWritten = DOT_RECOVERY_BASE + 2,
     DotRecoveryComplete = DOT_RECOVERY_BASE + 3,
     DotRecoveryFailed = DOT_RECOVERY_BASE + 4,
-    DotRecoveryPkHashVerified = DOT_RECOVERY_BASE + 5,
-    DotRecoveryChallengeSent = DOT_RECOVERY_BASE + 6,
-    DotRecoveryChallengeResponseVerified = DOT_RECOVERY_BASE + 7,
+
+    // DOT Override Statuses
+    DotOverrideStarted = DOT_OVERRIDE_BASE,
+    DotOverrideChallengeSent = DOT_OVERRIDE_BASE + 1,
+    DotOverrideSigVerified = DOT_OVERRIDE_BASE + 2,
+    DotOverrideFuseBurned = DOT_OVERRIDE_BASE + 3,
+    DotOverrideBlobWritten = DOT_OVERRIDE_BASE + 4,
+    DotOverrideComplete = DOT_OVERRIDE_BASE + 5,
+    DotOverrideFailed = DOT_OVERRIDE_BASE + 6,
 
     // Boot Flow Completion
     ColdBootFlowStarted = BOOT_FLOW_BASE,
