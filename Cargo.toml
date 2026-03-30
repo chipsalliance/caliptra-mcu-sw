@@ -43,6 +43,7 @@ members = [
     "platforms/fpga/config",
     "platforms/fpga/rom",
     "platforms/fpga/runtime",
+    "platforms/fpga/runtime/userspace/apps/user",
     "platforms/test_harness",
     "registers/fuses",
     "registers/generated-emulator",
@@ -58,6 +59,7 @@ members = [
     "runtime/kernel/drivers/i3c",
     "runtime/kernel/drivers/mcu_mbox",
     "runtime/kernel/veer",
+    "runtime/userspace/apps/user-common",
     "runtime/userspace/api/caliptra-api",
     "runtime/userspace/api/external-cmds-common",
     "runtime/userspace/api/mcu-mbox-lib",
@@ -231,6 +233,7 @@ registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }
 registers-systemrdl-new = { path = "registers/systemrdl-new" }
 romtime = { path = "romtime" }
+user-app-common = { path = "runtime/userspace/apps/user-common" }
 xtask = { path = "xtask" }
 
 # App related dependencies

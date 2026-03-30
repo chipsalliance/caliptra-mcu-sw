@@ -8,11 +8,11 @@ File Name:
 
 Abstract:
 
-    Cargo build file
+    Cargo build file for FPGA user app
 
 --*/
 
 fn main() {
     println!("cargo:rerun-if-changed=../app_layout.ld");
-    println!("cargo:rerun-if-changed=../user-app-layout.ld");
+    println!("cargo:rerun-if-changed=../fpga-user-app-layout.ld");
 }

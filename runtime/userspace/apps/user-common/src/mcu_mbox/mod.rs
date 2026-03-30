@@ -10,6 +10,8 @@ mod cmd_handler_mock;
 
 use core::fmt::Write;
 #[allow(unused)]
+use embassy_executor::Spawner;
+#[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::signal::Signal;
@@ -19,8 +21,8 @@ use libtock_console::Console;
 use libtock_platform::ErrorCode;
 
 #[embassy_executor::task]
-pub async fn mcu_mbox_task() {
-    match start_mcu_mbox_service().await {
+pub async fn mcu_mbox_task(spawner: Spawner) {
+    match start_mcu_mbox_service(spawner).await {
         Ok(_) => {}
         Err(_) => System::exit(1),
     }
@@ -28,7 +30,7 @@ pub async fn mcu_mbox_task() {
 
 #[allow(dead_code)]
 #[allow(unused_variables)]
-async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
+async fn start_mcu_mbox_service(spawner: Spawner) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     writeln!(console_writer, "Starting MCU_MBOX task...").unwrap();
 
@@ -43,11 +45,8 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
         let mut transport = mcu_mbox_lib::transport::McuMboxTransport::new(
             libsyscall_caliptra::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
         );
-        let mut mcu_mbox_service = mcu_mbox_lib::daemon::McuMboxService::init(
-            &handler,
-            &mut transport,
-            crate::EXECUTOR.get().spawner(),
-        );
+        let mut mcu_mbox_service =
+            mcu_mbox_lib::daemon::McuMboxService::init(&handler, &mut transport, spawner);
         writeln!(
             console_writer,
             "Starting MCU_MBOX service for integration tests..."

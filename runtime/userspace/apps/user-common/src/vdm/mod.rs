@@ -5,6 +5,8 @@ mod cmd_handler_mock;
 
 use core::fmt::Write;
 #[allow(unused)]
+use embassy_executor::Spawner;
+#[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::signal::Signal;
@@ -16,8 +18,8 @@ use libtock_platform::ErrorCode;
 use static_cell::StaticCell;
 
 #[embassy_executor::task]
-pub async fn vdm_task() {
-    match start_vdm_service().await {
+pub async fn vdm_task(spawner: Spawner) {
+    match start_vdm_service(spawner).await {
         Ok(_) => {}
         Err(_) => System::exit(1),
     }
@@ -25,7 +27,7 @@ pub async fn vdm_task() {
 
 #[allow(dead_code)]
 #[allow(unused_variables)]
-async fn start_vdm_service() -> Result<(), ErrorCode> {
+async fn start_vdm_service(spawner: Spawner) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     writeln!(console_writer, "Starting MCTP VDM task...").unwrap();
 
@@ -64,10 +66,7 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
         )
         .unwrap();
 
-        if let Err(e) = mctp_vdm_lib::daemon::spawn_vdm_responder(
-            crate::EXECUTOR.get().spawner(),
-            cmd_interface,
-        ) {
+        if let Err(e) = mctp_vdm_lib::daemon::spawn_vdm_responder(spawner, cmd_interface) {
             writeln!(
                 console_writer,
                 "USER_APP: Error starting MCTP VDM service: {:?}",

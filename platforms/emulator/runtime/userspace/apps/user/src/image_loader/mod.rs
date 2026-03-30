@@ -1,56 +1,36 @@
 // Licensed under the Apache-2.0 license
 
-#[cfg(any(
-    feature = "test-pldm-discovery",
-    feature = "test-pldm-fw-update",
-    feature = "test-pldm-fw-update-e2e"
-))]
-mod pldm_fdops_mock;
-
-mod config;
-
-use caliptra_api::mailbox::{
-    ActivateFirmwareReq, ActivateFirmwareResp, CommandId, MailboxReqHeader,
-};
-use core::fmt::Write;
-#[allow(unused)]
-use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
 use libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
-#[allow(unused)]
-use libsyscall_caliptra::flash::SpiFlash;
-use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
 #[allow(unused)]
 use libsyscall_caliptra::system::System;
-use libtock_console::Console;
 use libtock_platform::ErrorCode;
-#[allow(unused)]
-use mcu_config::boot;
-#[allow(unused)]
-use mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus, RollbackEnable};
-#[allow(unused)]
-use mcu_config_emulator::flash::{
-    PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
-    PARTITION_TABLE,
-};
-#[allow(unused)]
-use pldm_lib::daemon::PldmService;
 
 #[allow(unused)]
-use crate::EXECUTOR;
+use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
 #[allow(unused)]
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
 #[allow(unused)]
-use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
+use mcu_config::flash::FlashPartition;
 #[allow(unused)]
-use libapi_caliptra::image_loading::{
-    FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams, PldmImageLoader,
-};
+use mcu_config_emulator::flash::{IMAGE_A_PARTITION, IMAGE_B_PARTITION};
+
 use libsyscall_caliptra::DefaultSyscalls;
-#[allow(unused)]
-use zerocopy::{FromBytes, IntoBytes};
+use user_app_common::image_loader::RESET_REASON_FW_HITLESS_UPD_RESET_MASK;
 
-const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
+pub struct EmulatedDMAMap {}
+impl DMAMapping for EmulatedDMAMap {
+    fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode> {
+        Ok(addr as AXIAddr)
+    }
+
+    fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
+        Ok(addr as AXIAddr)
+    }
+}
+
+#[allow(dead_code)]
+pub static EMULATED_DMA_MAPPING: EmulatedDMAMap = EmulatedDMAMap {};
 
 #[embassy_executor::task]
 pub async fn image_loading_task() {
@@ -82,7 +62,8 @@ pub async fn image_loading_task() {
             mbox_sram.release_lock().unwrap();
             mbox_sram.acquire_lock().unwrap();
         }
-        match image_loading(&EMULATED_DMA_MAPPING).await {
+        let spawner = crate::EXECUTOR.get().spawner();
+        match image_loading(&EMULATED_DMA_MAPPING, spawner).await {
             Ok(_) => {}
             Err(_) => System::exit(1),
         }
@@ -111,171 +92,34 @@ pub async fn image_loading_task() {
     }
 }
 
+/// Emulator-specific image loading that composes shared and platform-specific code.
 #[allow(dead_code)]
 #[allow(unused_variables)]
-async fn image_loading<D: DMAMapping>(dma_mapping: &'static D) -> Result<(), ErrorCode> {
-    let mut console_writer = Console::<DefaultSyscalls>::writer();
-    writeln!(console_writer, "IMAGE_LOADER_APP: Hello async world!").unwrap();
-    #[cfg(feature = "test-pldm-streaming-boot")]
-    {
-        let fw_params = PldmFirmwareDeviceParams {
-            descriptors: &config::streaming_boot_consts::DESCRIPTOR.get()[..],
-            fw_params: config::streaming_boot_consts::STREAMING_BOOT_FIRMWARE_PARAMS.get(),
-        };
-        let pldm_image_loader =
-            PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner(), dma_mapping);
-        pldm_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
-            .await?;
-        pldm_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2)
-            .await?;
-        // Close the PLDM session
-        pldm_image_loader.finalize()?;
-        // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
-        activate_soc_images(&[
-            config::streaming_boot_consts::IMAGE_ID1,
-            config::streaming_boot_consts::IMAGE_ID2,
-        ])
-        .await?;
-    }
+async fn image_loading<D: DMAMapping>(
+    dma_mapping: &'static D,
+    spawner: embassy_executor::Spawner,
+) -> Result<(), ErrorCode> {
+    // Use shared image loading for streaming boot and PLDM tests
+    user_app_common::image_loader::image_loading(dma_mapping, spawner).await?;
+
+    // Emulator-specific: flash-based boot
     #[cfg(any(
         feature = "test-flash-based-boot",
         feature = "test-firmware-update-flash",
     ))]
     {
         let mut boot_config = FlashBootConfig::new();
-        let active_partition_id = boot_config
-            .get_active_partition()
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        let active_partition = boot_config
-            .get_partition_from_id(active_partition_id)
-            .map_err(|_| ErrorCode::Fail)?;
-
-        let active = (active_partition_id, active_partition);
-
-        let pending = {
-            let pending_partition_id = boot_config.get_pending_partition().await;
-            if pending_partition_id.is_ok() {
-                let pending_partition_id = pending_partition_id.unwrap();
-                let pending_partition = boot_config
-                    .get_partition_from_id(pending_partition_id)
-                    .map_err(|_| ErrorCode::Fail)?;
-
-                Some((pending_partition_id, pending_partition))
-            } else {
-                None
-            }
-        };
-
-        let load_partition = if let Some((pending_partition_id, pending_partition)) = pending {
-            (pending_partition_id, pending_partition)
-        } else {
-            // No pending partition, use the active one
-            active
-        };
-
-        let flash_syscall = SpiFlash::new(load_partition.1.driver_num);
-        let flash_image_loader = FlashImageLoader::new(flash_syscall, dma_mapping);
-
-        if let Some(pending) = pending {
-            // Set the new Auth Manifest from the pending partition
-            flash_image_loader.set_auth_manifest().await?;
-        }
-
-        flash_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID1)
-            .await?;
-        flash_image_loader
-            .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2)
-            .await?;
-        boot_config
-            .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        boot_config
-            .set_active_partition(load_partition.0)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        activate_soc_images(&[
-            config::streaming_boot_consts::IMAGE_ID1,
-            config::streaming_boot_consts::IMAGE_ID2,
-        ])
-        .await?
-    }
-
-    #[cfg(any(
-        feature = "test-pldm-discovery",
-        feature = "test-pldm-fw-update",
-        feature = "test-pldm-fw-update-e2e"
-    ))]
-    {
-        let fdops = pldm_fdops_mock::FdOpsObject::new();
-        let mut pldm_service = PldmService::init(&fdops, EXECUTOR.get().spawner());
-        writeln!(
-            console_writer,
-            "PLDM_APP: Starting PLDM service for testing..."
+        user_app_common::image_loader::flash_based_boot(
+            dma_mapping,
+            &mut boot_config,
+            |_cfg, partition_id| match partition_id {
+                PartitionId::A => Ok(IMAGE_A_PARTITION),
+                PartitionId::B => Ok(IMAGE_B_PARTITION),
+                _ => Err(ErrorCode::Fail),
+            },
         )
-        .unwrap();
-        if let Err(e) = pldm_service.start().await {
-            writeln!(
-                console_writer,
-                "PLDM_APP: Error starting PLDM service: {:?}",
-                e
-            )
-            .unwrap();
-        }
-        pldm_fdops_mock::FdOpsObject::wait_for_pldm_done().await;
+        .await?;
     }
+
     Ok(())
 }
-
-#[allow(dead_code)]
-async fn activate_soc_images(fw_id_list: &[u32]) -> Result<(), ErrorCode> {
-    let fw_ids = {
-        let mut ids = [0u32; ActivateFirmwareReq::MAX_FW_ID_COUNT];
-        for (i, fw_id) in fw_id_list.iter().enumerate() {
-            ids[i] = *fw_id;
-        }
-        ids
-    };
-    let mut req = ActivateFirmwareReq {
-        hdr: MailboxReqHeader { chksum: 0 },
-        fw_id_count: fw_id_list.len() as u32,
-        fw_ids,
-        mcu_fw_image_size: 0, // MCU image is not activated here
-    };
-
-    let req = req.as_mut_bytes();
-    let mailbox = Mailbox::<DefaultSyscalls>::new();
-
-    mailbox
-        .populate_checksum(CommandId::ACTIVATE_FIRMWARE.into(), req)
-        .unwrap();
-    let response_buffer = &mut [0u8; core::mem::size_of::<ActivateFirmwareResp>()];
-    loop {
-        let result = mailbox
-            .execute(CommandId::ACTIVATE_FIRMWARE.into(), req, response_buffer)
-            .await;
-        match result {
-            Ok(_) => return Ok(()),
-            Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
-            Err(_) => return Err(ErrorCode::Fail),
-        }
-    }
-}
-
-pub struct EmulatedDMAMap {}
-impl DMAMapping for EmulatedDMAMap {
-    fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode> {
-        Ok(addr as AXIAddr)
-    }
-
-    fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
-        Ok(addr as AXIAddr)
-    }
-}
-
-#[allow(dead_code)]
-pub static EMULATED_DMA_MAPPING: EmulatedDMAMap = EmulatedDMAMap {};

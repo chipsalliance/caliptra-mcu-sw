@@ -11,20 +11,15 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 use libtockasync::TockExecutor;
-#[cfg(any(
-    feature = "test-firmware-update-streaming",
-    feature = "test-firmware-update-flash"
-))]
-mod firmware_update;
 mod image_loader;
 
 #[cfg(target_arch = "riscv32")]
 mod riscv;
 
-struct EmulatorWriter {}
-static mut EMULATOR_WRITER: EmulatorWriter = EmulatorWriter {};
+struct FpgaWriter {}
+static mut FPGA_WRITER: FpgaWriter = FpgaWriter {};
 
-impl Write for EmulatorWriter {
+impl Write for FpgaWriter {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         print_to_console(s);
         Ok(())
@@ -33,7 +28,7 @@ impl Write for EmulatorWriter {
 
 fn print_to_console(buf: &str) {
     for b in buf.bytes() {
-        // Print to this address for emulator output
+        // Print to this address for FPGA output
         unsafe {
             core::ptr::write_volatile(0x1000_1041 as *mut u8, b);
         }
@@ -67,7 +62,7 @@ fn main() {
 async fn start() {
     unsafe {
         #[allow(static_mut_refs)]
-        romtime::set_printer(&mut EMULATOR_WRITER);
+        romtime::set_printer(&mut FPGA_WRITER);
     }
     async_main().await;
 }
@@ -75,12 +70,9 @@ async fn start() {
 pub(crate) async fn async_main() {
     let spawner = EXECUTOR.get().spawner();
 
-    // TODO: Debug spawning the SPDM task causes a hardfault in FPGA when firmware update is enabled
-    // for now, disable the SPDM task if either FW update test is enabled
-    #[cfg(not(any(
-        feature = "test-firmware-update-streaming",
-        feature = "test-firmware-update-flash"
-    )))]
+    // NOTE: On the emulator, the SPDM task is disabled when firmware update
+    // features are enabled due to a known hardfault. If firmware update support
+    // is added to the FPGA app, a similar guard should be added here.
     spawner
         .spawn(user_app_common::spdm::spdm_task(spawner))
         .unwrap();

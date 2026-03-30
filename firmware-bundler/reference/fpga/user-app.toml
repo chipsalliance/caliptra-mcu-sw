@@ -28,6 +28,6 @@ name = "mcu-runtime-fpga"
 stack = 0x0_7000
 
 [[app]]
-name = "user-app"
+name = "fpga-user-app"
 stack = 0xae00
 grant_space = 0x2000
