@@ -730,7 +730,7 @@ impl BootFlow for ColdBoot {
         }
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
 
-        let stash_rom_digest = params.stash_rom_digest.unwrap_or(true);
+        let stash_rom_digest = params.stash_rom_digest.unwrap_or(false);
         Self::rom_digest_integrity(soc_manager, stash_rom_digest);
 
         romtime::println!("[mcu-rom] Finished common initialization");
