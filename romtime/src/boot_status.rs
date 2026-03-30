@@ -124,6 +124,8 @@ bitflags! {
         const COLD_BOOT_FLOW_COMPLETE       = 0b1 << 5;
         const WARM_RESET_FLOW_COMPLETE      = 0b1 << 6;
         const FIRMWARE_BOOT_FLOW_COMPLETE   = 0b1 << 7;
+        const FIRMWARE_OS_INITIALIZED       = 0b1 << 8;
+        const FIRMWARE_MAILBOX_READY        = 0b1 << 9;
     }
 }
 

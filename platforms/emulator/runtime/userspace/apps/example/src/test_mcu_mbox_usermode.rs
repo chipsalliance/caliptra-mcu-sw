@@ -9,7 +9,10 @@ pub async fn test_mcu_mbox_usermode_loopback() {
 
     let mut request_buffer: [u8; 256] = [0; 256];
     loop {
-        let recv_result = mcu_mbox0.receive_command(&mut request_buffer).await;
+        let on_listening_cb: Option<fn()> = None;
+        let recv_result = mcu_mbox0
+            .receive_command(&mut request_buffer, on_listening_cb)
+            .await;
 
         assert!(
             recv_result.is_ok(),
