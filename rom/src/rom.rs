@@ -21,7 +21,6 @@ use crate::ColdBoot;
 use crate::FwBoot;
 use crate::FwHitlessUpdate;
 use crate::ImageVerifier;
-use crate::McuBootMilestones;
 use crate::RomEnv;
 use crate::WarmBoot;
 use caliptra_api::mailbox::CmStableKeyType;
@@ -41,7 +40,7 @@ use romtime::otp::{
 use romtime::LifecycleControllerState;
 use romtime::LifecycleHashedTokens;
 use romtime::LifecycleToken;
-use romtime::{HexWord, StaticRef};
+use romtime::{HexWord, McuBootMilestones, StaticRef};
 use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
 

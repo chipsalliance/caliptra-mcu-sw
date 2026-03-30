@@ -13,13 +13,14 @@ Abstract:
 --*/
 
 use crate::fuses::OwnerPkHash;
-use crate::{McuRomBootStatus, RomEnv};
+use crate::RomEnv;
 use caliptra_api::mailbox::{
     CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacResp, CmStableKeyType,
     CommandId,
 };
 use mcu_error::{McuError, McuResult};
 use romtime::otp::Otp;
+use romtime::McuRomBootStatus;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
 const DOT_LABEL: &[u8; 23] = b"Caliptra DOT stable key";
