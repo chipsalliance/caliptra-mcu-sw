@@ -5,6 +5,8 @@ mod i3c_socket;
 mod jtag;
 #[cfg(test)]
 mod rom;
+#[cfg(test)]
+mod runtime;
 mod test_active_i3c;
 mod test_bare_metal;
 mod test_dot;

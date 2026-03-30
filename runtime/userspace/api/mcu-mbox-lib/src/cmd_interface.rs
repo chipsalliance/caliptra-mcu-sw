@@ -71,22 +71,32 @@ impl<'a> CmdInterface<'a> {
         msg_buf: &mut [u8],
     ) -> Result<(), MsgHandlerError> {
         // Receive a request from the transport.
-        let (cmd_id, req_len) = self
-            .transport
-            .receive_request(msg_buf)
-            .await
-            .map_err(|_| MsgHandlerError::Transport)?;
+        let receive_result = self.transport.receive_request(msg_buf).await;
 
-        // Process the request and prepare the response.
-        let (resp_len, status) = self.process_request(msg_buf, cmd_id, req_len).await?;
-
-        // Send the response if the command completed successfully.
-        if status == MbxCmdStatus::Complete {
-            self.transport
-                .send_response(&msg_buf[..resp_len])
-                .await
-                .map_err(|_| MsgHandlerError::Transport)?;
-        }
+        let status = match receive_result {
+            Ok((cmd_id, req_len)) => {
+                // Process the request and prepare the response.
+                match self.process_request(msg_buf, cmd_id, req_len).await {
+                    Ok((resp_len, status)) => {
+                        if status == MbxCmdStatus::Complete {
+                            self.transport
+                                .send_response(&msg_buf[..resp_len])
+                                .await
+                                .map_err(|_| MsgHandlerError::Transport)?;
+                        }
+                        status
+                    }
+                    Err(_) => MbxCmdStatus::Failure,
+                }
+            }
+            Err(_) => {
+                // If the driver accepted the request but transport-level
+                // validation failed, we still need to finalize. If no request
+                // was received the finalize is harmlessly rejected.
+                let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                return Err(MsgHandlerError::Transport);
+            }
+        };
 
         // Finalize the response as the last step of handling the message.
         self.transport

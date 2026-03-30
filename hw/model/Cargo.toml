@@ -38,6 +38,7 @@ int-enum.workspace = true
 mcu-builder.workspace = true
 mcu-config-fpga = { workspace = true, optional = true }
 mcu-config.workspace = true
+mcu-mbox-common.workspace = true
 mcu-rom-common.workspace = true
 mcu-testing-common.workspace = true
 mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
