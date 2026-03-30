@@ -1,9 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 //! Platform-agnostic image loading building blocks shared between emulator and FPGA user apps.
-//!
-//! Each platform app provides its own `image_loading_task` and `image_loading` function
-//! that compose these shared helpers with platform-specific DMA mapping and boot config.
 
 #[cfg(any(
     feature = "test-pldm-discovery",
@@ -22,6 +19,7 @@ use libsyscall_caliptra::dma::DMAMapping;
 #[allow(unused)]
 use libsyscall_caliptra::flash::SpiFlash;
 use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
+use libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
 #[allow(unused)]
 use libsyscall_caliptra::system::System;
 use libtock_console::Console;
@@ -49,11 +47,90 @@ use zerocopy::{FromBytes, IntoBytes};
 
 pub const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 
-/// Platform-agnostic image loading logic.
+// ---------------------------------------------------------------------------
+// Common image_loading_task body
+// ---------------------------------------------------------------------------
+
+/// Shared body of `image_loading_task`.
 ///
-/// This performs PLDM streaming boot and PLDM discovery/update tests.
-/// Flash-based boot is handled by each platform's own image_loading function
-/// since it requires platform-specific FlashBootConfig.
+/// Handles the reset-reason check, SRAM lock management, calls `image_loading`,
+/// and exits. Platform-specific hooks (flash-based boot, firmware update) are
+/// injected through the `platform_hook` callback which runs *after* the shared
+/// `image_loading` call but *before* the SRAM lock release.
+///
+/// `platform_hook` receives the mbox_sram reference so it can manage the lock
+/// for firmware update. Return `true` from the hook to skip the default
+/// `System::exit(0)` (e.g. because the hook handles exit itself).
+#[allow(dead_code)]
+#[allow(unused_variables)]
+pub async fn image_loading_task_body<D: DMAMapping>(
+    dma_mapping: &'static D,
+    spawner: Spawner,
+    platform_hook: impl AsyncPlatformHook<D>,
+) {
+    let mbox_sram = libsyscall_caliptra::mbox_sram::MboxSram::<DefaultSyscalls>::new(
+        libsyscall_caliptra::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
+    );
+    let mci = MciSyscall::<DefaultSyscalls>::new();
+    let reset_reason = mci.read(RESET_REASON, 0).unwrap();
+    if reset_reason & RESET_REASON_FW_HITLESS_UPD_RESET_MASK
+        == RESET_REASON_FW_HITLESS_UPD_RESET_MASK
+    {
+        mbox_sram.release_lock().unwrap();
+    }
+
+    #[cfg(any(
+        feature = "test-pldm-streaming-boot",
+        feature = "test-flash-based-boot",
+        feature = "test-pldm-discovery",
+        feature = "test-pldm-fw-update",
+        feature = "test-pldm-fw-update-e2e",
+    ))]
+    {
+        // Release SRAM lock, in case previous session hasn't released it
+        if mbox_sram.acquire_lock().is_err() {
+            mbox_sram.release_lock().unwrap();
+            mbox_sram.acquire_lock().unwrap();
+        }
+        match image_loading(dma_mapping, spawner).await {
+            Ok(_) => {}
+            Err(_) => System::exit(1),
+        }
+
+        // Let the platform run flash-based boot or firmware update.
+        let handled = platform_hook.run(dma_mapping).await;
+
+        mbox_sram.release_lock().unwrap();
+        if !handled {
+            System::exit(0);
+        }
+    }
+}
+
+/// Trait for the platform-specific hook called inside `image_loading_task_body`.
+///
+/// Returns `true` if the hook fully handles exit (e.g. firmware update reboot),
+/// `false` if the shared code should call `System::exit(0)`.
+#[allow(async_fn_in_trait)]
+pub trait AsyncPlatformHook<D: DMAMapping> {
+    async fn run(self, dma_mapping: &'static D) -> bool;
+}
+
+/// No-op hook for platforms that don't need extra image-loading steps.
+pub struct NoExtraSteps;
+
+impl<D: DMAMapping> AsyncPlatformHook<D> for NoExtraSteps {
+    async fn run(self, _dma_mapping: &'static D) -> bool {
+        false
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Platform-agnostic image loading logic
+// ---------------------------------------------------------------------------
+
+/// Performs PLDM streaming boot and PLDM discovery/update tests.
+/// Flash-based boot is handled by each platform's own hook.
 #[allow(dead_code)]
 #[allow(unused_variables)]
 pub async fn image_loading<D: DMAMapping>(
@@ -75,9 +152,7 @@ pub async fn image_loading<D: DMAMapping>(
         pldm_image_loader
             .load_and_authorize(config::streaming_boot_consts::IMAGE_ID2)
             .await?;
-        // Close the PLDM session
         pldm_image_loader.finalize()?;
-        // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
         activate_soc_images(&[
             config::streaming_boot_consts::IMAGE_ID1,
             config::streaming_boot_consts::IMAGE_ID2,
@@ -111,9 +186,11 @@ pub async fn image_loading<D: DMAMapping>(
     Ok(())
 }
 
-/// Flash-based image loading logic. This is generic over the boot config type.
-///
-/// Platforms provide their own `BootConfigAsync` implementation and partition lookup.
+// ---------------------------------------------------------------------------
+// Flash-based boot (generic over BootConfigAsync)
+// ---------------------------------------------------------------------------
+
+/// Flash-based image loading, generic over the boot config type.
 #[allow(dead_code)]
 #[allow(unused_variables)]
 #[cfg(any(
@@ -147,7 +224,6 @@ pub async fn flash_based_boot<D: DMAMapping, B: BootConfigAsync>(
     let load_partition = if let Some((pending_partition_id, pending_partition)) = pending {
         (pending_partition_id, pending_partition)
     } else {
-        // No pending partition, use the active one
         active
     };
 
@@ -155,7 +231,6 @@ pub async fn flash_based_boot<D: DMAMapping, B: BootConfigAsync>(
     let flash_image_loader = FlashImageLoader::new(flash_syscall, dma_mapping);
 
     if let Some(_pending) = pending {
-        // Set the new Auth Manifest from the pending partition
         flash_image_loader.set_auth_manifest().await?;
     }
 
@@ -180,6 +255,10 @@ pub async fn flash_based_boot<D: DMAMapping, B: BootConfigAsync>(
     .await
 }
 
+// ---------------------------------------------------------------------------
+// activate_soc_images
+// ---------------------------------------------------------------------------
+
 /// Activate SoC images by sending an ActivateFirmware mailbox command.
 #[allow(dead_code)]
 pub async fn activate_soc_images(fw_id_list: &[u32]) -> Result<(), ErrorCode> {
@@ -194,7 +273,7 @@ pub async fn activate_soc_images(fw_id_list: &[u32]) -> Result<(), ErrorCode> {
         hdr: MailboxReqHeader { chksum: 0 },
         fw_id_count: fw_id_list.len() as u32,
         fw_ids,
-        mcu_fw_image_size: 0, // MCU image is not activated here
+        mcu_fw_image_size: 0,
     };
 
     let req = req.as_mut_bytes();
