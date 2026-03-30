@@ -8,8 +8,9 @@ use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_types::RvData;
 use caliptra_registers::soc_ifc::RegisterBlock;
 use emulator_registers_generated::mci::{MciGenerated, MciPeripheral};
+use std::cell::Cell;
 use registers_generated::mci::bits::{
-    Error0IntrT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest, SecurityState, WdtStatus,
+    Error0IntrT, Error0IntrTrigT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest, SecurityState, WdtStatus,
     WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
 };
 use std::{cell::RefCell, rc::Rc};
@@ -49,6 +50,10 @@ pub struct Mci {
     soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
 
     reset_requested: bool,
+    /// Shared flag to signal LcCtrl to reload from OTP on next register access.
+    lc_reload_flag: Option<Rc<Cell<bool>>>,
+    /// Shared flag to signal LcCtrl that PPD (Physical Presence Detection) pin is asserted.
+    lc_ppd_flag: Option<Rc<Cell<bool>>>,
 }
 
 impl Mci {
@@ -88,6 +93,8 @@ impl Mci {
             irq,
             mcu_mailbox0,
             reset_requested: false,
+            lc_reload_flag: None,
+            lc_ppd_flag: None,
 
             // --- init mtimecmp ---
             mtimecmp: default_mtimecmp,
@@ -95,6 +102,16 @@ impl Mci {
             mcu_mailbox1,
             soc_regs,
         }
+    }
+
+    /// Set the shared flag used to signal LcCtrl to reload from OTP.
+    pub fn set_lc_reload_flag(&mut self, flag: Rc<Cell<bool>>) {
+        self.lc_reload_flag = Some(flag);
+    }
+
+    /// Set the shared PPD flag used to signal LcCtrl that PPD pin is asserted.
+    pub fn set_lc_ppd_flag(&mut self, flag: Rc<Cell<bool>>) {
+        self.lc_ppd_flag = Some(flag);
     }
 
     fn arm_mtime_interrupt(&mut self) {
@@ -141,6 +158,83 @@ impl MciPeripheral for Mci {
 
     fn write_mci_reg_fw_flow_status(&mut self, val: caliptra_emu_types::RvData) {
         self.ext_mci_regs.regs.borrow_mut().flow_status = val;
+    }
+
+    fn write_mci_reg_debug_out(&mut self, val: caliptra_emu_types::RvData) {
+        // FC/LCC commands sent by test firmware via the MCI debug_out register.
+        // The command encoding is defined in lc_command_types.h.
+        const FC_LCC_CMD_OFFSET: u32 = 0x90;
+        const CMD_FORCE_FC_LCC_RESET: u32 = FC_LCC_CMD_OFFSET + 0x01;       // 0x91
+        const CMD_RELEASE_FC_LCC_RESET: u32 = FC_LCC_CMD_OFFSET + 0x02;     // 0x92
+        const CMD_FORCE_FC_AWUSER_CPTR_CORE: u32 = FC_LCC_CMD_OFFSET + 0x03; // 0x93
+        const CMD_FORCE_FC_AWUSER_MCU: u32 = FC_LCC_CMD_OFFSET + 0x04;      // 0x94
+        const CMD_RELEASE_AWUSER: u32 = FC_LCC_CMD_OFFSET + 0x05;           // 0x95
+        const CMD_FC_FORCE_ZEROIZATION: u32 = FC_LCC_CMD_OFFSET + 0x06;     // 0x96
+        const CMD_RELEASE_ZEROIZATION: u32 = FC_LCC_CMD_OFFSET + 0x08;      // 0x98
+        const CMD_FORCE_LC_TOKENS: u32 = FC_LCC_CMD_OFFSET + 0x09;          // 0x99
+        const CMD_LC_FORCE_RMA_SCRAP_PPD: u32 = FC_LCC_CMD_OFFSET + 0x0a;   // 0x9A
+        const CMD_LC_RELEASE_RMA_SCRAP_PPD: u32 = FC_LCC_CMD_OFFSET + 0x0b; // 0x9B
+        const CMD_TOGGLE_WARM_RESET: u32 = FC_LCC_CMD_OFFSET + 0x100;       // 0x190
+        const CMD_TOGGLE_COLD_RESET: u32 = FC_LCC_CMD_OFFSET + 0x101;       // 0x191
+
+        match val {
+            CMD_RELEASE_FC_LCC_RESET => {
+                println!("MCI: debug_out CMD_RELEASE_FC_LCC_RESET (0x{:02x}) - signaling LC reload", val);
+                if let Some(flag) = &self.lc_reload_flag {
+                    flag.set(true);
+                }
+            }
+            CMD_FORCE_FC_LCC_RESET => {
+                println!("MCI: debug_out CMD_FORCE_FC_LCC_RESET (0x{:02x}) - no-op in emulator", val);
+            }
+            CMD_FC_FORCE_ZEROIZATION => {
+                println!("MCI: debug_out CMD_FC_FORCE_ZEROIZATION (0x{:02x}) - asserting zeroization pin", val);
+                self.ext_mci_regs.regs.borrow_mut().generic_input_wires[0] |= 0x1;
+            }
+            CMD_RELEASE_ZEROIZATION => {
+                println!("MCI: debug_out CMD_RELEASE_ZEROIZATION (0x{:02x}) - clearing zeroization pin", val);
+                self.ext_mci_regs.regs.borrow_mut().generic_input_wires[0] &= !0x1;
+            }
+            CMD_LC_FORCE_RMA_SCRAP_PPD => {
+                println!("MCI: debug_out CMD_LC_FORCE_RMA_SCRAP_PPD (0x{:02x}) - asserting PPD pin", val);
+                self.ext_mci_regs.regs.borrow_mut().generic_input_wires[0] |= 0x2;
+                if let Some(flag) = &self.lc_ppd_flag {
+                    flag.set(true);
+                }
+            }
+            CMD_LC_RELEASE_RMA_SCRAP_PPD => {
+                println!("MCI: debug_out CMD_LC_RELEASE_RMA_SCRAP_PPD (0x{:02x}) - releasing PPD pin", val);
+                self.ext_mci_regs.regs.borrow_mut().generic_input_wires[0] &= !0x2;
+                if let Some(flag) = &self.lc_ppd_flag {
+                    flag.set(false);
+                }
+            }
+            CMD_FORCE_FC_AWUSER_CPTR_CORE => {
+                println!("MCI: debug_out CMD_FORCE_FC_AWUSER_CPTR_CORE (0x{:02x}) - no-op in emulator", val);
+            }
+            CMD_FORCE_FC_AWUSER_MCU => {
+                println!("MCI: debug_out CMD_FORCE_FC_AWUSER_MCU (0x{:02x}) - no-op in emulator", val);
+            }
+            CMD_RELEASE_AWUSER => {
+                println!("MCI: debug_out CMD_RELEASE_AWUSER (0x{:02x}) - no-op in emulator", val);
+            }
+            CMD_FORCE_LC_TOKENS => {
+                println!("MCI: debug_out CMD_FORCE_LC_TOKENS (0x{:02x}) - no-op in emulator", val);
+            }
+            CMD_TOGGLE_WARM_RESET => {
+                println!("MCI: debug_out CMD_TOGGLE_WARM_RESET (0x{:03x}) - requesting warm reset", val);
+                self.reset_reason.handle_warm_reset();
+                self.reset_requested = true;
+            }
+            CMD_TOGGLE_COLD_RESET => {
+                println!("MCI: debug_out CMD_TOGGLE_COLD_RESET (0x{:03x}) - requesting cold reset", val);
+                self.reset_reason.handle_warm_reset();
+                self.reset_requested = true;
+            }
+            _ => {
+                println!("MCI: debug_out unhandled command 0x{:x}", val);
+            }
+        }
     }
 
     fn read_mci_reg_wdt_timer1_en(&mut self) -> ReadWriteRegister<u32, WdtTimer1En::Register> {
@@ -387,6 +481,55 @@ impl MciPeripheral for Mci {
             .borrow_mut()
             .intr_block_rf_notif0_internal_intr_r = new_val;
     }
+     
+    fn read_mci_reg_intr_block_rf_error0_intr_trig_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, Error0IntrTrigT::Register> {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_intr_trig_r
+            .into()
+    }
+
+    fn write_mci_reg_intr_block_rf_error0_intr_trig_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Error0IntrTrigT::Register,
+        >,
+    ) {
+        // 1) Pulse behavior: clear trigger bits after write
+        let cur_trig = self
+            .read_mci_reg_intr_block_rf_error0_intr_trig_r()
+            .reg
+            .get();
+        let new_trig = cur_trig & !val.reg.get();
+
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_error0_intr_trig_r = new_trig;
+
+        // 2) Trigger sets corresponding ERROR0 status bit(s)
+        let cur_status = self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_internal_intr_r;
+        let new_status = cur_status | val.reg.get();
+
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_error0_internal_intr_r = new_status;
+
+        // 3) Raise IRQ when status nonzero
+        let global_en = self.ext_mci_regs.regs.borrow().intr_block_rf_global_intr_en_r & 0x1;
+        let error0_en = self.ext_mci_regs.regs.borrow().intr_block_rf_error0_intr_en_r;
+
+        let irq_high = (global_en != 0) && ((new_status & error0_en) != 0);
+        self.irq.borrow_mut().set_level(irq_high);
+    }
 
     fn write_mci_reg_reset_request(
         &mut self,
@@ -484,6 +627,113 @@ impl MciPeripheral for Mci {
             .regs
             .borrow_mut()
             .intr_block_rf_notif0_intr_en_r = val.reg.get();
+    }
+
+    fn read_mci_reg_intr_block_rf_error0_internal_intr_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Error0IntrT::Register,
+    > {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_internal_intr_r
+            .into()
+    }
+       
+    fn write_mci_reg_intr_block_rf_error0_internal_intr_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Error0IntrT::Register,
+        >,
+    ) {
+        // W1C clear
+        let cur = self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_internal_intr_r;
+        let clear_mask = val.reg.get();
+        let new_val = cur & !clear_mask;
+
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_error0_internal_intr_r = new_val;
+
+        // Recompute IRQ
+        let global_en = self.ext_mci_regs.regs.borrow().intr_block_rf_global_intr_en_r & 0x1;
+        let error0_en = self.ext_mci_regs.regs.borrow().intr_block_rf_error0_intr_en_r;
+
+        let irq_high = (global_en != 0) && ((new_val & error0_en) != 0);
+        self.irq.borrow_mut().set_level(irq_high);
+    }
+
+    fn read_mci_reg_intr_block_rf_error0_intr_en_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Error0IntrEnT::Register,
+    > {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_intr_en_r
+            .into()
+    }
+
+    fn write_mci_reg_intr_block_rf_error0_intr_en_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Error0IntrEnT::Register,
+        >,
+    ) {
+        
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_error0_intr_en_r = val.reg.get();
+
+        // Recompute IRQ after enable changes
+        let global_en = self.ext_mci_regs.regs.borrow().intr_block_rf_global_intr_en_r & 0x1;
+        let error0_en = self.ext_mci_regs.regs.borrow().intr_block_rf_error0_intr_en_r;
+        let status    = self.ext_mci_regs.regs.borrow().intr_block_rf_error0_internal_intr_r;
+
+        self.irq.borrow_mut().set_level(global_en != 0 && ((status & error0_en) != 0));
+
+    }
+    
+    fn write_mci_reg_intr_block_rf_global_intr_en_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::GlobalIntrEnT::Register,
+        >,
+    ) {
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_global_intr_en_r = val.reg.get();
+
+        let global_en = self.ext_mci_regs.regs.borrow().intr_block_rf_global_intr_en_r & 0x1;
+        let error0_en = self.ext_mci_regs.regs.borrow().intr_block_rf_error0_intr_en_r;
+        let status    = self.ext_mci_regs.regs.borrow().intr_block_rf_error0_internal_intr_r;
+        self.irq.borrow_mut().set_level(global_en != 0 && ((status & error0_en) != 0));
+    }
+   
+    fn read_mci_reg_intr_block_rf_global_intr_en_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::GlobalIntrEnT::Register,
+    > {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_global_intr_en_r
+            .into()
     }
 
     fn read_mcu_mbox0_csr_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
@@ -1001,10 +1251,28 @@ impl MciPeripheral for Mci {
             );
             wdt_status.reg.modify(WdtStatus::T1Timeout::SET);
             self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
+        
+            let cur_status = self.ext_mci_regs
+                .regs
+                .borrow()
+                .intr_block_rf_error0_internal_intr_r;
 
-            self.error0_internal_intr_r
-                .reg
-                .modify(Error0IntrT::ErrorWdtTimer1TimeoutSts::SET);
+            let new_status =
+                cur_status | Error0IntrT::ErrorWdtTimer1TimeoutSts::SET.value;
+
+            self.ext_mci_regs
+                .regs
+                .borrow_mut()
+                .intr_block_rf_error0_internal_intr_r = new_status;
+
+            // Raise IRQ
+            let global_en = self.ext_mci_regs.regs.borrow().intr_block_rf_global_intr_en_r & 0x1;
+            let error0_en = self.ext_mci_regs.regs.borrow().intr_block_rf_error0_intr_en_r;
+
+            self.irq.borrow_mut().set_level(
+                global_en != 0 && ((new_status & error0_en) != 0)
+            );
+
 
             // If WDT2 is disabled, schedule a callback on its expiry.
             let wdt2_en = ReadWriteRegister::<u32, WdtTimer2En::Register>::new(
@@ -1018,9 +1286,18 @@ impl MciPeripheral for Mci {
                 wdt_status.reg.modify(WdtStatus::T2Timeout::CLEAR);
                 self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
-                self.error0_internal_intr_r
-                    .reg
-                    .modify(Error0IntrT::ErrorWdtTimer2TimeoutSts::CLEAR);
+                let cur = self.ext_mci_regs
+                    .regs
+                    .borrow()
+                    .intr_block_rf_error0_internal_intr_r;
+
+                let cleared =
+                    cur & !Error0IntrT::ErrorWdtTimer2TimeoutSts::SET.value;
+
+                self.ext_mci_regs
+                    .regs
+                    .borrow_mut()
+                    .intr_block_rf_error0_internal_intr_r = cleared;
 
                 let timer_period: u64 =
                     ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
@@ -1046,9 +1323,26 @@ impl MciPeripheral for Mci {
                 self.ext_mci_regs.regs.borrow().wdt_timer2_en,
             );
             if wdt2_en.reg.is_set(WdtTimer2En::Timer2En) {
-                self.error0_internal_intr_r
-                    .reg
-                    .modify(Error0IntrT::ErrorWdtTimer2TimeoutSts::SET);
+               
+                let cur_status = self.ext_mci_regs
+                    .regs
+                    .borrow()
+                    .intr_block_rf_error0_internal_intr_r;
+
+                let new_status =
+                    cur_status | Error0IntrT::ErrorWdtTimer2TimeoutSts::SET.value;
+
+                self.ext_mci_regs
+                    .regs
+                    .borrow_mut()
+                    .intr_block_rf_error0_internal_intr_r = new_status;
+
+                // Raise IRQ
+                let global_en = self.ext_mci_regs.regs.borrow().intr_block_rf_global_intr_en_r & 0x1;
+                let error0_en = self.ext_mci_regs.regs.borrow().intr_block_rf_error0_intr_en_r;
+
+                self.irq.borrow_mut().set_level(global_en != 0 && ((new_status & error0_en) != 0));
+
                 return;
             }
 
