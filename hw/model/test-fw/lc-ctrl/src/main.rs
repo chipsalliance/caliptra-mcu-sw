@@ -13,7 +13,8 @@
 #![no_main]
 #![no_std]
 
-use mcu_rom_common::{LifecycleControllerState, LifecycleToken, McuBootMilestones, RomEnv};
+use mcu_rom_common::{LifecycleControllerState, LifecycleToken, RomEnv};
+use romtime::McuBootMilestones;
 use tock_registers::interfaces::Readable;
 
 const GO_BIT: u32 = 1 << 0;

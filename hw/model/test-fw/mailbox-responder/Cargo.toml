@@ -15,4 +15,5 @@ fpga_realtime = ["mcu-test-harness/fpga_realtime"]
 mcu-rom-common.workspace = true
 mcu-test-harness.workspace = true
 registers-generated.workspace = true
+romtime.workspace = true
 tock-registers.workspace = true

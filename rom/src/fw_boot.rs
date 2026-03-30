@@ -12,12 +12,10 @@ Abstract:
 
 --*/
 
-use crate::{
-    fatal_error, BootFlow, McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters,
-    MCU_MEMORY_MAP,
-};
+use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
 use core::fmt::Write;
 use mcu_error::McuError;
+use romtime::{McuBootMilestones, McuRomBootStatus};
 
 pub struct FwBoot {}
 

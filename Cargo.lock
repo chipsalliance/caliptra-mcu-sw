@@ -3308,6 +3308,7 @@ dependencies = [
  "mcu-rom-common",
  "mcu-test-harness",
  "registers-generated",
+ "romtime",
  "tock-registers",
 ]
 
@@ -4233,6 +4234,7 @@ checksum = "8188909339ccc0c68cfb5a04648313f09621e8b87dc03095454f1a11f6c5d436"
 name = "romtime"
 version = "0.1.0"
 dependencies = [
+ "bitflags 2.10.0",
  "caliptra-api",
  "caliptra-registers",
  "registers-generated",

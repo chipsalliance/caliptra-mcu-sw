@@ -16,11 +16,12 @@ Abstract:
 
 use crate::{
     configure_mcu_mbox_axi_users, fatal_error, verify_mcu_mbox_axi_users, AxiUsers, BootFlow,
-    McuBootMilestones, McuRomBootStatus, RomEnv, RomParameters, MCU_MEMORY_MAP,
+    RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use core::{fmt::Write, ops::Deref};
 use mcu_error::McuError;
+use romtime::{McuBootMilestones, McuRomBootStatus};
 
 pub struct WarmBoot {}
 

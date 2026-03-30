@@ -10,7 +10,7 @@ use caliptra_image_types::FwVerificationPqcKeyType;
 use mcu_builder::flash_image::build_flash_image_bytes;
 use mcu_hw_model::McuHwModel;
 use mcu_hw_model::{new, Fuses, InitParams};
-use mcu_rom_common::McuBootMilestones;
+use romtime::McuBootMilestones;
 use std::io::Write;
 
 fn test_rom_hw_error(inject_val: u32, expected_error: u32, expected_message: &str) -> Result<()> {

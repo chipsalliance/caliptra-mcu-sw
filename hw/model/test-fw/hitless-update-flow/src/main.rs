@@ -7,8 +7,9 @@
 #![no_std]
 
 use mcu_error::McuError;
-use mcu_rom_common::{fatal_error, McuBootMilestones, RomEnv};
+use mcu_rom_common::{fatal_error, RomEnv};
 use registers_generated::mci;
+use romtime::McuBootMilestones;
 use romtime::McuResetReason;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 

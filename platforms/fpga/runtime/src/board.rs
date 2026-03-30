@@ -36,6 +36,7 @@ use mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
 use mcu_tock_veer::timers::InternalTimers;
 use registers_generated::mci;
 use romtime::CaliptraSoC;
+use romtime::McuBootMilestones;
 use romtime::StaticRef;
 use rv32i::csr;
 

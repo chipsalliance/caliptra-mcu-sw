@@ -23,7 +23,8 @@ mod test {
     use mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries};
     use mcu_error::McuError;
     use mcu_hw_model::McuHwModel;
-    use mcu_rom_common::McuRomBootStatus;
+    use romtime::McuBootMilestones;
+    use romtime::McuRomBootStatus;
     use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
     /// Size of the DOT blob structure in bytes.
@@ -923,8 +924,6 @@ mod test {
     /// successfully after the DOT fuse burn.
     #[test]
     fn test_dot_fuse_burn_and_warm_reset() {
-        use mcu_rom_common::McuBootMilestones;
-
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -1089,8 +1088,6 @@ mod test {
     /// - Firmware verification uses this owner key, so a successful boot confirms the CAK was applied
     #[test]
     fn test_dot_locked_state_boots_with_owner_cak() {
-        use mcu_rom_common::McuBootMilestones;
-
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 

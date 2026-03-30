@@ -3,6 +3,8 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![allow(static_mut_refs)]
 
+mod boot_status;
+pub use boot_status::*;
 mod mci;
 pub use mci::*;
 mod soc_manager;

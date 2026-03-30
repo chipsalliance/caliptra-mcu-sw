@@ -14,12 +14,11 @@ Abstract:
 
 #![allow(clippy::empty_loop)]
 
-use crate::boot_status::McuRomBootStatus;
 use crate::mailbox;
 use crate::{
     configure_mcu_mbox_axi_users, device_ownership_transfer, fatal_error,
     verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, AxiUsers, BootFlow, DotBlob,
-    McuBootMilestones, RomEnv, RomParameters, MCU_MEMORY_MAP,
+    RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api::mailbox::{
     CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader, StashMeasurementReq,
@@ -32,7 +31,7 @@ use core::fmt::Write;
 use core::ops::Deref;
 use mcu_error::McuError;
 use registers_generated::fuses;
-use romtime::{CaliptraSoC, HexBytes, HexWord};
+use romtime::{CaliptraSoC, HexBytes, HexWord, McuBootMilestones, McuRomBootStatus};
 use tock_registers::interfaces::Readable;
 use zerocopy::{transmute, IntoBytes};
 
