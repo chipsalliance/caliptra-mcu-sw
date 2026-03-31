@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 pub mod flash;
+#[cfg(feature = "network-boot")]
+pub mod network;
 pub mod ocp;
 
 use core::num::NonZeroU8;
@@ -356,7 +358,7 @@ pub(crate) fn load_image_with_retry(
     Err(())
 }
 
-fn load_image_to_recovery(
+pub(crate) fn load_image_to_recovery(
     i3c_periph: StaticRef<i3c::regs::I3c>,
     image_provider: &mut dyn ImageProvider,
 ) -> Result<(), ()> {

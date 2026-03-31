@@ -101,6 +101,8 @@ pub enum McuRomBootStatus {
     FwManifestDotProcessingComplete = FIRMWARE_LOADING_BASE + 8,
     ComponentSvnManifestProcessingStarted = FIRMWARE_LOADING_BASE + 9,
     ComponentSvnManifestProcessingComplete = FIRMWARE_LOADING_BASE + 10,
+    NetworkRecoveryFlowStarted = FIRMWARE_LOADING_BASE + 11,
+    NetworkRecoveryFlowComplete = FIRMWARE_LOADING_BASE + 12,
 
     // Field Entropy Programming
     FieldEntropyProgrammingStarted = FIELD_ENTROPY_BASE,

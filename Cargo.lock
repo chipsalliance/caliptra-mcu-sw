@@ -2232,6 +2232,7 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "bitflags 2.13.0",
+ "boot-source-protocol",
  "caliptra-api",
  "caliptra-api-types",
  "caliptra-cfi-derive 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba)",
@@ -2240,6 +2241,8 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-error",
  "caliptra-mcu-flash-image",
+ "caliptra-mcu-network-drivers",
+ "caliptra-mcu-network-hil",
  "caliptra-mcu-ocp",
  "caliptra-mcu-otp-digest",
  "caliptra-mcu-otp-lifecycle",
