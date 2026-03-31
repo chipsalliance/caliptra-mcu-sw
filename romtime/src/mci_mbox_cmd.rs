@@ -6,9 +6,8 @@
 // checksums, dispatches to the DAI-backed handlers in otp_provision,
 // and writes caliptra-compatible responses (chksum + fips_status).
 //
-
 use crate::otp_provision::{
-    fuse_lock_partition_dai, fuse_read_dai, fuse_write_dai, FuseError, FIPS_STATUS_APPROVED,
+    fuse_lock_partition_dai, fuse_read_dai_params, fuse_write_dai, FuseError, FIPS_STATUS_APPROVED,
     MAX_FUSE_DATA_WORDS, MC_FUSE_LOCK_PARTITION_CMD, MC_FUSE_READ_CMD, MC_FUSE_WRITE_CMD,
 };
 use crate::{HexWord, Mci, Otp};
@@ -17,28 +16,40 @@ use registers_generated::mci;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 // ---------------------------------------------------------------------------
-// Per-command maximum input dlen (rejects oversized requests early to avoid
-// iterating over arbitrarily large SRAM payloads during checksum verification)
+// Per-command expected input dlen (fixed-size commands use exact values;
+// variable-length commands use a maximum to reject oversized requests early)
 // ---------------------------------------------------------------------------
-const MAX_DLEN_FUSE_READ: u32 = 12; // chksum + partition + entry
-const MAX_DLEN_FUSE_LOCK: u32 = 8; // chksum + partition
-const MAX_DLEN_FUSE_WRITE: u32 = 20 + (MAX_FUSE_DATA_WORDS * 4) as u32; // header + data
+const DLEN_FUSE_READ: u32 = 12; // chksum + partition + entry
+const DLEN_FUSE_LOCK: u32 = 8; // chksum + partition
+const FUSE_WRITE_HEADER_BYTES: u32 = 20; // chksum + partition + entry + start_bit + length
+const MAX_DLEN_FUSE_WRITE: u32 = FUSE_WRITE_HEADER_BYTES + (MAX_FUSE_DATA_WORDS * 4) as u32;
 
 // ---------------------------------------------------------------------------
 // Mailbox register bundle (works for either mbox0 or mbox1)
 // ---------------------------------------------------------------------------
-
-struct FuseMboxRegs<'a> {
+struct MciMboxRegs<'a> {
     execute: &'a tock_registers::registers::ReadWrite<u32, mci::bits::MboxExecute::Register>,
     status: &'a tock_registers::registers::ReadWrite<u32, mci::bits::MboxCmdStatus::Register>,
     dlen: &'a tock_registers::registers::ReadWrite<u32>,
     cmd: &'a tock_registers::registers::ReadWrite<u32>,
+    /// MMIO-backed SRAM window — uses `ReadWrite<u32>` to guarantee volatile
+    /// loads/stores so the compiler cannot elide, reorder, or cache accesses.
     sram: &'a [tock_registers::registers::ReadWrite<u32>],
 }
 
 // ---------------------------------------------------------------------------
 // Checksum helpers operating directly on SRAM registers
 // ---------------------------------------------------------------------------
+
+/// Sum the first `count` little-endian bytes of a u32 value.
+fn sum_u32_bytes(val: u32, count: usize) -> u32 {
+    debug_assert!(count <= 4, "count ({}) exceeds u32 byte width", count);
+    val.to_le_bytes()
+        .iter()
+        .take(count)
+        .map(|&b| b as u32)
+        .sum()
+}
 
 /// Verify the caliptra-style request checksum.
 ///
@@ -52,45 +63,33 @@ fn verify_request_checksum(
     if dlen < 4 {
         return false;
     }
-    let expected_chksum = sram[0].get();
+    let payload_len = (dlen - 4) as usize;
+    let full_words = payload_len / 4;
+    let tail_bytes = payload_len % 4;
 
-    let mut sum = 0u32;
-    for &c in cmd.to_le_bytes().iter() {
-        sum = sum.wrapping_add(c as u32);
+    let mut sum = sum_u32_bytes(cmd, 4);
+
+    for reg in sram.iter().skip(1).take(full_words) {
+        sum = sum.wrapping_add(sum_u32_bytes(reg.get(), 4));
     }
 
-    let payload_bytes = (dlen as usize) - 4;
-    let full_words = payload_bytes / 4;
-    let tail_bytes = payload_bytes % 4;
-
-    for i in 0..full_words {
-        for &b in sram[1 + i].get().to_le_bytes().iter() {
-            sum = sum.wrapping_add(b as u32);
-        }
-    }
     if tail_bytes > 0 {
-        let w = sram[1 + full_words].get();
-        for (j, &b) in w.to_le_bytes().iter().enumerate() {
-            if j < tail_bytes {
-                sum = sum.wrapping_add(b as u32);
-            }
-        }
+        sum = sum.wrapping_add(sum_u32_bytes(sram[1 + full_words].get(), tail_bytes));
     }
 
-    0u32.wrapping_sub(sum) == expected_chksum
+    sum.wrapping_add(sram[0].get()) == 0
 }
 
 /// Compute and write the caliptra-style response checksum into SRAM\[0\].
 ///
 /// Covers bytes in SRAM\[1..resp_words\]; cmd = 0 for responses.
 fn write_response_checksum(sram: &[tock_registers::registers::ReadWrite<u32>], resp_words: usize) {
-    let mut sum: u32 = 0;
-    for reg in sram.iter().take(resp_words).skip(1) {
-        let w = reg.get();
-        for &b in w.to_le_bytes().iter() {
-            sum = sum.wrapping_add(b as u32);
-        }
-    }
+    let sum: u32 = sram
+        .iter()
+        .take(resp_words)
+        .skip(1)
+        .map(|reg| sum_u32_bytes(reg.get(), 4))
+        .sum();
     sram[0].set(0u32.wrapping_sub(sum));
 }
 
@@ -103,7 +102,6 @@ fn write_fuse_response(
     fips_status: u32,
     data: Option<&[u32]>,
 ) -> usize {
-    // SRAM[1] = fips_status
     sram[1].set(fips_status);
 
     let mut resp_words: usize = 2; // chksum + fips_status
@@ -129,24 +127,14 @@ fn write_fuse_response(
 ///
 /// Input  SRAM: chksum(u32), partition(u32), entry(u32)   — 12 bytes min
 /// Output SRAM: chksum(u32), fips_status(u32), length_bits(u32), data…
-fn handle_fuse_read(cmd: u32, input_dlen: u32, mbox: &FuseMboxRegs, otp: &Otp) {
+fn handle_fuse_read(cmd: u32, input_dlen: u32, mbox: &MciMboxRegs, otp: &Otp) {
     crate::println!("[mci-mbox] Processing MC_FUSE_READ (IFPR)");
 
-    if input_dlen < 12 {
+    if input_dlen != DLEN_FUSE_READ {
         crate::println!(
-            "[mci-mbox] IFPR: dlen too short {} (minimum 12)",
-            input_dlen
-        );
-        let n = write_fuse_response(mbox.sram, FuseError::InputTooShort.as_u32(), None);
-        mbox.dlen.set((n * 4) as u32);
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-        return;
-    } else if input_dlen > MAX_DLEN_FUSE_READ {
-        crate::println!(
-            "[mci-mbox] IFPR: dlen too large {} (max {})",
+            "[mci-mbox] IFPR: unexpected dlen {} (expected {})",
             input_dlen,
-            MAX_DLEN_FUSE_READ
+            DLEN_FUSE_READ
         );
         let n = write_fuse_response(mbox.sram, FuseError::InvalidLength.as_u32(), None);
         mbox.dlen.set((n * 4) as u32);
@@ -172,33 +160,48 @@ fn handle_fuse_read(cmd: u32, input_dlen: u32, mbox: &FuseMboxRegs, otp: &Otp) {
         entry
     );
 
-    let mut data_buf = [0u32; MAX_FUSE_DATA_WORDS];
-
-    match fuse_read_dai(otp, partition, entry, &mut data_buf) {
-        Ok(length_bits) => {
-            let data_words = ((length_bits + 31) / 32) as usize;
-            // Build payload: length_bits, then data words
-            let mut payload = [0u32; MAX_FUSE_DATA_WORDS + 1];
-            payload[0] = length_bits;
-            payload[1..(data_words + 1)].copy_from_slice(&data_buf[..data_words]);
-            let n = write_fuse_response(
-                mbox.sram,
-                FIPS_STATUS_APPROVED,
-                Some(&payload[..1 + data_words]),
-            );
-            mbox.dlen.set((n * 4) as u32);
-            mbox.status
-                .write(mci::bits::MboxCmdStatus::Status::DataReady);
-            crate::println!("[mci-mbox] IFPR: success, {} bits", length_bits);
-        }
+    let params = match fuse_read_dai_params(partition, entry, MAX_FUSE_DATA_WORDS) {
+        Ok(p) => p,
         Err(e) => {
             let n = write_fuse_response(mbox.sram, e.as_u32(), None);
             mbox.dlen.set((n * 4) as u32);
             mbox.status
                 .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
             crate::println!("[mci-mbox] IFPR: failed {}", HexWord(e.as_u32()));
+            return;
+        }
+    };
+
+    // Read DAI words directly into SRAM — no intermediate stack buffer.
+    mbox.sram[1].set(FIPS_STATUS_APPROVED);
+    mbox.sram[2].set(params.valid_bits);
+    for i in 0..params.words_to_read {
+        match otp.read_word(params.base_word_addr + i) {
+            Ok(word) => mbox.sram[3 + i].set(word),
+            Err(_) => {
+                crate::println!(
+                    "[mci-mbox] IFPR: DAI read error at word addr {}",
+                    params.base_word_addr + i
+                );
+                // Zero any partially-written fuse data in SRAM before
+                // returning an error to avoid leaking partial reads.
+                for j in 0..params.words_to_read {
+                    mbox.sram[3 + j].set(0);
+                }
+                let n = write_fuse_response(mbox.sram, FuseError::DaiReadError.as_u32(), None);
+                mbox.dlen.set((n * 4) as u32);
+                mbox.status
+                    .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
+                return;
+            }
         }
     }
+    let resp_words = 3 + params.words_to_read;
+    write_response_checksum(mbox.sram, resp_words);
+    mbox.dlen.set((resp_words * 4) as u32);
+    mbox.status
+        .write(mci::bits::MboxCmdStatus::Status::DataReady);
+    crate::println!("[mci-mbox] IFPR: success, {} bits", params.valid_bits);
 }
 
 /// MC_FUSE_WRITE handler.
@@ -206,13 +209,14 @@ fn handle_fuse_read(cmd: u32, input_dlen: u32, mbox: &FuseMboxRegs, otp: &Otp) {
 /// Input  SRAM: chksum(u32), partition(u32), entry(u32),
 ///              start_bit(u32), length(u32), data…   — 20+ bytes
 /// Output SRAM: chksum(u32), fips_status(u32)
-fn handle_fuse_write(cmd: u32, input_dlen: u32, mbox: &FuseMboxRegs, otp: &Otp) {
+fn handle_fuse_write(cmd: u32, input_dlen: u32, mbox: &MciMboxRegs, otp: &Otp) {
     crate::println!("[mci-mbox] Processing MC_FUSE_WRITE (IFPW)");
 
-    if input_dlen < 20 {
+    if input_dlen < FUSE_WRITE_HEADER_BYTES {
         crate::println!(
-            "[mci-mbox] IFPW: dlen too short {} (minimum 20)",
-            input_dlen
+            "[mci-mbox] IFPW: dlen too short {} (minimum {})",
+            input_dlen,
+            FUSE_WRITE_HEADER_BYTES
         );
         let n = write_fuse_response(mbox.sram, FuseError::InputTooShort.as_u32(), None);
         mbox.dlen.set((n * 4) as u32);
@@ -254,7 +258,7 @@ fn handle_fuse_write(cmd: u32, input_dlen: u32, mbox: &FuseMboxRegs, otp: &Otp) 
         length
     );
 
-    // Checked arithmetic: length + 7 and 20 + data_bytes can wrap on crafted inputs.
+    // Checked arithmetic: length + 7 and header + data_bytes can wrap on crafted inputs.
     let data_bytes = match length.checked_add(7) {
         Some(v) => (v / 8) as usize,
         None => {
@@ -281,7 +285,7 @@ fn handle_fuse_write(cmd: u32, input_dlen: u32, mbox: &FuseMboxRegs, otp: &Otp) 
         return;
     }
 
-    let expected_dlen = match 20u32.checked_add(data_bytes as u32) {
+    let expected_dlen = match FUSE_WRITE_HEADER_BYTES.checked_add(data_bytes as u32) {
         Some(v) => v,
         None => {
             crate::println!("[mci-mbox] IFPW: expected dlen overflow");
@@ -321,19 +325,9 @@ fn handle_fuse_write(cmd: u32, input_dlen: u32, mbox: &FuseMboxRegs, otp: &Otp) 
         Ordering::Equal => {}
     }
 
-    let mut data = [0u32; MAX_FUSE_DATA_WORDS];
-    for (i, slot) in data.iter_mut().enumerate().take(data_words) {
-        *slot = mbox.sram[5 + i].get();
-    }
-
-    let result = fuse_write_dai(
-        otp,
-        partition,
-        entry,
-        start_bit,
-        length,
-        &data[..data_words],
-    );
+    let result = fuse_write_dai(otp, partition, entry, start_bit, length, data_words, |i| {
+        mbox.sram[5 + i].get()
+    });
 
     let fips = if result.is_success() {
         FIPS_STATUS_APPROVED
@@ -358,21 +352,14 @@ fn handle_fuse_write(cmd: u32, input_dlen: u32, mbox: &FuseMboxRegs, otp: &Otp) 
 ///
 /// Input  SRAM: chksum(u32), partition(u32)   — 8 bytes min
 /// Output SRAM: chksum(u32), fips_status(u32)
-fn handle_fuse_lock_partition(cmd: u32, input_dlen: u32, mbox: &FuseMboxRegs, otp: &Otp) {
+fn handle_fuse_lock_partition(cmd: u32, input_dlen: u32, mbox: &MciMboxRegs, otp: &Otp) {
     crate::println!("[mci-mbox] Processing MC_FUSE_LOCK_PARTITION (IFPK)");
 
-    if input_dlen < 8 {
-        crate::println!("[mci-mbox] IFPK: dlen too short {} (minimum 8)", input_dlen);
-        let n = write_fuse_response(mbox.sram, FuseError::InputTooShort.as_u32(), None);
-        mbox.dlen.set((n * 4) as u32);
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-        return;
-    } else if input_dlen > MAX_DLEN_FUSE_LOCK {
+    if input_dlen != DLEN_FUSE_LOCK {
         crate::println!(
-            "[mci-mbox] IFPK: dlen too large {} (max {})",
+            "[mci-mbox] IFPK: unexpected dlen {} (expected {})",
             input_dlen,
-            MAX_DLEN_FUSE_LOCK
+            DLEN_FUSE_LOCK
         );
         let n = write_fuse_response(mbox.sram, FuseError::InvalidLength.as_u32(), None);
         mbox.dlen.set((n * 4) as u32);
@@ -415,7 +402,7 @@ fn handle_fuse_lock_partition(cmd: u32, input_dlen: u32, mbox: &FuseMboxRegs, ot
 }
 
 /// Handle an unrecognised command code.
-fn handle_unknown_cmd(cmd: u32, mbox: &FuseMboxRegs) {
+fn handle_unknown_cmd(cmd: u32, mbox: &MciMboxRegs) {
     crate::println!("[mci-mbox] Unknown fuse command: {}", HexWord(cmd));
     let n = write_fuse_response(mbox.sram, FuseError::UnknownCommand.as_u32(), None);
     mbox.dlen.set((n * 4) as u32);
@@ -456,7 +443,7 @@ pub fn process_fuse_mbox_commands(mci: &Mci, otp: &Otp) {
         let (active_mbox, is_mbox0) = loop {
             if mbox0_execute.read(mci::bits::MboxExecute::Execute) != 0 {
                 break (
-                    FuseMboxRegs {
+                    MciMboxRegs {
                         execute: mbox0_execute,
                         status: mbox0_status,
                         dlen: mbox0_dlen,
@@ -468,7 +455,7 @@ pub fn process_fuse_mbox_commands(mci: &Mci, otp: &Otp) {
             }
             if mbox1_execute.read(mci::bits::MboxExecute::Execute) != 0 {
                 break (
-                    FuseMboxRegs {
+                    MciMboxRegs {
                         execute: mbox1_execute,
                         status: mbox1_status,
                         dlen: mbox1_dlen,
