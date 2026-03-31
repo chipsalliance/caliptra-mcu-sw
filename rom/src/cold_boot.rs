@@ -31,8 +31,9 @@ use core::fmt::Write;
 use core::ops::Deref;
 use mcu_error::McuError;
 use registers_generated::fuses;
+use registers_generated::i3c::bits::RecIntfCfg;
 use romtime::{CaliptraSoC, HexBytes, HexWord, McuBootMilestones, McuRomBootStatus};
-use tock_registers::interfaces::Readable;
+use tock_registers::interfaces::{ReadWriteable, Readable};
 use zerocopy::{transmute, IntoBytes};
 
 pub struct ColdBoot {}
@@ -677,6 +678,11 @@ impl BootFlow for ColdBoot {
             if let Some(flash_driver) = params.flash_partition_driver {
                 romtime::println!("[mcu-rom] Starting Flash recovery flow");
                 mci.set_flow_checkpoint(McuRomBootStatus::FlashRecoveryFlowStarted.into());
+
+                // Set AXI bypass mode once before the recovery flow
+                i3c_base
+                    .soc_mgmt_if_rec_intf_cfg
+                    .modify(RecIntfCfg::RecIntfBypass::SET);
 
                 crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
                     .unwrap_or_else(|_| fatal_error(McuError::ROM_COLD_BOOT_LOAD_IMAGE_ERROR));

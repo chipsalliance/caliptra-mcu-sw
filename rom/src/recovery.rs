@@ -14,8 +14,6 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::{FromBytes, IntoBytes};
 
 const ACTIVATE_RECOVERY_IMAGE_CMD: u32 = 0xF;
-const BYPASS_CFG_USE_I3C: u32 = 0x0;
-const BYPASS_CFG_AXI_DIRECT: u32 = 0x1;
 
 statemachine! {
     derive_states: [Clone, Copy, Debug],
@@ -272,9 +270,6 @@ pub fn load_flash_image_to_recovery(
     let mut next_print_offset = 0u32;
     let mut start_cycle = None;
 
-    i3c_periph
-        .soc_mgmt_if_rec_intf_cfg
-        .modify(RecIntfCfg::RecIntfBypass.val(BYPASS_CFG_AXI_DIRECT));
     while *state_machine.state() != States::Done {
         if prev_state != *state_machine.state() {
             romtime::println!(
@@ -422,9 +417,6 @@ pub fn load_flash_image_to_recovery(
             _ => {}
         }
     }
-    i3c_periph
-        .soc_mgmt_if_rec_intf_cfg
-        .modify(RecIntfCfg::RecIntfBypass.val(BYPASS_CFG_USE_I3C));
 
     Ok(())
 }
