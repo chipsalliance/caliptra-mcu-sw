@@ -1290,7 +1290,7 @@ impl BootFlow for ColdBoot {
             mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
         }
 
-        let stash_rom_digest = params.stash_rom_digest.unwrap_or(true);
+        let stash_rom_digest = params.stash_rom_digest.unwrap_or(false);
         Self::rom_digest_integrity(&mut env.soc_manager, stash_rom_digest);
 
         // NOTE: Firmware manifest DOT command processing is intentionally
