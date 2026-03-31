@@ -14,9 +14,8 @@ use caliptra_hw_model_types::{
 };
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_mcu_mbox_common::messages::calc_checksum;
-use caliptra_mcu_romtime::{
-    LifecycleControllerState, LifecycleRawTokens, LifecycleToken, McuBootMilestones,
-};
+use caliptra_mcu_romtime::McuBootMilestones;
+pub use caliptra_mcu_romtime::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
 use caliptra_mcu_testing_common::MCU_RUNNING;
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
 pub use mcu_mgr::McuManager;
