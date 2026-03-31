@@ -15,7 +15,7 @@ use super::{
 };
 
 /// The FPGA configuration mode
-#[derive(Copy, Clone, ValueEnum, Debug)]
+#[derive(Copy, Clone, ValueEnum, Debug, PartialEq, Eq)]
 pub enum Configuration {
     /// Testing FPGA in Subsystem mode. For example running tests in caliptra-mcu-sw.
     Subsystem,
@@ -81,6 +81,20 @@ impl<'a> Configuration {
         let cache_contents = run_command_with_output(target_host, "cat /dev/shm/fpga-config")?;
         let cache_contents = cache_contents.trim_end();
         Self::from_cache(cache_contents)
+    }
+
+    /// Attempts to retrieve the FPGA configuration from the target host.
+    /// Returns `Ok(None)` if the configuration file is missing.
+    pub fn from_cmd_optional(target_host: Option<&str>) -> Result<Option<Self>> {
+        check_ssh_access(target_host)?;
+        // cat will fail if file doesn't exist, run_command_with_output returns empty stdout in that case
+        let cache_contents =
+            run_command_with_output(target_host, "cat /dev/shm/fpga-config || true")?;
+        let cache_contents = cache_contents.trim_end();
+        if cache_contents.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(Self::from_cache(cache_contents)?))
     }
 
     pub fn executor(self) -> CommandExecutor {
