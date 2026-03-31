@@ -14,7 +14,7 @@ use caliptra_hw_model_types::{
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
 pub use mcu_mgr::McuManager;
-use mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
+pub use mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
 use mcu_testing_common::MCU_RUNNING;
 pub use model_emulated::ModelEmulated;
 use rand::{rngs::StdRng, SeedableRng};

@@ -264,7 +264,7 @@ impl McuHwModel for ModelFpgaRealtime {
         let security_state_prod =
             *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Production);
         let security_state_raw =
-            *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Reserved2);
+            *SecurityState::default().set_device_lifecycle(DeviceLifecycle::Unprovisioned);
 
         let security_state = match params
             .lifecycle_controller_state

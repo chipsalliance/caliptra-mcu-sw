@@ -19,6 +19,7 @@ mod test_mctp_spdm_responder_conformance;
 mod test_mctp_vdm_cmds;
 mod test_mcu_mbox;
 mod test_pldm_fw_update;
+mod test_raw_lifecycle_boot;
 mod test_soc_boot;
 
 pub fn platform() -> &'static str {
@@ -73,8 +74,8 @@ mod test {
         /// ROM feature flag. If set, compiles a ROM with this feature enabled.
         pub rom_feature: Option<&'a str>,
         pub active_i3c1: bool,
+        pub lifecycle_controller_state: Option<mcu_hw_model::LifecycleControllerState>,
     }
-
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
         Path::new(&env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -373,6 +374,7 @@ mod test {
             dot_flash_initial_contents: params.dot_flash_initial_contents,
             check_booted_to_runtime: !params.rom_only,
             otp_memory: otp_memory.as_deref(),
+            lifecycle_controller_state: params.lifecycle_controller_state,
             primary_flash_initial_contents: flash_image,
             flash_boot: params.flash_boot,
             active_i3c1: params.active_i3c1,

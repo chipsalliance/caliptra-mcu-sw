@@ -43,7 +43,8 @@ default-filter = """
 (package(tests-integration) and test(test_sw_digest_lock)) |
 (package(tests-integration) and test(test_otp_blank_check)) |
 (package(tests-integration) and test(test_bootfsm_timeout)) |
-(package(tests-integration) and test(test_lc_ctrl))
+(package(tests-integration) and test(test_lc_ctrl)) |
+(package(tests-integration) and test(test_raw_lifecycle_boot))
 """
 # disabled for now due to flakiness of firmware update
 # (package(tests-integration) and test(test_firmware_update_streaming_fpga)) |
