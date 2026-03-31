@@ -58,7 +58,8 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
 (package(caliptra-mcu-tests-integration) and test(test_sw_digest_lock)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
-(package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check))
+(package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check)) |
+(package(caliptra-mcu-tests-integration) and test(test_raw_lifecycle_boot))
 """
 # disabled for now due to flakiness of firmware update
 # (package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)) |

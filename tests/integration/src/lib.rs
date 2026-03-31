@@ -28,6 +28,7 @@ mod test_mctp_vdm_validator;
 mod test_mcu_mbox;
 mod test_owner_stable_key;
 mod test_pldm_fw_update;
+mod test_raw_lifecycle_boot;
 mod test_soc_boot;
 mod test_usb_ocp_recovery;
 
@@ -131,7 +132,6 @@ mod test {
             }
         }
     }
-
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
         Path::new(&env!("CARGO_MANIFEST_DIR"))
             .parent()

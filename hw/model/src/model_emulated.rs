@@ -299,7 +299,8 @@ impl McuHwModel for ModelEmulated {
         let device_lifecycle: Option<String> = match params.lifecycle_controller_state {
             Some(LifecycleControllerState::Dev) => Some("manufacturing".into()),
             Some(
-                LifecycleControllerState::TestUnlocked0
+                LifecycleControllerState::Raw
+                | LifecycleControllerState::TestUnlocked0
                 | LifecycleControllerState::TestUnlocked1
                 | LifecycleControllerState::TestUnlocked2
                 | LifecycleControllerState::TestUnlocked3
@@ -308,7 +309,7 @@ impl McuHwModel for ModelEmulated {
                 | LifecycleControllerState::TestUnlocked6
                 | LifecycleControllerState::TestUnlocked7,
             ) => Some("unprovisioned".into()),
-            // Raw, TestLocked*, Prod, ProdEnd, Rma, Scrap all map to production
+            // TestLocked*, Prod, ProdEnd, Rma, Scrap all map to production
             _ => Some("production".into()),
         };
 
