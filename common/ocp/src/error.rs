@@ -1,5 +1,7 @@
 // Licensed under the Apache-2.0 license
 
+use crate::usb::driver::UsbDriverError;
+
 /// A representation of the various errors which can arise in handling the OCP Recovery protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -52,6 +54,17 @@ pub enum OcpError {
     InvalidStandardRequest = 22,
     /// The value does not match a known USB Descriptor Type (Table 9-5).
     InvalidDescriptorType = 23,
+    /// A transport-level error occurred (e.g. USB hardware failure).
+    TransportError = 24,
+}
+
+impl From<UsbDriverError> for OcpError {
+    fn from(e: UsbDriverError) -> Self {
+        match e {
+            UsbDriverError::OcpError(ocp_err) => ocp_err,
+            _ => OcpError::TransportError,
+        }
+    }
 }
 
 /// Errors returned by CMS region operations.

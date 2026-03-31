@@ -6,6 +6,7 @@
 //! Implementors handle all hardware setup, buffer management, USB
 //! enumeration, and protocol details internally.
 
+use crate::error::OcpError;
 use crate::protocol::RecoveryCommand;
 
 /// Errors from USB driver operations.
@@ -27,6 +28,9 @@ pub enum UsbDriverError {
     NoPendingRead,
     /// Hardware-level error (timeout, CRC, bit-stuffing, etc.).
     HardwareError,
+    /// The closure passed to [`UsbDeviceDriver::send`] returned an
+    /// [`OcpError`] while populating the response buffer.
+    OcpError(OcpError),
 }
 
 /// The transfer direction and associated payload for an OCP recovery command.
@@ -130,7 +134,7 @@ pub trait UsbDeviceDriver {
     /// status stage is completed before returning.
     fn send(
         &mut self,
-        populate_buffer: &mut dyn FnMut(&mut [u8]) -> Result<usize, UsbDriverError>,
+        populate_buffer: &mut dyn FnMut(&mut [u8]) -> Result<usize, OcpError>,
     ) -> Result<(), UsbDriverError>;
 
     /// Stall EP0 to reject a read command the device does not support.

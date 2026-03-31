@@ -4,6 +4,7 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
+use ocp::error::OcpError;
 use ocp::protocol::RecoveryCommand;
 use ocp::usb::descriptors::*;
 use ocp::usb::driver::{RecoveryRequest, UsbDeviceDriver, UsbDriverError};
@@ -384,14 +385,14 @@ impl UsbDeviceDriver for ExamplarUsbDriver {
 
     fn send(
         &mut self,
-        populate_buffer: &mut dyn FnMut(&mut [u8]) -> Result<usize, UsbDriverError>,
+        populate_buffer: &mut dyn FnMut(&mut [u8]) -> Result<usize, OcpError>,
     ) -> Result<(), UsbDriverError> {
         let expected: usize = self
             .pending_read_len
             .take()
             .ok_or(UsbDriverError::NoPendingRead)?
             .into();
-        let len = populate_buffer(&mut self.out_buf)?;
+        let len = populate_buffer(&mut self.out_buf).map_err(UsbDriverError::OcpError)?;
         if len > MAX_WRITE_TRANSFER {
             return Err(UsbDriverError::TransferTooLarge);
         }
