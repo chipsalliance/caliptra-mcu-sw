@@ -628,7 +628,7 @@ impl BootFlow for ColdBoot {
             env.soc.lock_owner_pk_hash();
         }
 
-        // re-borrow to avoid ownership issues
+        // Re-borrow after DOT flow (which took &mut env).
         let mci = &env.mci;
         let soc = &env.soc;
         let soc_manager = &mut env.soc_manager;
@@ -738,13 +738,19 @@ impl BootFlow for ColdBoot {
         let stash_rom_digest = params.stash_rom_digest.unwrap_or(false);
         Self::rom_digest_integrity(soc_manager, stash_rom_digest);
 
+        // NOTE: Firmware manifest DOT command processing is intentionally
+        // handled in FwBoot (fw_boot.rs), not here.  FwBoot runs after the
+        // warm-reset chain, so firmware in MCU SRAM is always decrypted by
+        // that point – even during encrypted boot.  Processing is gated by
+        // `params.fw_manifest_dot_enabled` so integrators can opt in.
+
         romtime::println!("[mcu-rom] Finished common initialization");
 
         // program field entropy if requested
         if params.program_field_entropy.iter().any(|x| *x) {
             romtime::println!("[mcu-rom] Programming field entropy");
             mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingStarted.into());
-            Self::program_field_entropy(&params.program_field_entropy, soc_manager, mci);
+            Self::program_field_entropy(&params.program_field_entropy, &mut env.soc_manager, mci);
             mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingComplete.into());
         }
 

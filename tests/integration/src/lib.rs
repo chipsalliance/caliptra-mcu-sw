@@ -77,6 +77,10 @@ mod test {
         pub rom_feature: Option<&'a str>,
         pub active_i3c1: bool,
         pub lifecycle_controller_state: Option<mcu_hw_model::LifecycleControllerState>,
+        /// Optional custom MCU ROM bytes (overrides the default/compiled ROM).
+        pub custom_mcu_rom: Option<Vec<u8>>,
+        /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
+        pub firmware_prefix: Option<Vec<u8>>,
     }
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
         Path::new(&env!("CARGO_MANIFEST_DIR"))
@@ -113,8 +117,10 @@ mod test {
         compile_rom(feature)
     }
 
-    // only build the ROM once
+    // only build the default ROM once
     pub static ROM: LazyLock<PathBuf> = LazyLock::new(|| get_or_compile_rom(""));
+    pub static ROM_FW_MANIFEST_DOT: LazyLock<Vec<u8>> =
+        LazyLock::new(|| std::fs::read(get_or_compile_rom("test-fw-manifest-dot")).unwrap());
 
     pub static TEST_LOCK: LazyLock<Mutex<AtomicU32>> =
         LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
@@ -133,14 +139,18 @@ mod test {
     }
 
     fn compile_rom(feature: &str) -> PathBuf {
-        let feature = if TEST_HW_REVISION == "2.1.0" && feature.is_empty() {
-            "hw-2-1"
+        let feature = if TEST_HW_REVISION == "2.1.0" {
+            if feature.is_empty() {
+                "hw-2-1".to_string()
+            } else {
+                format!("hw-2-1,{feature}")
+            }
         } else {
-            feature
+            feature.to_string()
         };
         let output: PathBuf = mcu_builder::rom_build(&mcu_builder::CaliptraBuildArgs {
             platform: Some(platform()),
-            features: Some(feature),
+            features: Some(&feature),
             ..Default::default()
         })
         .expect("ROM build failed");
@@ -223,11 +233,29 @@ mod test {
         test_binaries
     }
 
-    fn build_test_binaries(feature: Option<&str>, rom_feature: Option<&str>) -> TestBinaries {
-        let mcu_runtime = compile_runtime(feature, false);
+    fn build_test_binaries(params: &TestParams) -> TestBinaries {
+        let mcu_runtime_path = compile_runtime(params.feature, false);
+
+        // When a firmware prefix is provided, create a modified binary that
+        // includes the prefix so the SOC manifest digest covers both.
+        let (mcu_runtime_for_builder, mcu_runtime_bytes) =
+            if let Some(prefix) = &params.firmware_prefix {
+                let original = std::fs::read(&mcu_runtime_path).unwrap();
+                let mut prefixed = prefix.to_vec();
+                prefixed.extend_from_slice(&original);
+
+                // Write the prefixed binary to a temp file for CaliptraBuilder
+                let prefixed_path = mcu_runtime_path.with_extension("prefixed");
+                std::fs::write(&prefixed_path, &prefixed).unwrap();
+                (prefixed_path, prefixed)
+            } else {
+                let bytes = std::fs::read(&mcu_runtime_path).unwrap();
+                (mcu_runtime_path, bytes)
+            };
+
         let mut builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
             fpga: cfg!(feature = "fpga_realtime"),
-            mcu_firmware: Some(mcu_runtime.clone()),
+            mcu_firmware: Some(mcu_runtime_for_builder),
             ..Default::default()
         });
         let caliptra_rom = std::fs::read(
@@ -244,7 +272,9 @@ mod test {
         )
         .unwrap();
 
-        let mcu_rom = if let Some(rf) = rom_feature {
+        let mcu_rom = if params.firmware_prefix.is_some() {
+            ROM_FW_MANIFEST_DOT.clone()
+        } else if let Some(rf) = params.rom_feature {
             let rom_path = get_rom_with_feature(rf);
             std::fs::read(rom_path).unwrap()
         } else {
@@ -258,7 +288,6 @@ mod test {
         .unwrap();
         let vendor_pk_hash_u8 = hex::decode(builder.get_vendor_pk_hash().unwrap())
             .expect("Invalid hex string for vendor_pk_hash");
-        let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
 
         TestBinaries {
             vendor_pk_hash_u8,
@@ -266,7 +295,7 @@ mod test {
             caliptra_fw,
             mcu_rom,
             soc_manifest,
-            mcu_runtime,
+            mcu_runtime: mcu_runtime_bytes,
         }
     }
 
@@ -282,13 +311,20 @@ mod test {
             soc_manifest,
             mcu_runtime,
         } = match FirmwareBinaries::from_env() {
-            Ok(binaries) if params.rom_feature.is_none() => {
+            Ok(binaries) if params.rom_feature.is_none() && params.firmware_prefix.is_none() => {
                 prebuilt_binaries(params.feature, binaries)
             }
             _ => {
                 println!("Could not find prebuilt firmware binaries, building firmware...");
-                build_test_binaries(params.feature, params.rom_feature)
+                build_test_binaries(&params)
             }
+        };
+
+        // Use custom MCU ROM if provided, otherwise use prebuilt/compiled
+        let mcu_rom = if let Some(custom_rom) = params.custom_mcu_rom {
+            custom_rom
+        } else {
+            mcu_rom
         };
 
         // Use custom Caliptra FW if provided, otherwise use prebuilt/compiled

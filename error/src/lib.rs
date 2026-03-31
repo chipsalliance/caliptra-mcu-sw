@@ -398,6 +398,11 @@ impl McuError {
             "Failed to select a valid and functional vendor PK slot"
         ),
         (
+            ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR,
+            0x1_0018,
+            "Firmware manifest DOT command processing error"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"

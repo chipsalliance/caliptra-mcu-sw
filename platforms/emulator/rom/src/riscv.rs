@@ -81,7 +81,6 @@ pub extern "C" fn rom_entry() -> ! {
     };
 
     let dot_flash: &dyn FlashStorage = &SimpleFlash::new(raw_dot_flash);
-    let dot_flash = Some(dot_flash);
 
     let axi_user0 = 0xcccc_ccccu32;
     let axi_user1 = 0xdddd_ddddu32;
@@ -135,8 +134,44 @@ pub extern "C" fn rom_entry() -> ! {
 
         mcu_rom_common::rom_start(RomParameters {
             flash_partition_driver: Some(&mut flash_image_partition_driver),
-            dot_flash,
+            dot_flash: Some(dot_flash),
             request_flash_boot: true,
+            cptra_mbox_axi_users: mbox_axi_users,
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            cptra_dma_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
+            ..Default::default()
+        });
+    } else if cfg!(any(
+        feature = "test-mcu-svn-gt-fuse",
+        feature = "test-mcu-svn-lt-fuse"
+    )) {
+        use crate::mcu_image_verifier::McuImageVerifier;
+        let mcu_image_verifier = McuImageVerifier;
+        let rom_parameters = RomParameters {
+            mcu_image_verifier: Some(&mcu_image_verifier),
+            mcu_image_header_size: core::mem::size_of::<mcu_image_header::McuImageHeader>(),
+            dot_flash: Some(dot_flash),
+            otp_enable_integrity_check: true,
+            otp_enable_consistency_check: true,
+            cptra_mbox_axi_users: mbox_axi_users,
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            cptra_dma_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
+            ..Default::default()
+        };
+        mcu_rom_common::rom_start(rom_parameters);
+    } else if cfg!(feature = "test-fw-manifest-dot") {
+        mcu_rom_common::rom_start(RomParameters {
+            dot_flash: Some(dot_flash),
+            mcu_image_header_size: core::mem::size_of::<mcu_rom_common::FwManifestDotSection>(),
+            fw_manifest_dot_enabled: true,
+            otp_enable_integrity_check: true,
+            otp_enable_consistency_check: true,
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
@@ -163,7 +198,7 @@ pub extern "C" fn rom_entry() -> ! {
 
         mcu_rom_common::rom_start(RomParameters {
             flash_partition_driver: Some(&mut flash_partition),
-            dot_flash,
+            dot_flash: Some(dot_flash),
             // Let the generic wire (bit 29 of mci_reg_generic_input_wires[1]) control flash boot
             // request_flash_boot defaults to false - emulator sets the wire when flash boot is requested
             cptra_mbox_axi_users: mbox_axi_users,
@@ -174,27 +209,6 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         });
-    } else if cfg!(any(
-        feature = "test-mcu-svn-gt-fuse",
-        feature = "test-mcu-svn-lt-fuse"
-    )) {
-        use crate::mcu_image_verifier::McuImageVerifier;
-        let mcu_image_verifier = McuImageVerifier;
-        let rom_parameters = RomParameters {
-            mcu_image_verifier: Some(&mcu_image_verifier),
-            mcu_image_header_size: core::mem::size_of::<mcu_image_header::McuImageHeader>(),
-            dot_flash,
-            otp_enable_integrity_check: true,
-            otp_enable_consistency_check: true,
-            cptra_mbox_axi_users: mbox_axi_users,
-            cptra_fuse_axi_user: axi_user0,
-            cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
-            mci_mbox0_axi_users: mbox_axi_users,
-            mci_mbox1_axi_users: mbox_axi_users,
-            ..Default::default()
-        };
-        mcu_rom_common::rom_start(rom_parameters);
     } else {
         // Read backup blob from DOT flash region
         let recovery_backup_blob = {
@@ -222,8 +236,8 @@ pub extern "C" fn rom_entry() -> ! {
         };
 
         mcu_rom_common::rom_start(RomParameters {
-            dot_flash,
-            cptra_mbox_axi_users: [axi_user0, axi_user1, 0, 0, 0],
+            dot_flash: Some(dot_flash),
+            cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
             cptra_dma_axi_user: axi_user0,

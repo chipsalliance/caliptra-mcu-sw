@@ -4,11 +4,6 @@
 
 #[cfg(test)]
 mod test {
-    use std::{
-        collections::HashMap,
-        sync::{LazyLock, Mutex},
-    };
-
     use crate::test::{start_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK};
     use caliptra_api::{
         calc_checksum,
@@ -142,20 +137,8 @@ mod test {
         blob.with_hmac(&hmac)
     }
 
-    static HMACS: LazyLock<Mutex<HashMap<Vec<u8>, Vec<u8>>>> =
-        LazyLock::new(|| Mutex::new(HashMap::new()));
-
     fn compute_hmac_cached(blob: &[u8]) -> Vec<u8> {
-        let mut hmacs = HMACS.lock().unwrap();
-
-        match hmacs.get(blob) {
-            Some(h) => h.clone(),
-            None => {
-                let h = compute_hmac(blob);
-                hmacs.insert(blob.to_vec(), h.clone());
-                h
-            }
-        }
+        compute_hmac(blob)
     }
 
     /// Computes an HMAC of the blob using the Caliptra DOT stable key. Used to make HMACs of DOT blobs.
@@ -1501,6 +1484,556 @@ mod test {
             "Flash should not be written when PK hash doesn't match"
         );
 
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    // Firmware manifest DOT command tests
+    // -----------------------------------------------------------------------
+
+    /// Creates a firmware manifest DOT section as raw bytes (128 bytes)
+    /// with a valid checksum and the provided keys.
+    fn create_manifest_section(
+        commands: &[u8],
+        min_fuse_count: u32,
+        cak: [u32; 12],
+        lak: [u32; 12],
+    ) -> Vec<u8> {
+        use mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
+        use zerocopy::IntoBytes;
+
+        let mut cmd_array = [0u8; 8];
+        for (i, &c) in commands.iter().enumerate().take(8) {
+            cmd_array[i] = c;
+        }
+
+        let section = FwManifestDotSection {
+            magic: FW_MANIFEST_DOT_MAGIC,
+            checksum: 0,
+            version: 1,
+            num_commands: commands.len().min(8) as u32,
+            min_fuse_count,
+            commands: cmd_array,
+            cak,
+            lak,
+            _reserved: [0u8; 4],
+        }
+        .with_checksum();
+
+        section.as_bytes().to_vec()
+    }
+
+    /// Test: LOCK command in firmware manifest burns a fuse when device is in EVEN (unlocked) state.
+    ///
+    /// Setup:
+    /// - DOT enabled in fuses, EVEN state (burned=0)
+    /// - Valid DOT blob with CAK only (no LAK → DOT blob processing does NOT auto-lock)
+    /// - Firmware manifest with LOCK command
+    ///
+    /// Expected: The manifest LOCK command burns the lock fuse (EVEN → ODD).
+    #[test]
+    fn test_fw_manifest_dot_lock() {
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
+        use registers_generated::fuses;
+        use romtime::McuBootMilestones;
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Manifest LOCK test failed with fatal error: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        let otp_memory = hw.read_otp_memory();
+        let fuse_byte = otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset];
+        assert!(
+            fuse_byte & 0x01 != 0,
+            "Manifest LOCK should have burned the lock fuse, got 0x{:02x}",
+            fuse_byte
+        );
+
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 1,
+            "Expected 1 fuse burned by manifest LOCK, found {}",
+            burned
+        );
+
+        println!("[TEST] Firmware manifest LOCK command successfully burned lock fuse");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: LOCK command is idempotent when device is already in ODD (locked) state.
+    ///
+    /// Setup:
+    /// - DOT in locked state (ODD, 1 fuse burned)
+    /// - Valid DOT blob for locked state
+    /// - Firmware manifest with LOCK command
+    ///
+    /// Expected: No additional fuses burned (idempotent).
+    #[test]
+    fn test_fw_manifest_dot_lock_idempotent() {
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
+        use registers_generated::fuses;
+        use romtime::McuBootMilestones;
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
+        let dot_flash = blob.to_flash_contents();
+
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Idempotent LOCK test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        // Verify still exactly 1 fuse burned (no additional fuse from manifest)
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 1,
+            "LOCK should be idempotent: expected 1 fuse, found {}",
+            burned
+        );
+
+        println!("[TEST] Firmware manifest LOCK idempotent (no additional fuse burned)");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: UNLOCK command burns a fuse when device is in ODD (locked) state.
+    ///
+    /// Setup:
+    /// - DOT in locked state (ODD, 1 fuse burned)
+    /// - Valid DOT blob for locked state
+    /// - Firmware manifest with UNLOCK command
+    ///
+    /// Expected: One additional fuse burned (ODD → EVEN), total 2.
+    #[test]
+    fn test_fw_manifest_dot_unlock() {
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
+        use registers_generated::fuses;
+        use romtime::McuBootMilestones;
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
+        let dot_flash = blob.to_flash_contents();
+
+        // UNLOCK needs a LAK in the manifest for writing the unlock DOT blob.
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_UNLOCK], 0, [0u32; 12], test_lak());
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Manifest UNLOCK test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 2,
+            "UNLOCK should burn 1 fuse: expected 2 total, found {}",
+            burned
+        );
+
+        println!("[TEST] Firmware manifest UNLOCK command burned fuse (ODD → EVEN)");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: UNLOCK command is idempotent when device is already in EVEN (unlocked) state.
+    #[test]
+    fn test_fw_manifest_dot_unlock_idempotent() {
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
+        use registers_generated::fuses;
+        use romtime::McuBootMilestones;
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_UNLOCK], 0, [0u32; 12], test_lak());
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Idempotent UNLOCK test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        // Verify 0 fuses burned (UNLOCK on EVEN state is a no-op)
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 0,
+            "UNLOCK should be idempotent on EVEN state, found {} fuses",
+            burned
+        );
+
+        println!("[TEST] Firmware manifest UNLOCK idempotent on EVEN state");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: DISABLE command burns a fuse when in EVEN (unlocked) state.
+    #[test]
+    fn test_fw_manifest_dot_disable() {
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_DISABLE;
+        use registers_generated::fuses;
+        use romtime::McuBootMilestones;
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_DISABLE], 0, [0u32; 12], test_lak());
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Manifest DISABLE test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        let otp_memory = hw.read_otp_memory();
+        let fuse_byte = otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset];
+        assert!(
+            fuse_byte & 0x01 != 0,
+            "DISABLE should burn lock fuse, got 0x{:02x}",
+            fuse_byte
+        );
+
+        println!("[TEST] Firmware manifest DISABLE command burned fuse (EVEN → ODD)");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: No manifest magic means DOT commands are silently skipped.
+    #[test]
+    fn test_fw_manifest_dot_no_magic_skipped() {
+        use registers_generated::fuses;
+        use romtime::McuBootMilestones;
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        // No firmware_prefix → fw_manifest_dot_enabled is false in the ROM,
+        // so DOT manifest processing is entirely skipped.  This verifies
+        // that the default ROM configuration never accidentally processes
+        // DOT manifests.
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "No-magic test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        // No fuses should be burned (manifest was skipped)
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 0,
+            "No manifest magic: expected 0 fuses burned, found {}",
+            burned
+        );
+
+        println!("[TEST] No manifest magic: DOT commands correctly skipped");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: ROTATE command burns 2 fuses when below min_fuse_count threshold.
+    #[test]
+    fn test_fw_manifest_dot_rotate() {
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
+        use registers_generated::fuses;
+        use romtime::McuBootMilestones;
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        // ROTATE with min_fuse_count=2 (current burned=0, so rotation will apply)
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_ROTATE], 2, owner_pk_hash, test_lak());
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Manifest ROTATE test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        // Verify 2 fuses burned (rotation = 2 fuse burns, preserving parity)
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(burned, 2, "ROTATE should burn 2 fuses, found {}", burned);
+
+        println!("[TEST] Firmware manifest ROTATE command burned 2 fuses");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: ROTATE command is idempotent when burned count already meets min_fuse_count.
+    #[test]
+    fn test_fw_manifest_dot_rotate_idempotent() {
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
+        use registers_generated::fuses;
+        use romtime::McuBootMilestones;
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
+        let dot_flash = blob.to_flash_contents();
+
+        // ROTATE with min_fuse_count=1 but device already has 1 fuse burned (locked state)
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_ROTATE], 1, owner_pk_hash, test_lak());
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Idempotent ROTATE test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        // Verify still exactly 1 fuse burned (rotation not applied)
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 1,
+            "ROTATE idempotent: expected 1 fuse, found {}",
+            burned
+        );
+
+        println!("[TEST] Firmware manifest ROTATE idempotent when already at target");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: Unsupported manifest version causes a fatal error.
+    ///
+    /// Setup:
+    /// - DOT enabled, EVEN state
+    /// - Valid DOT blob
+    /// - Firmware manifest with correct magic but version = 99
+    ///
+    /// Expected: ROM halts with ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR.
+    #[test]
+    fn test_fw_manifest_dot_bad_version() {
+        use mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
+        use zerocopy::IntoBytes;
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        // Create a manifest with valid magic and checksum but unsupported version (99)
+        let section = FwManifestDotSection {
+            magic: FW_MANIFEST_DOT_MAGIC,
+            checksum: 0,
+            version: 99,
+            num_commands: 0,
+            min_fuse_count: 0,
+            commands: [0u8; 8],
+            cak: [0u32; 12],
+            lak: [0u32; 12],
+            _reserved: [0u8; 4],
+        }
+        .with_checksum();
+        let manifest = section.as_bytes().to_vec();
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 100_000_000);
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_some(),
+            "Expected fatal error for unsupported manifest version, but boot completed"
+        );
+        assert_eq!(
+            fatal_error.unwrap(),
+            u32::from(mcu_error::McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR),
+            "Expected ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR, got 0x{:x}",
+            fatal_error.unwrap()
+        );
+
+        println!("[TEST] Unsupported manifest version correctly triggers fatal error");
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 }

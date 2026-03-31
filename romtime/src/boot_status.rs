@@ -75,6 +75,8 @@ pub enum McuRomBootStatus {
     FirmwareReadyDetected = FIRMWARE_LOADING_BASE + 4,
     FirmwareValidationComplete = FIRMWARE_LOADING_BASE + 5,
     CaliptraRuntimeReady = FIRMWARE_LOADING_BASE + 6,
+    FwManifestDotProcessingStarted = FIRMWARE_LOADING_BASE + 7,
+    FwManifestDotProcessingComplete = FIRMWARE_LOADING_BASE + 8,
 
     // Field Entropy Programming
     FieldEntropyProgrammingStarted = FIELD_ENTROPY_BASE,

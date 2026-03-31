@@ -15,7 +15,14 @@ Abstract:
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
 use core::fmt::Write;
 use mcu_error::McuError;
+#[cfg(feature = "fw-manifest-dot")]
+use romtime::HexWord;
 use romtime::{McuBootMilestones, McuRomBootStatus};
+#[cfg(feature = "fw-manifest-dot")]
+use zerocopy::FromBytes;
+
+#[cfg(feature = "fw-manifest-dot")]
+use crate::device_ownership_transfer;
 
 pub struct FwBoot {}
 
@@ -33,6 +40,44 @@ impl BootFlow for FwBoot {
         if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
             romtime::println!("Invalid firmware detected; halting");
             fatal_error(McuError::ROM_FW_BOOT_INVALID_FIRMWARE);
+        }
+
+        // --- Process optional firmware manifest DOT commands ---
+        // Runs during FwBoot.
+        //
+        // Compile-gated by the fw-manifest-dot feature so ROMs that do not
+        // need this feature stay panic-free and pay no code-size cost.
+        // Additionally gated at runtime by fw_manifest_dot_enabled.
+        #[cfg(feature = "fw-manifest-dot")]
+        if params.fw_manifest_dot_enabled {
+            let manifest_size =
+                core::mem::size_of::<device_ownership_transfer::FwManifestDotSection>();
+            let sram = unsafe {
+                core::slice::from_raw_parts(MCU_MEMORY_MAP.sram_offset as *const u8, manifest_size)
+            };
+            if let Ok((section, _)) =
+                device_ownership_transfer::FwManifestDotSection::ref_from_prefix(sram)
+            {
+                if section.magic == device_ownership_transfer::FW_MANIFEST_DOT_MAGIC {
+                    env.mci.set_flow_checkpoint(
+                        McuRomBootStatus::FwManifestDotProcessingStarted.into(),
+                    );
+                    if let Err(err) = device_ownership_transfer::process_fw_manifest_dot_commands(
+                        env,
+                        section,
+                        params.dot_flash,
+                    ) {
+                        romtime::println!(
+                            "[mcu-rom] Error in firmware manifest DOT: {}",
+                            HexWord(err.into())
+                        );
+                        fatal_error(err);
+                    }
+                    env.mci.set_flow_checkpoint(
+                        McuRomBootStatus::FwManifestDotProcessingComplete.into(),
+                    );
+                }
+            }
         }
 
         // Jump to firmware

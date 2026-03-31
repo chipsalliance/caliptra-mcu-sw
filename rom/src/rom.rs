@@ -685,6 +685,11 @@ pub struct RomParameters<'a> {
     /// Which DOT recovery mechanisms to attempt and in what order.
     /// Defaults to challenge/response first, then backup blob.
     pub dot_recovery_policy: DotRecoveryPolicy,
+    /// Whether to check for and process firmware manifest DOT commands.
+    /// When true, the ROM will look for a FwManifestDotSection at the start
+    /// of MCU SRAM during FwBoot and process any DOT commands found.
+    /// Default: false (opt-in by platform integrators).
+    pub fw_manifest_dot_enabled: bool,
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,
