@@ -8,8 +8,8 @@ use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_types::RvData;
 use caliptra_mcu_emulator_registers_generated::mci::{MciGenerated, MciPeripheral};
 use caliptra_mcu_registers_generated::mci::bits::{
-    Error0IntrT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest, SecurityState, WdtStatus,
-    WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
+    Error0IntrT, Error0IntrTrigT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest,
+    SecurityState, WdtStatus, WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
 };
 use caliptra_registers::soc_ifc::RegisterBlock;
 use std::{
@@ -31,7 +31,6 @@ pub struct Mci {
     ext_mci_regs: caliptra_emu_periph::mci::Mci,
     generated: MciGenerated,
 
-    error0_internal_intr_r: ReadWriteRegister<u32, Error0IntrT::Register>,
     timer: Timer,
     op_wdt_timer1_expired_action: Option<ActionHandle>,
     op_wdt_timer2_expired_action: Option<ActionHandle>,
@@ -91,7 +90,6 @@ impl Mci {
             ext_mci_regs,
             generated,
 
-            error0_internal_intr_r: ReadWriteRegister::new(0),
             timer: Timer::new(clock),
             op_wdt_timer1_expired_action: None,
             op_wdt_timer2_expired_action: None,
@@ -115,6 +113,21 @@ impl Mci {
 
     pub fn set_fips_zeroization_cmd(&mut self, cmd: Rc<Cell<bool>>) {
         self.fips_zeroization_cmd = cmd;
+    }
+
+    #[inline]
+    fn reschedule_poll(timer: &mut Timer, slot: &mut Option<ActionHandle>, period: u64) {
+        if let Some(old) = slot.take() {
+            timer.cancel(old);
+        }
+        *slot = Some(timer.schedule_poll_in(clamp_timer_period(period)));
+    }
+
+    #[inline]
+    fn cancel_poll(timer: &mut Timer, slot: &mut Option<ActionHandle>) {
+        if let Some(old) = slot.take() {
+            timer.cancel(old);
+        }
     }
 
     fn arm_mtime_interrupt(&mut self) {
@@ -143,6 +156,26 @@ impl Mci {
             self.timer
                 .schedule_action_in(delay, TimerAction::MachineTimerInterrupt),
         );
+    }
+
+    fn update_mci_irq(&mut self) {
+        let regs = self.ext_mci_regs.regs.borrow();
+
+        let global_en = (regs.intr_block_rf_global_intr_en_r & 0x1) != 0;
+        if !global_en {
+            self.irq.borrow_mut().set_level(false);
+            return;
+        }
+
+        let error0_pending =
+            (regs.intr_block_rf_error0_internal_intr_r & regs.intr_block_rf_error0_intr_en_r) != 0;
+
+        let notif0_pending =
+            (regs.intr_block_rf_notif0_internal_intr_r & regs.intr_block_rf_notif0_intr_en_r) != 0;
+
+        self.irq
+            .borrow_mut()
+            .set_level(error0_pending || notif0_pending);
     }
 }
 
@@ -261,12 +294,13 @@ impl MciPeripheral for Mci {
                 ((self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[0] as u64;
 
-            self.op_wdt_timer1_expired_action = Some(
-                self.timer
-                    .schedule_poll_in(clamp_timer_period(timer_period)),
+            Mci::reschedule_poll(
+                &mut self.timer,
+                &mut self.op_wdt_timer1_expired_action,
+                timer_period,
             );
         } else {
-            self.op_wdt_timer1_expired_action = None;
+            Mci::cancel_poll(&mut self.timer, &mut self.op_wdt_timer1_expired_action);
         }
     }
 
@@ -292,9 +326,10 @@ impl MciPeripheral for Mci {
                 ((self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[0] as u64;
 
-            self.op_wdt_timer1_expired_action = Some(
-                self.timer
-                    .schedule_poll_in(clamp_timer_period(timer_period)),
+            Mci::reschedule_poll(
+                &mut self.timer,
+                &mut self.op_wdt_timer1_expired_action,
+                timer_period,
             );
         }
     }
@@ -324,12 +359,13 @@ impl MciPeripheral for Mci {
                 ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
-            self.op_wdt_timer2_expired_action = Some(
-                self.timer
-                    .schedule_poll_in(clamp_timer_period(timer_period)),
+            Mci::reschedule_poll(
+                &mut self.timer,
+                &mut self.op_wdt_timer2_expired_action,
+                timer_period,
             );
         } else {
-            self.op_wdt_timer2_expired_action = None;
+            Mci::cancel_poll(&mut self.timer, &mut self.op_wdt_timer2_expired_action);
         }
     }
 
@@ -353,9 +389,10 @@ impl MciPeripheral for Mci {
                 ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
-            self.op_wdt_timer2_expired_action = Some(
-                self.timer
-                    .schedule_poll_in(clamp_timer_period(timer_period)),
+            Mci::reschedule_poll(
+                &mut self.timer,
+                &mut self.op_wdt_timer2_expired_action,
+                timer_period,
             );
         }
     }
@@ -365,6 +402,144 @@ impl MciPeripheral for Mci {
             .regs
             .borrow_mut()
             .wdt_timer2_timeout_period[index] = val;
+    }
+
+    fn read_mci_reg_intr_block_rf_error0_intr_trig_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, Error0IntrTrigT::Register> {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_intr_trig_r
+            .into()
+    }
+
+    fn write_mci_reg_intr_block_rf_error0_intr_trig_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            caliptra_mcu_registers_generated::mci::bits::Error0IntrTrigT::Register,
+        >,
+    ) {
+        // 1) Pulse behavior: clear trigger bits after write
+        let cur_trig = self
+            .read_mci_reg_intr_block_rf_error0_intr_trig_r()
+            .reg
+            .get();
+        let new_trig = cur_trig & !val.reg.get();
+
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_error0_intr_trig_r = new_trig;
+
+        // 2) Trigger sets corresponding ERROR0 status bit(s)
+        let cur_status = self
+            .ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_internal_intr_r;
+        let new_status = cur_status | val.reg.get();
+
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_error0_internal_intr_r = new_status;
+
+        self.update_mci_irq();
+    }
+
+    fn read_mci_reg_intr_block_rf_error0_internal_intr_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::Error0IntrT::Register,
+    > {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_internal_intr_r
+            .into()
+    }
+
+    fn write_mci_reg_intr_block_rf_error0_internal_intr_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            caliptra_mcu_registers_generated::mci::bits::Error0IntrT::Register,
+        >,
+    ) {
+        // W1C clear
+        let cur = self
+            .ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_internal_intr_r;
+        let clear_mask = val.reg.get();
+        let new_val = cur & !clear_mask;
+
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_error0_internal_intr_r = new_val;
+
+        self.update_mci_irq();
+    }
+
+    fn read_mci_reg_intr_block_rf_error0_intr_en_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::Error0IntrEnT::Register,
+    > {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_intr_en_r
+            .into()
+    }
+
+    fn write_mci_reg_intr_block_rf_error0_intr_en_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            caliptra_mcu_registers_generated::mci::bits::Error0IntrEnT::Register,
+        >,
+    ) {
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_error0_intr_en_r = val.reg.get();
+
+        self.update_mci_irq();
+    }
+
+    fn write_mci_reg_intr_block_rf_global_intr_en_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            caliptra_mcu_registers_generated::mci::bits::GlobalIntrEnT::Register,
+        >,
+    ) {
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_global_intr_en_r = val.reg.get();
+
+        self.update_mci_irq();
+    }
+
+    fn read_mci_reg_intr_block_rf_global_intr_en_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::GlobalIntrEnT::Register,
+    > {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_global_intr_en_r
+            .into()
     }
 
     fn read_mci_reg_intr_block_rf_notif0_intr_trig_r(
@@ -407,15 +582,7 @@ impl MciPeripheral for Mci {
             .borrow_mut()
             .intr_block_rf_notif0_internal_intr_r = new_val;
 
-        // Raise CPU IRQ if any enabled interrupt bits are now set.
-        let notif_en = self
-            .ext_mci_regs
-            .regs
-            .borrow()
-            .intr_block_rf_notif0_intr_en_r;
-        if new_val & notif_en != 0 {
-            self.irq.borrow_mut().set_level(true);
-        }
+        self.update_mci_irq();
     }
 
     fn write_mci_reg_reset_request(
@@ -493,9 +660,7 @@ impl MciPeripheral for Mci {
             .borrow_mut()
             .intr_block_rf_notif0_internal_intr_r = new_val;
         // If all bits are cleared, lower the IRQ
-        if new_val == 0 {
-            self.irq.borrow_mut().set_level(false);
-        }
+        self.update_mci_irq();
     }
 
     fn read_mci_reg_intr_block_rf_notif0_intr_en_r(
@@ -522,6 +687,7 @@ impl MciPeripheral for Mci {
             .regs
             .borrow_mut()
             .intr_block_rf_notif0_intr_en_r = val.reg.get();
+        self.update_mci_irq();
     }
 
     fn read_mcu_mbox0_csr_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
@@ -1068,9 +1234,20 @@ impl MciPeripheral for Mci {
             wdt_status.reg.modify(WdtStatus::T1Timeout::SET);
             self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
-            self.error0_internal_intr_r
-                .reg
-                .modify(Error0IntrT::ErrorWdtTimer1TimeoutSts::SET);
+            // Set ERROR0 status bit for Timer1 timeout (MMIO-visible)
+            let cur = self
+                .ext_mci_regs
+                .regs
+                .borrow()
+                .intr_block_rf_error0_internal_intr_r;
+            let new_val = cur | Error0IntrT::ErrorWdtTimer1TimeoutSts::SET.value;
+            self.ext_mci_regs
+                .regs
+                .borrow_mut()
+                .intr_block_rf_error0_internal_intr_r = new_val;
+
+            // Now recompute IRQ (uses global_en + enables + pending)
+            self.update_mci_irq();
 
             // If WDT2 is disabled, schedule a callback on its expiry.
             let wdt2_en = ReadWriteRegister::<u32, WdtTimer2En::Register>::new(
@@ -1084,21 +1261,31 @@ impl MciPeripheral for Mci {
                 wdt_status.reg.modify(WdtStatus::T2Timeout::CLEAR);
                 self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
-                self.error0_internal_intr_r
-                    .reg
-                    .modify(Error0IntrT::ErrorWdtTimer2TimeoutSts::CLEAR);
+                let cur = self
+                    .ext_mci_regs
+                    .regs
+                    .borrow()
+                    .intr_block_rf_error0_internal_intr_r;
+
+                let cleared = cur & !Error0IntrT::ErrorWdtTimer2TimeoutSts::SET.value;
+
+                self.ext_mci_regs
+                    .regs
+                    .borrow_mut()
+                    .intr_block_rf_error0_internal_intr_r = cleared;
+                self.update_mci_irq();
 
                 let timer_period: u64 =
                     ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                         | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
-                self.op_wdt_timer2_expired_action = Some(
-                    self.timer
-                        .schedule_poll_in(clamp_timer_period(timer_period)),
+                Mci::reschedule_poll(
+                    &mut self.timer,
+                    &mut self.op_wdt_timer2_expired_action,
+                    timer_period,
                 );
             }
         }
-
         if self.timer.fired(&mut self.op_wdt_timer2_expired_action) {
             let wdt_status = ReadWriteRegister::<u32, WdtStatus::Register>::new(
                 self.ext_mci_regs.regs.borrow().wdt_status,
@@ -1106,23 +1293,30 @@ impl MciPeripheral for Mci {
             wdt_status.reg.modify(WdtStatus::T2Timeout::SET);
             self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
-            // If WDT2 was not scheduled due to WDT1 expiry (i.e WDT2 is disabled), schedule an NMI.
-            // Else, do nothing.
+            // Independent mode: Timer2 timeout generates ERROR0 interrupt
             let wdt2_en = ReadWriteRegister::<u32, WdtTimer2En::Register>::new(
                 self.ext_mci_regs.regs.borrow().wdt_timer2_en,
             );
             if wdt2_en.reg.is_set(WdtTimer2En::Timer2En) {
-                self.error0_internal_intr_r
-                    .reg
-                    .modify(Error0IntrT::ErrorWdtTimer2TimeoutSts::SET);
+                // Set ERROR0 status bit for Timer2 timeout (MMIO-visible)
+                let cur = self
+                    .ext_mci_regs
+                    .regs
+                    .borrow()
+                    .intr_block_rf_error0_internal_intr_r;
+                let new_val = cur | Error0IntrT::ErrorWdtTimer2TimeoutSts::SET.value;
+                self.ext_mci_regs
+                    .regs
+                    .borrow_mut()
+                    .intr_block_rf_error0_internal_intr_r = new_val;
+
+                self.update_mci_irq();
                 return;
             }
 
-            // Raise an NMI. NMIs don't fire immediately; a couple instructions is a fairly typicaly delay on VeeR.
+            // Cascaded mode: Timer2 timeout -> NMI
             const NMI_DELAY: u64 = 2;
-
-            // From RISC-V_VeeR_EL2_PRM.pdf
-            const NMI_CAUSE_WDT_TIMEOUT: u32 = 0x0000_0000; // [TODO] Need correct mcause value.
+            const NMI_CAUSE_WDT_TIMEOUT: u32 = 0x0000_0000; // TODO correct mcause value
 
             self.timer.schedule_action_in(
                 NMI_DELAY,
@@ -1219,10 +1413,9 @@ impl MciPeripheral for Mci {
                 .regs
                 .borrow_mut()
                 .intr_block_rf_notif0_internal_intr_r = notif_reg;
-            // Raise IRQ level if any bit is set
-            if notif_reg != 0 {
-                self.irq.borrow_mut().set_level(true);
-            }
+            // Raise IRQ level directly (do not use update_mci_irq which gates on
+            // global_intr_en – the mailbox test runs before global interrupts are enabled).
+            self.irq.borrow_mut().set_level(true);
         }
     }
 }
