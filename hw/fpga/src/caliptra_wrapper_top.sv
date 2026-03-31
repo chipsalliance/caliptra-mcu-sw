@@ -1393,7 +1393,7 @@ mcu_rom (
 
     mci_mcu_sram_if cptra_ss_mcu_mbox0_sram_req_if (
         .clk(core_clk),
-        .rst_b(rst_l)
+        .rst_b(axi_reset)
     );
     xpm_memory_spram #(
         .ADDR_WIDTH_A(32),              // DECIMAL
@@ -1437,7 +1437,7 @@ mcu_rom (
 
     mci_mcu_sram_if cptra_ss_mcu_mbox1_sram_req_if (
         .clk(core_clk),
-        .rst_b(rst_l)
+        .rst_b(axi_reset)
     );
     xpm_memory_spram #(
         .ADDR_WIDTH_A(32),              // DECIMAL
