@@ -28,7 +28,6 @@ pub struct Mci {
     ext_mci_regs: caliptra_emu_periph::mci::Mci,
     generated: MciGenerated,
 
-    error0_internal_intr_r: ReadWriteRegister<u32, Error0IntrT::Register>,
     timer: Timer,
     op_wdt_timer1_expired_action: Option<ActionHandle>,
     op_wdt_timer2_expired_action: Option<ActionHandle>,
@@ -79,7 +78,6 @@ impl Mci {
             ext_mci_regs,
             generated,
 
-            error0_internal_intr_r: ReadWriteRegister::new(0),
             timer: Timer::new(clock),
             op_wdt_timer1_expired_action: None,
             op_wdt_timer2_expired_action: None,
