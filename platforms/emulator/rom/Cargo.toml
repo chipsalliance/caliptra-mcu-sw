@@ -65,3 +65,4 @@ test-dot-recovery-reset-flow = ["caliptra-mcu-rom-common/test-dot-recovery-reset
 test-rom-hooks = []
 test-usb-ocp-recovery = ["hw-2-1"]
 test-network-mbox-comm = ["caliptra-mcu-network-drivers", "caliptra-mcu-network-hil"]
+test-network-boot = ["hw-2-1", "caliptra-mcu-network-drivers", "caliptra-mcu-network-hil", "caliptra-mcu-rom-common/network-boot"]

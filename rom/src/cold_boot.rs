@@ -1690,6 +1690,29 @@ impl BootFlow for ColdBoot {
             }
         }
 
+        #[cfg(feature = "network-boot")]
+        if params.request_network_boot {
+            use caliptra_mcu_network_drivers::network_mbox::NetworkMboxDriver;
+            use caliptra_mcu_network_hil::network_mbox::NetworkMailbox;
+
+            caliptra_mcu_romtime::println!("[mcu-rom] Starting network recovery flow");
+            mci.set_flow_checkpoint(McuRomBootStatus::NetworkRecoveryFlowStarted.into());
+
+            let driver = NetworkMboxDriver::new();
+            let image_provider = crate::recovery::network::NetworkImageProvider::new(&driver);
+            driver.set_client(&image_provider);
+            image_provider
+                .ensure_initiated()
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_COLD_BOOT_NETWORK_INITIATE_ERROR));
+            let mut provider = crate::recovery::network::NetworkImageProviderRef(&image_provider);
+            crate::recovery::load_image_to_recovery(i3c_base, &mut provider)
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_COLD_BOOT_LOAD_IMAGE_ERROR));
+            let _ = image_provider.finalize();
+
+            caliptra_mcu_romtime::println!("[mcu-rom] Network recovery flow complete");
+            mci.set_flow_checkpoint(McuRomBootStatus::NetworkRecoveryFlowComplete.into());
+        }
+
         if encrypted_boot {
             // --- Encrypted firmware boot flow ---
             // In encrypted mode, Caliptra RT loads firmware to MCU SRAM but does NOT
