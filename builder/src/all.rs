@@ -23,10 +23,9 @@ use zip::{
     ZipWriter,
 };
 
-use crate::CaliptraBuilder;
 use crate::PROJECT_ROOT;
 use crate::TARGET;
-use crate::{firmware, ImageCfg};
+use crate::{firmware, CaliptraBuilder, ImageCfg};
 
 use std::{env::var, sync::OnceLock};
 
@@ -48,6 +47,7 @@ const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
     "test-mci",
     "test-mcu-mbox-soc-requester-loopback",
     "test-mcu-mbox-usermode",
+    "test-ocp-lock",
     "test-warm-reset",
 ];
 
@@ -157,6 +157,7 @@ fn create_default_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
 pub struct FirmwareBinaries {
     pub caliptra_rom: Vec<u8>,
     pub caliptra_fw: Vec<u8>,
+    pub caliptra_fw_ocp_lock: Vec<u8>,
     pub mcu_rom: Vec<u8>,
     pub mcu_runtime: Vec<u8>,
     pub network_rom: Vec<u8>,
@@ -175,6 +176,7 @@ pub struct FirmwareBinaries {
 impl FirmwareBinaries {
     const CALIPTRA_ROM_NAME: &'static str = "caliptra_rom.bin";
     const CALIPTRA_FW_NAME: &'static str = "caliptra_fw.bin";
+    const CALIPTRA_FW_OCP_LOCK_NAME: &'static str = "caliptra_fw_ocp_lock.bin";
     const MCU_ROM_NAME: &'static str = "mcu_rom.bin";
     const MCU_RUNTIME_NAME: &'static str = "mcu_runtime.bin";
     const NETWORK_ROM_NAME: &'static str = "network_rom.bin";
@@ -215,6 +217,7 @@ impl FirmwareBinaries {
             match name.as_str() {
                 Self::CALIPTRA_ROM_NAME => binaries.caliptra_rom = data,
                 Self::CALIPTRA_FW_NAME => binaries.caliptra_fw = data,
+                Self::CALIPTRA_FW_OCP_LOCK_NAME => binaries.caliptra_fw_ocp_lock = data,
                 Self::MCU_ROM_NAME => binaries.mcu_rom = data,
                 Self::MCU_RUNTIME_NAME => binaries.mcu_runtime = data,
                 Self::NETWORK_ROM_NAME => binaries.network_rom = data,
@@ -545,8 +548,9 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 
     let fpga = platform == "fpga";
     let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none");
-    let mut caliptra_builder = crate::CaliptraBuilder::new(
+    let mut caliptra_builder = CaliptraBuilder::new(
         fpga,
+        true,
         None,
         None,
         None,
@@ -563,6 +567,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let vendor_pk_hash = caliptra_builder.get_vendor_pk_hash()?.to_string();
     println!("Vendor PK hash: {:x?}", vendor_pk_hash);
     let soc_manifest = caliptra_builder.get_soc_manifest(None)?;
+
     let flash_image = create_flash_image(
         Some(caliptra_fw.clone()),
         Some(soc_manifest.clone()),
@@ -641,8 +646,14 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         let feature_runtime_path = feature_runtime_file.path().to_str().unwrap().to_string();
         let include_example_app = FEATURES_WITH_EXAMPLE_APP.contains(feature);
 
+        let mut runtime_features = vec![feature.to_string()];
+        if feature.contains("ocp-lock") {
+            runtime_features.push("ocp-lock".to_string());
+        }
+        let runtime_features_ref: Vec<&str> = runtime_features.iter().map(|s| s.as_str()).collect();
+
         crate::runtime_build_with_apps(
-            &[feature],
+            &runtime_features_ref,
             Some(feature_runtime_path),
             include_example_app,
             Some(platform),
@@ -668,8 +679,9 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 )
             };
 
-        let mut caliptra_builder = crate::CaliptraBuilder::new(
+        let mut caliptra_builder = CaliptraBuilder::new(
             fpga,
+            feature.contains("ocp-lock"),
             Some(caliptra_rom.clone()),
             Some(caliptra_fw.clone()),
             None,
@@ -771,6 +783,12 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     add_to_zip(
         &caliptra_fw,
         FirmwareBinaries::CALIPTRA_FW_NAME,
+        &mut zip,
+        options,
+    )?;
+    add_to_zip(
+        &caliptra_fw,
+        FirmwareBinaries::CALIPTRA_FW_OCP_LOCK_NAME,
         &mut zip,
         options,
     )?;

@@ -104,7 +104,7 @@ jobs:
             test-log-flash-usermode,test-mctp-ctrl-cmds,test-mctp-vdm-cmds,
             test-pldm-discovery,test-pldm-fw-update,test-mci,test-mcu-mbox-driver,
             test-mcu-mbox-soc-requester-loopback,test-mbox-sram,test-warm-reset,
-            test-exit-immediately,test-mcu-rom-flash-access,test-mcu-svn-gt-fuse,test-mcu-svn-lt-fuse
+            test-ocp-lock,test-exit-immediately,test-mcu-rom-flash-access,test-mcu-svn-gt-fuse,test-mcu-svn-lt-fuse
         run: |
           # Build all test runtime features used by integration tests
           # Note: nightly tests (test-*-spdm-*, test-caliptra-util-host-validator) are excluded
@@ -179,7 +179,7 @@ jobs:
         # all spaces to produce a clean comma-separated feature list for cargo.
         env:
           EMULATOR_FEATURES: >-
-            ocp-lock,test-caliptra-certs,test-caliptra-crypto,test-caliptra-mailbox,
+            ocp-lock,test-ocp-lock,test-caliptra-certs,test-caliptra-crypto,test-caliptra-mailbox,
             test-dma,test-doe-transport-loopback,test-doe-user-loopback,test-doe-discovery,
             test-get-device-state,test-flash-based-boot,test-flash-ctrl-init,
             test-flash-ctrl-read-write-page,test-flash-ctrl-erase-page,
@@ -350,4 +350,5 @@ jobs:
             --workspace-remap . \
             --test-threads=1 \
             --profile=nightly-emulator \
+            --no-capture \
             --partition hash:${{ matrix.shard }}/4

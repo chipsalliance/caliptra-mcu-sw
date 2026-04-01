@@ -815,6 +815,7 @@ mod test {
         // Build the Caliptra builder with prebuilt paths (needed for tests that modify manifest)
         let builder = CaliptraBuilder::new(
             false,
+            false,
             Some(caliptra_rom_path),
             Some(caliptra_fw_path.clone()),
             Some(soc_manifest_path.clone()),
@@ -910,6 +911,7 @@ mod test {
 
         // Build the Caliptra runtime
         let mut builder = CaliptraBuilder::new(
+            false,
             false,
             None,
             None,

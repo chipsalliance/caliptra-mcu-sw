@@ -69,6 +69,7 @@ pub struct AuthManifestOwnerConfig {
 #[derive(Clone)]
 pub struct CaliptraBuilder {
     fpga: bool,
+    ocp_lock: bool,
     caliptra_rom: Option<PathBuf>,
     caliptra_firmware: Option<PathBuf>,
     soc_manifest: Option<PathBuf>,
@@ -92,6 +93,7 @@ impl CaliptraBuilder {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         fpga: bool,
+        ocp_lock: bool,
         caliptra_rom: Option<PathBuf>,
         caliptra_firmware: Option<PathBuf>,
         soc_manifest: Option<PathBuf>,
@@ -105,6 +107,7 @@ impl CaliptraBuilder {
     ) -> Self {
         Self {
             fpga,
+            ocp_lock,
             caliptra_rom,
             caliptra_firmware,
             soc_manifest,
@@ -162,7 +165,8 @@ impl CaliptraBuilder {
             }
             caliptra_firmware.clone()
         } else {
-            let (path, vendor_pk_hash) = Self::compile_caliptra_fw_cached(self.fpga)?;
+            let (path, vendor_pk_hash) =
+                Self::compile_caliptra_fw_cached(self.fpga, self.ocp_lock)?;
             self.vendor_pk_hash = Some(vendor_pk_hash);
             self.caliptra_firmware = Some(path.clone());
             path
@@ -487,11 +491,14 @@ impl CaliptraBuilder {
         Ok(path)
     }
 
-    fn compile_caliptra_fw_cached(fpga: bool) -> Result<(PathBuf, String)> {
+    fn compile_caliptra_fw_cached(fpga: bool, ocp_lock: bool) -> Result<(PathBuf, String)> {
         let platform = if fpga { "fpga" } else { "emulator" };
+        let ocp_lock_suffix = if ocp_lock { "-ocp-lock" } else { "" };
         if let Some(version) = Self::caliptra_version() {
-            let path =
-                target_dir().join(format!("caliptra-fw-bundle-{}-{}.bin", version, platform));
+            let path = target_dir().join(format!(
+                "caliptra-fw-bundle-{}-{}{}.bin",
+                version, platform, ocp_lock_suffix
+            ));
             if path.exists() {
                 println!("Using cached Caliptra FW bundle at {:?}", path);
                 return Self::parse_fw_bundle(path);
@@ -500,12 +507,12 @@ impl CaliptraBuilder {
                 "Caliptra FW bundle version {} not found in cache, compiling...",
                 version
             );
-            let compiled_fw_bundle = Self::compile_caliptra_fw_uncached(fpga)?.0;
+            let compiled_fw_bundle = Self::compile_caliptra_fw_uncached(fpga, ocp_lock)?.0;
             std::fs::copy(compiled_fw_bundle, &path)?;
             Self::parse_fw_bundle(path)
         } else {
             println!("Caliptra version not found so cannot use cached FW bundle");
-            Self::compile_caliptra_fw_uncached(fpga)
+            Self::compile_caliptra_fw_uncached(fpga, ocp_lock)
         }
     }
 
@@ -621,22 +628,32 @@ impl CaliptraBuilder {
         Ok((new_bundle, vendor_hash, owner_hash))
     }
 
-    fn compile_caliptra_fw_uncached(fpga: bool) -> Result<(PathBuf, String)> {
+    fn compile_caliptra_fw_uncached(fpga: bool, ocp_lock: bool) -> Result<(PathBuf, String)> {
         let opts = caliptra_builder::ImageOptions {
             pqc_key_type: FwVerificationPqcKeyType::LMS,
             ..Default::default()
         };
 
         let bundle = if fpga {
+            let app = if ocp_lock {
+                &caliptra_builder::firmware::APP_WITH_UART_OCP_LOCK_FPGA
+            } else {
+                &caliptra_builder::firmware::APP_WITH_UART_FPGA
+            };
             caliptra_builder::build_and_sign_image(
                 &caliptra_builder::firmware::FMC_FPGA_WITH_UART,
-                &caliptra_builder::firmware::APP_WITH_UART_FPGA,
+                app,
                 opts,
             )?
         } else {
+            let app = if ocp_lock {
+                &caliptra_builder::firmware::APP_WITH_UART_OCP_LOCK
+            } else {
+                &caliptra_builder::firmware::APP_WITH_UART
+            };
             caliptra_builder::build_and_sign_image(
                 &caliptra_builder::firmware::FMC_WITH_UART,
-                &caliptra_builder::firmware::APP_WITH_UART,
+                app,
                 opts,
             )?
         };

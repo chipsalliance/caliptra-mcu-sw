@@ -33,6 +33,6 @@ stack = 0x0_7000
 
 [[app]]
 name = "user-app"
-stack = 0xae00
+stack = 0xd000
 grant_space = 0x4000
 

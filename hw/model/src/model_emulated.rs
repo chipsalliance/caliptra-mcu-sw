@@ -696,13 +696,15 @@ impl Drop for ModelEmulated {
 mod test {
     use super::*;
     use crate::{InitParams, McuHwModel, ModelEmulated};
+    use mcu_builder::CaliptraBuilder;
 
     #[test]
     fn test_new_unbooted() {
         let mcu_rom = mcu_builder::rom_build(None, None).expect("Could not build MCU ROM");
         let mcu_runtime = &mcu_builder::runtime_build_with_apps(&[], None, false, None, None)
             .expect("Could not build MCU runtime");
-        let mut caliptra_builder = mcu_builder::CaliptraBuilder::new(
+        let mut caliptra_builder = CaliptraBuilder::new(
+            false,
             false,
             None,
             None,

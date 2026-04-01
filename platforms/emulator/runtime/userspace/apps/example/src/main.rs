@@ -44,6 +44,9 @@ mod test_mcu_mbox_usermode;
 #[cfg(feature = "test-mbox-sram")]
 mod test_mbox_sram;
 
+#[cfg(feature = "test-ocp-lock")]
+mod test_ocp_lock;
+
 #[cfg(any(feature = "test-flash-usermode", feature = "test-fpga-flash-ctrl"))]
 mod test_flash_io;
 
@@ -225,6 +228,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
     #[cfg(feature = "test-warm-reset")]
     {
         test_mci::test_mci_fw_boot_reset().await;
+        System::exit(0);
+    }
+
+    #[cfg(feature = "test-ocp-lock")]
+    {
+        test_ocp_lock::test_get_algorithms().await;
         System::exit(0);
     }
 

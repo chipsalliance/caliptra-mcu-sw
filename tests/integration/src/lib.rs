@@ -263,6 +263,11 @@ mod test {
 
         let mut builder = CaliptraBuilder::new(
             cfg!(feature = "fpga_realtime"),
+            params
+                .feature
+                .map(|f| f.contains("ocp-lock"))
+                .unwrap_or(false)
+                || params.ocp_lock_en,
             None,
             None,
             None,
@@ -555,7 +560,8 @@ mod test {
             caliptra_builder
         } else {
             CaliptraBuilder::new(
-                false,
+                cfg!(feature = "fpga_realtime"),
+                feature.contains("ocp-lock"),
                 None,
                 None,
                 None,
@@ -742,7 +748,12 @@ mod test {
         std::fs::write(&caliptra_rom_path, &binaries.caliptra_rom).ok()?;
 
         let caliptra_fw_path = target_dir.join("caliptra_fw_prebuilt.bin");
-        std::fs::write(&caliptra_fw_path, &binaries.caliptra_fw).ok()?;
+        let caliptra_fw = if feature.contains("ocp-lock") {
+            &binaries.caliptra_fw_ocp_lock
+        } else {
+            &binaries.caliptra_fw
+        };
+        std::fs::write(&caliptra_fw_path, caliptra_fw).ok()?;
 
         // Get SoC manifest for this feature, or default
         let soc_manifest_bytes = binaries
@@ -754,8 +765,9 @@ mod test {
 
         let vendor_pk_hash = binaries.vendor_pk_hash().map(hex::encode);
 
-        Some(CaliptraBuilder::new(
-            false,
+        let caliptra_builder = CaliptraBuilder::new(
+            cfg!(feature = "fpga_realtime"),
+            feature.contains("ocp-lock"),
             Some(caliptra_rom_path),
             Some(caliptra_fw_path),
             Some(soc_manifest_path),
@@ -766,7 +778,9 @@ mod test {
             None,
             None,
             None,
-        ))
+        );
+
+        Some(caliptra_builder)
     }
 
     fn run_test(feature: &str, example_app: bool) {
@@ -873,6 +887,7 @@ mod test {
     run_test!(test_mcu_mbox_driver);
     run_test!(test_mcu_mbox_soc_requester_loopback, example_app);
     run_test!(test_mbox_sram, example_app);
+    run_test!(test_ocp_lock, example_app);
     run_test!(test_warm_reset, example_app);
 
     /// This tests a full active mode boot run through with Caliptra, including

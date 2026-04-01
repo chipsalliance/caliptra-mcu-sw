@@ -103,6 +103,7 @@ mod test {
         // Fall back to computing from compiled FW bundle
         let mut builder = CaliptraBuilder::new(
             cfg!(feature = "fpga_realtime"),
+            false,
             None,
             None,
             None,
@@ -376,6 +377,7 @@ mod test {
 
         let mut builder = CaliptraBuilder::new(
             cfg!(feature = "fpga_realtime"),
+            false,
             None,
             None,
             None,
