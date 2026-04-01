@@ -940,6 +940,7 @@ impl BootFlow for ColdBoot {
             &mut FuseParams {
                 #[cfg(feature = "ocp-lock")]
                 ocp_lock_config: Some(&mut params.ocp_lock_config),
+                vendor_key_policy: params.vendor_key_policy,
                 ..Default::default()
             },
         );

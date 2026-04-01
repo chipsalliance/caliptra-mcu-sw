@@ -842,7 +842,7 @@ impl Emulator {
                 file_name: cli.otp,
                 owner_pk_hash,
                 vendor_pk_hash,
-                vendor_pqc_type: cli.vendor_pqc_type,
+                vendor_pqc_type: Some(cli.vendor_pqc_type),
                 soc_manifest_svn: cli.fuse_soc_manifest_svn.map(|v| v as u8),
                 soc_manifest_max_svn: cli.fuse_soc_manifest_max_svn.map(|v| v as u8),
                 vendor_hashes_prod_partition: fuse_vendor_hashes_prod_partition,

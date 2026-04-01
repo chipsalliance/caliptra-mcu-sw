@@ -59,6 +59,12 @@ pub const PROD_DEBUG_UNLOCK_PK_ENTRIES: [&FuseEntryInfo; 8] = [
 
 const DIGEST_SIZE: usize = 8;
 
+#[derive(Clone, Copy)]
+pub enum PqcKeyType {
+    MLDSA = 1,
+    LMS = 2,
+}
+
 pub struct Otp {
     registers: StaticRef<otp_ctrl::regs::OtpCtrl>,
 }
@@ -498,11 +504,14 @@ impl Otp {
     // These avoid allocating full partition arrays on the stack.
     // -------------------------------------------------------------------------
 
-    /// Read cptra_core_pqc_key_type_0 (4 bytes).
-    pub fn read_cptra_core_pqc_key_type_0(&self) -> McuResult<[u8; 4]> {
-        let mut data = [0u8; 4];
-        self.read_entry_raw(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_0, &mut data)?;
-        Ok(data)
+    /// Read PQC key type (4 bytes).
+    pub fn read_pqc_key_type(&self, index: usize) -> McuResult<PqcKeyType> {
+        let entry = pqc_key_type_entry(index)?;
+        if self.read_entry(entry)? == 1 {
+            Ok(PqcKeyType::MLDSA)
+        } else {
+            Ok(PqcKeyType::LMS)
+        }
     }
 
     /// Read cptra_core_fmc_key_manifest_svn (4 bytes).
@@ -512,13 +521,10 @@ impl Otp {
         Ok(data)
     }
 
-    /// Read cptra_core_vendor_pk_hash_0 (48 bytes).
-    pub fn read_cptra_core_vendor_pk_hash_0(
-        &self,
-    ) -> McuResult<[u8; fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size]> {
-        let mut data = [0u8; fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size];
-        self.read_entry_raw(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0, &mut data)?;
-        Ok(data)
+    /// Read vendor public key hash (48 bytes).
+    pub fn read_vendor_pk_hash(&self, index: usize, buf: &mut [u8]) -> McuResult<()> {
+        let entry = vendor_pk_hash_entry(index)?;
+        self.read_entry_raw(entry, buf)
     }
 
     /// Read cptra_core_runtime_svn (16 bytes).
@@ -555,25 +561,22 @@ impl Otp {
         Ok(data)
     }
 
-    /// Read cptra_core_ecc_revocation_0 (4 bytes).
-    pub fn read_cptra_core_ecc_revocation_0(&self) -> McuResult<[u8; 4]> {
-        let mut data = [0u8; 4];
-        self.read_entry_raw(fuses::OTP_CPTRA_CORE_ECC_REVOCATION_0, &mut data)?;
-        Ok(data)
+    /// Read vendor ECC revocation (4 bytes).
+    pub fn read_vendor_ecc_revocation(&self, index: usize) -> McuResult<u32> {
+        let entry = vendor_ecc_revocation_entry(index)?;
+        self.read_entry(entry)
     }
 
-    /// Read cptra_core_lms_revocation_0 (4 bytes).
-    pub fn read_cptra_core_lms_revocation_0(&self) -> McuResult<[u8; 4]> {
-        let mut data = [0u8; 4];
-        self.read_entry_raw(fuses::OTP_CPTRA_CORE_LMS_REVOCATION_0, &mut data)?;
-        Ok(data)
+    /// Read vendor LMS revocation (4 bytes).
+    pub fn read_vendor_lms_revocation(&self, index: usize) -> McuResult<u32> {
+        let entry = vendor_lms_revocation_entry(index)?;
+        self.read_entry(entry)
     }
 
-    /// Read cptra_core_mldsa_revocation_0 (4 bytes).
-    pub fn read_cptra_core_mldsa_revocation_0(&self) -> McuResult<[u8; 4]> {
-        let mut data = [0u8; 4];
-        self.read_entry_raw(fuses::OTP_CPTRA_CORE_MLDSA_REVOCATION_0, &mut data)?;
-        Ok(data)
+    /// Read vendor MLDSA revocation (4 bytes).
+    pub fn read_vendor_mldsa_revocation(&self, index: usize) -> McuResult<u32> {
+        let entry = vendor_mldsa_revocation_entry(index)?;
+        self.read_entry(entry)
     }
 
     /// Read cptra_ss_owner_pk_hash (48 bytes).
@@ -950,5 +953,120 @@ impl Otp {
             self.write_word(base_word + i, *w)?;
         }
         Ok(())
+    }
+}
+
+/// Returns the FuseEntryInfo for the given vendor PK hash slot.
+pub fn vendor_pk_hash_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0),
+        1 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_1),
+        2 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_2),
+        3 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_3),
+        4 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_4),
+        5 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_5),
+        6 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_6),
+        7 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_7),
+        8 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_8),
+        9 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_9),
+        10 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_10),
+        11 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_11),
+        12 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_12),
+        13 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_13),
+        14 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_14),
+        15 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+/// Returns the FuseEntryInfo for the given PQC key type slot.
+pub fn pqc_key_type_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_0),
+        1 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_1),
+        2 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_2),
+        3 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_3),
+        4 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_4),
+        5 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_5),
+        6 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_6),
+        7 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_7),
+        8 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_8),
+        9 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_9),
+        10 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_10),
+        11 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_11),
+        12 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_12),
+        13 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_13),
+        14 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_14),
+        15 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+/// Returns the FuseEntryInfo for the given vendor ECC revocation slot.
+pub fn vendor_ecc_revocation_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::VENDOR_ECC_REVOCATION_0),
+        1 => Ok(fuses::VENDOR_ECC_REVOCATION_1),
+        2 => Ok(fuses::VENDOR_ECC_REVOCATION_2),
+        3 => Ok(fuses::VENDOR_ECC_REVOCATION_3),
+        4 => Ok(fuses::VENDOR_ECC_REVOCATION_4),
+        5 => Ok(fuses::VENDOR_ECC_REVOCATION_5),
+        6 => Ok(fuses::VENDOR_ECC_REVOCATION_6),
+        7 => Ok(fuses::VENDOR_ECC_REVOCATION_7),
+        8 => Ok(fuses::VENDOR_ECC_REVOCATION_8),
+        9 => Ok(fuses::VENDOR_ECC_REVOCATION_9),
+        10 => Ok(fuses::VENDOR_ECC_REVOCATION_10),
+        11 => Ok(fuses::VENDOR_ECC_REVOCATION_11),
+        12 => Ok(fuses::VENDOR_ECC_REVOCATION_12),
+        13 => Ok(fuses::VENDOR_ECC_REVOCATION_13),
+        14 => Ok(fuses::VENDOR_ECC_REVOCATION_14),
+        15 => Ok(fuses::VENDOR_ECC_REVOCATION_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+/// Returns the FuseEntryInfo for the given vendor LMS revocation slot.
+pub fn vendor_lms_revocation_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::VENDOR_LMS_REVOCATION_0),
+        1 => Ok(fuses::VENDOR_LMS_REVOCATION_1),
+        2 => Ok(fuses::VENDOR_LMS_REVOCATION_2),
+        3 => Ok(fuses::VENDOR_LMS_REVOCATION_3),
+        4 => Ok(fuses::VENDOR_LMS_REVOCATION_4),
+        5 => Ok(fuses::VENDOR_LMS_REVOCATION_5),
+        6 => Ok(fuses::VENDOR_LMS_REVOCATION_6),
+        7 => Ok(fuses::VENDOR_LMS_REVOCATION_7),
+        8 => Ok(fuses::VENDOR_LMS_REVOCATION_8),
+        9 => Ok(fuses::VENDOR_LMS_REVOCATION_9),
+        10 => Ok(fuses::VENDOR_LMS_REVOCATION_10),
+        11 => Ok(fuses::VENDOR_LMS_REVOCATION_11),
+        12 => Ok(fuses::VENDOR_LMS_REVOCATION_12),
+        13 => Ok(fuses::VENDOR_LMS_REVOCATION_13),
+        14 => Ok(fuses::VENDOR_LMS_REVOCATION_14),
+        15 => Ok(fuses::VENDOR_LMS_REVOCATION_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+/// Returns the FuseEntryInfo for the given vendor MLDSA revocation slot.
+pub fn vendor_mldsa_revocation_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::VENDOR_MLDSA_REVOCATION_0),
+        1 => Ok(fuses::VENDOR_MLDSA_REVOCATION_1),
+        2 => Ok(fuses::VENDOR_MLDSA_REVOCATION_2),
+        3 => Ok(fuses::VENDOR_MLDSA_REVOCATION_3),
+        4 => Ok(fuses::VENDOR_MLDSA_REVOCATION_4),
+        5 => Ok(fuses::VENDOR_MLDSA_REVOCATION_5),
+        6 => Ok(fuses::VENDOR_MLDSA_REVOCATION_6),
+        7 => Ok(fuses::VENDOR_MLDSA_REVOCATION_7),
+        8 => Ok(fuses::VENDOR_MLDSA_REVOCATION_8),
+        9 => Ok(fuses::VENDOR_MLDSA_REVOCATION_9),
+        10 => Ok(fuses::VENDOR_MLDSA_REVOCATION_10),
+        11 => Ok(fuses::VENDOR_MLDSA_REVOCATION_11),
+        12 => Ok(fuses::VENDOR_MLDSA_REVOCATION_12),
+        13 => Ok(fuses::VENDOR_MLDSA_REVOCATION_13),
+        14 => Ok(fuses::VENDOR_MLDSA_REVOCATION_14),
+        15 => Ok(fuses::VENDOR_MLDSA_REVOCATION_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
     }
 }

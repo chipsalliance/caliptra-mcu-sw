@@ -498,6 +498,16 @@ impl McuError {
             "Caliptra WDT config index out of range"
         ),
         (
+            ROM_BOOTFSM_TIMEOUT,
+            0x5_0014,
+            "Caliptra Core boot FSM timed out"
+        ),
+        (
+            ROM_PK_HASH_SELECTION_FAILED,
+            0x5_0015,
+            "Failed to select a valid and functional vendor PK slot"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"

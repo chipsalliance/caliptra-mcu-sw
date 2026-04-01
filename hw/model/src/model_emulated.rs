@@ -25,7 +25,6 @@ use caliptra_emu_types::RvAddr;
 use caliptra_emu_types::RvData;
 use caliptra_emu_types::RvSize;
 use caliptra_hw_model::Output;
-use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
 use emulator_bmc::Bmc;
 use emulator_caliptra::start_caliptra;
@@ -212,9 +211,7 @@ impl McuHwModel for ModelEmulated {
                 fips_zeroization_cmd: fips_zeroization_cmd.clone(),
                 raw_memory: Some(otp_mem),
                 vendor_pk_hash: params.vendor_pk_hash,
-                vendor_pqc_type: params
-                    .vendor_pqc_type
-                    .unwrap_or(FwVerificationPqcKeyType::LMS),
+                vendor_pqc_type: params.vendor_pqc_type,
                 ..Default::default()
             },
         )?;
