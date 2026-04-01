@@ -52,7 +52,7 @@ add_files [ glob $caliptrartlDir/src/*/rtl/*.v ]
 
 # Add ss RTL
 # Add MCU VEER Headers
-add_files $ssrtlDir/src/riscv_core/veer_el2/rtl/defines/pic_map_auto.h
+add_files $ssrtlDir/src/riscv_core/veer_el2/rtl/defines/css_mcu0_pic_map_auto.h
 add_files $ssrtlDir/src/riscv_core/veer_el2/rtl/defines/css_mcu0_el2_pdef.vh
 add_files $ssrtlDir/src/riscv_core/veer_el2/rtl/defines/css_mcu0_el2_param.vh
 add_files $ssrtlDir/src/riscv_core/veer_el2/rtl/defines/css_mcu0_common_defines.vh

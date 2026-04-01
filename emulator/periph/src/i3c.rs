@@ -1064,7 +1064,7 @@ mod tests {
         DynamicI3cAddress, I3cTcriCommand, I3cTcriCommandXfer, ImmediateDataTransferCommand,
     };
 
-    const TTI_RX_DESC_QUEUE_PORT: RvAddr = 0x1dc;
+    const TTI_RX_DESC_QUEUE_PORT: RvAddr = 0x270;
 
     #[test]
     fn receive_i3c_cmd() {

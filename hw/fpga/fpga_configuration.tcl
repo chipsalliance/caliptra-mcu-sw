@@ -453,6 +453,10 @@ if {$SEGMENTED} {
   set_property initial_boot true [get_noc_logical_paths]
 }
 
+# Set place design directives to avoid SLICE overlaps
+set_property STEPS.PLACE_DESIGN.ARGS.DIRECTIVE Explore [get_runs impl_1]
+set_property STEPS.PLACE_DESIGN.ARGS.SUBDIRECTIVE { Floorplan.ForceSpreading.high GPlace.ForceSpreading.high GPlace.ReduceCongestion.high DPlace.ReducePinDensity.med} [get_runs impl_1]
+
 # Load a previous NCR
 if {$SEGMENTED} {
   read_noc_solution -file $fpgaDir/saved_noc_solution.ncr
