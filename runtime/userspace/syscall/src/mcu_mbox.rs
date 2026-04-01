@@ -78,13 +78,17 @@ impl<S: Syscalls> McuMbox<S> {
     ///
     /// Returns a tuple containing the command code and the number of bytes received,
     /// or an error if the operation fails.
-    pub async fn receive_command(&self, data: &mut [u8]) -> Result<(CmdCode, usize), ErrorCode> {
+    pub async fn receive_command(
+        &self,
+        data: &mut [u8],
+        on_listening_cb: Option<impl FnOnce()>,
+    ) -> Result<(CmdCode, usize), ErrorCode> {
         if data.is_empty() {
             return Err(ErrorCode::Invalid);
         }
 
         let mutex = MCU_MBOX_MUTEX.lock().await;
-        let (command, recv_len, _) = share::scope::<(), _, _>(|_handle| {
+        let rx_fut = share::scope::<(), _, _>(|_handle| {
             let mut sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
                 self.driver_num,
                 subscribe::REQUEST_RECEIVED,
@@ -100,8 +104,13 @@ impl<S: Syscalls> McuMbox<S> {
             }
 
             Ok(TockSubscribe::subscribe_finish(sub))
-        })?
-        .await?;
+        })?;
+
+        if let Some(on_listening_cb) = on_listening_cb {
+            on_listening_cb();
+        }
+
+        let (command, recv_len, _) = rx_fut.await?;
 
         black_box(*mutex); // Ensure the mutex is not optimized away
 
