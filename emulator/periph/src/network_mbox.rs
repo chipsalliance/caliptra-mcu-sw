@@ -419,11 +419,15 @@ impl NetworkMboxPeripheral for NetworkMailboxInternal {
     fn poll(&mut self) {}
 
     fn warm_reset(&mut self) {
-        self.regs.lock().unwrap().reset();
+        // let network coprocessor handle mailbox reset behavior on warm reset, so do nothing here
+        // If this is wired to MCU reset, the MCU may reset it without the network coprocessor knowing.
+        // This can cause non-synchronization between the mailbox and network coprocessor state.
     }
 
     fn update_reset(&mut self) {
-        self.regs.lock().unwrap().reset();
+        // let network coprocessor handle mailbox reset behavior on warm reset, so do nothing here
+        // If this is wired to MCU reset, the MCU may reset it without the network coprocessor knowing.
+        // This can cause non-synchronization between the mailbox and network coprocessor state.
     }
 
     fn read_network_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {

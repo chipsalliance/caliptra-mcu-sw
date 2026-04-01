@@ -54,6 +54,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mcu-svn-gt-fuse",
     "test-mcu-svn-lt-fuse",
     "test-ekp",
+    "test-network-boot",
 ];
 
 pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
@@ -161,6 +162,7 @@ pub const ROM_VARIANTS: &[RomVariant] = &[
     RomVariant::new(None, Some("test-usb-ocp-recovery")),
     // Explicit-feature ROMs tested by precheckin / all-build.
     RomVariant::new(None, Some("test-flash-based-boot")),
+    RomVariant::new(None, Some("test-network-boot")),
     // === fpga ===
     RomVariant::new(Some("fpga"), None),
     RomVariant::new(Some("fpga"), Some("hw-2-1")),

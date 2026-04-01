@@ -102,6 +102,8 @@ mod test {
         pub rom_only: bool,
         pub include_network_rom: bool,
         pub flash_boot: bool,
+        /// Route SoC manifest and MCU firmware through network recovery.
+        pub network_boot: bool,
         /// Seed primary flash for a runtime flash loader while ROM boots via recovery.
         pub seed_primary_flash_image: bool,
         pub network_tap_device: Option<Arc<Mutex<Box<dyn TapDevice>>>>,
@@ -159,6 +161,7 @@ mod test {
                 rom_only: false,
                 include_network_rom: false,
                 flash_boot: false,
+                network_boot: false,
                 seed_primary_flash_image: false,
                 network_tap_device: None,
                 dot_enabled: false,
@@ -346,9 +349,7 @@ mod test {
     /// Check if a prebuilt feature-specific MCU ROM is available.
     pub fn has_prebuilt_rom(feature: &str) -> bool {
         if let Ok(binaries) = FirmwareBinaries::from_env() {
-            // test_feature_rom always returns data (falls back to generic ROM)
-            let _ = binaries.test_feature_rom(feature);
-            true
+            binaries.has_test_feature_rom(feature)
         } else {
             false
         }
@@ -373,7 +374,10 @@ mod test {
         pub flash_image: Option<Vec<u8>>,
     }
 
-    fn prebuilt_binaries(params: &TestParams, binaries: &'static FirmwareBinaries) -> TestBinaries {
+    pub(crate) fn prebuilt_binaries(
+        params: &TestParams,
+        binaries: &'static FirmwareBinaries,
+    ) -> TestBinaries {
         let is_ocp_lock = params.ocp_lock_en
             || params.feature.is_some_and(|f| f.contains("ocp-lock"))
             || params.rom_feature.is_some_and(|f| f.contains("ocp-lock"));
@@ -1379,6 +1383,8 @@ mod test {
         // the individual images while runtime accesses the seeded primary flash.
         let (caliptra_firmware, soc_manifest_bytes, mcu_firmware) = if params.flash_boot {
             (vec![], vec![], vec![])
+        } else if params.network_boot {
+            (caliptra_fw, vec![], vec![])
         } else {
             (caliptra_fw, soc_manifest, mcu_runtime)
         };
@@ -1422,6 +1428,7 @@ mod test {
             otp_memory: otp_memory.as_deref(),
             primary_flash_initial_contents,
             flash_boot: params.flash_boot,
+            network_boot: params.network_boot,
             ocp_lock_en: params.ocp_lock_en,
             fips_zeroization: params.fips_zeroization,
             force_fuse_owner_pk_hash: params.force_fuse_owner_pk_hash,

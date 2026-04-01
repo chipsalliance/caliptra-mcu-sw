@@ -134,7 +134,8 @@ jobs:
         run: |
           /tmp/xtask all-build --platform emulator \
             --rom-features "hw-2-1" \
-            --test-rom-features "ocp-lock,stable-owner-key" \
+            --test-rom-features "ocp-lock,stable-owner-key,test-network-boot" \
+            --network-rom-features "network-boot" \
             --separate-runtimes \
             --shard-index ${{ matrix.shard }} \
             --total-shards 5

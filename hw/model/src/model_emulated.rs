@@ -172,8 +172,8 @@ impl McuHwModel for ModelEmulated {
         let rom_sram = mcu_root_bus.rom_sram.clone();
         let dot_flash = mcu_root_bus.dot_flash.clone();
 
-        // Use HW 2.1.0 for flash-based boot, otherwise 2.0.0
-        let hw_version = if params.flash_boot {
+        // Use HW 2.1.0 for flash-based or network-based boot, otherwise 2.0.0
+        let hw_version = if params.flash_boot || params.network_boot {
             Version::new(2, 1, 0)
         } else {
             Version::new(2, 0, 0)
@@ -336,8 +336,8 @@ impl McuHwModel for ModelEmulated {
             _ => None,
         };
 
-        // Use MCU recovery interface when flash-based boot is enabled
-        let use_mcu_recovery_interface = params.flash_boot;
+        // Use MCU recovery interface when flash-based boot or network boot is enabled
+        let use_mcu_recovery_interface = params.flash_boot || params.network_boot;
 
         let (mut caliptra_cpu, soc_to_caliptra, soc_to_caliptra_bus, ext_mci) =
             start_caliptra(&StartCaliptraArgs {
@@ -450,10 +450,10 @@ impl McuHwModel for ModelEmulated {
         let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
         let (mcu_event_sender, mcu_event_receiver) = cpu.register_events();
 
-        // Use MCU recovery interface (I3C) when flash-based boot is enabled,
-        // otherwise use BMC recovery interface
-        let use_flash_based_boot = params.flash_boot;
-        let bmc = if use_flash_based_boot {
+        // Use MCU recovery interface (I3C) when flash-based boot or network
+        // boot is enabled; otherwise use BMC recovery interface.
+        let use_mcu_recovery = params.flash_boot || params.network_boot;
+        let bmc = if use_mcu_recovery {
             // Connect event channels to I3C peripheral for MCU recovery interface
             cpu.bus
                 .bus

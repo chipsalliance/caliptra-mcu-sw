@@ -222,6 +222,7 @@ impl<'a, M: NetworkMailbox<'a>> NetworkImageProvider<'a, M> {
     ///
     /// # Safety
     /// Safe in bare-metal single-threaded context.
+    #[allow(clippy::mut_from_ref)]
     fn chunk_buf_mut(&self) -> &mut [u8; 1024] {
         unsafe { &mut *self.chunk_buf.get() }
     }
