@@ -236,6 +236,9 @@ pub struct InitParams<'a> {
 
     pub flash_boot: bool,
 
+    /// Use the MCU recovery interface for network-provided firmware.
+    pub network_boot: bool,
+
     /// When true, the emulator pre-sets the `FC_FIPS_ZEROZATION_STS` register
     /// so that MCU ROM detects FIPS zeroization on cold boot.
     pub fips_zeroization: bool,
@@ -333,6 +336,7 @@ impl Default for InitParams<'_> {
             check_booted_to_runtime: true,
             rom_callback: None,
             flash_boot: false,
+            network_boot: false,
             fips_zeroization: false,
             caliptra_soc_axi_user: None,
             force_fuse_owner_pk_hash: false,

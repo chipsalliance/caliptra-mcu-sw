@@ -56,7 +56,7 @@ fn mcycle() -> u64 {
     ];
     let mcycle: ReadWriteRiscvCsr<usize, value::Register, { MCYCLE }> = ReadWriteRiscvCsr::new();
     let mcycleh: ReadWriteRiscvCsr<usize, value::Register, { MCYCLEH }> = ReadWriteRiscvCsr::new();
-    (mcycleh.get() as u64) << 32 | (mcycle.get() as u64)
+    ((mcycleh.get() as u64) << 32) | (mcycle.get() as u64)
 }
 
 #[cfg(not(target_arch = "riscv32"))]

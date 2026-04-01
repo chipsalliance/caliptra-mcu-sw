@@ -601,6 +601,13 @@ impl FirmwareBinaries {
         self.mcu_rom.clone()
     }
 
+    pub fn has_test_feature_rom(&self, feature: &str) -> bool {
+        let expected_name = format!("mcu-test-rom-feature-{}.bin", feature);
+        self.test_roms
+            .iter()
+            .any(|(name, _)| name == &expected_name)
+    }
+
     /// Get the user-app ELF for a specific test feature, if archived in the
     /// firmware bundle. The ELF carries the `.defmt` table needed to decode
     /// frames retrieved from the device via the debug-log command.

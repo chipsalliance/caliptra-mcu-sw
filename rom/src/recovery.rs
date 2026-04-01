@@ -412,17 +412,19 @@ pub(crate) fn load_image_to_recovery(
                     start_cycle = Some(caliptra_mcu_romtime::mcycle());
                 }
 
-                let bytes_loaded = image_provider.bytes_loaded();
-                if bytes_loaded >= next_print_checkpoint {
+                let fifo_bytes_written =
+                    i3c_periph.sec_fw_recovery_if_indirect_fifo_status_1.get() as usize * 4;
+                if fifo_bytes_written >= next_print_checkpoint {
                     caliptra_mcu_romtime::println!(
                         "[mcu-rom] Transferring image data at offset {} out of {}",
-                        bytes_loaded,
+                        fifo_bytes_written,
                         state_machine.context().image_size
                     );
-                    next_print_checkpoint = bytes_loaded + state_machine.context().image_size / 10;
+                    next_print_checkpoint =
+                        fifo_bytes_written + state_machine.context().image_size / 10;
                 }
 
-                if bytes_loaded >= state_machine.context().image_size {
+                if fifo_bytes_written >= state_machine.context().image_size {
                     // Set REC_INTF_CFG.REC_PAYLOAD_DONE bit to indicate transfer complete
                     i3c_periph
                         .soc_mgmt_if_rec_intf_cfg

@@ -172,8 +172,8 @@ impl McuHwModel for ModelEmulated {
         let rom_sram = mcu_root_bus.rom_sram.clone();
         let dot_flash = mcu_root_bus.dot_flash.clone();
 
-        // Use HW 2.1.0 for flash-based boot, otherwise 2.0.0
-        let hw_version = if params.flash_boot {
+        // Use HW 2.1.0 for flash-based or network-based boot, otherwise 2.0.0
+        let hw_version = if params.flash_boot || params.network_boot {
             Version::new(2, 1, 0)
         } else {
             Version::new(2, 0, 0)
@@ -336,8 +336,8 @@ impl McuHwModel for ModelEmulated {
             _ => None,
         };
 
-        // Use MCU recovery interface when flash-based boot is enabled
-        let use_mcu_recovery_interface = params.flash_boot;
+        // Use MCU recovery interface when flash-based boot or network boot is enabled
+        let use_mcu_recovery_interface = params.flash_boot || params.network_boot;
 
         if std::env::var("CPTRA_EMULATOR_SS_MCI_OFFSET").is_err() {
             std::env::set_var("CPTRA_EMULATOR_SS_MCI_OFFSET", "0x00000000a8000000");
@@ -454,10 +454,10 @@ impl McuHwModel for ModelEmulated {
         let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
         let (mcu_event_sender, mcu_event_receiver) = cpu.register_events();
 
-        // Use MCU recovery interface (I3C) when flash-based boot is enabled,
-        // otherwise use BMC recovery interface
-        let use_flash_based_boot = params.flash_boot;
-        let bmc = if use_flash_based_boot {
+        // Use MCU recovery interface (I3C) when flash-based boot or network
+        // boot is enabled; otherwise use BMC recovery interface.
+        let use_mcu_recovery = params.flash_boot || params.network_boot;
+        let bmc = if use_mcu_recovery {
             // Connect event channels to I3C peripheral for MCU recovery interface
             cpu.bus
                 .bus

@@ -1698,6 +1698,10 @@ impl BootFlow for ColdBoot {
             caliptra_mcu_romtime::println!("[mcu-rom] Starting network recovery flow");
             mci.set_flow_checkpoint(McuRomBootStatus::NetworkRecoveryFlowStarted.into());
 
+            i3c_base
+                .soc_mgmt_if_rec_intf_cfg
+                .modify(RecIntfCfg::RecIntfBypass::SET);
+
             let driver = NetworkMboxDriver::new();
             let image_provider = crate::recovery::network::NetworkImageProvider::new(&driver);
             driver.set_client(&image_provider);
