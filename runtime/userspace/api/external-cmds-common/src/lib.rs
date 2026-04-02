@@ -6,6 +6,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use caliptra_mcu_mbox_common::messages::CommandId;
 use zerocopy::{Immutable, IntoBytes};
 
 pub const MAX_FW_VERSION_LEN: usize = 32;
@@ -142,4 +143,8 @@ pub trait UnifiedCommandHandler {
         algorithm: u32,
         csr_data: &mut AttestedCsrData,
     ) -> Result<(), CommandError>;
+}
+
+pub trait CommandAuthorizer {
+    fn is_authorized(&self, cmd_id: CommandId, msg_buf: &mut [u8], req_len: usize) -> bool;
 }

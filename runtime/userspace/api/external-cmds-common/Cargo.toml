@@ -8,4 +8,5 @@ authors.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+caliptra-mcu-mbox-common.workspace = true
 zerocopy.workspace = true

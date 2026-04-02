@@ -66,7 +66,7 @@ where
     const MIN_SIZE: usize = core::mem::size_of::<Self>();
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub struct CommandId(pub u32);
 
 impl CommandId {
@@ -116,6 +116,9 @@ impl CommandId {
     pub const MC_FUSE_READ: Self = Self(0x4946_5052); // "IFPR"
     pub const MC_FUSE_WRITE: Self = Self(0x4946_5057); // "IFPW"
     pub const MC_FUSE_LOCK_PARTITION: Self = Self(0x4946_504B); // "IFPK"
+
+    // Authorized commands
+    pub const MC_ROTATE_VENDOR_PK_HASH: Self = Self(0x4D56_504B); // "MVPK"
 }
 
 impl From<u32> for CommandId {

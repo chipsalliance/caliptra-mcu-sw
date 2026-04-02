@@ -1152,6 +1152,7 @@ name = "caliptra-mcu-external-cmds-common"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "caliptra-mcu-mbox-common",
  "zerocopy",
 ]
 

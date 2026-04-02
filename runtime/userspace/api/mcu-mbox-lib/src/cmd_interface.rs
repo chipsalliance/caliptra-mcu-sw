@@ -3,7 +3,8 @@
 use crate::transport::McuMboxTransport;
 use caliptra_api::mailbox::{populate_checksum, CommandId as CaliptraCommandId, MailboxReqHeader};
 use caliptra_mcu_external_cmds_common::{
-    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, UnifiedCommandHandler, MAX_UID_LEN,
+    CommandAuthorizer, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion,
+    UnifiedCommandHandler, MAX_UID_LEN,
 };
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
@@ -44,12 +45,14 @@ pub enum MsgHandlerError {
     NotReady,
     InvalidParams,
     UnsupportedCommand,
+    UnauthorizedCommand,
 }
 
 /// Command interface for handling MCU mailbox commands.
 pub struct CmdInterface<'a> {
     transport: &'a mut McuMboxTransport,
     non_crypto_cmds_handler: &'a dyn UnifiedCommandHandler,
+    cmd_authorizer: &'a dyn CommandAuthorizer,
     caliptra_mbox: caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox, // Handle crypto commands via caliptra mailbox
     busy: AtomicBool,
 }
@@ -58,10 +61,12 @@ impl<'a> CmdInterface<'a> {
     pub fn new(
         transport: &'a mut McuMboxTransport,
         non_crypto_cmds_handler: &'a dyn UnifiedCommandHandler,
+        cmd_authorizer: &'a dyn CommandAuthorizer,
     ) -> Self {
         Self {
             transport,
             non_crypto_cmds_handler,
+            cmd_authorizer,
             caliptra_mbox: Mailbox::new(),
             busy: AtomicBool::new(false),
         }
@@ -465,6 +470,10 @@ impl<'a> CmdInterface<'a> {
                 )
                 .await
             }
+            cmd_id @ CommandId::MC_ROTATE_VENDOR_PK_HASH => {
+                self.handle_authorized_command(cmd_id, msg_buf, req_len)
+                    .await
+            }
             // TODO: add more command handlers.
             // TODO: DOT runtime commands (DOT_CAK_INSTALL, DOT_LOCK, DOT_DISABLE,
             // DOT_UNLOCK_CHALLENGE, DOT_UNLOCK) are not yet handled here. These require
@@ -677,6 +686,31 @@ impl<'a> CmdInterface<'a> {
             }
             Err(_) => Ok((0, MbxCmdStatus::Failure)),
         }
+    }
+
+    async fn handle_authorized_command(
+        &self,
+        cmd_id: CommandId,
+        msg_buf: &mut [u8],
+        req_len: usize,
+    ) -> Result<(usize, MbxCmdStatus), MsgHandlerError> {
+        if !self.cmd_authorizer.is_authorized(cmd_id, msg_buf, req_len) {
+            return Err(MsgHandlerError::UnauthorizedCommand);
+        }
+        match cmd_id {
+            CommandId::MC_ROTATE_VENDOR_PK_HASH => {
+                self.handle_rotate_vendor_pk_hash(msg_buf, req_len).await
+            }
+            _ => Err(MsgHandlerError::UnsupportedCommand),
+        }
+    }
+
+    async fn handle_rotate_vendor_pk_hash(
+        &self,
+        _msg_buf: &mut [u8],
+        _req_len: usize,
+    ) -> Result<(usize, MbxCmdStatus), MsgHandlerError> {
+        todo!()
     }
 
     #[cfg(feature = "periodic-fips-self-test")]
