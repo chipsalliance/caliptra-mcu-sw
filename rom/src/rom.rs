@@ -62,6 +62,7 @@ pub struct Soc {
 
 impl Soc {
     pub const BOOT_FSM_DONE: u32 = 4;
+    pub const PK_HASH_STRAPPING_MASK: u32 = 0x1;
 
     pub const fn new(registers: StaticRef<soc::regs::Soc>) -> Self {
         Soc { registers }
@@ -172,7 +173,7 @@ impl Soc {
     }
 
     #[inline(never)]
-    pub fn populate_fuses(&self, otp: &Otp, mci: &romtime::Mci, params: &RomParameters) {
+    pub fn populate_fuses(&self, otp: &Otp, mci: &romtime::Mci, params: &RomParameters) -> usize {
         // secret fuses are populated by a hardware state machine, so we can skip those
 
         // UDS partition base address. (FE offset is calculated automatically by Caliptra ROM.)
@@ -195,17 +196,14 @@ impl Soc {
         // Select the vendor public key slot to use.
         let default_policy = DefaultVendorKeyPolicy::new();
         let policy = params.vendor_key_policy.unwrap_or(&default_policy);
-        let selected_index = policy
+        let pk_hash_idx = policy
             .select_key(otp)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_PK_HASH_SELECTION_FAILED));
-        romtime::println!(
-            "[mcu-fuse-write] Selected vendor PK slot {}",
-            selected_index
-        );
+        romtime::println!("[mcu-fuse-write] Selected vendor PK slot {}", pk_hash_idx);
 
         // PQC Key Type.
         let pqc_type = otp
-            .read_pqc_key_type(selected_index)
+            .read_pqc_key_type(pk_hash_idx)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         let pqc_caliptra_val = match pqc_type {
             PqcKeyType::MLDSA => MLDSA_CALIPTRA_VALUE,
@@ -228,7 +226,7 @@ impl Soc {
         // Vendor PK Hash.
         romtime::print!("[mcu-fuse-write] Writing fuse key vendor PK hash: ");
         let mut hash_buf = [0u8; 48];
-        otp.read_vendor_pk_hash(selected_index, &mut hash_buf)
+        otp.read_vendor_pk_hash(pk_hash_idx, &mut hash_buf)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         for (i, word_bytes) in hash_buf.chunks_exact(4).enumerate() {
             let word = u32::from_le_bytes(word_bytes.try_into().unwrap());
@@ -271,19 +269,19 @@ impl Soc {
         // Load Owner ECC/LMS/MLDSA revocation CSRs.
         // ECC Revocation.
         let word = otp
-            .read_vendor_ecc_revocation(selected_index)
+            .read_vendor_ecc_revocation(pk_hash_idx)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_ecc_revocation.set(word);
 
         // LMS Revocation.
         let word = otp
-            .read_vendor_lms_revocation(selected_index)
+            .read_vendor_lms_revocation(pk_hash_idx)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_lms_revocation.set(word);
 
         // MLDSA Revocation.
         let word = otp
-            .read_vendor_mldsa_revocation(selected_index)
+            .read_vendor_mldsa_revocation(pk_hash_idx)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_mldsa_revocation.set(word);
 
@@ -351,6 +349,25 @@ impl Soc {
         mci.registers.mci_reg_soc_hw_debug_en[1].set(0x00000000);
         mci.registers.mci_reg_soc_prod_debug_state[0].set(0x000000FF);
         mci.registers.mci_reg_soc_prod_debug_state[1].set(0x00000000);
+
+        // return pk hash index so we can lock it once it's verified
+        pk_hash_idx
+    }
+
+    pub fn pk_hash_volatile_lock(&self, otp: &Otp, selected_index: usize) {
+        // Read strap register to check for provisioning mode.
+        let strap_reg = self.registers.ss_strap_generic[2].get();
+        if (strap_reg & Self::PK_HASH_STRAPPING_MASK) != 0 {
+            romtime::println!(
+              "[mcu-fuse-write] PK Hash provisioning mode detected, skipping vendor PK hash lock."
+          );
+        } else {
+            romtime::println!(
+                "[mcu-fuse-write] Locking vendor PK hash slots from index {}",
+                selected_index
+            );
+            otp.volatile_lock(selected_index as u32);
+        }
     }
 
     pub fn set_axi_users(&self, users: AxiUsers) {

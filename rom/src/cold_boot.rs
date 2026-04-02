@@ -452,7 +452,7 @@ impl BootFlow for ColdBoot {
         });
 
         romtime::println!("[mcu-rom] Populating fuses");
-        soc.populate_fuses(otp, mci, &params);
+        let pk_hash_idx = soc.populate_fuses(otp, mci, &params);
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
         // Configure MCU mailbox AXI users before locking
@@ -681,6 +681,12 @@ impl BootFlow for ColdBoot {
         soc.wait_for_firmware_ready(mci);
         romtime::println!("[mcu-rom] Firmware is ready");
         mci.set_flow_checkpoint(McuRomBootStatus::FirmwareReadyDetected.into());
+
+        soc.pk_hash_volatile_lock(&env.otp, pk_hash_idx);
+        if env.otp.check_error().is_some() {
+            romtime::println!("[mcu-rom] OTP error: {}", HexWord(env.otp.status()));
+            env.otp.print_errors();
+        }
 
         if let Some(image_verifier) = params.mcu_image_verifier {
             let header = unsafe {

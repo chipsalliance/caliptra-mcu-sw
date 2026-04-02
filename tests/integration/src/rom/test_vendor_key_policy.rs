@@ -4,7 +4,7 @@
 mod test {
     use anyhow::Result;
     use mcu_error::McuError;
-    use mcu_hw_model::{new, DefaultHwModel, InitParams, McuHwModel};
+    use mcu_hw_model::{new, DefaultHwModel, InitParams, McuHwModel, McuManager};
     use mcu_rom_common::{
         pqc_key_type_entry, vendor_ecc_revocation_entry, vendor_lms_revocation_entry,
         vendor_mldsa_revocation_entry, write_fuse_value, write_single_fuse_value, FuseLayout,
@@ -244,6 +244,35 @@ mod test {
             fatal_error,
             u32::from(McuError::ROM_PK_HASH_SELECTION_FAILED)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_vendor_pk_lock_applied() -> Result<()> {
+        let mut hw = setup_hw_model(
+            0x0000,
+            &[(
+                0,
+                SlotConfig {
+                    pqc_type: Some(PqcKeyType::LMS),
+                    ..SlotConfig::default()
+                },
+            )],
+        )?;
+        hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 0")?;
+        hw.step_until_output_contains(
+            "[mcu-fuse-write] Locking vendor PK hash slots from index 0",
+        )?;
+
+        // Step a few cycles to ensure the write is executed
+        for _ in 0..100 {
+            hw.step();
+        }
+
+        let lock_val = hw
+            .mcu_manager()
+            .with_otp(|otp| otp.vendor_pk_hash_volatile_lock().read());
+        assert_eq!(lock_val, 1);
         Ok(())
     }
 }

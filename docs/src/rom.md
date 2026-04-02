@@ -265,6 +265,18 @@ The verification process:
 6. MCU ROM reads back the `MBOX[0,1]_AXI_USER_LOCK` register values and verifies they match the expected lock status
 7. If any mismatch is detected in either the AXI user values or lock status, MCU ROM reports a fatal error (`ROM_SOC_MCU_MBOX_AXI_USER_VERIFY_FAILED`)
 
+### Vendor PK Hash Volatile Lock
+
+The MCU ROM supports locking the selected vendor public key hash slot (and all higher order slots) to prevent post-ROM manipulation. This is controlled by writing to the `VENDOR_PK_HASH_VOLATILE_LOCK` register.
+
+**Strapping Override**:
+The locking behavior is gated by bit 0 of the hardware strapping register `SS_STRAP_GENERIC[2]`.
+*   **Production Mode** (Bit 0 is `0`): The ROM automatically applies the volatile lock to the selected key slot index (locking that slot and all higher slots).
+*   **Provisioning Mode** (Bit 0 is `1`): The ROM skips applying the lock, allowing potential post-ROM code to provision higher order hash slots.
+
+> **Note:** In the current version, the lock register remains mutable past the ROM; therefore, the runtime firmware must be trusted to not overwrite the lock and corrupt the hashes.
+
+
 ### Warm Reset Considerations
 
 On warm reset, `SS_CONFIG_DONE_STICKY` remains set from the cold boot, so sticky registers are already locked and do not need to be reconfigured or verified. However, `SS_CONFIG_DONE` is cleared on warm reset, so:
