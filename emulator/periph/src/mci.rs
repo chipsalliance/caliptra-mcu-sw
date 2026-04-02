@@ -387,6 +387,16 @@ impl MciPeripheral for Mci {
             .regs
             .borrow_mut()
             .intr_block_rf_notif0_internal_intr_r = new_val;
+
+        // Raise CPU IRQ if any enabled interrupt bits are now set.
+        let notif_en = self
+            .ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_notif0_intr_en_r;
+        if new_val & notif_en != 0 {
+            self.irq.borrow_mut().set_level(true);
+        }
     }
 
     fn write_mci_reg_reset_request(
@@ -1230,7 +1240,7 @@ mod tests {
         assert_eq!(
             next_action(&clock),
             Some(TimerAction::Nmi {
-                mcause: 0x0000_0000,
+                mcause: 0x0000_0000
             })
         );
     }

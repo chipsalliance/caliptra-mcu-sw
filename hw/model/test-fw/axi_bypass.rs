@@ -5,7 +5,7 @@
 #![no_main]
 #![no_std]
 
-use mcu_rom_common::{McuRomBootStatus, RomEnv};
+use mcu_rom_common::RomEnv;
 use registers_generated::i3c::bits::{
     DeviceStatus0::DevStatus,
     IndirectFifoCtrl0,
@@ -14,6 +14,7 @@ use registers_generated::i3c::bits::{
     RecIntfRegW1cAccess,
     RecoveryStatus::DevRecStatus,
 };
+use romtime::McuRomBootStatus;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 // Needed to bring in startup code

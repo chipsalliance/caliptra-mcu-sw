@@ -1042,7 +1042,7 @@ mod test {
     /// Expected: The manifest LOCK command burns the lock fuse (EVEN → ODD).
     #[test]
     fn test_fw_manifest_dot_lock() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_LOCK};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
         use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -1108,7 +1108,7 @@ mod test {
     /// Expected: No additional fuses burned (idempotent).
     #[test]
     fn test_fw_manifest_dot_lock_idempotent() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_LOCK};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
         use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -1168,7 +1168,7 @@ mod test {
     /// Expected: One additional fuse burned (ODD → EVEN), total 2.
     #[test]
     fn test_fw_manifest_dot_unlock() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_UNLOCK};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
         use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -1221,7 +1221,7 @@ mod test {
     /// Test: UNLOCK command is idempotent when device is already in EVEN (unlocked) state.
     #[test]
     fn test_fw_manifest_dot_unlock_idempotent() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_UNLOCK};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
         use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -1274,7 +1274,7 @@ mod test {
     /// Test: DISABLE command burns a fuse when in EVEN (unlocked) state.
     #[test]
     fn test_fw_manifest_dot_disable() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_DISABLE};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_DISABLE;
         use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -1324,7 +1324,6 @@ mod test {
     /// Test: No manifest magic means DOT commands are silently skipped.
     #[test]
     fn test_fw_manifest_dot_no_magic_skipped() {
-        use mcu_rom_common::McuBootMilestones;
         use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -1378,7 +1377,7 @@ mod test {
     /// Test: ROTATE command burns 2 fuses when below min_fuse_count threshold.
     #[test]
     fn test_fw_manifest_dot_rotate() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_ROTATE};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
         use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -1428,7 +1427,7 @@ mod test {
     /// Test: ROTATE command is idempotent when burned count already meets min_fuse_count.
     #[test]
     fn test_fw_manifest_dot_rotate_idempotent() {
-        use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_ROTATE};
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
         use registers_generated::fuses;
 
         let owner_pk_hash = get_owner_pk_hash();

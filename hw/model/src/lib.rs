@@ -1,8 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 pub use api::mailbox::mbox_write_fifo;
 pub use api_types::{DbgManufServiceRegReq, DeviceLifecycle, Fuses, U4};
+use caliptra_api::mailbox::MailboxReqHeader;
 use caliptra_api::{self as api, SocManager};
 use caliptra_api_types as api_types;
 use caliptra_emu_bus::Event;
@@ -13,6 +14,7 @@ use caliptra_hw_model_types::{
 };
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
+use mcu_mbox_common::messages::calc_checksum;
 pub use mcu_mgr::McuManager;
 use mcu_testing_common::MCU_RUNNING;
 pub use model_emulated::ModelEmulated;
@@ -31,6 +33,7 @@ use std::sync::{Arc, Mutex};
 use emulator_periph::TapDevice;
 use ureg::MmioMut;
 pub use vmem::read_otp_vmem_data;
+use zerocopy::FromBytes;
 
 // Re-export flash image builder for creating flash images from firmware bytes
 pub use mcu_builder::flash_image::build_flash_image_bytes;
@@ -528,6 +531,54 @@ pub trait McuHwModel {
         McuBootMilestones::from((self.mci_flow_status() >> 16) as u16)
     }
 
+    /// Executes a typed request and (on success), returns the typed response.
+    /// The checksum field of the request is calculated, and the checksum of the
+    /// response is validated.
+    fn mailbox_execute_req<R: mcu_mbox_common::messages::Request>(
+        &mut self,
+        mut req: R,
+    ) -> Result<R::Resp> {
+        let req_bytes = req.as_mut_bytes();
+
+        // Populate the request checksum
+        let checksum = calc_checksum(R::ID.into(), &req_bytes[size_of::<i32>()..]);
+        let hdr: &mut MailboxReqHeader =
+            MailboxReqHeader::mut_from_bytes(&mut req_bytes[..size_of::<MailboxReqHeader>()])
+                .unwrap();
+        hdr.chksum = checksum;
+
+        // Send the request to the mailbox
+        let mut response = self
+            .mailbox_execute(R::ID.into(), req_bytes)?
+            .unwrap_or_default();
+
+        // Check the reponse checksum
+        if response.len() < 4 {
+            bail!("Response too short to contain checksum");
+        }
+        let received_chksum = u32::from_le_bytes(response[..4].try_into().unwrap());
+        let calculated_chksum = calc_checksum(0, &response[4..]);
+        if received_chksum != calculated_chksum {
+            bail!(
+                "Response checksum mismatch: expected {:08x}, calculated {:08x}",
+                received_chksum,
+                calculated_chksum
+            );
+        }
+
+        if response.len() < std::mem::size_of::<R::Resp>() {
+            response.resize(std::mem::size_of::<R::Resp>(), 0);
+        }
+        let response = R::Resp::read_from_bytes(&response).map_err(|_| {
+            anyhow!(
+                "Failed to read response into struct: expected len {}, response len {}",
+                std::mem::size_of::<R::Resp>(),
+                response.len()
+            )
+        })?;
+        Ok(response)
+    }
+
     /// Executes `cmd` with request data `buf`. Returns `Ok(Some(_))` if
     /// the uC responded with data, `Ok(None)` if the uC indicated success
     /// without data, Err(ModelError::MailboxCmdFailed) if the microcontroller
@@ -630,11 +681,13 @@ pub trait McuHwModel {
 
         self.mcu_manager().with_mbox0(|mbox| {
             if status.cmd_complete() {
-                println!(">>> mbox cmd response: success");
-                mbox.mbox_execute().write(|w| w.execute(false));
-                return Ok(None);
-            }
-            if !status.data_ready() {
+                let dlen = mbox.mbox_dlen().read() as usize;
+                if dlen == 0 {
+                    println!(">>> mbox cmd response: success");
+                    mbox.mbox_execute().write(|w| w.execute(false));
+                    return Ok(None);
+                }
+            } else if !status.data_ready() {
                 bail!("Unknown mailbox status {:x}", u32::from(status));
             }
 
