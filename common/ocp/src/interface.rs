@@ -559,7 +559,7 @@ mod tests {
         .unwrap();
 
         let err = sm.process_command().unwrap_err();
-        assert_eq!(err, OcpError::TransportError);
+        assert_eq!(err, OcpError::TransportError(0));
     }
 
     #[test]

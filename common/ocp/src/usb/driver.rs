@@ -11,26 +11,51 @@ use crate::protocol::RecoveryCommand;
 
 /// Errors from USB driver operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum UsbDriverError {
     /// No OCP recovery command pending (non-blocking poll returned empty).
-    NoPendingCommand,
+    NoPendingCommand = Self::NO_PENDING_COMMAND,
     /// The provided buffer is too small for the received data.
-    BufferTooSmall,
+    BufferTooSmall = Self::BUFFER_TOO_SMALL,
     /// The payload exceeds the maximum transfer size declared in the functional descriptor.
-    TransferTooLarge,
+    TransferTooLarge = Self::TRANSFER_TOO_LARGE,
     /// A previous [`RecoveryRequest::Read`] was not completed with
     /// [`UsbDeviceDriver::send`] or [`UsbDeviceDriver::stall_endpoint`]
     /// before the next [`UsbDeviceDriver::recv`] call.
-    SendRequired,
+    SendRequired = Self::SEND_REQUIRED,
     /// [`UsbDeviceDriver::send`] or [`UsbDeviceDriver::stall_endpoint`]
     /// was called without a preceding [`RecoveryRequest::Read`] from
     /// [`UsbDeviceDriver::recv`].
-    NoPendingRead,
+    NoPendingRead = Self::NO_PENDING_READ,
     /// Hardware-level error (timeout, CRC, bit-stuffing, etc.).
-    HardwareError,
+    HardwareError = Self::HARDWARE_ERROR,
     /// The closure passed to [`UsbDeviceDriver::send`] returned an
     /// [`OcpError`] while populating the response buffer.
-    OcpError(OcpError),
+    OcpError(OcpError) = Self::OCP_ERROR,
+}
+
+impl UsbDriverError {
+    const NO_PENDING_COMMAND: u8 = 0;
+    const BUFFER_TOO_SMALL: u8 = 1;
+    const TRANSFER_TOO_LARGE: u8 = 2;
+    const SEND_REQUIRED: u8 = 3;
+    const NO_PENDING_READ: u8 = 4;
+    const HARDWARE_ERROR: u8 = 5;
+    const OCP_ERROR: u8 = 6;
+}
+
+impl From<UsbDriverError> for u8 {
+    fn from(e: UsbDriverError) -> u8 {
+        match e {
+            UsbDriverError::NoPendingCommand => UsbDriverError::NO_PENDING_COMMAND,
+            UsbDriverError::BufferTooSmall => UsbDriverError::BUFFER_TOO_SMALL,
+            UsbDriverError::TransferTooLarge => UsbDriverError::TRANSFER_TOO_LARGE,
+            UsbDriverError::SendRequired => UsbDriverError::SEND_REQUIRED,
+            UsbDriverError::NoPendingRead => UsbDriverError::NO_PENDING_READ,
+            UsbDriverError::HardwareError => UsbDriverError::HARDWARE_ERROR,
+            UsbDriverError::OcpError(_) => UsbDriverError::OCP_ERROR,
+        }
+    }
 }
 
 /// The transfer direction and associated payload for an OCP recovery command.

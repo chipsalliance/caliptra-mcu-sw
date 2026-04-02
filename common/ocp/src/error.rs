@@ -55,7 +55,8 @@ pub enum OcpError {
     /// The value does not match a known USB Descriptor Type (Table 9-5).
     InvalidDescriptorType = 23,
     /// A transport-level error occurred (e.g. USB hardware failure).
-    TransportError = 24,
+    /// Carries the [`UsbDriverError`] discriminant for diagnostics.
+    TransportError(u8) = 24,
     /// The number of CMS regions provided exceeds the number supported by the OCP Protocol.
     InvalidCmdBufferCount = 25,
     /// When indirect regions are provided, CMS index 0 must be a CodeSpace region.
@@ -68,7 +69,7 @@ impl From<UsbDriverError> for OcpError {
     fn from(e: UsbDriverError) -> Self {
         match e {
             UsbDriverError::OcpError(ocp_err) => ocp_err,
-            _ => OcpError::TransportError,
+            other => OcpError::TransportError(u8::from(other)),
         }
     }
 }
