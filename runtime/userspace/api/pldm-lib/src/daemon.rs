@@ -23,10 +23,8 @@ use pldm_common::message::firmware_update::transfer_complete::TransferResult;
 use pldm_common::protocol::base::{PldmBaseCompletionCode, PldmMsgType};
 use pldm_common::protocol::firmware_update::{FwUpdateCmd, FwUpdateCompletionCode};
 use pldm_common::util::mctp_transport::{
-    construct_mctp_pldm_msg, extract_pldm_msg, PLDM_MSG_OFFSET,
+    construct_mctp_pldm_msg, extract_pldm_msg, MAX_MCTP_PLDM_MSG_SIZE, MCTP_PLDM_MSG_HDR_LEN,
 };
-
-pub const MAX_MCTP_PLDM_MSG_SIZE: usize = 1024;
 const YIELD_EVERY_ITERATIONS: u32 = 32;
 
 #[derive(Debug)]
@@ -329,7 +327,7 @@ async fn run_optimized_download(
 
     // Send request
     transport
-        .send_request(ua_eid, &msg_buffer[..msg_len + PLDM_MSG_OFFSET])
+        .send_request(ua_eid, &msg_buffer[..msg_len + MCTP_PLDM_MSG_HDR_LEN])
         .await
         .map_err(crate::error::MsgHandlerError::Transport)?;
 

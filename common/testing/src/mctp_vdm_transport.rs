@@ -81,7 +81,6 @@ impl MctpVdmSocket {
     /// Returns the response payload (header + data).
     pub fn send_request(&mut self, request: &[u8]) -> Result<Vec<u8>, VdmTransportError> {
         let mut mctp_util = MctpUtil::new();
-        mctp_util.set_pkt_payload_size(MAX_VDM_PAYLOAD_SIZE);
 
         // Build MCTP payload: common header + VDM request
         let mut mctp_payload: Vec<u8> = Vec::new();

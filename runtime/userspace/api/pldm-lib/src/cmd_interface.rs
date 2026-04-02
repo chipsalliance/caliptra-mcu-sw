@@ -11,7 +11,7 @@ use pldm_common::protocol::base::{
 };
 use pldm_common::protocol::firmware_update::FwUpdateCmd;
 use pldm_common::util::mctp_transport::{
-    construct_mctp_pldm_msg, extract_pldm_msg, PLDM_MSG_OFFSET,
+    construct_mctp_pldm_msg, extract_pldm_msg, MCTP_PLDM_MSG_HDR_LEN,
 };
 
 pub type PldmCompletionErrorCode = u8;
@@ -79,7 +79,7 @@ impl<'a> CmdInterface<'a> {
 
         // Prepare the request payload
         let payload = construct_mctp_pldm_msg(msg_buf).map_err(MsgHandlerError::Util)?;
-        let reserved_len = PLDM_MSG_OFFSET;
+        let reserved_len = MCTP_PLDM_MSG_HDR_LEN;
 
         // Generate the request
         let req_len = self.fd_ctx.fd_progress(payload).await?;
@@ -154,8 +154,8 @@ impl<'a> CmdInterface<'a> {
         self.busy.store(true, Ordering::SeqCst);
 
         // Get the pldm payload from msg_buf
-        let payload = &mut msg_buf[PLDM_MSG_OFFSET..];
-        let reserved_len = PLDM_MSG_OFFSET;
+        let payload = &mut msg_buf[MCTP_PLDM_MSG_HDR_LEN..];
+        let reserved_len = MCTP_PLDM_MSG_HDR_LEN;
 
         let (pldm_type, cmd_opcode) = match self.preprocess_request(payload) {
             Ok(result) => result,

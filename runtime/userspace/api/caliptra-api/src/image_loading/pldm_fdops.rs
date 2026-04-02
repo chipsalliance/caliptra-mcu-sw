@@ -4,6 +4,7 @@ extern crate alloc;
 
 use super::pldm_client::{IMAGE_LOADING_TASK_YIELD, PLDM_TASK_YIELD};
 use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
+use crate::MAX_PLDM_TRANSFER_SIZE;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use flash_image::{FlashHeader, ImageHeader};
@@ -18,7 +19,6 @@ use pldm_common::protocol::firmware_update::{
 };
 use pldm_common::util::fw_component::FirmwareComponent;
 use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
-const MAX_PLDM_TRANSFER_SIZE: usize = 196; // This should be smaller than I3C MAX_READ_WRITE_SIZE
 
 pub struct StreamingFdOps<'a, D: DMAMapping> {
     descriptors: &'a [Descriptor],

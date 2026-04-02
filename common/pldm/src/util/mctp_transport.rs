@@ -6,7 +6,10 @@ use bitfield::bitfield;
 
 pub const MCTP_PLDM_MSG_TYPE: u8 = 0x01;
 pub const MCTP_COMMON_HEADER_OFFSET: usize = 0;
-pub const PLDM_MSG_OFFSET: usize = 1;
+/// Size of the MCTP message type header byte preceding PLDM content.
+pub const MCTP_PLDM_MSG_HDR_LEN: usize = 1;
+/// Maximum MCTP message buffer size for PLDM messages (includes MCTP message type byte + PLDM content).
+pub const MAX_MCTP_PLDM_MSG_SIZE: usize = 1024;
 
 bitfield! {
     #[derive(Copy, Clone, PartialEq)]
@@ -42,7 +45,7 @@ pub fn extract_pldm_msg(mctp_payload: &mut [u8]) -> Result<&mut [u8], UtilError>
     }
 
     // Return a mutable reference to the PLDM message slice.
-    Ok(&mut mctp_payload[PLDM_MSG_OFFSET..])
+    Ok(&mut mctp_payload[MCTP_PLDM_MSG_HDR_LEN..])
 }
 
 /// Constructs an MCTP payload with a PLDM message.
@@ -70,7 +73,7 @@ pub fn construct_mctp_pldm_msg(mctp_payload: &mut [u8]) -> Result<&mut [u8], Uti
     mctp_payload[MCTP_COMMON_HEADER_OFFSET] = mctp_common_header.0;
 
     // Return a mutable reference to the PLDM message slice.
-    Ok(&mut mctp_payload[PLDM_MSG_OFFSET..])
+    Ok(&mut mctp_payload[MCTP_PLDM_MSG_HDR_LEN..])
 }
 
 #[cfg(test)]
