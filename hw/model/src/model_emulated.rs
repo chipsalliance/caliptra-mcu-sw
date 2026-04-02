@@ -319,6 +319,7 @@ impl McuHwModel for ModelEmulated {
                 req_idevid_csr,
                 use_mcu_recovery_interface,
                 extra_soc_bus: Some(params.caliptra_soc_axi_user.unwrap_or(0xdddd_dddd)),
+                debug_intent: params.debug_intent,
             })
             .expect("Failed to start Caliptra CPU");
         let soc_to_caliptra_bus = soc_to_caliptra_bus.unwrap();
