@@ -1226,8 +1226,8 @@ mod test {
         let secret_key = p384::SecretKey::random(&mut rand::thread_rng());
         let pub_point = secret_key.public_key().to_encoded_point(false);
 
-        let x_bytes: [u8; 48] = pub_point.x().unwrap().as_slice().try_into().unwrap();
-        let y_bytes: [u8; 48] = pub_point.y().unwrap().as_slice().try_into().unwrap();
+        let x_bytes: [u8; 48] = pub_point.x().unwrap()[..].try_into().unwrap();
+        let y_bytes: [u8; 48] = pub_point.y().unwrap()[..].try_into().unwrap();
         let priv_bytes: [u8; 48] = secret_key.to_bytes().into();
         (x_bytes, y_bytes, priv_bytes)
     }

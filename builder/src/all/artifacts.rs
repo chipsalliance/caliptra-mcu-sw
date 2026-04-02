@@ -53,10 +53,7 @@ impl BaseArtifacts {
     /// - `Ok(BaseArtifacts)`: All built artifacts.
     /// - `Err(anyhow::Error)`: If any build step fails.
     pub fn build(ctx: &AllBuildContext) -> Result<Self> {
-        // Build MCU ROM
         let mcu_rom = crate::rom_build(ctx.platform, Some(ctx.rom_features.clone()), None)?;
-
-        // Build base MCU runtime
         let runtime_file = NamedTempFile::new()?;
         let runtime_path = runtime_file.path().to_str().unwrap().to_string();
 
@@ -76,7 +73,6 @@ impl BaseArtifacts {
         )?;
         let mcu_runtime = PathBuf::from(&mcu_runtime_str);
 
-        // Build Caliptra artifacts
         let mcu_image_cfg = ctx.get_image_cfg_for_feature("none");
         let mut caliptra_builder = CaliptraBuilder::new(
             ctx.platform,
@@ -98,8 +94,6 @@ impl BaseArtifacts {
         println!("Vendor PK hash: {:x?}", vendor_pk_hash);
 
         let soc_manifest = caliptra_builder.get_soc_manifest(None)?;
-
-        // Create flash image (not for flash-based boot)
         let flash_image = create_flash_image(
             Some(caliptra_fw.clone()),
             Some(soc_manifest.clone()),
@@ -108,7 +102,6 @@ impl BaseArtifacts {
             false,
         )?;
 
-        // Create PLDM firmware package
         let flash_image_data = std::fs::read(&flash_image)?;
         let pldm_manifest =
             load_or_create_pldm_manifest(ctx.pldm_manifest.as_deref(), &flash_image_data)?;
