@@ -2,7 +2,7 @@
 
 use anyhow::{bail, Context, Result};
 use clap::ValueEnum;
-use mcu_builder::{AllBuildArgs, ImageCfg, PROJECT_ROOT};
+use mcu_builder::{AllBuildArgs, ImageCfg, Platform, PROJECT_ROOT};
 
 use super::{
     run_command, run_command_with_output,
@@ -213,9 +213,9 @@ impl<'a> ActionHandler<'a> for Subsystem {
             feature: "test-fpga-flash-ctrl".to_string(),
         }]);
         let args = AllBuildArgs {
-            output: Some("all-fw.zip"),
-            platform: Some("fpga"),
-            mcu_cfgs: mcu_cfgs,
+            output: Some("all-fw.zip".to_string()),
+            platform: Platform::Fpga,
+            mcu_cfgs,
             separate_runtimes: true,
             ..Default::default()
         };
@@ -318,11 +318,7 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
         let caliptra_sw = caliptra_sw_workspace_root();
-        let rom_path = mcu_builder::rom_build(
-            Some("fpga".to_string()),
-            Some("core_test".to_string()),
-            None,
-        )?;
+        let rom_path = mcu_builder::rom_build(Platform::Fpga, Some("core_test".to_string()), None)?;
         if !args.mcu {
             build_caliptra_firmware(&caliptra_sw, args.fw_id.as_deref())?;
         }

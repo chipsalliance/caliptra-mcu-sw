@@ -21,19 +21,19 @@ mod test_mcu_mbox;
 mod test_pldm_fw_update;
 mod test_soc_boot;
 
-pub fn platform() -> &'static str {
-    if cfg!(feature = "fpga_realtime") {
-        "fpga"
-    } else {
-        "emulator"
-    }
+use mcu_builder::Platform;
+
+pub fn platform() -> Platform {
+    Platform::from_feature_flag()
 }
 
 #[cfg(test)]
 mod test {
     use caliptra_image_types::FwVerificationPqcKeyType;
     use mcu_builder::flash_image::build_flash_image_bytes;
-    use mcu_builder::{CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET};
+    use mcu_builder::{
+        CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, Platform, TARGET,
+    };
     use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
     use mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
     use random_port::PortPicker;
@@ -121,12 +121,8 @@ mod test {
         compile_rom(feature)
     }
 
-    fn platform() -> &'static str {
-        if cfg!(feature = "fpga_realtime") {
-            "fpga"
-        } else {
-            "emulator"
-        }
+    fn platform() -> Platform {
+        Platform::from_feature_flag()
     }
 
     fn compile_rom(feature: &str) -> PathBuf {
@@ -135,12 +131,8 @@ mod test {
         } else {
             feature
         };
-        let output: PathBuf = mcu_builder::rom_build(
-            Some(platform().to_string()),
-            Some(feature.to_string()),
-            None,
-        )
-        .expect("ROM build failed");
+        let output: PathBuf = mcu_builder::rom_build(platform(), Some(feature.to_string()), None)
+            .expect("ROM build failed");
         assert!(output.exists());
         output
     }
@@ -162,7 +154,7 @@ mod test {
             feature_str,
             Some(name),
             example_app,
-            Some(platform),
+            platform,
             None,
             None,
         )
@@ -229,7 +221,7 @@ mod test {
     fn build_test_binaries(feature: Option<&str>, rom_feature: Option<&str>) -> TestBinaries {
         let mcu_runtime = compile_runtime(feature, false);
         let mut builder = CaliptraBuilder::new(
-            cfg!(feature = "fpga_realtime"),
+            platform(),
             None,
             None,
             None,
@@ -500,7 +492,7 @@ mod test {
             caliptra_builder
         } else {
             CaliptraBuilder::new(
-                false,
+                Platform::Emulator,
                 None,
                 None,
                 None,
@@ -698,7 +690,7 @@ mod test {
         let vendor_pk_hash = binaries.vendor_pk_hash().map(|h| hex::encode(h));
 
         Some(CaliptraBuilder::new(
-            false,
+            Platform::Emulator,
             Some(caliptra_rom_path),
             Some(caliptra_fw_path),
             Some(soc_manifest_path),
@@ -898,7 +890,7 @@ mod test {
             &[feature],
             Some(name),
             true,
-            None,
+            platform(),
             Some(image_svn),
             None,
         )

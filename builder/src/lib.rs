@@ -5,6 +5,7 @@ mod caliptra;
 pub mod features;
 pub mod firmware;
 pub mod flash_image;
+mod platform;
 mod rom;
 mod runtime;
 mod utils;
@@ -13,6 +14,7 @@ pub use all::{
     all_build, emulator_build, AllBuildArgs, EmulatorBinaries, EmulatorBuildArgs, FirmwareBinaries,
 };
 pub use caliptra::{AuthManifestOwnerConfig, CaliptraBuilder, ImageCfg};
+pub use platform::Platform;
 pub use rom::{rom_build, test_rom_build};
 pub use runtime::{bare_metal_build, runtime_build_with_apps};
 

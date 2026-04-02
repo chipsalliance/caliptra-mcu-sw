@@ -8,12 +8,14 @@
 
 #[cfg(test)]
 mod test {
-    use crate::platform;
+    #[cfg(feature = "fpga_realtime")]
     use caliptra_hw_model::HwModel;
     use mcu_builder::firmware;
     use mcu_hw_model::{InitParams, McuHwModel};
     use mcu_rom_common::LifecycleControllerState;
     use registers_generated::fuses;
+
+    use crate::platform;
 
     fn load_roms() -> (Vec<u8>, Vec<u8>) {
         if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
@@ -25,7 +27,7 @@ mod test {
             )
         } else {
             let rom_file = mcu_builder::test_rom_build(
-                Some(platform()),
+                platform(),
                 &firmware::hw_model_tests::SW_DIGEST_LOCK,
                 None,
             )

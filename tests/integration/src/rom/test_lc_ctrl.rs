@@ -19,12 +19,9 @@ mod test {
                     .unwrap(),
             )
         } else {
-            let rom_file = mcu_builder::test_rom_build(
-                Some(platform()),
-                &firmware::hw_model_tests::LC_CTRL,
-                None,
-            )
-            .unwrap();
+            let rom_file =
+                mcu_builder::test_rom_build(platform(), &firmware::hw_model_tests::LC_CTRL, None)
+                    .unwrap();
             (vec![], std::fs::read(&rom_file).unwrap())
         }
     }

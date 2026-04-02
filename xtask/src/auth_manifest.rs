@@ -4,7 +4,7 @@ use anyhow::Result;
 use caliptra_auth_man_types::AuthorizationManifest;
 use clap::Subcommand;
 use hex::ToHex;
-use mcu_builder::{CaliptraBuilder, ImageCfg};
+use mcu_builder::{CaliptraBuilder, ImageCfg, Platform};
 use zerocopy::FromBytes;
 
 #[derive(Subcommand)]
@@ -40,7 +40,7 @@ pub enum AuthManifestCommands {
 
 pub fn create(soc_images: &[ImageCfg], mcu_image: &ImageCfg, output: &str) -> Result<()> {
     let mut builder = CaliptraBuilder::new(
-        false,
+        Platform::Emulator,
         None,
         None,
         None,

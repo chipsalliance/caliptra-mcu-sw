@@ -4,8 +4,9 @@
 
 use std::path::PathBuf;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 
+use crate::Platform;
 use mcu_firmware_bundler::utils::find_workspace_directory;
 
 const EMU_USER_APP_MANIFEST: &str = "firmware-bundler/reference/emulator/user-app.toml";
@@ -13,23 +14,22 @@ const EMU_EXAMPLE_APP_MANIFEST: &str = "firmware-bundler/reference/emulator/exam
 const FPGA_USER_APP_MANIFEST: &str = "firmware-bundler/reference/fpga/user-app.toml";
 const FPGA_EXAMPLE_APP_MANIFEST: &str = "firmware-bundler/reference/fpga/example-app.toml";
 
-pub fn manifest_file(platform: Option<&str>, example_app: bool) -> Result<PathBuf> {
+pub fn manifest_file(platform: Platform, example_app: bool) -> Result<PathBuf> {
     let manifest = match platform {
-        Some("emulator") | None => {
+        Platform::Emulator => {
             if example_app {
                 EMU_EXAMPLE_APP_MANIFEST
             } else {
                 EMU_USER_APP_MANIFEST
             }
         }
-        Some("fpga") => {
+        Platform::Fpga => {
             if example_app {
                 FPGA_EXAMPLE_APP_MANIFEST
             } else {
                 FPGA_USER_APP_MANIFEST
             }
         }
-        _ => bail!("Invalid platform {platform:?}, supported options are 'emulator' or 'fpga'"),
     };
 
     find_workspace_directory().map(|w| w.join(manifest))

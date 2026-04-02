@@ -20,7 +20,7 @@ mod test {
     use caliptra_auth_man_types::{AuthManifestPrivKeysConfig, AuthManifestPubKeysConfig};
     use caliptra_image_gen::ImageGeneratorOwnerConfig;
     use caliptra_image_types::{ImageManifest, ImageOwnerPrivKeys, OwnerPubKeyConfig};
-    use mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries};
+    use mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries, Platform};
     use mcu_error::McuError;
     use mcu_hw_model::McuHwModel;
     use romtime::McuBootMilestones;
@@ -108,7 +108,7 @@ mod test {
 
         // Fall back to computing from compiled FW bundle
         let mut builder = CaliptraBuilder::new(
-            cfg!(feature = "fpga_realtime"),
+            Platform::from_feature_flag(),
             None,
             None,
             None,
@@ -393,7 +393,7 @@ mod test {
         };
 
         let mut builder = CaliptraBuilder::new(
-            cfg!(feature = "fpga_realtime"),
+            Platform::from_feature_flag(),
             None,
             None,
             None,
@@ -1223,8 +1223,8 @@ mod test {
         let secret_key = p384::SecretKey::random(&mut rand::thread_rng());
         let pub_point = secret_key.public_key().to_encoded_point(false);
 
-        let x_bytes: [u8; 48] = pub_point.x().unwrap().as_slice().try_into().unwrap();
-        let y_bytes: [u8; 48] = pub_point.y().unwrap().as_slice().try_into().unwrap();
+        let x_bytes: [u8; 48] = pub_point.x().unwrap()[..].try_into().unwrap();
+        let y_bytes: [u8; 48] = pub_point.y().unwrap()[..].try_into().unwrap();
         let priv_bytes: [u8; 48] = secret_key.to_bytes().into();
         (x_bytes, y_bytes, priv_bytes)
     }

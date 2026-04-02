@@ -58,5 +58,7 @@ zerocopy.workspace = true
 zip.workspace = true
 caliptra-bitstream-downloader.workspace = true
 
+size-history.workspace = true
+
 [build-dependencies]
 cc.workspace = true

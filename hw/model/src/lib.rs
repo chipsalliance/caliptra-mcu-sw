@@ -874,12 +874,8 @@ mod tests {
     use super::*;
     use mcu_builder::firmware;
 
-    fn platform() -> &'static str {
-        if cfg!(feature = "fpga_realtime") {
-            "fpga"
-        } else {
-            "emulator"
-        }
+    fn platform() -> mcu_builder::Platform {
+        mcu_builder::Platform::from_feature_flag()
     }
 
     #[test]
@@ -888,7 +884,7 @@ mod tests {
             binaries.test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)?
         } else {
             let rom_file = mcu_builder::test_rom_build(
-                Some(platform()),
+                platform(),
                 &firmware::hw_model_tests::MAILBOX_RESPONDER,
                 None,
             )?;

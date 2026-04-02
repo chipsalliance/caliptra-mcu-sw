@@ -8,7 +8,7 @@ mod test {
     use caliptra_image_types::ImageManifest;
     use chrono::{TimeZone, Utc};
     use hex::ToHex;
-    use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
+    use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg, Platform};
     use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
@@ -831,7 +831,7 @@ mod test {
 
         // Build the Caliptra builder with prebuilt paths (needed for tests that modify manifest)
         let builder = CaliptraBuilder::new(
-            false,
+            Platform::Emulator,
             Some(caliptra_rom_path),
             Some(caliptra_fw_path.clone()),
             Some(soc_manifest_path.clone()),
@@ -932,7 +932,7 @@ mod test {
 
         // Build the Caliptra runtime
         let mut builder = CaliptraBuilder::new(
-            false,
+            Platform::Emulator,
             None,
             None,
             None,

@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use mcu_builder::{rom_build, PROJECT_ROOT, TARGET};
+use mcu_builder::{rom_build, Platform, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
 use crate::emulator_cbinding;
@@ -218,11 +218,15 @@ pub(crate) fn test_panic_missing() -> Result<()> {
         .join("mcu-rom-emulator");
 
     // Check default build
-    rom_build(None, None, None)?;
+    rom_build(Platform::Emulator, None, None)?;
     check_no_panic(&rom_elf_path, "default")?;
 
     // Check test-flash-based-boot build
-    rom_build(None, Some("test-flash-based-boot".to_string()), None)?;
+    rom_build(
+        Platform::Emulator,
+        Some("test-flash-based-boot".to_string()),
+        None,
+    )?;
     check_no_panic(&rom_elf_path, "test-flash-based-boot")?;
 
     Ok(())

@@ -7,6 +7,7 @@ edition = "2021"
 [dependencies]
 anyhow.workspace = true
 caliptra-auth-man-gen.workspace = true
+clap.workspace = true
 caliptra-auth-man-types.workspace = true
 caliptra-builder.workspace = true
 caliptra-image-crypto.workspace = true
@@ -37,3 +38,4 @@ zip.workspace = true
 
 [features]
 parallel-build = ["dep:rayon"]
+fpga_realtime = []

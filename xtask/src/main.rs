@@ -3,7 +3,7 @@
 use caliptra_api_types::DeviceLifecycle;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
-use mcu_builder::ImageCfg;
+use mcu_builder::{ImageCfg, Platform};
 use mcu_firmware_bundler::args::Commands as BundleCommands;
 use std::path::PathBuf;
 
@@ -24,6 +24,7 @@ mod precheckin;
 mod registers;
 mod rom;
 mod runtime;
+mod size_history;
 mod test;
 
 #[cfg(feature = "fpga_realtime")]
@@ -109,14 +110,14 @@ enum Commands {
         output: Option<String>,
 
         /// Platform to build for. Default: emulator
-        #[arg(long)]
-        platform: Option<String>,
+        #[arg(long, value_enum, default_value_t = Platform::Emulator)]
+        platform: Platform,
     },
     /// Build ROM
     RomBuild {
         /// Platform to build for. Default: emulator
-        #[arg(long)]
-        platform: Option<String>,
+        #[arg(long, value_enum, default_value_t = Platform::Emulator)]
+        platform: Platform,
 
         /// Features to build ROM with.
         #[arg(long)]
@@ -139,8 +140,8 @@ enum Commands {
         output: Option<String>,
 
         /// Platform to build for. Default: emulator
-        #[arg(long)]
-        platform: Option<String>,
+        #[arg(long, value_enum, default_value_t = Platform::Emulator)]
+        platform: Platform,
 
         #[arg(long)]
         rom_features: Option<String>,
@@ -308,6 +309,8 @@ enum Commands {
         #[command(subcommand)]
         cmd: BundleCommands,
     },
+    /// Track firmware binary sizes across git history
+    SizeHistory,
 }
 
 #[derive(Subcommand)]
@@ -461,18 +464,18 @@ fn main() {
             mcu_cfgs,
             pldm_manifest,
         } => mcu_builder::all_build(mcu_builder::AllBuildArgs {
-            output: output.as_deref(),
-            platform: platform.as_deref(),
-            rom_features: rom_features.as_deref(),
-            runtime_features: runtime_features.as_deref(),
+            output: output.clone(),
+            platform: *platform,
+            rom_features: rom_features.clone(),
+            runtime_features: runtime_features.clone(),
             separate_runtimes: *separate_runtimes,
             soc_images: soc_images.clone(),
             mcu_cfgs: mcu_cfgs.clone(),
-            pldm_manifest: pldm_manifest.as_deref(),
+            pldm_manifest: pldm_manifest.clone(),
         }),
         Commands::EmulatorBuild { output } => {
             mcu_builder::emulator_build(mcu_builder::EmulatorBuildArgs {
-                output: output.as_deref(),
+                output: output.clone(),
             })
         }
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),
@@ -486,7 +489,7 @@ fn main() {
                 &features,
                 output.clone(),
                 false,
-                platform.as_deref(),
+                *platform,
                 None,
                 None,
             )
@@ -494,7 +497,7 @@ fn main() {
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild { platform, features } => {
-            mcu_builder::rom_build(platform.clone(), features.clone(), None).map(|_| ())
+            mcu_builder::rom_build(*platform, features.clone(), None).map(|_| ())
         }
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
@@ -587,6 +590,7 @@ fn main() {
             }
         },
         Commands::FirmwareBundler { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
+        Commands::SizeHistory => size_history::run().map_err(|e| anyhow::anyhow!("{}", e)),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);

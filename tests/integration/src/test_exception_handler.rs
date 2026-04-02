@@ -20,7 +20,7 @@ mod test {
                 .unwrap()
         } else {
             let rom_file = mcu_builder::test_rom_build(
-                Some(platform()),
+                platform(),
                 &firmware::hw_model_tests::EXCEPTION_HANDLER,
                 None,
             )
