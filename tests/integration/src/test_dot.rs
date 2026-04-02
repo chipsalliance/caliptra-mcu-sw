@@ -107,19 +107,10 @@ mod test {
         }
 
         // Fall back to computing from compiled FW bundle
-        let mut builder = CaliptraBuilder::new(
-            cfg!(feature = "fpga_realtime"),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let mut builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+            fpga: cfg!(feature = "fpga_realtime"),
+            ..Default::default()
+        });
         let fw_path = builder
             .get_caliptra_fw()
             .expect("Failed to get Caliptra FW");
@@ -392,19 +383,11 @@ mod test {
             temp_path
         };
 
-        let mut builder = CaliptraBuilder::new(
-            cfg!(feature = "fpga_realtime"),
-            None,
-            None,
-            None,
-            None,
-            Some(mcu_runtime_path),
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        let mut builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+            fpga: cfg!(feature = "fpga_realtime"),
+            mcu_firmware: Some(mcu_runtime_path),
+            ..Default::default()
+        })
         .with_owner_config(custom_owner_config)
         .with_auth_manifest_owner_config(auth_manifest_owner_config);
 

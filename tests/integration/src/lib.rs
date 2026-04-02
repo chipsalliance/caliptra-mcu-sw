@@ -135,11 +135,11 @@ mod test {
         } else {
             feature
         };
-        let output: PathBuf = mcu_builder::rom_build(
-            Some(platform().to_string()),
-            Some(feature.to_string()),
-            None,
-        )
+        let output: PathBuf = mcu_builder::rom_build(&mcu_builder::CaliptraBuildArgs {
+            platform: Some(platform()),
+            features: Some(feature),
+            ..Default::default()
+        })
         .expect("ROM build failed");
         assert!(output.exists());
         output
@@ -153,19 +153,13 @@ mod test {
         };
         let name = format!("runtime{}-{}.bin", feature_name, platform);
 
-        let feature_str: &[&str] = match feature {
-            Some(s) => &[s],
-            None => &[],
-        };
-
-        let output = mcu_builder::runtime_build_with_apps(
-            feature_str,
-            Some(name),
+        let output = mcu_builder::runtime_build_with_apps(&mcu_builder::CaliptraBuildArgs {
+            features: feature,
+            output_name: Some(name),
             example_app,
-            Some(platform),
-            None,
-            None,
-        )
+            platform: Some(platform),
+            ..Default::default()
+        })
         .expect("Runtime failed to compile");
         assert!(output.exists());
         output
@@ -228,19 +222,11 @@ mod test {
 
     fn build_test_binaries(feature: Option<&str>, rom_feature: Option<&str>) -> TestBinaries {
         let mcu_runtime = compile_runtime(feature, false);
-        let mut builder = CaliptraBuilder::new(
-            cfg!(feature = "fpga_realtime"),
-            None,
-            None,
-            None,
-            None,
-            Some(mcu_runtime.clone()),
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let mut builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+            fpga: cfg!(feature = "fpga_realtime"),
+            mcu_firmware: Some(mcu_runtime.clone()),
+            ..Default::default()
+        });
         let caliptra_rom = std::fs::read(
             builder
                 .get_caliptra_rom()
@@ -499,19 +485,12 @@ mod test {
         let mut caliptra_builder = if let Some(caliptra_builder) = caliptra_builder {
             caliptra_builder
         } else {
-            CaliptraBuilder::new(
-                false,
-                None,
-                None,
-                None,
-                None,
-                Some(runtime_path.clone()),
+            CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+                fpga: cfg!(feature = "fpga_realtime"),
+                mcu_firmware: Some(runtime_path.clone()),
                 soc_images,
-                None,
-                None,
-                None,
-                None,
-            )
+                ..Default::default()
+            })
         };
 
         if let Some(hw_revision) = hw_revision {
@@ -697,19 +676,15 @@ mod test {
 
         let vendor_pk_hash = binaries.vendor_pk_hash().map(|h| hex::encode(h));
 
-        Some(CaliptraBuilder::new(
-            false,
-            Some(caliptra_rom_path),
-            Some(caliptra_fw_path),
-            Some(soc_manifest_path),
+        Some(CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+            fpga: cfg!(feature = "fpga_realtime"),
+            caliptra_rom: Some(caliptra_rom_path),
+            caliptra_firmware: Some(caliptra_fw_path),
+            soc_manifest: Some(soc_manifest_path),
             vendor_pk_hash,
-            Some(runtime_path),
-            None,
-            None,
-            None,
-            None,
-            None,
-        ))
+            mcu_firmware: Some(runtime_path),
+            ..Default::default()
+        }))
     }
 
     fn run_test(feature: &str, example_app: bool) {
@@ -894,14 +869,13 @@ mod test {
         let test_runtime = target_binary(&name);
 
         println!("Compiling test firmware {}", &feature);
-        mcu_builder::runtime_build_with_apps(
-            &[feature],
-            Some(name),
-            true,
-            None,
-            Some(image_svn),
-            None,
-        )
+        mcu_builder::runtime_build_with_apps(&mcu_builder::CaliptraBuildArgs {
+            features: Some(feature),
+            output_name: Some(name),
+            example_app: true,
+            svn: Some(image_svn),
+            ..Default::default()
+        })
         .expect("Runtime build failed");
         assert!(test_runtime.exists());
 

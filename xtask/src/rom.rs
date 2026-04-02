@@ -5,8 +5,7 @@ use mcu_builder::PROJECT_ROOT;
 use std::process::Command;
 
 pub(crate) fn rom_run(trace: bool) -> Result<()> {
-    let platform = None;
-    let rom_binary = mcu_builder::rom_build(platform, None, None)?;
+    let rom_binary = mcu_builder::rom_build(&mcu_builder::CaliptraBuildArgs::default())?;
     let mut cargo_run_args = vec![
         "run",
         "-p",

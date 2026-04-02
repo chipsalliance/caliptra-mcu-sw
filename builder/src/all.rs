@@ -23,10 +23,10 @@ use zip::{
     ZipWriter,
 };
 
-use crate::CaliptraBuilder;
 use crate::PROJECT_ROOT;
 use crate::TARGET;
 use crate::{firmware, ImageCfg};
+use crate::{CaliptraBuildArgs, CaliptraBuilder};
 
 use std::{env::var, sync::OnceLock};
 
@@ -467,11 +467,11 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     // TODO: use temp files
     let platform = platform.unwrap_or("emulator");
     let rom_features = rom_features.unwrap_or_default();
-    let mcu_rom = crate::rom_build(
-        Some(platform.to_string()),
-        Some(rom_features.to_string()),
-        None,
-    )?;
+    let mcu_rom = crate::rom_build(&CaliptraBuildArgs {
+        platform: Some(platform),
+        features: Some(rom_features),
+        ..Default::default()
+    })?;
 
     let test_roms: Result<Vec<(PathBuf, String)>> =
         maybe_into_par_iter(firmware::REGISTERED_FW.to_vec())
@@ -484,8 +484,13 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 } else {
                     None
                 };
-                let bin_path =
-                    PathBuf::from(crate::test_rom_build(Some(platform), fwid, target_dir)?);
+                let bin_path = PathBuf::from(crate::test_rom_build(&CaliptraBuildArgs {
+                    platform: Some(platform),
+                    fwid: Some(fwid),
+                    target_dir,
+                    ..Default::default()
+                })?);
+
                 let filename = bin_path.file_name().unwrap().to_str().unwrap().to_string();
                 Ok((bin_path, filename))
             })
@@ -540,30 +545,28 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let base_runtime_file = tempfile::NamedTempFile::new().unwrap();
     let base_runtime_path = base_runtime_file.path().to_str().unwrap();
 
-    let mcu_runtime = &crate::runtime_build_with_apps(
-        &base_runtime_features,
-        Some(base_runtime_path.to_string()),
-        false,
-        Some(platform),
-        None,
-        None,
-    )?;
+    let base_runtime_features_str = if base_runtime_features.is_empty() {
+        None
+    } else {
+        Some(base_runtime_features.join(","))
+    };
 
-    let fpga = platform == "fpga";
+    let mcu_runtime = &crate::runtime_build_with_apps(&CaliptraBuildArgs {
+        features: base_runtime_features_str.as_deref(),
+        output_name: Some(base_runtime_path.to_string()),
+        example_app: false,
+        platform: Some(platform),
+        ..Default::default()
+    })?;
+
     let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none");
-    let mut caliptra_builder = crate::CaliptraBuilder::new(
-        fpga,
-        None,
-        None,
-        None,
-        None,
-        Some(mcu_runtime.into()),
-        soc_images.clone(),
+    let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
+        fpga: platform == "fpga",
+        mcu_firmware: Some(mcu_runtime.into()),
+        soc_images: soc_images.clone(),
         mcu_image_cfg,
-        None,
-        None,
-        None,
-    );
+        ..Default::default()
+    });
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_fw = caliptra_builder.get_caliptra_fw()?;
     let vendor_pk_hash = caliptra_builder.get_vendor_pk_hash()?.to_string();
@@ -614,11 +617,12 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             } else {
                 None
             };
-            match crate::rom_build(
-                Some(platform.to_string()),
-                Some(feature.to_string()),
+            match crate::rom_build(&CaliptraBuildArgs {
+                platform: Some(platform),
+                features: Some(feature),
                 target_dir,
-            ) {
+                ..Default::default()
+            }) {
                 Ok(rom_path) => {
                     let rom_name = format!("mcu-test-rom-feature-{}.bin", feature);
                     println!("Built feature ROM: {rom_path:?} -> {}", rom_name);
@@ -647,14 +651,14 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             let feature_runtime_path = feature_runtime_file.path().to_str().unwrap().to_string();
             let include_example_app = FEATURES_WITH_EXAMPLE_APP.contains(feature);
 
-            crate::runtime_build_with_apps(
-                &[feature],
-                Some(feature_runtime_path),
-                include_example_app,
-                Some(platform),
-                None,
+            crate::runtime_build_with_apps(&CaliptraBuildArgs {
+                features: Some(feature),
+                output_name: Some(feature_runtime_path),
+                example_app: include_example_app,
+                platform: Some(platform),
                 target_dir,
-            )?;
+                ..Default::default()
+            })?;
 
             let mcu_image_cfg =
                 get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature);
@@ -676,19 +680,16 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                     )
                 };
 
-            let mut caliptra_builder = crate::CaliptraBuilder::new(
-                fpga,
-                Some(caliptra_rom.clone()),
-                Some(caliptra_fw.clone()),
-                None,
-                Some(vendor_pk_hash.clone()),
-                Some(feature_runtime_file.path().to_path_buf()),
-                feature_soc_images.clone(),
-                mcu_image_cfg.clone(),
-                None,
-                None,
-                None,
-            );
+            let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
+                fpga: platform == "fpga",
+                caliptra_rom: Some(caliptra_rom.clone()),
+                caliptra_firmware: Some(caliptra_fw.clone()),
+                vendor_pk_hash: Some(vendor_pk_hash.clone()),
+                mcu_firmware: Some(feature_runtime_file.path().to_path_buf()),
+                soc_images: feature_soc_images.clone(),
+                mcu_image_cfg: mcu_image_cfg.clone(),
+                ..Default::default()
+            });
             let feature_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
             caliptra_builder.get_soc_manifest(feature_soc_manifest_file.path().to_str())?;
 
@@ -957,19 +958,20 @@ fn create_flash_image(
         0
     };
 
-    crate::flash_image::flash_image_create(
-        &caliptra_fw_path.map(|p| p.to_string_lossy().to_string()),
-        &soc_manifest_path.map(|p| p.to_string_lossy().to_string()),
-        &mcu_runtime_path.map(|p| p.to_string_lossy().to_string()),
-        &Some(
+    crate::flash_image::flash_image_create(&CaliptraBuildArgs {
+        caliptra_firmware: caliptra_fw_path,
+        soc_manifest: soc_manifest_path,
+        mcu_firmware: mcu_runtime_path,
+        soc_image_paths: Some(
             soc_images_paths
                 .iter()
                 .map(|p| p.to_string_lossy().to_string())
                 .collect(),
         ),
-        flash_offset,
-        flash_image_path.to_str().unwrap(),
-    )?;
+        offset: flash_offset,
+        output_path: Some(flash_image_path.to_string_lossy().to_string()),
+        ..Default::default()
+    })?;
 
     // For flash-based boot, write a valid partition table at offset 0
     if is_flash_based_boot {

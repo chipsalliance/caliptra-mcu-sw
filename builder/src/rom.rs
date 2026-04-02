@@ -6,50 +6,46 @@ use std::path::PathBuf;
 use anyhow::Result;
 
 use crate::utils::manifest_file;
-use crate::PROJECT_ROOT;
-use caliptra_builder::FwId;
+use crate::{CaliptraBuildArgs, PROJECT_ROOT};
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
 use mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 
-pub fn rom_build(
-    platform: Option<String>,
-    features: Option<String>,
-    target_dir: Option<PathBuf>,
-) -> Result<PathBuf> {
+pub fn rom_build(args: &CaliptraBuildArgs) -> Result<PathBuf> {
+    let platform = args.platform;
+    let features = args.features;
+    let target_dir = args.target_dir.clone();
+
     let feature_suffix = match &features {
-        Some(f) => format!("-{f}"),
-        None => String::new(),
+        Some(f) if !f.is_empty() => format!("-{f}"),
+        _ => String::new(),
     };
 
-    let target_name = format!(
-        "mcu-rom-{}",
-        platform.clone().unwrap_or_else(|| "emulator".to_string())
-    );
+    let target_name = format!("mcu-rom-{}", platform.unwrap_or("emulator"));
     let rom = format!("{target_name}{feature_suffix}");
-    let manifest = manifest_file(platform.as_deref(), false)?;
+    let manifest = manifest_file(platform, false)?;
     let common = Common {
         manifest,
         target_dir,
         ..Default::default()
     };
-    let rom_size = rom_size_for_platform(platform.as_deref().unwrap_or("emulator"));
+    let rom_size = rom_size_for_platform(platform.unwrap_or("emulator"));
     let rom_binary = common.release_dir().map(|t| t.join(format!("{rom}.bin")))?;
     let build_cmd = Commands::Build {
         common,
         ld: LdArgs::default(),
         build: BuildArgs {
-            rom_features: features.clone(),
+            rom_features: features.filter(|s| !s.is_empty()).map(|s| s.to_string()),
             ..Default::default()
         },
         target: Some(target_name.clone()),
     };
 
     mcu_firmware_bundler::execute(build_cmd)?;
-    std::fs::rename(
-        rom_binary.with_file_name(format!("{target_name}.bin")),
-        &rom_binary,
-    )?;
+    let bundler_output = rom_binary.with_file_name(format!("{target_name}.bin"));
+    if bundler_output != rom_binary {
+        std::fs::rename(bundler_output, &rom_binary)?;
+    }
     assert!(rom_binary.exists(), "{rom_binary:?} does not exist");
     append_rom_digest(&rom_binary, rom_size)?;
     Ok(rom_binary)
@@ -75,12 +71,12 @@ fn rom_size_for_platform(platform: &str) -> usize {
     }
 }
 
-pub fn test_rom_build(
-    platform: Option<&str>,
-    fwid: &FwId,
-    target_dir: Option<PathBuf>,
-) -> Result<String> {
-    let platform = platform.unwrap_or("emulator");
+pub fn test_rom_build(args: &CaliptraBuildArgs) -> Result<String> {
+    let platform = args.platform.unwrap_or("emulator");
+    let fwid = args
+        .fwid
+        .ok_or_else(|| anyhow::anyhow!("fwid is required for test_rom_build"))?;
+    let target_dir = args.target_dir.clone();
 
     let template_name = if platform == "fpga" {
         "fpga.toml"

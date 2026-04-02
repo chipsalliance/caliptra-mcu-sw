@@ -19,11 +19,11 @@ mod test {
                 .test_rom(&firmware::hw_model_tests::EXCEPTION_HANDLER)
                 .unwrap()
         } else {
-            let rom_file = mcu_builder::test_rom_build(
-                Some(platform()),
-                &firmware::hw_model_tests::EXCEPTION_HANDLER,
-                None,
-            )
+            let rom_file = mcu_builder::test_rom_build(&mcu_builder::CaliptraBuildArgs {
+                platform: Some(platform()),
+                fwid: Some(&firmware::hw_model_tests::EXCEPTION_HANDLER),
+                ..Default::default()
+            })
             .unwrap();
             std::fs::read(&rom_file).unwrap()
         };

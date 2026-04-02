@@ -35,22 +35,22 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     }
     // include debug features since this is interactive
     features.push("debug");
-    let rom_binary = mcu_builder::rom_build(None, None, None)?;
-    let tock_binary = runtime_build_with_apps(&features, None, false, None, None, None)?;
+    let features_str = features.join(",");
+    let rom_binary = mcu_builder::rom_build(&mcu_builder::CaliptraBuildArgs::default())?;
+    let tock_binary = runtime_build_with_apps(&mcu_builder::CaliptraBuildArgs {
+        features: Some(&features_str),
+        ..Default::default()
+    })?;
 
-    let mut caliptra_builder = CaliptraBuilder::new(
-        false,
+    let mut caliptra_builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
         caliptra_rom,
         caliptra_firmware,
         soc_manifest,
         vendor_pk_hash,
-        Some(tock_binary.clone()),
+        mcu_firmware: Some(tock_binary.clone()),
         soc_images,
-        None,
-        None,
-        None,
-        None,
-    );
+        ..Default::default()
+    });
 
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_firmware = caliptra_builder.get_caliptra_fw()?;

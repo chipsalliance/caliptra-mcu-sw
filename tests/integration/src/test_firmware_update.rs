@@ -79,28 +79,20 @@ mod test {
             .path()
             .to_path_buf();
 
-        let caliptra_fw_path_str = caliptra_fw_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string());
-        let soc_manifest_path_str = soc_manifest_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string());
-        let mcu_runtime_path_str = mcu_runtime_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string());
-        mcu_builder::flash_image::flash_image_create(
-            &caliptra_fw_path_str,
-            &soc_manifest_path_str,
-            &mcu_runtime_path_str,
-            &Some(
+        mcu_builder::flash_image::flash_image_create(&mcu_builder::CaliptraBuildArgs {
+            caliptra_firmware: caliptra_fw_path,
+            soc_manifest: soc_manifest_path,
+            mcu_firmware: mcu_runtime_path,
+            soc_image_paths: Some(
                 soc_images_paths
                     .iter()
                     .map(|p| p.to_string_lossy().to_string())
                     .collect(),
             ),
-            flash_offset,
-            flash_image_path.to_str().unwrap(),
-        )
+            offset: 0,
+            output_path: Some(flash_image_path.to_string_lossy().to_string()),
+            ..Default::default()
+        })
         .expect("Failed to create flash image");
 
         if let Some(partition_table) = partition_table {
@@ -256,19 +248,12 @@ mod test {
             feature: feature.to_string(),
         };
 
-        let mut update_builder = CaliptraBuilder::new(
-            false,
-            None,
-            None,
-            None,
-            None,
-            Some(update_runtime_firmware.clone()),
-            Some(update_soc_images.clone()),
-            Some(mcu_cfg.clone()),
-            None,
-            None,
-            None,
-        );
+        let mut update_builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+            mcu_firmware: Some(update_runtime_firmware.clone()),
+            soc_images: Some(update_soc_images.clone()),
+            mcu_image_cfg: Some(mcu_cfg.clone()),
+            ..Default::default()
+        });
         let update_caliptra_fw = update_builder
             .get_caliptra_fw()
             .expect("Failed to build Caliptra firmware for update");
@@ -653,19 +638,16 @@ mod test {
         };
 
         // Build the Caliptra builder with prebuilt paths
-        let builder = CaliptraBuilder::new(
-            false,
-            Some(caliptra_rom_path),
-            Some(caliptra_fw_path.clone()),
-            Some(soc_manifest_path.clone()),
-            Some(vendor_pk_hash),
-            Some(test_runtime.clone()),
-            Some(soc_images.clone()),
-            Some(mcu_cfg),
-            None,
-            None,
-            None,
-        );
+        let builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+            caliptra_rom: Some(caliptra_rom_path),
+            caliptra_firmware: Some(caliptra_fw_path.clone()),
+            soc_manifest: Some(soc_manifest_path.clone()),
+            vendor_pk_hash: Some(vendor_pk_hash),
+            mcu_firmware: Some(test_runtime.clone()),
+            soc_images: Some(soc_images.clone()),
+            mcu_image_cfg: Some(mcu_cfg),
+            ..Default::default()
+        });
 
         // Create partition table matching what's used in the build path
         // This is needed for tests that modify flash images
@@ -771,19 +753,12 @@ mod test {
         };
 
         // Build the Runtime image
-        let mut builder = CaliptraBuilder::new(
-            false,
-            None,
-            None,
-            None,
-            None,
-            Some(test_runtime.clone()),
-            Some(soc_images.clone()),
-            Some(mcu_cfg.clone()),
-            None,
-            None,
-            None,
-        );
+        let mut builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+            mcu_firmware: Some(test_runtime.clone()),
+            soc_images: Some(soc_images.clone()),
+            mcu_image_cfg: Some(mcu_cfg.clone()),
+            ..Default::default()
+        });
 
         // Build Caliptra firmware
         let caliptra_fw = builder

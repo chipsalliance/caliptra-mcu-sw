@@ -6,29 +6,25 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
-#![allow(unused_variables)]
-#![allow(unused_imports)]
-#![allow(dead_code)]
-
 use crate::utils::manifest_file;
-use crate::PROJECT_ROOT;
+use crate::{CaliptraBuildArgs, PROJECT_ROOT};
 use anyhow::Result;
 use mcu_firmware_bundler::args::{
     BuildArgs, BundleArgs, Commands as BundleCommands, Common, LdArgs,
 };
 use std::path::PathBuf;
 
-pub fn runtime_build_with_apps(
-    features: &[&str],
-    output_name: Option<String>,
-    example_app: bool,
-    platform: Option<&str>,
-    svn: Option<u16>,
-    target_dir: Option<PathBuf>,
-) -> Result<PathBuf> {
+pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
+    let features = args.features;
+    let output_name = args.output_name.clone();
+    let example_app = args.example_app;
+    let platform = args.platform;
+    let svn = args.svn;
+    let target_dir = args.target_dir.clone();
+
     let manifest = manifest_file(platform, example_app)?;
-    let platform = platform.unwrap_or("emulator");
-    let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform));
+    let platform_str = platform.unwrap_or("emulator");
+    let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform_str));
 
     let common = Common {
         manifest,
@@ -38,11 +34,7 @@ pub fn runtime_build_with_apps(
     };
     let runtime_bin = common.release_dir()?.join(&output_name);
 
-    let runtime_features = if features.is_empty() {
-        None
-    } else {
-        Some(features.join(","))
-    };
+    let runtime_features = features.filter(|s| !s.is_empty()).map(|f| f.to_string());
     let bundle_cmd = BundleCommands::Bundle {
         common,
         ld: LdArgs::default(),

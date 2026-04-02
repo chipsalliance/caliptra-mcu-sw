@@ -39,19 +39,12 @@ pub enum AuthManifestCommands {
 }
 
 pub fn create(soc_images: &[ImageCfg], mcu_image: &ImageCfg, output: &str) -> Result<()> {
-    let mut builder = CaliptraBuilder::new(
-        false,
-        None,
-        None,
-        None,
-        None,
-        Some(mcu_image.clone().path),
-        Some(soc_images.to_vec()),
-        Some(mcu_image.clone()),
-        None,
-        None,
-        None,
-    );
+    let mut builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+        mcu_firmware: Some(mcu_image.clone().path),
+        soc_images: Some(soc_images.to_vec()),
+        mcu_image_cfg: Some(mcu_image.clone()),
+        ..Default::default()
+    });
     let path = builder.get_soc_manifest(None)?;
     std::fs::copy(&path, output)?;
     println!("Auth Manifest created at: {}", output);

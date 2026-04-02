@@ -23,11 +23,11 @@ mod test {
                     .unwrap(),
             )
         } else {
-            let rom_file = mcu_builder::test_rom_build(
-                Some(platform()),
-                &firmware::hw_model_tests::OTP_BLANK_CHECK,
-                None,
-            )
+            let rom_file = mcu_builder::test_rom_build(&mcu_builder::CaliptraBuildArgs {
+                platform: Some(platform()),
+                fwid: Some(&firmware::hw_model_tests::OTP_BLANK_CHECK),
+                ..Default::default()
+            })
             .unwrap();
             (vec![], std::fs::read(&rom_file).unwrap())
         }

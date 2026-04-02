@@ -218,11 +218,14 @@ pub(crate) fn test_panic_missing() -> Result<()> {
         .join("mcu-rom-emulator");
 
     // Check default build
-    rom_build(None, None, None)?;
+    rom_build(&mcu_builder::CaliptraBuildArgs::default())?;
     check_no_panic(&rom_elf_path, "default")?;
 
     // Check test-flash-based-boot build
-    rom_build(None, Some("test-flash-based-boot".to_string()), None)?;
+    rom_build(&mcu_builder::CaliptraBuildArgs {
+        features: Some("test-flash-based-boot"),
+        ..Default::default()
+    })?;
     check_no_panic(&rom_elf_path, "test-flash-based-boot")?;
 
     Ok(())

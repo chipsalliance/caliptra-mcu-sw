@@ -88,34 +88,29 @@ pub struct CaliptraBuilder {
     auth_manifest_owner_config: Option<AuthManifestOwnerConfig>,
 }
 
+use crate::CaliptraBuildArgs;
+
 impl CaliptraBuilder {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        fpga: bool,
-        caliptra_rom: Option<PathBuf>,
-        caliptra_firmware: Option<PathBuf>,
-        soc_manifest: Option<PathBuf>,
-        vendor_pk_hash: Option<String>,
-        mcu_firmware: Option<PathBuf>,
-        soc_images: Option<Vec<ImageCfg>>,
-        mcu_image_cfg: Option<ImageCfg>,
-        soc_manifest_svn: Option<u32>,
-        vendor: Option<String>,
-        model: Option<String>,
-    ) -> Self {
+    pub fn new(args: &CaliptraBuildArgs) -> Self {
         Self {
-            fpga,
-            caliptra_rom,
-            caliptra_firmware,
-            soc_manifest,
-            vendor_pk_hash,
+            fpga: args.fpga,
+            caliptra_rom: args.caliptra_rom.clone(),
+            caliptra_firmware: args.caliptra_firmware.clone(),
+            soc_manifest: args.soc_manifest.clone(),
+            vendor_pk_hash: args.vendor_pk_hash.clone(),
             owner_pk_hash: None,
-            mcu_firmware,
-            soc_images,
-            mcu_image_cfg,
-            soc_manifest_svn,
-            vendor: vendor.unwrap_or_else(|| "ChipsAlliance".to_string()),
-            model: model.unwrap_or_else(|| "Caliptra-SS".to_string()),
+            mcu_firmware: args.mcu_firmware.clone(),
+            soc_images: args.soc_images.clone(),
+            mcu_image_cfg: args.mcu_image_cfg.clone(),
+            soc_manifest_svn: args.soc_manifest_svn,
+            vendor: args
+                .vendor
+                .clone()
+                .unwrap_or_else(|| "ChipsAlliance".to_string()),
+            model: args
+                .model
+                .clone()
+                .unwrap_or_else(|| "Caliptra-SS".to_string()),
             owner_config: None,
             auth_manifest_owner_config: None,
         }

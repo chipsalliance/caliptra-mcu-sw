@@ -481,20 +481,23 @@ fn main() {
             output,
             platform,
         } => {
-            let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            mcu_builder::runtime_build_with_apps(
-                &features,
-                output.clone(),
-                false,
-                platform.as_deref(),
-                None,
-                None,
-            )
+            let features_str = features.join(",");
+            mcu_builder::runtime_build_with_apps(&mcu_builder::CaliptraBuildArgs {
+                features: Some(&features_str),
+                output_name: output.clone(),
+                platform: platform.as_deref(),
+                ..Default::default()
+            })
             .map(|_| ())
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild { platform, features } => {
-            mcu_builder::rom_build(platform.clone(), features.clone(), None).map(|_| ())
+            mcu_builder::rom_build(&mcu_builder::CaliptraBuildArgs {
+                platform: platform.as_deref(),
+                features: features.as_deref(),
+                ..Default::default()
+            })
+            .map(|_| ())
         }
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
@@ -503,14 +506,15 @@ fn main() {
                 mcu_runtime,
                 soc_images,
                 output,
-            } => mcu_builder::flash_image::flash_image_create(
-                caliptra_fw,
-                soc_manifest,
-                mcu_runtime,
-                soc_images,
-                0,
-                output,
-            ),
+            } => mcu_builder::flash_image::flash_image_create(&mcu_builder::CaliptraBuildArgs {
+                caliptra_firmware: caliptra_fw.clone().map(PathBuf::from),
+                soc_manifest: soc_manifest.clone().map(PathBuf::from),
+                mcu_firmware: mcu_runtime.clone().map(PathBuf::from),
+                soc_image_paths: soc_images.clone(),
+                offset: 0,
+                output_path: Some(output.clone()),
+                ..Default::default()
+            }),
             FlashImageCommands::Verify { file, offset } => {
                 mcu_builder::flash_image::flash_image_verify(file, *offset)
             }

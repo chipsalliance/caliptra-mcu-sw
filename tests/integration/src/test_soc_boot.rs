@@ -76,28 +76,20 @@ mod test {
             .path()
             .to_path_buf();
 
-        let caliptra_fw_path_str = caliptra_fw_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string());
-        let soc_manifest_path_str = soc_manifest_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string());
-        let mcu_runtime_path_str = mcu_runtime_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string());
-        mcu_builder::flash_image::flash_image_create(
-            &caliptra_fw_path_str,
-            &soc_manifest_path_str,
-            &mcu_runtime_path_str,
-            &Some(
+        mcu_builder::flash_image::flash_image_create(&mcu_builder::CaliptraBuildArgs {
+            caliptra_firmware: caliptra_fw_path,
+            soc_manifest: soc_manifest_path,
+            mcu_firmware: mcu_runtime_path,
+            soc_image_paths: Some(
                 soc_images_paths
                     .iter()
                     .map(|p| p.to_string_lossy().to_string())
                     .collect(),
             ),
-            flash_offset,
-            flash_image_path.to_str().unwrap(),
-        )
+            offset: flash_offset,
+            output_path: Some(flash_image_path.to_string_lossy().to_string()),
+            ..Default::default()
+        })
         .expect("Failed to create flash image");
 
         if let Some(partition_table) = partition_table {
@@ -830,19 +822,15 @@ mod test {
             .encode_hex();
 
         // Build the Caliptra builder with prebuilt paths (needed for tests that modify manifest)
-        let builder = CaliptraBuilder::new(
-            false,
-            Some(caliptra_rom_path),
-            Some(caliptra_fw_path.clone()),
-            Some(soc_manifest_path.clone()),
-            Some(vendor_pk_hash),
-            Some(test_runtime.clone()),
-            Some(soc_images.clone()),
-            None,
-            None,
-            None,
-            None,
-        );
+        let builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+            caliptra_rom: Some(caliptra_rom_path),
+            caliptra_firmware: Some(caliptra_fw_path.clone()),
+            soc_manifest: Some(soc_manifest_path.clone()),
+            vendor_pk_hash: Some(vendor_pk_hash),
+            mcu_firmware: Some(test_runtime.clone()),
+            soc_images: Some(soc_images.clone()),
+            ..Default::default()
+        });
 
         // Create partition table matching what's used in the build path
         // This is needed for tests that modify flash images
@@ -931,19 +919,11 @@ mod test {
         ];
 
         // Build the Caliptra runtime
-        let mut builder = CaliptraBuilder::new(
-            false,
-            None,
-            None,
-            None,
-            None,
-            Some(test_runtime.clone()),
-            Some(soc_images.clone()),
-            None,
-            None,
-            None,
-            None,
-        );
+        let mut builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+            mcu_firmware: Some(test_runtime.clone()),
+            soc_images: Some(soc_images.clone()),
+            ..Default::default()
+        });
 
         // Build Caliptra firmware
         let caliptra_fw = builder
