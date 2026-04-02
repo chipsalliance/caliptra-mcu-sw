@@ -11,6 +11,10 @@ on:
 jobs:
   spdm_validator_tests:
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        branch: [main, main-2.1]
+      fail-fast: false
 
     env:
       CARGO_INCREMENTAL: 0
@@ -26,6 +30,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
+          ref: ${{ matrix.branch }}
           submodules: recursive
 
       - name: Test commit name
@@ -115,7 +120,7 @@ jobs:
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:
-          name: spdm-mctp-validator-test-results
+          name: spdm-mctp-validator-test-results-${{ matrix.branch }}
           path: |
             ${{ env.SPDM_VALIDATOR_DIR }}/test.log
             ${{ env.SPDM_VALIDATOR_DIR }}/caliptra_spdm_validator.pcap
@@ -157,7 +162,7 @@ jobs:
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         with:
-          name: spdm-doe-validator-test-results
+          name: spdm-doe-validator-test-results-${{ matrix.branch }}
           path: |
             ${{ env.SPDM_VALIDATOR_DIR }}/test.log
             ${{ env.SPDM_VALIDATOR_DIR }}/caliptra_spdm_validator.pcap
@@ -220,6 +225,6 @@ jobs:
         env:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
         with:
-          name: spdm-tdisp-ide-validator-test-results
+          name: spdm-tdisp-ide-validator-test-results-${{ matrix.branch }}
           path: |
             ${{ env.SPDM_VALIDATOR_DIR }}/tdisp_ide_validator_output.txt
