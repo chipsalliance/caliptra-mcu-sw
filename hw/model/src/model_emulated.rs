@@ -728,7 +728,7 @@ mod test {
                 .expect("Could not build MCU runtime");
         let mut caliptra_builder =
             mcu_builder::CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
-                mcu_firmware: Some(mcu_rom.clone().into()),
+                mcu_firmware: Some(mcu_runtime.clone()),
                 ..Default::default()
             });
         let caliptra_rom = caliptra_builder
