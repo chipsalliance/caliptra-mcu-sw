@@ -61,7 +61,6 @@ mod test {
 
     const TEST_HW_REVISION: &str = "2.0.0";
 
-    #[derive(Default)]
     pub struct TestParams<'a> {
         pub feature: Option<&'a str>,
         pub i3c_port: Option<u16>,
@@ -82,6 +81,28 @@ mod test {
         pub custom_mcu_rom: Option<Vec<u8>>,
         /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
         pub firmware_prefix: Option<Vec<u8>>,
+        pub vendor_pqc_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
+    }
+
+    impl Default for TestParams<'_> {
+        fn default() -> Self {
+            Self {
+                feature: None,
+                i3c_port: None,
+                dot_flash_initial_contents: None,
+                rom_only: false,
+                dot_enabled: false,
+                custom_caliptra_fw: None,
+                otp_memory: None,
+                flash_boot: false,
+                rom_feature: None,
+                active_i3c1: false,
+                lifecycle_controller_state: None,
+                custom_mcu_rom: None,
+                firmware_prefix: None,
+                vendor_pqc_type: Some(caliptra_image_types::FwVerificationPqcKeyType::LMS),
+            }
+        }
     }
     static PROJECT_ROOT: LazyLock<PathBuf> = LazyLock::new(|| {
         Path::new(&env!("CARGO_MANIFEST_DIR"))
@@ -379,10 +400,9 @@ mod test {
                 (None, caliptra_fw, soc_manifest, mcu_runtime)
             };
 
-        // TODO: read the PQC type
         mcu_hw_model::new(InitParams {
             fuses: Fuses {
-                fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
+                fuse_pqc_key_type: params.vendor_pqc_type.map(|t| t as u32).unwrap_or(0),
                 vendor_pk_hash,
                 ..Default::default()
             },
@@ -393,7 +413,7 @@ mod test {
             mcu_firmware: &mcu_firmware,
             vendor_pk_hash: Some(vendor_pk_hash_u8.try_into().unwrap()),
             active_mode: true,
-            vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
+            vendor_pqc_type: params.vendor_pqc_type,
             i3c_port: params.i3c_port,
             enable_mcu_uart_log: true,
             dot_flash_initial_contents: params.dot_flash_initial_contents,
