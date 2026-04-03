@@ -14,7 +14,7 @@ store-failure-output = true
 store-success-output = false
 failure-output = "immediate-final"
 fail-fast = false
-slow-timeout = { period = "30m", terminate-after = 6 }
+slow-timeout = { period = "30s", terminate-after = 30 }
 # TODO: Failing tests tracked in https://github.com/chipsalliance/caliptra-mcu-sw/issues/1335.
 default-filter = """
 all()
