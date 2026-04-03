@@ -77,9 +77,10 @@ impl RequestResponseTest {
         }
     }
 
-    fn prep_test_messages(&mut self) {
-        if cfg!(feature = "test-mcu-mbox-soc-requester-loopback") {
+    fn prep_test_messages(&mut self, test_feature: &str) {
+        if test_feature == "test-mcu-mbox-soc-requester-loopback" {
             println!("Running test-mcu-mbox-soc-requester-loopback test");
+
             // Example test messages for SOC requester loopback
             self.push(
                 0x01,
@@ -103,8 +104,8 @@ impl RequestResponseTest {
     }
 
     #[allow(clippy::result_unit_err)]
-    fn test_send_receive(&mut self) -> Result<(), ()> {
-        self.prep_test_messages();
+    fn test_send_receive(&mut self, test_feature: &str) -> Result<(), ()> {
+        self.prep_test_messages(test_feature);
         let test_messages = self.test_messages.clone();
         for message_pair in &test_messages {
             let actual_response = self
@@ -115,7 +116,7 @@ impl RequestResponseTest {
         Ok(())
     }
 
-    pub fn run(&self) {
+    pub fn run(&self, test_feature: String) {
         let transport_clone = self.mbox.clone();
         std::thread::spawn(move || {
             wait_for_runtime_start();
@@ -126,7 +127,7 @@ impl RequestResponseTest {
             println!("Emulator: MCU MBOX Test Thread Starting:");
             let mut test = RequestResponseTest::new(transport_clone);
 
-            if test.test_send_receive().is_err() {
+            if test.test_send_receive(&test_feature).is_err() {
                 println!("Failed");
                 exit(-1);
             } else {

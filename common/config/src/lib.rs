@@ -30,6 +30,10 @@ pub struct McuMemoryMap {
     pub i3c_size: u32,
     pub i3c_properties: MemoryRegionType,
 
+    pub i3c1_offset: u32,
+    pub i3c1_size: u32,
+    pub i3c1_properties: MemoryRegionType,
+
     pub mci_offset: u32,
     pub mci_size: u32,
     pub mci_properties: MemoryRegionType,
@@ -56,7 +60,7 @@ impl Default for McuMemoryMap {
         McuMemoryMap {
             rom_offset: 0x8000_0000,
             rom_size: 32 * 1024,
-            rom_stack_size: 0x2f00,
+            rom_stack_size: 0x2d00,
             rom_estack_size: 0x200,
             rom_properties: MemoryRegionType::MEMORY,
 
@@ -74,6 +78,10 @@ impl Default for McuMemoryMap {
             i3c_offset: 0x2000_4000,
             i3c_size: 0x1000,
             i3c_properties: MemoryRegionType::MMIO,
+
+            i3c1_offset: 0x2000_5000,
+            i3c1_size: 0x1000,
+            i3c1_properties: MemoryRegionType::MMIO,
 
             mci_offset: 0x2100_0000,
             mci_size: 0xe0_0000,
@@ -103,25 +111,41 @@ impl Default for McuMemoryMap {
 #[repr(C)]
 pub struct McuStraps {
     pub i3c_static_addr: u8,
-    pub axi_user0: u32,
-    pub axi_user1: u32,
+    pub i3c1_static_addr: u8,
+    /// Selects which I3C core is used for MCTP transport.
+    /// 0 = i3c0 (default), 1 = i3c1.
+    pub active_i3c: u8,
     pub cptra_wdt_cfg0: u32,
     pub cptra_wdt_cfg1: u32,
     pub mcu_wdt_cfg0: u32,
     pub mcu_wdt_cfg1: u32,
+    pub mcu_wdt_cfg0_manufacturing: u32,
+    pub mcu_wdt_cfg1_manufacturing: u32,
+    pub mcu_wdt_cfg0_debug: u32,
+    pub mcu_wdt_cfg1_debug: u32,
 }
 
 impl McuStraps {
     pub const fn default() -> Self {
         McuStraps {
             i3c_static_addr: 0x3a,
-            axi_user0: 0xcccc_cccc,
-            axi_user1: 0xdddd_dddd,
+            i3c1_static_addr: 0x3c,
+            active_i3c: 0,
             cptra_wdt_cfg0: 100_000_000,
             cptra_wdt_cfg1: 100_000_000,
             mcu_wdt_cfg0: 20_000_000,
             mcu_wdt_cfg1: 1,
+            mcu_wdt_cfg0_manufacturing: 80_000_000,
+            mcu_wdt_cfg1_manufacturing: 1,
+            mcu_wdt_cfg0_debug: 80_000_000,
+            mcu_wdt_cfg1_debug: 1,
         }
+    }
+}
+
+impl Default for McuStraps {
+    fn default() -> Self {
+        Self::default()
     }
 }
 
@@ -155,20 +179,56 @@ impl MemoryRegionType {
 
 impl McuMemoryMap {
     /// Size of each MRAC region in bytes (256MB = 0x10000000)
-    #[cfg(not(target_arch = "riscv32"))]
     const MRAC_REGION_SIZE: u32 = 0x1000_0000;
 
     /// Get the MRAC region index for a given address
-    #[cfg(not(target_arch = "riscv32"))]
-    fn get_mrac_region(address: u32) -> usize {
-        let region = (address / Self::MRAC_REGION_SIZE) as usize;
-        debug_assert!(
-            region < 16,
-            "MRAC region index {} out of bounds for address 0x{:08x}",
-            region,
-            address
-        );
-        region
+    const fn get_mrac_region(address: u32) -> usize {
+        (address / Self::MRAC_REGION_SIZE) as usize
+    }
+
+    /// Process the specified region, and update the concatenated region types appropriately.
+    const fn process_region(
+        offset: u32,
+        size: u32,
+        region_type: MemoryRegionType,
+        region_assigned: &mut [bool],
+        region_types: &mut [MemoryRegionType],
+    ) {
+        if size == 0 {
+            return;
+        }
+
+        let start_region = Self::get_mrac_region(offset);
+        let end_address = offset.saturating_add(size).saturating_sub(1);
+        let end_region = Self::get_mrac_region(end_address);
+
+        // Apply region type to all affected MRAC regions
+        let mut region_idx = start_region;
+        while region_idx <= end_region {
+            match (
+                region_assigned[region_idx],
+                region_types[region_idx],
+                region_type,
+            ) {
+                // If region not yet assigned, use the new type
+                (false, _, new_type) => {
+                    region_types[region_idx] = new_type;
+                    region_assigned[region_idx] = true;
+                }
+                // If current is MEMORY and new is MMIO, convert to MMIO (safety first)
+                (true, MemoryRegionType::MEMORY, MemoryRegionType::MMIO) => {
+                    region_types[region_idx] = MemoryRegionType::MMIO;
+                }
+                // If current is MMIO and new is MEMORY, keep MMIO (safety first)
+                (true, MemoryRegionType::MMIO, MemoryRegionType::MEMORY) => {
+                    // Keep existing MMIO type
+                }
+                // For any other combination, keep the existing type
+                _ => {}
+            };
+
+            region_idx += 1;
+        }
     }
 
     /// Compute the MRAC register value based on the memory map
@@ -179,74 +239,104 @@ impl McuMemoryMap {
     ///               01 = no side effects, cacheable
     ///               10 = side effects, not cacheable
     ///               11 = invalid (prevented by hardware)
-    #[cfg(not(target_arch = "riscv32"))]
-    pub fn compute_mrac(&self) -> u32 {
+    pub const fn compute_mrac(&self) -> u32 {
+        // This is hardware defined as the register is 32 bits and each region consumes 2 bits.
+        const REGION_COUNT: usize = 16;
+
         // Track which regions have been assigned and their types
-        let mut region_types = [MemoryRegionType::UNMAPPED; 16];
-        let mut region_assigned = [false; 16];
+        let mut region_types = [MemoryRegionType::UNMAPPED; REGION_COUNT];
+        let mut region_assigned = [false; REGION_COUNT];
 
         // Helper function to process a memory region
-        let mut process_region = |offset: u32, size: u32, region_type: MemoryRegionType| {
-            if size == 0 {
-                return;
-            }
-
-            let start_region = Self::get_mrac_region(offset);
-            let end_address = offset.saturating_add(size).saturating_sub(1);
-            let end_region = Self::get_mrac_region(end_address);
-
-            // Apply region type to all affected MRAC regions
-            for region_idx in start_region..=end_region.min(15) {
-                match (
-                    region_assigned[region_idx],
-                    region_types[region_idx],
-                    region_type,
-                ) {
-                    // If region not yet assigned, use the new type
-                    (false, _, new_type) => {
-                        region_types[region_idx] = new_type;
-                        region_assigned[region_idx] = true;
-                    }
-                    // If current is MEMORY and new is MMIO, convert to MMIO (safety first)
-                    (true, MemoryRegionType::MEMORY, MemoryRegionType::MMIO) => {
-                        #[cfg(debug_assertions)]
-                        {
-                            println!("MRAC WARNING: Region {} (0x{:x}000_0000) has both MEMORY and MMIO - choosing MMIO for safety", region_idx, region_idx);
-                        }
-                        region_types[region_idx] = MemoryRegionType::MMIO;
-                    }
-                    // If current is MMIO and new is MEMORY, keep MMIO (safety first)
-                    (true, MemoryRegionType::MMIO, MemoryRegionType::MEMORY) => {
-                        #[cfg(debug_assertions)]
-                        {
-                            println!("MRAC WARNING: Region {} (0x{:x}000_0000) has both MMIO and MEMORY - keeping MMIO for safety", region_idx, region_idx);
-                        }
-                        // Keep existing MMIO type
-                    }
-                    // For any other combination, keep the existing type
-                    _ => {}
-                }
-            }
-        };
 
         // Process each memory region directly from the memory map
-        process_region(self.rom_offset, self.rom_size, self.rom_properties);
-        process_region(self.sram_offset, self.sram_size, self.sram_properties);
-        process_region(self.dccm_offset, self.dccm_size, self.dccm_properties);
-        process_region(self.pic_offset, 0x1000, self.pic_properties); // PIC doesn't have explicit size, use 4KB
-        process_region(self.i3c_offset, self.i3c_size, self.i3c_properties);
-        process_region(self.mci_offset, self.mci_size, self.mci_properties);
-        process_region(self.mbox_offset, self.mbox_size, self.mbox_properties);
-        process_region(self.soc_offset, self.soc_size, self.soc_properties);
-        process_region(self.otp_offset, self.otp_size, self.otp_properties);
-        process_region(self.lc_offset, self.lc_size, self.lc_properties);
+        Self::process_region(
+            self.rom_offset,
+            self.rom_size,
+            self.rom_properties,
+            &mut region_assigned,
+            &mut region_types,
+        );
+        Self::process_region(
+            self.sram_offset,
+            self.sram_size,
+            self.sram_properties,
+            &mut region_assigned,
+            &mut region_types,
+        );
+        Self::process_region(
+            self.dccm_offset,
+            self.dccm_size,
+            self.dccm_properties,
+            &mut region_assigned,
+            &mut region_types,
+        );
+        Self::process_region(
+            self.pic_offset,
+            0x1000,
+            self.pic_properties,
+            &mut region_assigned,
+            &mut region_types,
+        ); // PIC doesn't have explicit size, use 4KB
+        Self::process_region(
+            self.i3c_offset,
+            self.i3c_size,
+            self.i3c_properties,
+            &mut region_assigned,
+            &mut region_types,
+        );
+        Self::process_region(
+            self.i3c1_offset,
+            self.i3c1_size,
+            self.i3c1_properties,
+            &mut region_assigned,
+            &mut region_types,
+        );
+        Self::process_region(
+            self.mci_offset,
+            self.mci_size,
+            self.mci_properties,
+            &mut region_assigned,
+            &mut region_types,
+        );
+        Self::process_region(
+            self.mbox_offset,
+            self.mbox_size,
+            self.mbox_properties,
+            &mut region_assigned,
+            &mut region_types,
+        );
+        Self::process_region(
+            self.soc_offset,
+            self.soc_size,
+            self.soc_properties,
+            &mut region_assigned,
+            &mut region_types,
+        );
+        Self::process_region(
+            self.otp_offset,
+            self.otp_size,
+            self.otp_properties,
+            &mut region_assigned,
+            &mut region_types,
+        );
+        Self::process_region(
+            self.lc_offset,
+            self.lc_size,
+            self.lc_properties,
+            &mut region_assigned,
+            &mut region_types,
+        );
 
         // Build the 32-bit MRAC value
         let mut mrac_value = 0u32;
-        for (i, region_type) in region_types.iter().enumerate() {
+        let mut i = 0;
+        while i < REGION_COUNT {
+            let region_type = region_types[i];
             let bits = (if region_type.side_effect { 2 } else { 0 })
                 | (if region_type.cacheable { 1 } else { 0 });
             mrac_value |= bits << (i * 2);
+            i += 1;
         }
 
         mrac_value

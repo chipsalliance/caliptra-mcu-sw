@@ -1,0 +1,103 @@
+// Licensed under the Apache-2.0 license
+
+//! A module to combine the outputs of the build process into a single binary which can be loaded
+//! into an embedded execution environment.
+
+use std::cmp::Ordering;
+
+use anyhow::{bail, Result};
+use zerocopy::IntoBytes;
+
+use mcu_image_header::McuImageHeader;
+
+use crate::{
+    args::{BundleArgs, Common},
+    build::BuildOutput,
+    manifest::{Manifest, RuntimeVariant},
+    tbf::generate_tbf_header,
+};
+
+/// Take a collection of binaries and output a single binary which can be loaded into a memory
+/// block.
+///
+/// This could fail if the binaries aren't able to fit into the blob, or if a hard drive operation
+/// fails.
+pub fn bundle(
+    manifest: &Manifest,
+    output: &BuildOutput,
+    common: &Common,
+    bundle: &BundleArgs,
+) -> Result<()> {
+    // Determine the release directory which elf files will be placed by `rustc` and where we
+    // wish to place binaries.
+    let binary_dir = common.release_dir()?;
+
+    // Note: The ROM is a single application, so we don't have to do any bundling.  As such skip it.
+
+    // Build the binary into a byte vector.  The size of the embedded application at most in the
+    // Megabytes so this isn't too expensive and will save multiple disk operations.
+    let mut runtime = Vec::new();
+
+    // Detect if the svn option is set.  If so populate the McuImageHeader and prepend it to the
+    // bundled binary.
+    if let Some(svn) = common.svn {
+        runtime.extend_from_slice(
+            McuImageHeader {
+                svn,
+                ..Default::default()
+            }
+            .as_bytes(),
+        );
+    }
+    let header_len: u64 = runtime.len().try_into()?;
+
+    match &output.runtime {
+        RuntimeVariant::Kernel((kernel, instructions)) => {
+            runtime.append(&mut std::fs::read(&kernel.binary)?);
+
+            let base_addr = instructions.offset;
+            for app in output.apps.clone().into_iter() {
+                // Find the location the the binary should occupy in the blob.  There could be padding
+                // between the end of one application and the beginning of the next.
+                let app_start: usize =
+                    (app.instruction_block.offset - base_addr + header_len).try_into()?;
+                match runtime.len().cmp(&app_start) {
+                    Ordering::Less => runtime.resize(app_start, 0),
+                    Ordering::Greater => bail!(
+                        "Error in bundling, binary already exceeds app {} start offset",
+                        &app.binary.name
+                    ),
+                    Ordering::Equal => { /* no op */ }
+                };
+
+                let elf = app.binary.binary.with_extension("");
+                let header_bytes = generate_tbf_header(
+                    app.header,
+                    app.instruction_block,
+                    elf,
+                    app.binary.binary.clone(),
+                )?;
+                runtime.extend(header_bytes.into_iter());
+
+                let app_bin = std::fs::read(&app.binary.binary)?;
+                runtime.extend(app_bin.into_iter());
+            }
+        }
+        RuntimeVariant::BareMetal((bare_metal, _)) => {
+            runtime.append(&mut std::fs::read(&bare_metal.binary)?);
+        }
+    }
+
+    // Firmware validated by Caliptra is required to be 256 byte aligned.
+    let aligned_bin_len = runtime.len().next_multiple_of(256);
+    if aligned_bin_len != runtime.len() {
+        runtime.resize(aligned_bin_len, 0);
+    }
+
+    let name = match &bundle.bundle_name {
+        Some(n) => n,
+        None => &format!("runtime-{}.bin", &manifest.platform.name),
+    };
+    let runtime_file = binary_dir.join(name);
+    std::fs::write(runtime_file, runtime).map_err(|e| e.into())
+}

@@ -1,18 +1,45 @@
 // Licensed under the Apache-2.0 license
 
 mod all;
-mod apps;
 mod caliptra;
+pub mod features;
 pub mod firmware;
 pub mod flash_image;
 mod rom;
 mod runtime;
-mod tbf;
+mod utils;
 
-pub use all::{all_build, AllBuildArgs, FirmwareBinaries};
-pub use caliptra::{CaliptraBuilder, ImageCfg};
-pub use rom::{rom_build, rom_ld_script, test_rom_build};
-pub use runtime::{runtime_build_no_apps, runtime_build_with_apps, runtime_ld_script};
+pub use all::{
+    all_build, emulator_build, AllBuildArgs, EmulatorBinaries, EmulatorBuildArgs, FirmwareBinaries,
+};
+pub use caliptra::{AuthManifestOwnerConfig, CaliptraBuilder, ImageCfg};
+pub use rom::{rom_build, test_rom_build};
+pub use runtime::{bare_metal_build, runtime_build_with_apps};
+
+#[derive(Default, Clone)]
+pub struct CaliptraBuildArgs<'a> {
+    pub fpga: bool,
+    pub platform: Option<&'a str>,
+    pub features: Option<&'a str>,
+    pub target_dir: Option<PathBuf>,
+    pub fwid: Option<&'a caliptra_builder::FwId<'a>>,
+    pub output_name: Option<String>,
+    pub example_app: bool,
+    pub svn: Option<u16>,
+    pub caliptra_rom: Option<PathBuf>,
+    pub caliptra_firmware: Option<PathBuf>,
+    pub soc_manifest: Option<PathBuf>,
+    pub vendor_pk_hash: Option<String>,
+    pub mcu_firmware: Option<PathBuf>,
+    pub soc_images: Option<Vec<ImageCfg>>,
+    pub mcu_image_cfg: Option<ImageCfg>,
+    pub soc_manifest_svn: Option<u32>,
+    pub vendor: Option<String>,
+    pub model: Option<String>,
+    pub offset: usize,
+    pub output_path: Option<String>,
+    pub soc_image_paths: Option<Vec<String>>,
+}
 
 use anyhow::{anyhow, Result};
 use std::{
@@ -105,6 +132,7 @@ pub fn objcopy() -> Result<String> {
     })
 }
 
+#[allow(dead_code)]
 pub(crate) fn target_binary(name: &str) -> PathBuf {
     PROJECT_ROOT
         .join("target")

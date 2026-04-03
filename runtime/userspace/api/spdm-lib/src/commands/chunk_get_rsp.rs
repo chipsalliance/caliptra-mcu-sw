@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 use crate::chunk_ctx::ChunkError;
 use crate::chunk_ctx::LargeResponse;
-use crate::codec::{Codec, CommonCodec, MessageBuf};
+use crate::codec::{Codec, CommonCodec, DataKind, MessageBuf};
 use crate::commands::error_rsp::ErrorCode;
 use crate::context::SpdmContext;
 use crate::error::{CommandError, CommandResult};
@@ -24,36 +24,41 @@ impl CommonCodec for ChunkGetReq {}
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C, packed)]
-struct ChunkResponseFixed {
+struct ChunkResponseHdr {
+    spdm_version: u8,
+    req_resp_code: u8,
     chunk_sender_attr: ChunkSenderAttr,
     handle: u8,
     chunk_seq_num: u16,
     reserved: u16,
     chunk_size: u32,
 }
-impl CommonCodec for ChunkResponseFixed {}
+impl CommonCodec for ChunkResponseHdr {
+    const DATA_KIND: DataKind = DataKind::Header;
+}
 
 bitfield! {
-    #[derive(FromBytes, IntoBytes, Immutable)]
-    #[repr(C)]
-    struct ChunkSenderAttr(u8);
-    impl Debug;
-    u8;
-    pub last_chunk, set_last_chunk: 0, 0;
-    reserved, _: 7, 1;
+#[derive(FromBytes, IntoBytes, Immutable)]
+#[repr(C)]
+struct ChunkSenderAttr(u8);
+impl Debug;
+u8;
+pub last_chunk, set_last_chunk: 0, 0;
+reserved, _: 7, 1;
 }
 
 #[derive(FromBytes, IntoBytes, Immutable)]
 #[repr(C)]
 struct LargeResponseSize(u32);
-impl CommonCodec for LargeResponseSize {}
+impl CommonCodec for LargeResponseSize {
+    const DATA_KIND: DataKind = DataKind::Header;
+}
 
 pub(crate) fn max_chunked_resp_size(ctx: &SpdmContext) -> usize {
     let min_data_transfer_size = ctx.min_data_transfer_size();
-    let fixed_chunk_resp_size = size_of::<SpdmMsgHdr>() + size_of::<ChunkResponseFixed>();
 
     // compute max possible response size that can be transferred in chunks is less than the large response size
-    (min_data_transfer_size).saturating_sub(fixed_chunk_resp_size) * MAX_NUM_CHUNKS as usize
+    (min_data_transfer_size).saturating_sub(size_of::<ChunkResponseHdr>()) * MAX_NUM_CHUNKS as usize
         - size_of::<u32>()
 }
 
@@ -65,9 +70,9 @@ fn compute_chunk_size(ctx: &SpdmContext, chunk_seq_num: u16) -> CommandResult<(u
     } else {
         0
     };
-    let max_chunk_size = ctx.min_data_transfer_size().saturating_sub(
-        size_of::<SpdmMsgHdr>() + size_of::<ChunkResponseFixed>() + extra_field_size,
-    );
+    let max_chunk_size = ctx
+        .min_data_transfer_size()
+        .saturating_sub(size_of::<ChunkResponseHdr>() + extra_field_size);
 
     let (is_last_chunk, remaining_len) = ctx
         .large_resp_context
@@ -115,7 +120,8 @@ fn process_chunk_get<'a>(
     Ok((chunk_get_req.handle, chunk_get_req.chunk_seq_num))
 }
 
-fn encode_chunk_resp_fixed_fields(
+fn encode_chunk_response_hdr(
+    version: SpdmVersion,
     last_chunk: bool,
     handle: u8,
     chunk_seq_num: u16,
@@ -123,13 +129,14 @@ fn encode_chunk_resp_fixed_fields(
     rsp: &mut MessageBuf,
 ) -> CommandResult<usize> {
     let chunk_sender_attr = if last_chunk {
-        ChunkSenderAttr(1) // Set last_chunk bit
+        ChunkSenderAttr(1)
     } else {
-        ChunkSenderAttr(0) // Clear last_chunk bit
+        ChunkSenderAttr(0)
     };
 
-    // Prepare the fixed part of the chunk response
-    let chunk_response_fixed = ChunkResponseFixed {
+    let chunk_response_hdr = ChunkResponseHdr {
+        spdm_version: version.into(),
+        req_resp_code: ReqRespCode::ChunkResponse.into(),
         chunk_sender_attr,
         handle,
         chunk_seq_num,
@@ -137,8 +144,7 @@ fn encode_chunk_resp_fixed_fields(
         chunk_size: chunk_size as u32,
     };
 
-    // Encode the fixed part into the response buffer
-    chunk_response_fixed
+    chunk_response_hdr
         .encode(rsp)
         .map_err(|e| (false, CommandError::Codec(e)))
 }
@@ -157,7 +163,7 @@ async fn encode_chunk_data(
         .data_mut(chunk_size)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
-    if let Some(response) = ctx.large_resp_context.response() {
+    let bytes_copied = if let Some(response) = ctx.large_resp_context.response() {
         match response {
             LargeResponse::Certificate(cert_rsp) => {
                 // Get the chunk data from the certificate response
@@ -168,11 +174,17 @@ async fn encode_chunk_data(
                         offset,
                         chunk_buf,
                     )
-                    .await?;
-                rsp.pull_data(chunk_size)
-                    .map_err(|e| (false, CommandError::Codec(e)))?;
+                    .await?
             }
             LargeResponse::Measurements(meas_rsp) => {
+                // Get the session info for measurements chunked within a session
+                let session_info = match ctx.session_mgr.active_session_id() {
+                    Some(session_id) => match ctx.session_mgr.session_info_mut(session_id) {
+                        Ok(info) => Some(info),
+                        Err(e) => Err((false, CommandError::Session(e)))?,
+                    },
+                    None => None,
+                };
                 // Get the chunk data from the measurements response
                 meas_rsp
                     .get_chunk(
@@ -181,11 +193,9 @@ async fn encode_chunk_data(
                         ctx.device_certs_store,
                         offset,
                         chunk_buf,
-                        None,
+                        session_info,
                     )
-                    .await?;
-                rsp.pull_data(chunk_size)
-                    .map_err(|e| (false, CommandError::Codec(e)))?;
+                    .await?
             }
             LargeResponse::Vdm(_vdm_rsp) => {
                 todo!("implement chunking logic for VDM response")
@@ -195,9 +205,19 @@ async fn encode_chunk_data(
         Err((
             false,
             CommandError::Chunk(ChunkError::NoLargeResponseInProgress),
-        ))?;
+        ))?
+    };
+
+    // Trim unused tail when fewer bytes were copied than allocated.
+    // Do NOT call pull_data — the data pointer must stay at the
+    // reserved-header boundary for the Header-type prepend encoding.
+    if bytes_copied < chunk_size {
+        let excess = chunk_size - bytes_copied;
+        rsp.trim(rsp.msg_len() - excess)
+            .map_err(|e| (false, CommandError::Codec(e)))?;
     }
-    Ok(chunk_size)
+
+    Ok(bytes_copied)
 }
 
 async fn generate_chunk_response<'a>(
@@ -206,41 +226,51 @@ async fn generate_chunk_response<'a>(
     chunk_seq_num: u16,
     rsp: &mut MessageBuf<'a>,
 ) -> CommandResult<()> {
-    // Prepare the response
-    // Spdm Header first
-    let spdm_hdr = SpdmMsgHdr::new(
-        ctx.state.connection_info.version_number(),
-        ReqRespCode::ChunkResponse,
-    );
-    let mut payload_len = spdm_hdr
-        .encode(rsp)
+    let extra_field_size = if chunk_seq_num == 0 {
+        size_of::<LargeResponseSize>()
+    } else {
+        0
+    };
+    // Reserve header space for ChunkResponseHdr + optional LargeResponseSize.
+    // These will be prepended after we know the actual chunk data size.
+    let header_size = size_of::<ChunkResponseHdr>() + extra_field_size;
+    rsp.reserve(header_size)
         .map_err(|e| (false, CommandError::Codec(e)))?;
 
     let (chunk_size, last_chunk) = compute_chunk_size(ctx, chunk_seq_num)?;
     if chunk_size > ctx.large_resp_context.large_response_size() {
         Err((false, CommandError::InvalidChunkContext))?;
     }
-    // Encode fixed fields of the chunk response
-    payload_len +=
-        encode_chunk_resp_fixed_fields(last_chunk, handle, chunk_seq_num, chunk_size, rsp)?;
 
+    // Encode chunk data first (as payload) to determine actual bytes copied
+    let actual_chunk_size = encode_chunk_data(ctx, chunk_size, rsp).await?;
+
+    // Mark this chunk as sent with actual bytes transferred
+    ctx.large_resp_context.next_chunk_sent(actual_chunk_size);
+
+    // Now prepend headers in reverse order (innermost first)
+
+    // Prepend LargeResponseSize for the first chunk
     if chunk_seq_num == 0 {
-        // If this is the first chunk, we need to encapsulate the large response size
         let large_response_size =
             LargeResponseSize(ctx.large_resp_context.large_response_size() as u32);
-        payload_len += large_response_size
+        large_response_size
             .encode(rsp)
             .map_err(|e| (false, CommandError::Codec(e)))?;
     }
 
-    // Encode chunk data of chunk size
-    payload_len += encode_chunk_data(ctx, chunk_size, rsp).await?;
+    // Prepend ChunkResponseHdr (includes SpdmMsgHdr + chunk fixed fields)
+    let version = ctx.state.connection_info.version_number();
+    encode_chunk_response_hdr(
+        version,
+        last_chunk,
+        handle,
+        chunk_seq_num,
+        actual_chunk_size,
+        rsp,
+    )?;
 
-    // Mark this chunk as sent in the large response context
-    ctx.large_resp_context.next_chunk_sent(chunk_size);
-
-    rsp.push_data(payload_len)
-        .map_err(|e| (false, CommandError::Codec(e)))
+    Ok(())
 }
 
 pub(crate) async fn handle_chunk_get<'a>(

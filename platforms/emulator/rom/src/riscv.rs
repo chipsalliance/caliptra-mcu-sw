@@ -34,8 +34,21 @@ use mcu_rom_common::flash::flash_partition::FlashPartition;
 use mcu_rom_common::hil::FlashStorage;
 use mcu_rom_common::memory::SimpleFlash;
 use mcu_rom_common::{fatal_error, RomParameters};
+use mcu_rom_common::{DotRecoveryHandler, DOT_BLOB_SIZE};
 use romtime::HexWord;
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::{transmute, FromBytes, IntoBytes};
+
+/// DOT recovery handler using MCI mbox0.
+/// Reads a backup DOT blob from offset 2048 in the DOT flash memory region.
+struct TestDotRecoveryHandler {
+    blob: [u8; DOT_BLOB_SIZE],
+}
+
+impl DotRecoveryHandler for TestDotRecoveryHandler {
+    fn read_recovery_blob(&self) -> mcu_error::McuResult<[u8; DOT_BLOB_SIZE]> {
+        Ok(self.blob)
+    }
+}
 
 // re-export these so the common ROM can use it
 #[no_mangle]
@@ -70,6 +83,10 @@ pub extern "C" fn rom_entry() -> ! {
     let dot_flash: &dyn FlashStorage = &SimpleFlash::new(raw_dot_flash);
     let dot_flash = Some(dot_flash);
 
+    let axi_user0 = 0xcccc_ccccu32;
+    let axi_user1 = 0xdddd_ddddu32;
+    let mbox_axi_users = [axi_user0, axi_user1, 0, 0, 0];
+
     if cfg!(feature = "test-flash-based-boot") {
         // Initialize the flash controller for testing purposes
 
@@ -82,20 +99,12 @@ pub extern "C" fn rom_entry() -> ! {
             PARTITION_TABLE.offset,
             PARTITION_TABLE.size,
         )
-        .map_err(|_| {
-            fatal_error(EmulatorError::InitFlashPartitionDriver.into());
-        })
-        .ok()
-        .unwrap();
+        .unwrap_or_else(|_| fatal_error(EmulatorError::InitFlashPartitionDriver.into()));
 
         let boot_cfg = FlashBootCfg::new(&mut partition_table_driver);
         let active_partition = boot_cfg
             .get_active_partition()
-            .map_err(|_| {
-                fatal_error(EmulatorError::InitBootCfg.into());
-            })
-            .ok()
-            .unwrap();
+            .unwrap_or_else(|_| fatal_error(EmulatorError::InitBootCfg.into()));
 
         let partition_a = FlashPartition::new(
             &primary_flash_ctrl,
@@ -103,22 +112,14 @@ pub extern "C" fn rom_entry() -> ! {
             IMAGE_A_PARTITION.offset,
             IMAGE_A_PARTITION.size,
         )
-        .map_err(|_| {
-            fatal_error(EmulatorError::InitFlashPartitionA.into());
-        })
-        .ok()
-        .unwrap();
+        .unwrap_or_else(|_| fatal_error(EmulatorError::InitFlashPartitionA.into()));
         let partition_b = FlashPartition::new(
             &secondary_flash_ctrl,
             "Image B",
             IMAGE_B_PARTITION.offset,
             IMAGE_B_PARTITION.size,
         )
-        .map_err(|_| {
-            fatal_error(EmulatorError::InitFlashPartitionB.into());
-        })
-        .ok()
-        .unwrap();
+        .unwrap_or_else(|_| fatal_error(EmulatorError::InitFlashPartitionB.into()));
 
         let mut flash_image_partition_driver = match active_partition {
             PartitionId::A => {
@@ -135,6 +136,42 @@ pub extern "C" fn rom_entry() -> ! {
         mcu_rom_common::rom_start(RomParameters {
             flash_partition_driver: Some(&mut flash_image_partition_driver),
             dot_flash,
+            request_flash_boot: true,
+            cptra_mbox_axi_users: mbox_axi_users,
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            cptra_dma_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
+            ..Default::default()
+        });
+    } else if cfg!(feature = "hw-2-1") {
+        // Simple flash-based boot for hw-2-1 without partition tables.
+        // Uses flash image starting at offset 0.
+        let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
+
+        // Create a flash partition covering the entire flash for direct access
+        let mut flash_partition = FlashPartition::new(
+            &primary_flash_ctrl,
+            "Primary Flash",
+            0, // Start at offset 0
+            primary_flash_ctrl.capacity(),
+        )
+        .unwrap_or_else(|_| fatal_error(EmulatorError::InitFlashPartitionDriver.into()));
+
+        romtime::println!("[mcu-rom] Booting from flash");
+
+        mcu_rom_common::rom_start(RomParameters {
+            flash_partition_driver: Some(&mut flash_partition),
+            dot_flash,
+            // Let the generic wire (bit 29 of mci_reg_generic_input_wires[1]) control flash boot
+            // request_flash_boot defaults to false - emulator sets the wire when flash boot is requested
+            cptra_mbox_axi_users: mbox_axi_users,
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            cptra_dma_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         });
     } else if cfg!(any(
@@ -147,12 +184,61 @@ pub extern "C" fn rom_entry() -> ! {
             mcu_image_verifier: Some(&mcu_image_verifier),
             mcu_image_header_size: core::mem::size_of::<mcu_image_header::McuImageHeader>(),
             dot_flash,
+            otp_enable_integrity_check: true,
+            otp_enable_consistency_check: true,
+            cptra_mbox_axi_users: mbox_axi_users,
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            cptra_dma_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         };
         mcu_rom_common::rom_start(rom_parameters);
     } else {
+        // Read backup blob from DOT flash region
+        let recovery_backup_blob = {
+            const RECOVERY_BLOB_OFFSET: usize = 2048;
+            let mut blob = [0u8; DOT_BLOB_SIZE];
+            let mut i = 0;
+            while i < blob.len() {
+                blob[i] = unsafe { *EMULATOR_DOT_FLASH_ADDR.add(RECOVERY_BLOB_OFFSET + i) };
+                i += 1;
+            }
+            blob
+        };
+        let recovery_handler = TestDotRecoveryHandler {
+            blob: recovery_backup_blob,
+        };
+
+        // Create MCI mbox0 challenge/response transport for DOT recovery.
+        let challenge_transport = {
+            let mci_base: romtime::StaticRef<registers_generated::mci::regs::Mci> = unsafe {
+                romtime::StaticRef::new(
+                    MCU_MEMORY_MAP.mci_offset as *const registers_generated::mci::regs::Mci,
+                )
+            };
+            mcu_rom_common::Mbox0RecoveryTransport::new(mci_base)
+        };
+
         mcu_rom_common::rom_start(RomParameters {
             dot_flash,
+            cptra_mbox_axi_users: [axi_user0, axi_user1, 0, 0, 0],
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            cptra_dma_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
+            dot_recovery_handler: if cfg!(feature = "test-dot-recovery") {
+                Some(&recovery_handler)
+            } else {
+                None
+            },
+            dot_recovery_transport: if cfg!(feature = "test-dot-recovery") {
+                Some(&challenge_transport)
+            } else {
+                None
+            },
             ..Default::default()
         });
     }

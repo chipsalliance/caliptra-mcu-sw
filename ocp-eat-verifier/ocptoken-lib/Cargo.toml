@@ -1,0 +1,24 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "ocptoken-lib"
+version = "0.1.0"
+edition = "2021"
+authors = ["Caliptra Contributors"]
+
+[lib]
+name = "ocptoken"
+
+[features]
+default = ["openssl"]
+openssl = ["dep:openssl"]
+
+[dependencies]
+coset.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+openssl = { workspace = true, optional = true }
+corim-rs.workspace = true
+
+[dev-dependencies]
+openssl.workspace = true

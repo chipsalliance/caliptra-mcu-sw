@@ -20,6 +20,7 @@ mod image_loader;
 mod mcu_mbox;
 mod soc_env;
 mod spdm;
+mod vdm;
 
 #[cfg(target_arch = "riscv32")]
 mod riscv;
@@ -56,6 +57,10 @@ pub(crate) fn kernel() -> libtock_unittest::fake::Kernel {
 
 #[cfg(not(target_arch = "riscv32"))]
 fn main() {
+    if cfg!(feature = "test-do-nothing") {
+        #[allow(clippy::empty_loop)]
+        loop {}
+    }
     // build a fake kernel so that the app will at least start without Tock
     let _kernel = kernel();
     // call the main function
@@ -95,6 +100,16 @@ pub(crate) async fn async_main() {
         .spawner()
         .spawn(mcu_mbox::mcu_mbox_task())
         .unwrap();
+
+    #[cfg(feature = "test-mcu-mbox-fips-periodic")]
+    EXECUTOR
+        .get()
+        .spawner()
+        .spawn(mcu_mbox_lib::fips_periodic::fips_periodic_task())
+        .unwrap();
+
+    #[cfg(feature = "test-mctp-vdm-cmds")]
+    EXECUTOR.get().spawner().spawn(vdm::vdm_task()).unwrap();
 
     loop {
         EXECUTOR.get().poll();

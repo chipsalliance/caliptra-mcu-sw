@@ -2,7 +2,7 @@
 
 use libsyscall_caliptra::mailbox::MailboxError;
 use libtock_platform::ErrorCode;
-use ocp_eat::eat_encoder::EatError;
+use ocp_eat::EatError;
 
 pub type CaliptraApiResult<T> = Result<T, CaliptraApiError>;
 

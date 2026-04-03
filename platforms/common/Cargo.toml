@@ -9,6 +9,8 @@ edition = "2021"
 mcu-tock-veer.workspace = true
 mcu-config.workspace = true
 romtime.workspace = true
+i3c-driver.workspace = true
+kernel.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 rv32i.workspace = true

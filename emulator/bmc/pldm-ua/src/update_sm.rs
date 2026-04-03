@@ -57,6 +57,7 @@ statemachine! {
         ReadyXfer + SendUpdateComponent / on_send_update_component = ReadyXfer,
         ReadyXfer + UpdateComponentResponse(pldm_packet::update_component::UpdateComponentResponse) / on_update_component_response = ReadyXfer,
         ReadyXfer + StartDownload / on_start_download = Download,
+        ReadyXfer + RequestFirmwareData(pldm_packet::request_fw_data::RequestFirmwareDataRequest) / on_request_firmware_from_ready_xfer = Download,
         ReadyXfer + CancelUpdateComponent  / on_stop_update = Idle,
         ReadyXfer + ActivateFirmware / on_activate_firmware = Activate,
 
@@ -220,7 +221,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::request_update::RequestUpdateResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
         if response.fixed.completion_code == PldmBaseCompletionCode::Success as u8 {
             debug!("RequestUpdate response success");
             ctx.event_queue
@@ -379,7 +380,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::update_component::UpdateComponentResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
         if response.completion_code == PldmBaseCompletionCode::Success as u8
             && response.comp_compatibility_resp
                 == ComponentCompatibilityResponse::CompCanBeUpdated as u8
@@ -540,7 +541,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::get_fw_params::GetFirmwareParametersResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
         for i in 0..response.parms.params_fixed.comp_count {
             if let Ok(comp_idx) = Self::find_component_in_package(
                 &ctx.pldm_fw_pkg.component_image_information,
@@ -594,8 +595,8 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::pass_component::PassComponentTableResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
-                              // If unsuccessful, stop the update
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
+                                                           // If unsuccessful, stop the update
         if response.completion_code != PldmBaseCompletionCode::Success as u8 {
             error!("PassComponent response failed");
             ctx.event_queue
@@ -618,10 +619,27 @@ pub trait StateMachineActions {
 
     fn on_start_download(
         &mut self,
-        _ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
-        // TODO
+        // Reset transfer tracking for new download
+        ctx.transferred_bytes = 0;
+        ctx.transfer_start_time = None;
         Ok(())
+    }
+
+    /// Handle RequestFirmwareData when state is ReadyXfer.
+    /// This can happen when the device responds to UpdateComponent and immediately
+    /// sends RequestFirmwareData before the UA has processed the StartDownload event.
+    fn on_request_firmware_from_ready_xfer(
+        &mut self,
+        ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
+        request: pldm_packet::request_fw_data::RequestFirmwareDataRequest,
+    ) -> Result<(), ()> {
+        // First, perform the download initialization (same as on_start_download)
+        ctx.transferred_bytes = 0;
+        ctx.transfer_start_time = None;
+        // Then handle the firmware request
+        self.on_request_firmware(ctx, request)
     }
 
     fn on_request_firmware(
@@ -680,11 +698,27 @@ pub trait StateMachineActions {
             );
 
             ctx.transferred_bytes += request.length;
+            // Initialize transfer start time on first chunk
+            if ctx.transfer_start_time.is_none() {
+                ctx.transfer_start_time = Some(Instant::now());
+            }
             if ctx.transferred_bytes % 1024 < request.length {
+                let elapsed = ctx
+                    .transfer_start_time
+                    .map(|t| t.elapsed())
+                    .unwrap_or_default();
+                let elapsed_secs = elapsed.as_secs_f64();
+                let speed_bytes_per_sec = if elapsed_secs > 0.0 {
+                    ctx.transferred_bytes as f64 / elapsed_secs
+                } else {
+                    0.0
+                };
                 info!(
-                    "Transferred {} bytes so far out of {} bytes",
+                    "Transferred {} / {} bytes ({:.1} B/s, {:.1} KB/s)",
                     ctx.transferred_bytes,
-                    data.len()
+                    data.len(),
+                    speed_bytes_per_sec,
+                    speed_bytes_per_sec / 1024.0
                 );
             }
 
@@ -798,7 +832,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::get_status::GetStatusResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
         if response.completion_code == PldmBaseCompletionCode::Success as u8 {
             debug!("GetStatus response success");
 
@@ -814,7 +848,7 @@ pub trait StateMachineActions {
                         .map_err(|_| ())?;
                 } else {
                     // Still waiting for activation
-                    info!(
+                    debug!(
                         "Still waiting for activation. Current state: {:?}",
                         response.current_state
                     );
@@ -992,7 +1026,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::activate_fw::ActivateFirmwareResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
         if response.completion_code == PldmBaseCompletionCode::Success as u8 {
             info!("ActivateFirmware response success");
 
@@ -1045,7 +1079,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::request_cancel::CancelUpdateComponentResponse,
     ) -> Result<(), ()> {
-        ctx.instance_id += 1; // Response received, increment instance id
+        ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
         ctx.response_timer.cancel();
         if response.completion_code == PldmBaseCompletionCode::Success as u8 {
             info!("CancelUpdateComponent response success");
@@ -1171,6 +1205,7 @@ pub struct InnerContext<S: PldmSocket> {
     activation_time: Option<Instant>,
 
     transferred_bytes: u32,
+    transfer_start_time: Option<Instant>,
     response_timer: Timer,
     retry_count: Arc<Mutex<u8>>,
     is_initiator: bool,
@@ -1202,6 +1237,7 @@ impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
                 timer: Timer::new(),
                 activation_time: None,
                 transferred_bytes: 0,
+                transfer_start_time: None,
                 response_timer: Timer::new(),
                 retry_count: Arc::new(Mutex::new(0)),
                 is_initiator: true,
@@ -1250,6 +1286,7 @@ impl<T: StateMachineActions, S: PldmSocket + Send + 'static> StateMachineContext
         on_start_download() -> Result<(),()>,
         on_update_component_response(response : pldm_packet::update_component::UpdateComponentResponse) -> Result<(),()>,
         on_request_firmware(request: pldm_packet::request_fw_data::RequestFirmwareDataRequest) -> Result<(),()>,
+        on_request_firmware_from_ready_xfer(request: pldm_packet::request_fw_data::RequestFirmwareDataRequest) -> Result<(),()>,
         on_transfer_complete_request(request: pldm_packet::transfer_complete::TransferCompleteRequest) -> Result<(),()>,
         on_transfer_fail() -> Result<(),()>,
         on_transfer_success() -> Result<(),()>,

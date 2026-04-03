@@ -18,12 +18,13 @@ use mcu_testing_common::i3c::{
 };
 use registers_generated::i3c::bits::{
     DeviceStatus0, ExtcapHeader, IndirectFifoCtrl0, IndirectFifoStatus0, InterruptEnable,
-    InterruptStatus, RecIntfCfg, StbyCrCapabilities, StbyCrDeviceAddr, TtiQueueSize,
+    InterruptStatus, RecIntfCfg, RecoveryCtrl, Status, StbyCrCapabilities, StbyCrDeviceAddr,
+    TtiQueueSize,
 };
 use semver::Version;
 use std::collections::VecDeque;
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::FromBytes;
 
@@ -31,10 +32,13 @@ const I3C_REC_INT_BYPASS_I3C_CORE: u32 = 0x0;
 const I3C_REC_INT_BYPASS_AXI_DIRECT: u32 = 0x1;
 struct PollScheduler {
     timer: Timer,
+    // Held while scheduling to prevent the clock from advancing mid-operation.
+    step_lock: Arc<Mutex<()>>,
 }
 
 impl I3cIncomingCommandClient for PollScheduler {
     fn incoming(&self) {
+        let _guard = self.step_lock.lock().unwrap();
         // trigger interrupt check next tick
         self.timer.schedule_poll_in(1);
     }
@@ -77,10 +81,12 @@ pub struct I3c {
     i3c_ec_soc_mgmt_if_rec_intf_cfg:
         ReadWriteRegister<u32, registers_generated::i3c::bits::RecIntfCfg::Register>,
     indirect_fifo_data: Vec<u8>,
+    i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access:
+        ReadWriteRegister<u32, registers_generated::i3c::bits::RecIntfRegW1cAccess::Register>,
 
     interrupt_status: ReadWriteRegister<u32, InterruptStatus::Register>,
     interrupt_enable: ReadWriteRegister<u32, InterruptEnable::Register>,
-    ibi_status: Option<u32>,
+    ibi_status: Option<ReadWriteRegister<u32, Status::Register>>,
     generated: I3cGenerated,
 
     events_to_caliptra: Option<mpsc::Sender<Event>>,
@@ -98,6 +104,7 @@ impl I3c {
         controller: &mut I3cController,
         irq: Irq,
         hw_revision: Version,
+        step_lock: Arc<Mutex<()>>,
     ) -> Self {
         let mut i3c_target = I3cTarget::default();
 
@@ -106,6 +113,7 @@ impl I3c {
         timer.schedule_poll_in(Self::HCI_TICKS);
         let poll_scheduler = PollScheduler {
             timer: timer.clone(),
+            step_lock,
         };
         i3c_target.set_incoming_command_client(Arc::new(poll_scheduler));
 
@@ -132,6 +140,7 @@ impl I3c {
             i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_recovery_ctrl: ReadWriteRegister::new(0),
             i3c_ec_soc_mgmt_if_rec_intf_cfg: ReadWriteRegister::new(0),
+            i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access: ReadWriteRegister::new(0),
             indirect_fifo_data: Vec::new(),
             interrupt_status: ReadWriteRegister::new(0),
             interrupt_enable: ReadWriteRegister::new(0),
@@ -236,7 +245,7 @@ impl I3c {
 
             // TODO: support sending more bytes of IBI to target
             self.i3c_target.send_ibi((desc.0 >> 24) as u8);
-            self.ibi_status = Some(0);
+            self.ibi_status = Some(ReadWriteRegister::new(0));
             self.tti_ibi_buffer.drain(0..(len + 4).next_multiple_of(4));
         }
     }
@@ -386,6 +395,10 @@ impl I3c {
             0x060 => Ok(self.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_4()),
             0x064 => Ok(self.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_reserved()),
             0x068 => Ok(self.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data()),
+            0x210..0x214 => Ok(self
+                .read_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access()
+                .reg
+                .get()),
 
             _ => Err(caliptra_emu_bus::BusError::LoadAccessFault),
         }
@@ -485,6 +498,12 @@ impl I3c {
                 self.write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(val);
                 Ok(())
             }
+            0x210 => {
+                self.write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(
+                    caliptra_emu_bus::ReadWriteRegister::new(val),
+                );
+                Ok(())
+            }
             _ => Err(caliptra_emu_bus::BusError::StoreAccessFault),
         }
     }
@@ -513,14 +532,11 @@ impl I3cPeripheral for I3c {
 
     fn read_i3c_ec_tti_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
-    > {
-        // TODO: the type of this status register is not correct
-        // so we manually shift the IBI status to the correct position
-        // This clears the interrupt.
-        caliptra_emu_bus::ReadWriteRegister::new(self.ibi_status.take().unwrap_or(0) << 14)
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Status::Register>
+    {
+        self.ibi_status
+            .take()
+            .unwrap_or_else(|| ReadWriteRegister::new(0))
     }
 
     fn read_i3c_ec_tti_interrupt_enable(
@@ -892,6 +908,18 @@ impl I3cPeripheral for I3c {
             self.i3c_ec_sec_fw_recovery_if_recovery_ctrl.reg.get(),
         )
     }
+
+    fn read_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
+    > {
+        caliptra_emu_bus::ReadWriteRegister::new(
+            self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access.reg.get(),
+        )
+    }
+
     fn write_i3c_ec_sec_fw_recovery_if_recovery_ctrl(
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
@@ -919,6 +947,52 @@ impl I3cPeripheral for I3c {
         >,
     ) {
         self.i3c_ec_soc_mgmt_if_rec_intf_cfg.reg.set(val.reg.get());
+    }
+
+    fn write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
+        >,
+    ) {
+        self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access
+            .reg
+            .set(val.reg.get());
+
+        // Update recovery ctrl register
+        let new_activate_rec_img = self
+            .i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access
+            .reg
+            .read(registers_generated::i3c::bits::RecIntfRegW1cAccess::RecoveryCtrlActivateRecImg);
+
+        let recovery_ctrl = self.read_i3c_ec_sec_fw_recovery_if_recovery_ctrl();
+        recovery_ctrl
+            .reg
+            .modify(RecoveryCtrl::ActivateRecImg.val(new_activate_rec_img));
+        self.write_i3c_ec_sec_fw_recovery_if_recovery_ctrl(recovery_ctrl);
+
+        // Update indirect memory reset
+        let new_indirect_fifo_reset = self
+            .i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access
+            .reg
+            .read(registers_generated::i3c::bits::RecIntfRegW1cAccess::IndirectFifoCtrlReset);
+        let indirect_fifo_ctrl_0 = self.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0();
+        indirect_fifo_ctrl_0
+            .reg
+            .modify(IndirectFifoCtrl0::Reset.val(new_indirect_fifo_reset));
+        self.write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(indirect_fifo_ctrl_0);
+
+        // Update device reset
+        let new_device_reset = self
+            .i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access
+            .reg
+            .read(registers_generated::i3c::bits::RecIntfRegW1cAccess::DeviceResetCtrl);
+        let device_reset = self.read_i3c_ec_sec_fw_recovery_if_device_reset();
+        device_reset
+            .reg
+            .modify(registers_generated::i3c::bits::DeviceReset::ResetCtrl.val(new_device_reset));
+        self.write_i3c_ec_sec_fw_recovery_if_device_reset(device_reset);
     }
 
     fn poll(&mut self) {
@@ -979,18 +1053,6 @@ impl I3cPeripheral for I3c {
                 }
             }
         }
-
-        if cfg!(feature = "test-i3c-constant-writes") {
-            static mut COUNTER: u32 = 0;
-            // ensure there are 10 writes queued
-            if self.tti_rx_desc_queue_raw.is_empty() && unsafe { COUNTER } < 10 {
-                unsafe {
-                    COUNTER += 1;
-                }
-                self.tti_rx_desc_queue_raw.push_back(100);
-                self.tti_rx_data_raw.push_back(vec![0xff; 100]);
-            }
-        }
     }
 }
 
@@ -1013,11 +1075,13 @@ mod tests {
         let pic = Pic::new();
         let irq = pic.register_irq(2);
         let mut i3c_controller = I3cController::default();
+        let step_lock = Arc::new(Mutex::new(()));
         let mut i3c = Box::new(I3c::new(
             &clock,
             &mut i3c_controller,
             irq,
             Version::new(2, 0, 0),
+            step_lock,
         ));
 
         assert_eq!(i3c.read_i3c_base_hci_version(), I3c::HCI_VERSION);
@@ -1037,6 +1101,7 @@ mod tests {
             vec![],
             None,
             Some(i3c),
+            None,
             None,
             None,
             None,

@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::interrupts::FpgaPeripherals;
-use crate::MCU_MEMORY_MAP;
+use crate::{MCU_MEMORY_MAP, MCU_STRAPS};
 use arrayvec::ArrayVec;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
@@ -36,6 +36,7 @@ use mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
 use mcu_tock_veer::timers::InternalTimers;
 use registers_generated::mci;
 use romtime::CaliptraSoC;
+use romtime::McuBootMilestones;
 use romtime::StaticRef;
 use rv32i::csr;
 
@@ -296,6 +297,10 @@ pub fn exit_fpga(exit_code: u32) -> ! {
 /// # Safety
 /// Accesses memory, memory-mapped registers and CSRs.
 pub unsafe fn main() {
+    if cfg!(feature = "test-do-nothing") {
+        loop {}
+    }
+
     print_to_console("[mcu-runtime] Hello from MCU runtime\n");
     // only machine mode
     rv32i::configure_trap_handler();
@@ -523,7 +528,23 @@ pub unsafe fn main() {
         romtime::println!("[mcu-runtime] ProcessPrinter initialized");
     }
 
-    let mux_mctp = mcu_components::mux_mctp::MCTPMuxComponent::new(&peripherals.i3c, mux_alarm)
+    // Select which I3C core to use for MCTP transport based on platform strap.
+    if MCU_STRAPS.active_i3c > 1 {
+        romtime::println!(
+            "[mcu-runtime] WARNING: invalid active_i3c value {}, falling back to 0",
+            MCU_STRAPS.active_i3c
+        );
+    }
+    let active_i3c_core = if MCU_STRAPS.active_i3c == 1 {
+        &peripherals.i3c1
+    } else {
+        &peripherals.i3c
+    };
+    romtime::println!(
+        "[mcu-runtime] Active I3C core for MCTP: {}",
+        MCU_STRAPS.active_i3c
+    );
+    let mux_mctp = mcu_components::mux_mctp::MCTPMuxComponent::new(active_i3c_core, mux_alarm)
         .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding));
     romtime::println!("[mcu-runtime] MCTP mux initialized");
 
@@ -710,12 +731,10 @@ pub unsafe fn main() {
         Some(0)
     } else if cfg!(feature = "test-i3c-simple") {
         debug!("Executing test-i3c-simple");
-        //crate::tests::i3c_target_test::test_i3c_simple()
-        None
+        crate::tests::i3c_target_test::run_test_i3c_simple()
     } else if cfg!(feature = "test-i3c-constant-writes") {
         debug!("Executing test-i3c-constant-writes");
-        //crate::tests::i3c_target_test::test_i3c_constant_writes()
-        None
+        crate::tests::i3c_target_test::run_test_i3c_constant_writes()
     } else {
         None
     };
@@ -742,6 +761,7 @@ pub unsafe fn main() {
     mci.intr_block_rf_notif0_intr_en_r
         .modify(mci::bits::Notif0IntrEnT::NotifCptraMcuResetReqEn::SET);
 
+    mci_wdt.set_flow_milestone(McuBootMilestones::FIRMWARE_OS_INITIALIZED.into());
     board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
 }
 

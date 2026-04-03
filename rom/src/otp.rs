@@ -2,46 +2,75 @@
 
 use core::fmt::Write;
 use mcu_error::{McuError, McuResult};
-use registers_generated::fuses;
-use registers_generated::fuses::Fuses;
+use registers_generated::fuses::{self, FuseEntryInfo, OtpPartitionInfo};
 use registers_generated::otp_ctrl;
 use romtime::{HexBytes, HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
-use crate::{LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_OFFSET};
+use crate::{FuseLayout, LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_OFFSET};
 
 // TODO: use the Lifecycle controller to read the Lifecycle state
 
+// TODO: this error mask is dependent on the specific fuse map
 const OTP_STATUS_ERROR_MASK: u32 = (1 << 22) - 1;
 const OTP_CONSISTENCY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_INTEGRITY_CHECK_PERIOD_MASK: u32 = 0x3ff_ffff;
 const OTP_CHECK_TIMEOUT: u32 = 0x10_0000;
+const OTP_PENDING_CHECK_MAX_ITERATIONS: u32 = 1_000_000;
+
+const LC_TOKEN_MANUF_INDEX: usize = 7;
+const LC_TOKEN_MANUF_TO_PROD_INDEX: usize = 8;
+const LC_TOKEN_PROD_TO_PROD_END_INDEX: usize = 9;
+const LC_TOKEN_RMA_INDEX: usize = 10;
+
+pub const PROD_DEBUG_UNLOCK_PK_SIZE: usize = 48;
+const LC_TOKEN_SIZE: usize = 16;
+
+pub const PROD_DEBUG_UNLOCK_PK_ENTRIES: [&FuseEntryInfo; 8] = [
+    fuses::OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_0,
+    fuses::OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_1,
+    fuses::OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_2,
+    fuses::OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_3,
+    fuses::OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_4,
+    fuses::OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_5,
+    fuses::OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_6,
+    fuses::OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_7,
+];
+
+#[derive(Clone, Copy)]
+pub enum PqcKeyType {
+    MLDSA = 1,
+    LMS = 2,
+}
 
 pub struct Otp {
-    enable_consistency_check: bool,
-    enable_integrity_check: bool,
     registers: StaticRef<otp_ctrl::regs::OtpCtrl>,
 }
 
 impl Otp {
-    pub const fn new(
-        enable_consistency_check: bool,
-        enable_integrity_check: bool,
-        registers: StaticRef<otp_ctrl::regs::OtpCtrl>,
-    ) -> Self {
-        Otp {
-            enable_consistency_check,
-            enable_integrity_check,
-            registers,
-        }
+    pub const fn new(registers: StaticRef<otp_ctrl::regs::OtpCtrl>) -> Self {
+        Otp { registers }
     }
 
     pub fn volatile_lock(&self) {
         self.registers.vendor_pk_hash_volatile_lock.set(1);
     }
 
-    pub fn init(&self) -> McuResult<()> {
-        romtime::println!("[mcu-rom-otp] Initializing OTP controller...");
+    pub fn wait_for_not_pending(&self) -> McuResult<()> {
+        for _ in 0..OTP_PENDING_CHECK_MAX_ITERATIONS {
+            if !self
+                .registers
+                .otp_status
+                .is_set(otp_ctrl::bits::OtpStatus::CheckPending)
+            {
+                return Ok(());
+            }
+        }
+        romtime::println!("[mcu-rom-otp] OTP pending check exceeded maximum iterations");
+        Err(McuError::ROM_OTP_PENDING_TIMEOUT)
+    }
+
+    pub fn check_error_and_idle(&self) -> McuResult<()> {
         if self.registers.otp_status.get() & OTP_STATUS_ERROR_MASK != 0 {
             romtime::println!(
                 "[mcu-rom-otp] OTP error: {}",
@@ -60,27 +89,47 @@ impl Otp {
             return Err(McuError::ROM_OTP_INIT_NOT_IDLE);
         }
 
+        Ok(())
+    }
+
+    pub fn init(
+        &self,
+        enable_consistency_check: bool,
+        enable_integrity_check: bool,
+        check_timeout_override: Option<u32>,
+    ) -> McuResult<()> {
+        romtime::println!("[mcu-rom-otp] Initializing OTP controller...");
+
+        self.wait_for_not_pending()?;
+        self.check_error_and_idle()?;
+
+        let check_timeout = check_timeout_override.unwrap_or(OTP_CHECK_TIMEOUT);
+        romtime::println!("[mcu-rom-otp] Setting check timeout to {}", check_timeout);
+        self.registers.check_timeout.set(check_timeout);
+
         // Enable periodic background checks
-        if self.enable_consistency_check {
+        if enable_consistency_check {
             romtime::println!("[mcu-rom-otp] Enabling consistency check period");
             self.registers
                 .consistency_check_period
                 .set(OTP_CONSISTENCY_CHECK_PERIOD_MASK);
         }
-        if self.enable_integrity_check {
-            romtime::println!("mcu-rom-otp] Enabling integrity check period");
+        if enable_integrity_check {
+            romtime::println!("[mcu-rom-otp] Enabling integrity check period");
             self.registers
                 .integrity_check_period
                 .set(OTP_INTEGRITY_CHECK_PERIOD_MASK);
         }
-        romtime::println!("mcu-rom-otp] Enabling check timeout");
-        self.registers.check_timeout.set(OTP_CHECK_TIMEOUT);
 
         // Disable modifications to the background checks
         romtime::println!("[mcu-rom-otp] Disabling check modifications");
         self.registers
             .check_regwen
             .write(otp_ctrl::bits::CheckRegwen::Regwen::CLEAR);
+
+        self.wait_for_not_pending()?;
+        self.check_error_and_idle()?;
+
         romtime::println!("[mcu-rom-otp] Done init");
         Ok(())
     }
@@ -90,10 +139,13 @@ impl Otp {
     }
 
     fn read_data(&self, addr: usize, len: usize, data: &mut [u8]) -> McuResult<()> {
-        if data.len() < len || len % 4 != 0 {
+        if len % 4 != 0 {
             return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
         }
-        for (i, chunk) in data[..len].chunks_exact_mut(4).enumerate() {
+        let data = data
+            .get_mut(..len)
+            .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+        for (i, chunk) in data.chunks_exact_mut(4).enumerate() {
             let word = self.read_word(addr / 4 + i)?;
             let word_bytes = word.to_le_bytes();
             chunk.copy_from_slice(&word_bytes[..chunk.len()]);
@@ -131,6 +183,35 @@ impl Otp {
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
     }
 
+    /// Reads a dword (64-bit) from the OTP controller.
+    /// dword_addr is in dwords (8-byte units).
+    pub fn read_dword(&self, dword_addr: usize) -> McuResult<u64> {
+        while !self
+            .registers
+            .otp_status
+            .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
+        {}
+
+        self.registers
+            .direct_access_address
+            .set((dword_addr * 8) as u32);
+        self.registers.direct_access_cmd.set(1);
+
+        while !self
+            .registers
+            .otp_status
+            .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
+        {}
+
+        if let Some(err) = self.check_error() {
+            romtime::println!("Error reading fuses: {}", HexWord(err));
+            return Err(McuError::ROM_OTP_READ_ERROR);
+        }
+        let lo = self.registers.dai_rdata_rf_direct_access_rdata_0.get() as u64;
+        let hi = self.registers.dai_rdata_rf_direct_access_rdata_1.get() as u64;
+        Ok(lo | (hi << 32))
+    }
+
     /// Write a dword to the OTP controller.
     /// word_addr is in words
     pub fn write_dword(&self, dword_addr: usize, data: u64) -> McuResult<u32> {
@@ -142,11 +223,9 @@ impl Otp {
         {}
 
         // load the data
-        romtime::println!("Write dword 0: {}", HexWord(data as u32));
         self.registers
             .dai_wdata_rf_direct_access_wdata_0
             .set((data) as u32);
-        romtime::println!("Write dword 1: {}", HexWord((data >> 32) as u32));
         self.registers
             .dai_wdata_rf_direct_access_wdata_1
             .set((data >> 32) as u32);
@@ -280,59 +359,476 @@ impl Otp {
         }
     }
 
-    pub fn read_fuses(&self) -> McuResult<Fuses> {
-        let mut fuses = Fuses::default();
+    /// Makes read_data public so callers can read arbitrary OTP regions.
+    pub fn read_otp_data(&self, byte_offset: usize, data: &mut [u8]) -> McuResult<()> {
+        self.read_data(byte_offset, data.len(), data)
+    }
 
-        romtime::println!("[mcu-rom-otp] Reading SW tests unlock partition");
-        self.read_data(
-            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
-            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
-            &mut fuses.sw_test_unlock_partition,
-        )?;
-        romtime::println!("[mcu-rom-otp] Reading SW manufacturer partition");
-        self.read_data(
-            fuses::SW_MANUF_PARTITION_BYTE_OFFSET,
-            fuses::SW_MANUF_PARTITION_BYTE_SIZE,
-            &mut fuses.sw_manuf_partition,
-        )?;
-        romtime::println!("[mcu-rom-otp] Reading SVN partition");
+    /// Reads a u32 from OTP at the given byte offset.
+    pub fn read_u32_at(&self, byte_offset: usize) -> McuResult<u32> {
+        self.read_word(byte_offset / 4)
+    }
+
+    /// Reads multiple u32 words from OTP starting at byte_offset directly into a register array.
+    pub fn read_words_to_registers<F>(
+        &self,
+        byte_offset: usize,
+        count: usize,
+        mut write_fn: F,
+    ) -> McuResult<()>
+    where
+        F: FnMut(usize, u32),
+    {
+        for i in 0..count {
+            let word = self.read_word(byte_offset / 4 + i)?;
+            write_fn(i, word);
+        }
+        Ok(())
+    }
+
+    // -------------------------------------------------------------------------
+    // Partition reading methods - read specific partitions from OTP directly
+    // -------------------------------------------------------------------------
+
+    /// Read the SVN partition (40 bytes).
+    pub fn read_svn_partition(
+        &self,
+        data: &mut [u8; fuses::SVN_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
         self.read_data(
             fuses::SVN_PARTITION_BYTE_OFFSET,
             fuses::SVN_PARTITION_BYTE_SIZE,
-            &mut fuses.svn_partition,
-        )?;
-        romtime::println!("[mcu-rom-otp] Reading vendor test partition");
+            data,
+        )
+    }
+
+    /// Read the vendor test partition (64 bytes).
+    pub fn read_vendor_test_partition(
+        &self,
+        data: &mut [u8; fuses::VENDOR_TEST_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
         self.read_data(
             fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_TEST_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_test_partition,
-        )?;
-        romtime::println!("[mcu-rom-otp] Reading vendor hashes manufacturer partition");
+            data,
+        )
+    }
+
+    /// Read a single word from the vendor test partition.
+    /// word_idx is the word index (0-15 for 64 bytes).
+    pub fn read_vendor_test_word(&self, word_idx: usize) -> McuResult<u32> {
+        self.read_u32_at(fuses::VENDOR_TEST_PARTITION_BYTE_OFFSET + word_idx * 4)
+    }
+
+    /// Read the vendor hashes manufacturing partition (64 bytes).
+    pub fn read_vendor_hashes_manuf_partition(
+        &self,
+        data: &mut [u8; fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
         self.read_data(
             fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_HASHES_MANUF_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_hashes_manuf_partition,
-        )?;
-        // TODO: read these again when the offsets are fixed
-        romtime::println!("[mcu-rom-otp] Reading vendor hashes production partition");
+            data,
+        )
+    }
+
+    /// Read the vendor hashes production partition (864 bytes).
+    pub fn read_vendor_hashes_prod_partition(
+        &self,
+        data: &mut [u8; fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
         self.read_data(
             fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_HASHES_PROD_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_hashes_prod_partition,
-        )?;
-        romtime::println!("[mcu-rom-otp] Reading vendor revocations production partition");
+            data,
+        )
+    }
+
+    /// Read the vendor revocations production partition (216 bytes).
+    pub fn read_vendor_revocations_prod_partition(
+        &self,
+        data: &mut [u8; fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
         self.read_data(
             fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_OFFSET,
             fuses::VENDOR_REVOCATIONS_PROD_PARTITION_BYTE_SIZE,
-            &mut fuses.vendor_revocations_prod_partition,
-        )?;
-        // romtime::println!("[mcu-rom-otp] Reading vendor non-secret production partition");
-        // self.read_data(
-        //     fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
-        //     fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE,
-        //     &mut fuses.vendor_non_secret_prod_partition,
-        // )?;
-        Ok(fuses)
+            data,
+        )
+    }
+
+    /// Read the SW test unlock partition (72 bytes).
+    pub fn read_sw_test_unlock_partition(
+        &self,
+        data: &mut [u8; fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
+        self.read_data(
+            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_OFFSET,
+            fuses::SW_TEST_UNLOCK_PARTITION_BYTE_SIZE,
+            data,
+        )
+    }
+
+    /// Read the SW manufacturing partition (520 bytes).
+    pub fn read_sw_manuf_partition(
+        &self,
+        data: &mut [u8; fuses::SW_MANUF_PARTITION_BYTE_SIZE],
+    ) -> McuResult<()> {
+        self.read_data(
+            fuses::SW_MANUF_PARTITION_BYTE_OFFSET,
+            fuses::SW_MANUF_PARTITION_BYTE_SIZE,
+            data,
+        )
+    }
+
+    // -------------------------------------------------------------------------
+    // Individual fuse value reading methods - read specific fuse fields directly
+    // These avoid allocating full partition arrays on the stack.
+    // -------------------------------------------------------------------------
+
+    /// Read PQC key type (4 bytes).
+    pub fn read_pqc_key_type(&self, index: usize) -> McuResult<PqcKeyType> {
+        let entry = pqc_key_type_entry(index)?;
+        if self.read_entry(entry)? == 1 {
+            Ok(PqcKeyType::MLDSA)
+        } else {
+            Ok(PqcKeyType::LMS)
+        }
+    }
+
+    /// Read cptra_core_fmc_key_manifest_svn (4 bytes).
+    pub fn read_cptra_core_fmc_key_manifest_svn(&self) -> McuResult<[u8; 4]> {
+        let mut data = [0u8; 4];
+        self.read_entry_raw(fuses::OTP_CPTRA_CORE_FMC_KEY_MANIFEST_SVN, &mut data)?;
+        Ok(data)
+    }
+
+    /// Read vendor public key hash (48 bytes).
+    pub fn read_vendor_pk_hash(&self, index: usize, buf: &mut [u8]) -> McuResult<()> {
+        let entry = vendor_pk_hash_entry(index)?;
+        self.read_entry_raw(entry, buf)
+    }
+
+    /// Read cptra_core_runtime_svn (16 bytes).
+    pub fn read_cptra_core_runtime_svn(
+        &self,
+    ) -> McuResult<[u8; fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_size]> {
+        let mut data = [0u8; fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_size];
+        self.read_entry_raw(fuses::OTP_CPTRA_CORE_RUNTIME_SVN, &mut data)?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_soc_manifest_svn (16 bytes).
+    pub fn read_cptra_core_soc_manifest_svn(
+        &self,
+    ) -> McuResult<[u8; fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_size]> {
+        let mut data = [0u8; fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_size];
+        self.read_entry_raw(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN, &mut data)?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_soc_manifest_max_svn (4 bytes).
+    pub fn read_cptra_core_soc_manifest_max_svn(&self) -> McuResult<[u8; 4]> {
+        let mut data = [0u8; 4];
+        self.read_entry_raw(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN, &mut data)?;
+        Ok(data)
+    }
+
+    /// Read cptra_ss_manuf_debug_unlock_token (64 bytes).
+    pub fn read_cptra_ss_manuf_debug_unlock_token(
+        &self,
+    ) -> McuResult<[u8; fuses::OTP_CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN.byte_size]> {
+        let mut data = [0u8; fuses::OTP_CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN.byte_size];
+        self.read_entry_raw(fuses::OTP_CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN, &mut data)?;
+        Ok(data)
+    }
+
+    /// Read vendor ECC revocation (4 bytes).
+    pub fn read_vendor_ecc_revocation(&self, index: usize) -> McuResult<u32> {
+        let entry = vendor_ecc_revocation_entry(index)?;
+        self.read_entry(entry)
+    }
+
+    /// Read vendor LMS revocation (4 bytes).
+    pub fn read_vendor_lms_revocation(&self, index: usize) -> McuResult<u32> {
+        let entry = vendor_lms_revocation_entry(index)?;
+        self.read_entry(entry)
+    }
+
+    /// Read vendor MLDSA revocation (4 bytes).
+    pub fn read_vendor_mldsa_revocation(&self, index: usize) -> McuResult<u32> {
+        let entry = vendor_mldsa_revocation_entry(index)?;
+        self.read_entry(entry)
+    }
+
+    /// Read cptra_ss_owner_pk_hash (48 bytes).
+    pub fn read_cptra_ss_owner_pk_hash(
+        &self,
+    ) -> McuResult<[u8; fuses::OTP_CPTRA_SS_OWNER_PK_HASH.byte_size]> {
+        let mut data = [0u8; fuses::OTP_CPTRA_SS_OWNER_PK_HASH.byte_size];
+        self.read_entry_raw(fuses::OTP_CPTRA_SS_OWNER_PK_HASH, &mut data)?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_soc_stepping_id (4 bytes).
+    pub fn read_cptra_core_soc_stepping_id(&self) -> McuResult<[u8; 4]> {
+        let mut data = [0u8; 4];
+        self.read_entry_raw(fuses::OTP_CPTRA_CORE_SOC_STEPPING_ID, &mut data)?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_anti_rollback_disable (4 bytes).
+    pub fn read_cptra_core_anti_rollback_disable(&self) -> McuResult<[u8; 4]> {
+        let mut data = [0u8; 4];
+        self.read_entry_raw(fuses::OTP_CPTRA_CORE_ANTI_ROLLBACK_DISABLE, &mut data)?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_idevid_cert_idevid_attr (96 bytes).
+    pub fn read_cptra_core_idevid_cert_idevid_attr(
+        &self,
+    ) -> McuResult<[u8; fuses::OTP_CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR.byte_size]> {
+        let mut data = [0u8; fuses::OTP_CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR.byte_size];
+        self.read_entry_raw(fuses::OTP_CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR, &mut data)?;
+        Ok(data)
+    }
+
+    /// Read cptra_core_idevid_manuf_hsm_identifier (16 bytes).
+    pub fn read_cptra_core_idevid_manuf_hsm_identifier(
+        &self,
+    ) -> McuResult<[u8; fuses::OTP_CPTRA_CORE_IDEVID_MANUF_HSM_IDENTIFIER.byte_size]> {
+        let mut data = [0u8; fuses::OTP_CPTRA_CORE_IDEVID_MANUF_HSM_IDENTIFIER.byte_size];
+        self.read_entry_raw(fuses::OTP_CPTRA_CORE_IDEVID_MANUF_HSM_IDENTIFIER, &mut data)?;
+        Ok(data)
+    }
+
+    /// Read cptra_ss_prod_debug_unlock_pks (index 0-7, each 48 bytes).
+    pub fn read_cptra_ss_prod_debug_unlock_pks(
+        &self,
+        index: usize,
+    ) -> McuResult<[u8; PROD_DEBUG_UNLOCK_PK_SIZE]> {
+        let entry = PROD_DEBUG_UNLOCK_PK_ENTRIES
+            .get(index)
+            .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+        let mut data = [0u8; PROD_DEBUG_UNLOCK_PK_SIZE];
+        self.read_entry_raw(entry, &mut data)?;
+        Ok(data)
+    }
+
+    /// Read from vendor non-secret prod partition
+    pub fn read_vendor_non_secret_prod_partition(&self, data: &mut [u8]) -> McuResult<()> {
+        let len = data
+            .len()
+            .min(fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_SIZE);
+        self.read_data(
+            fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
+            len,
+            data,
+        )
+    }
+
+    // -------------------------------------------------------------------------
+    // Generic fuse entry read/write using generated FuseEntryInfo
+    // -------------------------------------------------------------------------
+
+    /// Read a fuse entry's logical value using its generated FuseEntryInfo.
+    ///
+    /// Reads raw bytes from OTP at the entry's byte_offset, then applies
+    /// FuseLayout extraction to produce the logical value.
+    /// Suitable for entries whose logical value fits in a single u32.
+    pub fn read_entry(&self, entry: &FuseEntryInfo) -> McuResult<u32> {
+        let layout = FuseLayout::from_generated(&entry.layout)
+            .ok_or(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT)?;
+        let raw = self.read_word(entry.byte_offset / 4)?;
+        crate::extract_single_fuse_value(layout, raw)
+    }
+
+    /// Read a fuse entry's raw bytes into a caller-provided buffer.
+    ///
+    /// Reads `entry.byte_size` bytes from OTP at `entry.byte_offset`.
+    /// No layout extraction is applied — the caller gets the raw OTP data.
+    /// Note that this will round up to the next multiple of 4 bytes to be read.
+    pub fn read_entry_raw(&self, entry: &FuseEntryInfo, buf: &mut [u8]) -> McuResult<()> {
+        let read_len = entry.byte_size.next_multiple_of(4);
+        if buf.len() < read_len {
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+        self.read_data(entry.byte_offset, read_len, buf)
+    }
+
+    /// Write a logical value to a fuse entry using its generated FuseEntryInfo.
+    ///
+    /// Applies FuseLayout encoding to produce the raw fuse value, then writes
+    /// it to OTP via DAI. Suitable for entries whose value fits in a single u32.
+    pub fn write_entry(&self, entry: &FuseEntryInfo, value: u32) -> McuResult<()> {
+        let layout = FuseLayout::from_generated(&entry.layout)
+            .ok_or(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT)?;
+        let raw = crate::write_single_fuse_value(layout, value)?;
+        self.write_word(entry.byte_offset / 4, raw)?;
+        Ok(())
+    }
+
+    /// Read a multi-word fuse entry with layout decoding.
+    ///
+    /// Reads `entry.byte_size` bytes from OTP and applies the entry's layout
+    /// to produce N decoded u32 words. Use this for entries larger than a
+    /// single u32 (e.g., hash values with WordMajorityVote, large OneHot
+    /// counters, etc.).
+    pub fn read_entry_multi<const N: usize>(&self, entry: &FuseEntryInfo) -> McuResult<[u32; N]> {
+        let layout = FuseLayout::from_generated(&entry.layout)
+            .ok_or(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT)?;
+        let word_count = entry.byte_size / 4;
+        // Read raw words into a caller-stack-friendly fixed buffer.
+        // 64 words = 256 bytes covers all current OTP items.
+        const MAX_RAW_WORDS: usize = 64;
+        if word_count > MAX_RAW_WORDS {
+            return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
+        }
+        let mut raw = [0u32; MAX_RAW_WORDS];
+        let base_word = entry.byte_offset / 4;
+        for i in 0..word_count {
+            let w = raw.get_mut(i).ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+            *w = self.read_word(base_word + i)?;
+        }
+        crate::extract_fuse_value::<N>(
+            layout,
+            raw.get(..word_count)
+                .ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?,
+        )
+    }
+
+    /// Write a multi-word logical value to a fuse entry.
+    ///
+    /// Applies FuseLayout encoding to produce the raw fuse representation,
+    /// then writes the resulting words to OTP via DAI.
+    pub fn write_entry_multi<const N: usize, const M: usize>(
+        &self,
+        entry: &FuseEntryInfo,
+        value: &[u32; N],
+    ) -> McuResult<()> {
+        let layout = FuseLayout::from_generated(&entry.layout)
+            .ok_or(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT)?;
+        let raw: [u32; M] = crate::write_fuse_value::<N, M>(layout, value)?;
+        let base_word = entry.byte_offset / 4;
+        for i in 0..M {
+            let w = raw.get(i).ok_or(McuError::ROM_FUSE_LAYOUT_TOO_LARGE)?;
+            self.write_word(base_word + i, *w)?;
+        }
+        Ok(())
+    }
+
+    /// Compute the software digest of an OTP partition by reading its data
+    /// (excluding the trailing 8-byte digest field) and hashing it with the
+    /// PRESENT-based OTP digest algorithm.
+    ///
+    /// Uses streaming reads — only two OTP words are held in memory at a time,
+    /// so this works for arbitrarily large partitions.
+    ///
+    /// Returns `McuError::ROM_OTP_INVALID_DATA_ERROR` if the partition does not
+    /// have `sw_digest` set or if its size is too small to contain a digest.
+    pub fn compute_sw_digest(
+        &self,
+        partition: &OtpPartitionInfo,
+        iv: u64,
+        cnst: u128,
+    ) -> McuResult<u64> {
+        const DIGEST_SIZE: usize = 8;
+
+        if !partition.sw_digest {
+            romtime::println!("[mcu-rom-otp] Partition does not support sw_digest");
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+        if partition.byte_size <= DIGEST_SIZE {
+            romtime::println!("[mcu-rom-otp] Partition too small for digest");
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+
+        let data_size = partition.byte_size - DIGEST_SIZE;
+        if data_size % 8 != 0 {
+            romtime::println!("[mcu-rom-otp] Partition data not 8-byte aligned for digest");
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+
+        // Read two words at a time from OTP, yielding u64 blocks to the
+        // streaming digest. No large stack buffer required.
+        let base_word = partition.byte_offset / 4;
+        let num_u64_blocks = data_size / 8;
+        let mut err: McuResult<()> = Ok(());
+
+        let blocks = (0..num_u64_blocks).map_while(|block_idx| {
+            if err.is_err() {
+                return None;
+            }
+            let w0 = match self.read_word(base_word + block_idx * 2) {
+                Ok(v) => v,
+                Err(e) => {
+                    err = Err(e);
+                    return None;
+                }
+            };
+            let w1 = match self.read_word(base_word + block_idx * 2 + 1) {
+                Ok(v) => v,
+                Err(e) => {
+                    err = Err(e);
+                    return None;
+                }
+            };
+            Some(w0 as u64 | ((w1 as u64) << 32))
+        });
+
+        let digest = otp_digest::otp_digest_iter(blocks, iv, cnst);
+        err?;
+        Ok(digest)
+    }
+
+    /// Compute and write the software digest for an OTP partition, locking it.
+    ///
+    /// Per the OTP spec, writing a non-zero value to the partition's digest
+    /// entry via DAI locks write access to the partition after the next reset.
+    ///
+    /// This method:
+    /// 1. Computes the 64-bit PRESENT-based digest over partition data
+    /// 2. Writes it to the digest offset via DAI (64-bit write)
+    /// 3. Reads it back and verifies
+    ///
+    /// Returns the computed digest on success.
+    pub fn write_sw_digest_and_lock(
+        &self,
+        partition: &OtpPartitionInfo,
+        iv: u64,
+        cnst: u128,
+    ) -> McuResult<u64> {
+        let digest_offset = partition
+            .digest_offset
+            .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
+
+        let digest = self.compute_sw_digest(partition, iv, cnst)?;
+        romtime::println!(
+            "[mcu-rom-otp] Writing SW digest {:#x} for partition '{}' at offset {:#x}",
+            digest,
+            partition.name,
+            digest_offset
+        );
+
+        // The digest field always uses a 64-bit access granule in the DAI,
+        // even for non-secret partitions whose data uses 32-bit granularity.
+        self.write_dword(digest_offset / 8, digest)?;
+
+        // Read back the digest using 64-bit granule (matching the write)
+        let readback = self.read_dword(digest_offset / 8)?;
+        if readback != digest {
+            romtime::println!(
+                "[mcu-rom-otp] Digest verify failed: wrote {:#x}, read {:#x}",
+                digest,
+                readback
+            );
+            return Err(McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
+        }
+
+        romtime::println!(
+            "[mcu-rom-otp] SW digest written and verified for '{}' - partition will lock on next reset",
+            partition.name
+        );
+        Ok(digest)
     }
 
     pub(crate) fn burn_lifecycle_tokens(&self, tokens: &LifecycleHashedTokens) -> McuResult<()> {
@@ -342,32 +838,44 @@ impl Otp {
                 i,
                 HexBytes(&tokeni.0)
             );
-            self.burn_lifecycle_token(LC_TOKENS_OFFSET + i * 16, tokeni)?;
+            self.burn_lifecycle_token(LC_TOKENS_OFFSET + i * LC_TOKEN_SIZE, tokeni)?;
         }
 
         romtime::println!(
             "[mcu-rom-otp] Burning manuf token: {}",
             HexBytes(&tokens.manuf.0)
         );
-        self.burn_lifecycle_token(LC_TOKENS_OFFSET + 7 * 16, &tokens.manuf)?;
+        self.burn_lifecycle_token(
+            LC_TOKENS_OFFSET + LC_TOKEN_MANUF_INDEX * LC_TOKEN_SIZE,
+            &tokens.manuf,
+        )?;
 
         romtime::println!(
             "[mcu-rom-otp] Burning manuf_to_prod token: {}",
             HexBytes(&tokens.manuf_to_prod.0)
         );
-        self.burn_lifecycle_token(LC_TOKENS_OFFSET + 8 * 16, &tokens.manuf_to_prod)?;
+        self.burn_lifecycle_token(
+            LC_TOKENS_OFFSET + LC_TOKEN_MANUF_TO_PROD_INDEX * LC_TOKEN_SIZE,
+            &tokens.manuf_to_prod,
+        )?;
 
         romtime::println!(
             "[mcu-rom-otp] Burning prod_to_prod_end token: {}",
             HexBytes(&tokens.prod_to_prod_end.0)
         );
-        self.burn_lifecycle_token(LC_TOKENS_OFFSET + 9 * 16, &tokens.prod_to_prod_end)?;
+        self.burn_lifecycle_token(
+            LC_TOKENS_OFFSET + LC_TOKEN_PROD_TO_PROD_END_INDEX * LC_TOKEN_SIZE,
+            &tokens.prod_to_prod_end,
+        )?;
 
         romtime::println!(
             "[mcu-rom-otp] Burning rma token: {}",
             HexBytes(&tokens.rma.0)
         );
-        self.burn_lifecycle_token(LC_TOKENS_OFFSET + 10 * 16, &tokens.rma)?;
+        self.burn_lifecycle_token(
+            LC_TOKENS_OFFSET + LC_TOKEN_RMA_INDEX * LC_TOKEN_SIZE,
+            &tokens.rma,
+        )?;
 
         romtime::println!("[mcu-rom] Finalizing digest");
         self.finalize_digest(LC_TOKENS_OFFSET)?;
@@ -381,5 +889,120 @@ impl Otp {
         let dword = u64::from_le_bytes(token.0[8..16].try_into().unwrap());
         self.write_dword((addr + 8) / 8, dword)?;
         Ok(())
+    }
+}
+
+/// Returns the FuseEntryInfo for the given vendor PK hash slot.
+pub fn vendor_pk_hash_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0),
+        1 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_1),
+        2 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_2),
+        3 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_3),
+        4 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_4),
+        5 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_5),
+        6 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_6),
+        7 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_7),
+        8 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_8),
+        9 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_9),
+        10 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_10),
+        11 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_11),
+        12 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_12),
+        13 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_13),
+        14 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_14),
+        15 => Ok(fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+/// Returns the FuseEntryInfo for the given PQC key type slot.
+pub fn pqc_key_type_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_0),
+        1 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_1),
+        2 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_2),
+        3 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_3),
+        4 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_4),
+        5 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_5),
+        6 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_6),
+        7 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_7),
+        8 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_8),
+        9 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_9),
+        10 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_10),
+        11 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_11),
+        12 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_12),
+        13 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_13),
+        14 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_14),
+        15 => Ok(fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+/// Returns the FuseEntryInfo for the given vendor ECC revocation slot.
+pub fn vendor_ecc_revocation_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::VENDOR_ECC_REVOCATION_0),
+        1 => Ok(fuses::VENDOR_ECC_REVOCATION_1),
+        2 => Ok(fuses::VENDOR_ECC_REVOCATION_2),
+        3 => Ok(fuses::VENDOR_ECC_REVOCATION_3),
+        4 => Ok(fuses::VENDOR_ECC_REVOCATION_4),
+        5 => Ok(fuses::VENDOR_ECC_REVOCATION_5),
+        6 => Ok(fuses::VENDOR_ECC_REVOCATION_6),
+        7 => Ok(fuses::VENDOR_ECC_REVOCATION_7),
+        8 => Ok(fuses::VENDOR_ECC_REVOCATION_8),
+        9 => Ok(fuses::VENDOR_ECC_REVOCATION_9),
+        10 => Ok(fuses::VENDOR_ECC_REVOCATION_10),
+        11 => Ok(fuses::VENDOR_ECC_REVOCATION_11),
+        12 => Ok(fuses::VENDOR_ECC_REVOCATION_12),
+        13 => Ok(fuses::VENDOR_ECC_REVOCATION_13),
+        14 => Ok(fuses::VENDOR_ECC_REVOCATION_14),
+        15 => Ok(fuses::VENDOR_ECC_REVOCATION_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+/// Returns the FuseEntryInfo for the given vendor LMS revocation slot.
+pub fn vendor_lms_revocation_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::VENDOR_LMS_REVOCATION_0),
+        1 => Ok(fuses::VENDOR_LMS_REVOCATION_1),
+        2 => Ok(fuses::VENDOR_LMS_REVOCATION_2),
+        3 => Ok(fuses::VENDOR_LMS_REVOCATION_3),
+        4 => Ok(fuses::VENDOR_LMS_REVOCATION_4),
+        5 => Ok(fuses::VENDOR_LMS_REVOCATION_5),
+        6 => Ok(fuses::VENDOR_LMS_REVOCATION_6),
+        7 => Ok(fuses::VENDOR_LMS_REVOCATION_7),
+        8 => Ok(fuses::VENDOR_LMS_REVOCATION_8),
+        9 => Ok(fuses::VENDOR_LMS_REVOCATION_9),
+        10 => Ok(fuses::VENDOR_LMS_REVOCATION_10),
+        11 => Ok(fuses::VENDOR_LMS_REVOCATION_11),
+        12 => Ok(fuses::VENDOR_LMS_REVOCATION_12),
+        13 => Ok(fuses::VENDOR_LMS_REVOCATION_13),
+        14 => Ok(fuses::VENDOR_LMS_REVOCATION_14),
+        15 => Ok(fuses::VENDOR_LMS_REVOCATION_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
+    }
+}
+
+/// Returns the FuseEntryInfo for the given vendor MLDSA revocation slot.
+pub fn vendor_mldsa_revocation_entry(index: usize) -> McuResult<&'static FuseEntryInfo> {
+    match index {
+        0 => Ok(fuses::VENDOR_MLDSA_REVOCATION_0),
+        1 => Ok(fuses::VENDOR_MLDSA_REVOCATION_1),
+        2 => Ok(fuses::VENDOR_MLDSA_REVOCATION_2),
+        3 => Ok(fuses::VENDOR_MLDSA_REVOCATION_3),
+        4 => Ok(fuses::VENDOR_MLDSA_REVOCATION_4),
+        5 => Ok(fuses::VENDOR_MLDSA_REVOCATION_5),
+        6 => Ok(fuses::VENDOR_MLDSA_REVOCATION_6),
+        7 => Ok(fuses::VENDOR_MLDSA_REVOCATION_7),
+        8 => Ok(fuses::VENDOR_MLDSA_REVOCATION_8),
+        9 => Ok(fuses::VENDOR_MLDSA_REVOCATION_9),
+        10 => Ok(fuses::VENDOR_MLDSA_REVOCATION_10),
+        11 => Ok(fuses::VENDOR_MLDSA_REVOCATION_11),
+        12 => Ok(fuses::VENDOR_MLDSA_REVOCATION_12),
+        13 => Ok(fuses::VENDOR_MLDSA_REVOCATION_13),
+        14 => Ok(fuses::VENDOR_MLDSA_REVOCATION_14),
+        15 => Ok(fuses::VENDOR_MLDSA_REVOCATION_15),
+        _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
     }
 }

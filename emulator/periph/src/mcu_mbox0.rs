@@ -125,6 +125,9 @@ pub struct MciMailboxImpl {
 
     /// Timer for scheduling poll actions
     timer: Timer,
+
+    /// Workaround: temporarily lift the check for mailbox requester to support integration tests
+    pub test_mcu_mbox_driver: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -188,6 +191,7 @@ impl MciMailboxImpl {
             last_irq_event: None,
             timer: Timer::new(clock),
             max_dlen_in_lock_session: 0,
+            test_mcu_mbox_driver: false,
         }
     }
 
@@ -280,7 +284,7 @@ impl MciMailboxImpl {
 
     pub fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
     {
         // If the lock is not held, we can grant it to the current requester
         if self.lock.reg.get() == 0 {
@@ -294,12 +298,12 @@ impl MciMailboxImpl {
             // Return 0 to indicate lock is now held
             caliptra_emu_bus::ReadWriteRegister::<
                 u32,
-                registers_generated::mbox::bits::MboxLock::Register,
+                registers_generated::mci::bits::MboxLock::Register,
             >::new(0)
         } else {
             caliptra_emu_bus::ReadWriteRegister::<
                 u32,
-                registers_generated::mbox::bits::MboxLock::Register,
+                registers_generated::mci::bits::MboxLock::Register,
             >::new(self.lock.reg.get())
         }
     }
@@ -369,7 +373,7 @@ impl MciMailboxImpl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxExecute::Register,
+        registers_generated::mci::bits::MboxExecute::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.execute.reg.get())
     }
@@ -377,7 +381,7 @@ impl MciMailboxImpl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxExecute::Register,
+            registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         if !self.is_locked() {
@@ -387,8 +391,7 @@ impl MciMailboxImpl {
         let new_val = val.reg.get();
         self.execute.reg.set(new_val);
         if new_val == MboxExecute::Execute::SET.value {
-            // Workaround: temporarily lift the check for mailbox requester to support integration tests
-            if cfg!(feature = "test-mcu-mbox-driver")
+            if self.test_mcu_mbox_driver
                 || matches!(self.user.reg.get().into(), MciMailboxRequester::SocAgent(_))
             {
                 self.irq = true;
@@ -501,9 +504,12 @@ mod tests {
             Rc::new(RefCell::new(mci_irq)),
             Some(mcu_mailbox0.clone()),
             None,
+            None,
+            [0, 0],
         );
         AutoRootBus::new(
             vec![],
+            None,
             None,
             None,
             None,

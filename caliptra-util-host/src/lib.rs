@@ -83,7 +83,7 @@
 //! println!("Device info length: {}", device_info.info_length);
 //!
 //! let firmware_version = caliptra_cmd_get_firmware_version(&mut session, 0)?;
-//! println!("Firmware version: {}.{}.{}.{}", 
+//! println!("Firmware version: {}.{}.{}.{}",
 //!     firmware_version.version[0], firmware_version.version[1],
 //!     firmware_version.version[2], firmware_version.version[3]);
 //! ```
@@ -94,9 +94,18 @@ pub use caliptra_util_host_command_types::{
     GetDeviceIdRequest, GetDeviceIdResponse, GetDeviceInfoRequest, GetDeviceInfoResponse,
     GetFirmwareVersionRequest, GetFirmwareVersionResponse,
 };
+// Re-export SHA types
+pub use caliptra_util_host_command_types::crypto_hash::{
+    ShaAlgorithm, ShaFinalRequest, ShaFinalResponse, ShaInitRequest, ShaInitResponse,
+    ShaUpdateRequest, ShaUpdateResponse, MAX_HASH_SIZE, MAX_SHA_INPUT_SIZE, SHA_CONTEXT_SIZE,
+};
 pub use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_device_capabilities, caliptra_cmd_get_device_id, caliptra_cmd_get_device_info,
     caliptra_cmd_get_firmware_version,
+};
+// Re-export SHA API functions
+pub use caliptra_util_host_commands::api::crypto_hash::{
+    caliptra_cmd_sha_final, caliptra_cmd_sha_hash, caliptra_cmd_sha_init, caliptra_cmd_sha_update,
 };
 pub use caliptra_util_host_session::CaliptraSession;
 pub use caliptra_util_host_transport::{Mailbox, Transport};

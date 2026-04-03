@@ -249,6 +249,7 @@ The PLDM package only contains a single component which contains a full flash im
 | Component                      |
 | ------------------------------ |
 | Flash header                   |
+| Checksum                       |
 | Image Info (Caliptra FMC + RT) |
 | Image Info (SoC Manifest)      |
 | Image Info (MCU RT)            |

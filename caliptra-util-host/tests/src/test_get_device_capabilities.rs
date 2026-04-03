@@ -60,7 +60,10 @@ fn test_get_device_capabilities_basic() {
             println!("All device capabilities fields verified successfully!");
         }
         Err(e) => {
-            panic!("Failed to get device capabilities via high-level API: {:?}", e);
+            panic!(
+                "Failed to get device capabilities via high-level API: {:?}",
+                e
+            );
         }
     }
 

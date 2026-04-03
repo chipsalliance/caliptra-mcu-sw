@@ -14,10 +14,10 @@ Abstract:
 
 #![no_std]
 
-pub mod boot_status;
-pub use boot_status::*;
 mod device_ownership_transfer;
 pub use device_ownership_transfer::*;
+mod dot_recovery;
+pub use dot_recovery::*;
 pub mod flash;
 pub use flash::*;
 mod fuse_layout;
@@ -35,6 +35,7 @@ pub use rom::*;
 mod rom_env;
 pub use rom_env::*;
 mod i3c;
+mod mailbox;
 mod recovery;
 
 // Boot flow modules
@@ -47,6 +48,8 @@ pub use warm_boot::WarmBoot;
 
 mod fw_hitless_update;
 pub use fw_hitless_update::FwHitlessUpdate;
+
+use caliptra_api::CaliptraApiError;
 
 pub trait FatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> !;
@@ -130,4 +133,12 @@ fn fatal_error_raw(code: u32) -> ! {
 #[allow(dead_code)]
 pub fn fatal_error(error: mcu_error::McuError) -> ! {
     fatal_error_raw(error.into())
+}
+
+/// Extract a u32 error code from a CaliptraApiError for logging.
+pub fn err_code(err: &CaliptraApiError) -> u32 {
+    match err {
+        CaliptraApiError::MailboxCmdFailed(c) => *c,
+        _ => 0xdead_ffff,
+    }
 }

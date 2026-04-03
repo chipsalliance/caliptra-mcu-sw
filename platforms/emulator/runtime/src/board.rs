@@ -2,7 +2,7 @@
 
 use crate::components as runtime_components;
 use crate::interrupts::EmulatorPeripherals;
-use crate::MCU_MEMORY_MAP;
+use crate::{MCU_MEMORY_MAP, MCU_STRAPS};
 use arrayvec::ArrayVec;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
@@ -43,6 +43,7 @@ use mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
 use mcu_tock_veer::timers::InternalTimers;
 use registers_generated::mci;
 use romtime::CaliptraSoC;
+use romtime::McuBootMilestones;
 use romtime::StaticRef;
 use rv32i::csr;
 
@@ -134,7 +135,7 @@ struct VeeR {
     mctp_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     // mctp_secure_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    // mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
     doe_spdm: &'static capsules_runtime::doe::driver::DoeDriver<
         'static,
         EmulatedDoeTransport<'static, InternalTimers<'static>>,
@@ -174,7 +175,7 @@ impl SyscallDriverLookup for VeeR {
             //     f(Some(self.mctp_secure_spdm))
             // }
             capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
-            // capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
+            capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
             capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM => f(Some(self.doe_spdm)),
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
@@ -284,6 +285,10 @@ impl romtime::Exit for EmulatorExiter {
 /// # Safety
 /// Accesses memory, memory-mapped registers and CSRs.
 pub unsafe fn main() {
+    if cfg!(feature = "test-do-nothing") {
+        loop {}
+    }
+
     // only machine mode
     rv32i::configure_trap_handler();
 
@@ -551,7 +556,23 @@ pub unsafe fn main() {
         let _ = process_console.start();
     }
 
-    let mux_mctp = mcu_components::mux_mctp::MCTPMuxComponent::new(&peripherals.i3c, mux_alarm)
+    // Select which I3C core to use for MCTP transport based on platform strap.
+    if MCU_STRAPS.active_i3c > 1 {
+        romtime::println!(
+            "[mcu-runtime] WARNING: invalid active_i3c value {}, falling back to 0",
+            MCU_STRAPS.active_i3c
+        );
+    }
+    let active_i3c_core = if MCU_STRAPS.active_i3c == 1 {
+        &peripherals.i3c1
+    } else {
+        &peripherals.i3c
+    };
+    romtime::println!(
+        "[mcu-runtime] Active I3C core for MCTP: {}",
+        MCU_STRAPS.active_i3c
+    );
+    let mux_mctp = mcu_components::mux_mctp::MCTPMuxComponent::new(active_i3c_core, mux_alarm)
         .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding));
 
     let mctp_spdm = mcu_components::mctp_driver::MCTPDriverComponent::new(
@@ -578,13 +599,15 @@ pub unsafe fn main() {
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
 
-    // let mctp_caliptra = mcu_components::mctp_driver::MCTPDriverComponent::new(
-    //     board_kernel,
-    //     capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM,
-    //     mux_mctp,
-    //     MessageType::Caliptra,
-    // )
-    // .finalize(mctp_driver_component_static!(InternalTimers));
+    // Enable MCTP Caliptra VDM driver
+    let mctp_caliptra = mcu_components::mctp_driver::MCTPDriverComponent::new(
+        board_kernel,
+        capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM,
+        mux_mctp,
+        MessageType::Caliptra,
+    )
+    .finalize(mctp_driver_component_static!(InternalTimers));
+    romtime::println!("[mcu-runtime] MCTP Caliptra driver component initialized");
 
     // Set up a SPDM over DOE capsule.
     let doe_spdm = mcu_components::doe::DoeComponent::new(
@@ -708,7 +731,7 @@ pub unsafe fn main() {
             mctp_spdm,
             // mctp_secure_spdm,
             mctp_pldm,
-            // mctp_caliptra,
+            mctp_caliptra,
             doe_spdm,
             flash_partitions,
             mailbox,
@@ -760,10 +783,10 @@ pub unsafe fn main() {
         Some(0)
     } else if cfg!(feature = "test-i3c-simple") {
         debug!("Executing test-i3c-simple");
-        crate::tests::i3c_target_test::test_i3c_simple()
+        crate::tests::i3c_target_test::run_test_i3c_simple()
     } else if cfg!(feature = "test-i3c-constant-writes") {
         debug!("Executing test-i3c-constant-writes");
-        crate::tests::i3c_target_test::test_i3c_constant_writes()
+        crate::tests::i3c_target_test::run_test_i3c_constant_writes()
     } else if cfg!(feature = "test-flash-ctrl-init") {
         debug!("Executing test-flash-ctrl-init");
         crate::tests::flash_ctrl_test::test_flash_ctrl_init()
@@ -818,6 +841,7 @@ pub unsafe fn main() {
         unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
     let mci_wdt = romtime::Mci::new(mci);
     mci_wdt.disable_wdt();
+    mci_wdt.set_flow_milestone(McuBootMilestones::FIRMWARE_OS_INITIALIZED.into());
     board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
 }
 

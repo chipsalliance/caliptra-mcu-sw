@@ -34,6 +34,16 @@ cargo xtask runtime
 
 This uses the full [active, or subsystem, mode boot flow](https://chipsalliance.github.io/caliptra-mcu-sw/rom.html#cold-boot-flow).
 
+## Testing
+
+The primary way to run integration tests with the emulator is using the `test` xtask:
+
+```shell
+cargo xtask test
+```
+
+For more details on how to run tests locally, how CI works, and how to add new tests, see the [Testing chapter](https://chipsalliance.github.io/caliptra-mcu-sw/testing.html) in the documentation.
+
 ## Hardware revisions
 
 Currently, two hardware revisions are supported: 2.0 and 2.1.
@@ -49,6 +59,15 @@ For the emulator, there is a `--hw-revision 2.1.0` flag that can be used to sele
 
 For firmware, 2.1 features can be enabled using the `hw-2-1` feature flag when specifying dependencies.
 
+### Branch versions
+
+The table below details which versions of Caliptra are compatible with each other.
+
+| caliptra-mcu-sw | caliptra-sw  | core/subsystem |
+|-----------------|--------------|----------------|
+| main-2.1        | main         | 2.1.x RTL      |
+| main            | caliptra-2.0 | 2.0.x RTL      |
+
 ## Documentation
 
 The specification is published [here](https://chipsalliance.github.io/caliptra-mcu-sw/).
@@ -56,9 +75,9 @@ The specification is published [here](https://chipsalliance.github.io/caliptra-m
 To build the documentation locally, you need to install `mdbook`:
 
 ```shell
-cargo install mdbook
-cargo install mdbook-mermaid
-cargo install mdbook-plantuml --no-default-features
+cargo install --version 0.4.52 mdbook
+cargo install --version 0.16.2 mdbook-mermaid
+cargo install --version 0.8.0 mdbook-plantuml --no-default-features
 wget https://github.com/plantuml/plantuml/releases/download/v1.2025.7/plantuml-asl-1.2025.7.jar -O docs/plantuml-asl-1.2025.7.jar
 ```
 
@@ -189,8 +208,4 @@ When implementing a new emulator peripheral and firmware driver, the workflow wi
 
 ## FPGA
 
-To build install the `uio` device and the ROM backdoors for FPGA development, run
-
-```shell
-cargo xtask-fpga fpga-install-kernel-modules
-```
+See [specification](https://chipsalliance.github.io/caliptra-mcu-sw/) for FPGA instructions.

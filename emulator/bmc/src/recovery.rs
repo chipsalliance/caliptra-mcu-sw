@@ -34,10 +34,10 @@ statemachine! {
         // check if we need to send another recovery image (if awaiting image is set and running recovery)
         Activate + DeviceStatus(DeviceStatusBlock) [check_device_status_recovery]
             = WaitForRecoveryStatus,
-        // Activate + DeviceStatus(DeviceStatusBlock) [check_device_status_recovery_running_recovery]
-        //     = ActivateCheckRecoveryStatus,
-        // ActivateCheckRecoveryStatus + RecoveryStatus(RecoveryStatusBlock) [check_recovery_status_awaiting]
-        //     / start_recovery = WaitForRecoveryPending,
+
+        // recovery is complete when device becomes healthy or is running the recovery image
+        Activate + DeviceStatus(DeviceStatusBlock) [check_device_status_healthy] = Done,
+        Activate + DeviceStatus(DeviceStatusBlock) [check_device_status_running_recovery] = Done,
     }
 }
 
@@ -181,6 +181,12 @@ impl StateMachineContext for Context {
         } else {
             Ok(false)
         }
+    }
+
+    /// Check that the device is running the recovery image
+    fn check_device_status_running_recovery(&self, status: &DeviceStatusBlock) -> Result<bool, ()> {
+        let status = status.reg.read(DeviceStatus::Status);
+        Ok(status == DeviceStatus::Status::RunnningRecoveryImage.value)
     }
 
     fn send_recovery_control(&mut self, _status: DeviceStatusBlock) -> Result<(), ()> {

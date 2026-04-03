@@ -8,7 +8,7 @@ use mcu_config::{McuMemoryMap, McuStraps, MemoryRegionType};
 pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     rom_offset: 0x8000_0000,
     rom_size: 64 * 1024,
-    rom_stack_size: 0x2f00,
+    rom_stack_size: 0x2d00,
     rom_estack_size: 0x200,
     rom_properties: MemoryRegionType::MEMORY,
 
@@ -26,6 +26,10 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     i3c_offset: 0x2000_4000,
     i3c_size: 0x1000,
     i3c_properties: MemoryRegionType::MMIO,
+
+    i3c1_offset: 0x2000_5000,
+    i3c1_size: 0x1000,
+    i3c1_properties: MemoryRegionType::MMIO,
 
     mci_offset: 0x2100_0000,
     mci_size: 0xe0_0000,
@@ -48,4 +52,14 @@ pub const EMULATOR_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     lc_properties: MemoryRegionType::MMIO,
 };
 
-pub const EMULATOR_MCU_STRAPS: McuStraps = McuStraps::default();
+const ACTIVE_I3C: u8 = if cfg!(feature = "active-i3c1") { 1 } else { 0 };
+
+pub const EMULATOR_MCU_STRAPS: McuStraps = McuStraps {
+    active_i3c: ACTIVE_I3C,
+    ..McuStraps::default()
+};
+
+/// The MRAC value which should be populated for this memory map.  This corresponds to a value
+/// utilized within the global start assembly and thus must be unmangled.
+#[no_mangle]
+pub static MRAC_VALUE: u32 = EMULATOR_MEMORY_MAP.compute_mrac();

@@ -1,6 +1,6 @@
 # Caliptra Manufacturer Control Unit (MCU) Firmware and SDK
 
-*Spec revision: 0.3*
+*Spec revision: 0.9*
 
 The Caliptra MCU firmware is be provided as a reference software development kit (SDK) with a consistent foundation for building a quantum-resilient and standards-compliant Root of Trust (RoT) for SoC implementers. It extends the Caliptra core system to provide the Caliptra Subsystem set of services to the encompassing system.
 

@@ -1,0 +1,201 @@
+# Licensed under the Apache-2.0 license
+
+name: End-to-End Attestation
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  attestation_e2e:
+    runs-on: ubuntu-24.04
+
+    env:
+      CARGO_INCREMENTAL: 0
+      SCCACHE_VERSION: 0.8.2
+      SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
+      SCCACHE_GHA_CACHE_FROM: sccache-caliptra-mcu-sw
+
+      # Change this to a new random value if you suspect the cache is corrupted
+      SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b42a6e70ec4
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Restore sccache binary
+        uses: actions/cache/restore@v3
+        id: sccache_bin_restore
+        with:
+          path: ~/.cargo/bin/sccache
+          key: sccache-bin-${{ env.SCCACHE_VERSION }}-${{ env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
+
+      - name: Install sccache
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        run: |
+          cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
+
+      - name: Save sccache binary
+        uses: actions/cache/save@v3
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        with:
+          path: ~/.cargo/bin/sccache
+          key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
+
+      - name: Configure sccache
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('RUSTC_WRAPPER', process.env.HOME + '/.cargo/bin/sccache');
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Install cocli
+        run: |
+          go install github.com/veraison/cocli@v1.0.0-alpha0
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      # ---- Attestation via spdm_requester_emu -------------------------------
+      - name: Install cmake 3.x
+        run: |
+          wget https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz &&
+          mkdir -p /opt/cmake &&
+          tar xvzf cmake-3.31.6-linux-x86_64.tar.gz -C /opt/cmake --strip-components=1 &&
+          echo "/opt/cmake/bin" >> $GITHUB_PATH
+
+      - name: Checkout spdm-emu repository
+        uses: actions/checkout@v4
+        with:
+          repository: parvathib/spdm-emu
+          ref: pbhogaraju/spdm_emu_main_custom
+          path: spdm-emu
+          submodules: recursive
+
+      - name: Build spdm-emu
+        run: |
+          pushd spdm-emu
+          git submodule update --init --recursive
+          mkdir build
+          pushd build
+          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=openssl ..
+          make copy_sample_key
+          make
+          popd
+          popd
+
+      # ---- Build firmware with test features enabled -------------------------------
+      - name: Build firmware with test SPDM responder features
+        run: |
+          cargo xtask all-build --runtime-features test-mctp-spdm-attestation
+
+      # ---- Generate reference CoRIM values -------------------------------
+      - name: Generate reference-value CoRIM
+        run: |
+          cat > /tmp/corim-config.json << 'EOF'
+          {
+            "output_dir": "attestation-artifacts/refval-corim",
+            "signing": {
+              "test_key": "caliptra-corim-test-signing-key"
+            }
+          }
+          EOF
+          cargo xtask corim gen-refval --bundle target/all-fw.zip --config /tmp/corim-config.json
+
+      # ---- Upload Reference CoRIM artifacts -------------------------------
+      - name: Upload Reference CoRIM artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attestation-artifacts
+          path: |
+            attestation-artifacts/
+
+      # ---- Run SPDM attestation test on MCTP transport -------------------------------
+      - name: Generate SPDM nonce
+        run: |
+          echo "SPDM_NONCE=$(openssl rand -hex 32)" >> $GITHUB_ENV
+
+      - name: Run SPDM attestation test on MCTP transport
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+          CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
+        run: |
+          cargo t -p tests-integration -- --test test_mctp_spdm_attestation --nocapture  --include-ignored
+
+      - name: Upload attestation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+        with:
+          name: spdm-mctp-attestation-test-results
+          path: |
+            ${{ env.SPDM_VALIDATOR_DIR }}/spdm_requester_emu_output.txt
+            ${{ env.SPDM_VALIDATOR_DIR }}/caliptra-evidence.pcap
+            ${{ env.SPDM_VALIDATOR_DIR }}/measurement_block_fd.bin
+            ${{ env.SPDM_VALIDATOR_DIR }}/certificate_chain_slot_00.der
+
+      - name: Display SPDM attestation test results
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+        run: |
+          cat $SPDM_VALIDATOR_DIR/spdm_requester_emu_output.txt
+
+      # ---- Authenticate attestation inputs against Trust Anchor Store -------------------------------
+      - name: Prepare Attestation Artifacts and Build Trust Anchor Store
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+          CORIM_DIR: ${{ github.workspace }}/attestation-artifacts/refval-corim
+          SIGNED_CORIM_DIR: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
+        run: |
+          # Copy evidence artifacts
+          EVIDENCE_DIR="attestation-artifacts/evidence"
+          mkdir -p "$EVIDENCE_DIR"
+          cp $SPDM_VALIDATOR_DIR/measurement_block_fd.bin "$EVIDENCE_DIR/"
+          cp $SPDM_VALIDATOR_DIR/certificate_chain_slot_00.der "$EVIDENCE_DIR/"
+          echo "Copied evidence artifacts:"
+          ls -la "$EVIDENCE_DIR"
+
+          # Copy only the signed CoRIM files into a dedicated directory.
+          mkdir -p "$SIGNED_CORIM_DIR"
+          cp "$CORIM_DIR"/signed-*.cbor "$SIGNED_CORIM_DIR/"
+          echo "Copied signed Reference CoRIM artifacts:"
+          ls -la "$SIGNED_CORIM_DIR" | sort
+
+          # Build Trust Anchor Store
+          TA_STORE_DIR="attestation-artifacts/ta_store"
+          mkdir -p "$TA_STORE_DIR/roots" "$TA_STORE_DIR/endorsement-certs"
+
+          # Copy the test root CA cert which endorsed the device ID cert into roots/
+          cp ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der \
+            "$TA_STORE_DIR/roots/slot0_ecc_test_root_ca.der"
+
+          # Copy the CoRIM signing certificate into roots/ and endorsement-certs/
+          cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/roots/corim_signing_cert.der"
+          cp "$CORIM_DIR/fake_keys/signing-cert.der" "$TA_STORE_DIR/endorsement-certs/corim_signing_cert.der"
+
+          echo "Trust Anchor Store contents:"
+          find "$TA_STORE_DIR" -type f | sort
+
+      # ---- Authenticate and verify attestation inputs -------------------------------
+      - name: Authenticate and verify attestation inputs
+        working-directory: ocp-eat-verifier
+        env:
+          EVIDENCE_DIR: ${{ github.workspace }}/attestation-artifacts/evidence
+          TA_STORE_PATH: ${{ github.workspace }}/attestation-artifacts/ta_store
+          SIGNED_REFVAL_CORIM_PATH: ${{ github.workspace }}/attestation-artifacts/signed-refval-corim
+        run: |
+          cargo build --release -p ocptoken
+          ./target/release/ocptoken authenticate \
+            -e $EVIDENCE_DIR/measurement_block_fd.bin \
+            -c $EVIDENCE_DIR/certificate_chain_slot_00.der

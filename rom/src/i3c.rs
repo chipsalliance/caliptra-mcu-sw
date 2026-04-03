@@ -3,8 +3,9 @@
 use mcu_error::McuError;
 use registers_generated::i3c;
 use registers_generated::i3c::bits::{
-    DeviceStatus0, HcControl, IndirectFifoCtrl0, QueueThldCtrl, RingHeadersSectionOffset,
-    StbyCrCapabilities, StbyCrControl, StbyCrDeviceAddr, StbyCrVirtDeviceAddr, TtiQueueThldCtrl,
+    DeviceStatus0, HcControl, IndirectFifoCtrl0, QueueThldCtrl, RecoveryStatus,
+    RingHeadersSectionOffset, StbyCrCapabilities, StbyCrControl, StbyCrDeviceAddr,
+    StbyCrVirtDeviceAddr, TtiQueueThldCtrl,
 };
 use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -161,16 +162,22 @@ impl I3c {
 
         romtime::println!("[mcu-rom-i3c] Enable PHY to the bus");
         // enable the PHY connection to the bus
-        regs.i3c_base_hc_control.modify(
-            HcControl::ModeSelector::SET +
-                // clear is bus enabled, set is suspended
-                HcControl::BusEnable::CLEAR,
-        );
+        regs.i3c_base_hc_control
+            .modify(HcControl::ModeSelector::SET + HcControl::BusEnable::SET);
     }
 
     pub fn disable_recovery(&mut self) {
         self.registers
+            .sec_fw_recovery_if_recovery_status
+            .write(RecoveryStatus::DevRecStatus.val(3)); // recovery successful
+        self.registers
             .sec_fw_recovery_if_device_status_0
             .write(DeviceStatus0::DevStatus.val(0));
+    }
+
+    pub fn set_recovery_status_open(&self) {
+        self.registers
+            .sec_fw_recovery_if_recovery_status
+            .write(RecoveryStatus::DevRecStatus.val(2)); // booting recovery image, so that the BMC knows that we might still want more images
     }
 }

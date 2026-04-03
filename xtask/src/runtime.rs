@@ -3,8 +3,8 @@
 use crate::Commands;
 use anyhow::{anyhow, Result};
 use caliptra_api_types::DeviceLifecycle;
-use mcu_builder::{rom_build, runtime_build_with_apps, CaliptraBuilder, PROJECT_ROOT};
-use std::{path::PathBuf, process::Command};
+use mcu_builder::{runtime_build_with_apps, CaliptraBuilder, PROJECT_ROOT};
+use std::process::Command;
 
 /// Run the Runtime Tock kernel image for RISC-V in the emulator.
 pub(crate) fn runtime_run(args: Commands) -> Result<()> {
@@ -22,7 +22,6 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         streaming_boot,
         soc_images,
         flash_image,
-        use_dccm_for_stack,
         dccm_offset,
         dccm_size,
     } = args
@@ -36,34 +35,22 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     }
     // include debug features since this is interactive
     features.push("debug");
-    let rom_binary: PathBuf = rom_build(None, "")?.into();
-    let tock_binary: PathBuf = runtime_build_with_apps(
-        &features,
-        None,
-        false,
-        None,
-        None,
-        use_dccm_for_stack,
-        dccm_offset,
-        dccm_size,
-        None,
-        None,
-    )?
-    .into();
+    let features_str = features.join(",");
+    let rom_binary = mcu_builder::rom_build(&mcu_builder::CaliptraBuildArgs::default())?;
+    let tock_binary = runtime_build_with_apps(&mcu_builder::CaliptraBuildArgs {
+        features: Some(&features_str),
+        ..Default::default()
+    })?;
 
-    let mut caliptra_builder = CaliptraBuilder::new(
-        false,
+    let mut caliptra_builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
         caliptra_rom,
         caliptra_firmware,
         soc_manifest,
         vendor_pk_hash,
-        Some(tock_binary.clone()),
+        mcu_firmware: Some(tock_binary.clone()),
         soc_images,
-        None,
-        None,
-        None,
-        None,
-    );
+        ..Default::default()
+    });
 
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
     let caliptra_firmware = caliptra_builder.get_caliptra_fw()?;

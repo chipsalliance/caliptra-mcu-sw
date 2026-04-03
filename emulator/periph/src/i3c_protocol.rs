@@ -230,9 +230,11 @@ impl I3cTarget {
     }
 
     pub fn send_command(&mut self, cmd: I3cTcriCommandXfer) {
-        let mut target = self.target.lock().unwrap();
-        target.rx_buffer.push_back(cmd);
-        if let Some(client) = self.incoming_command_client.lock().unwrap().clone() {
+        // Release the target lock before calling incoming() to avoid a
+        // lock-ordering inversion with the emulator step lock.
+        self.target.lock().unwrap().rx_buffer.push_back(cmd);
+        let client = self.incoming_command_client.lock().unwrap().clone();
+        if let Some(client) = client {
             client.incoming();
         }
     }

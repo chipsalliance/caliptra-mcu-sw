@@ -25,7 +25,6 @@ use caliptra_emu_types::RvAddr;
 use caliptra_emu_types::RvData;
 use caliptra_emu_types::RvSize;
 use caliptra_hw_model::Output;
-use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
 use emulator_bmc::Bmc;
 use emulator_caliptra::start_caliptra;
@@ -36,14 +35,14 @@ use emulator_periph::LcCtrl;
 use emulator_periph::McuRootBusOffsets;
 use emulator_periph::{I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp, OtpArgs};
 use emulator_registers_generated::axicdma::AxicdmaPeripheral;
+use emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
 use emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
-use mcu_config::McuStraps;
 use mcu_rom_common::LifecycleControllerState;
-use mcu_rom_common::McuBootMilestones;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
 use registers_generated::fuses;
+use romtime::McuBootMilestones;
 use semver::Version;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -55,9 +54,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
-const BOOT_CYCLES: u64 = 25_000_000;
+const BOOT_CYCLES: u64 = 100_000_000;
 
 /// Emulated model
 pub struct ModelEmulated {
@@ -69,6 +69,7 @@ pub struct ModelEmulated {
     ready_for_fw: Rc<Cell<bool>>,
     cpu_enabled: Rc<Cell<bool>>,
     trace_path: Option<PathBuf>,
+    mcu_uart_output: Rc<RefCell<Vec<u8>>>,
 
     // Keep this even when not including the coverage feature to keep the
     // interface consistent
@@ -78,13 +79,18 @@ pub struct ModelEmulated {
     events_to_caliptra: mpsc::Sender<Event>,
     events_from_caliptra: mpsc::Receiver<Event>,
     collected_events_from_caliptra: Vec<Event>,
-    bmc: Bmc,
+    bmc: Option<Bmc>,
     i3c_port: Option<u16>,
     i3c_controller: I3cController,
     i3c_address: Option<u8>,
     i3c_controller_join_handle: Option<JoinHandle<()>>,
     dot_flash: Rc<RefCell<Ram>>,
+    otp_partitions: Rc<RefCell<Vec<u8>>>,
+    mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
     check_booted_to_runtime: bool,
+    // Synchronises cross-thread timer scheduling (I3C controller thread)
+    // with the CPU step that advances the clock.
+    step_lock: Arc<Mutex<()>>,
 }
 
 fn hash_slice(slice: &[u8]) -> u64 {
@@ -119,11 +125,20 @@ impl McuHwModel for ModelEmulated {
             ..Default::default()
         };
 
+        let mcu_uart_output = Rc::new(RefCell::new(Vec::new()));
+
+        let mut straps = mcu_config::McuStraps::default();
+        if params.active_i3c1 {
+            straps.active_i3c = 1;
+        }
+
         let bus_args = McuRootBusArgs {
             rom: params.mcu_rom.into(),
             pic: pic.clone(),
             clock: clock.clone(),
             offsets,
+            uart_output: Some(mcu_uart_output.clone()),
+            straps,
             ..Default::default()
         };
         let mcu_root_bus = McuRootBus::new(bus_args).unwrap();
@@ -138,19 +153,38 @@ impl McuHwModel for ModelEmulated {
         let i3c_irq = pic.register_irq(McuRootBus::I3C_IRQ);
 
         let dma_ram = mcu_root_bus.ram.clone();
+        let rom_sram = mcu_root_bus.rom_sram.clone();
         let direct_read_flash = mcu_root_bus.direct_read_flash.clone();
         let dot_flash = mcu_root_bus.dot_flash.clone();
+
+        // Use HW 2.1.0 for flash-based boot, otherwise 2.0.0
+        let hw_version = if params.flash_boot {
+            Version::new(2, 1, 0)
+        } else {
+            Version::new(2, 0, 0)
+        };
+
+        let step_lock = Arc::new(Mutex::new(()));
 
         let i3c = I3c::new(
             &clock.clone(),
             &mut i3c_controller,
             i3c_irq,
-            Version::new(2, 0, 0),
+            hw_version.clone(),
+            step_lock.clone(),
         );
 
         let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
 
-        let mut otp_mem = vec![0u8; fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE];
+        let otp_size = fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE;
+        let mut otp_mem = if let Some(initial_otp) = params.otp_memory {
+            // Start with provided OTP memory contents, extended to full size if needed
+            let mut mem = initial_otp.to_vec();
+            mem.resize(otp_size, 0);
+            mem
+        } else {
+            vec![0u8; otp_size]
+        };
         if let Some(state) = params.lifecycle_controller_state {
             println!("Setting lifecycle controller state to {}", state);
             let mem = lc_generate_memory(state, 1)?;
@@ -169,19 +203,37 @@ impl McuHwModel for ModelEmulated {
                 .copy_from_slice(&mem);
         }
 
-        let lc = LcCtrl::new();
+        // Derive LC state from the provisioned OTP fuses (source of truth).
+        let lc_bytes = &otp_mem[fuses::LIFE_CYCLE_BYTE_OFFSET
+            ..fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE];
+        let (lc_state_index, lc_transition_cnt) = if lc_bytes.iter().any(|&b| b != 0) {
+            let mem: [u8; mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE] = lc_bytes
+                .try_into()
+                .expect("lifecycle partition size mismatch");
+            let (state_idx, count) = mcu_otp_lifecycle::lc_decode_memory(&mem)?;
+            (state_idx as u32, count as u32)
+        } else {
+            (0, 0)
+        };
+
+        let lc = LcCtrl::with_state(lc_state_index, lc_transition_cnt);
 
         let otp = Otp::new(
             &clock.clone(),
             OtpArgs {
                 raw_memory: Some(otp_mem),
                 vendor_pk_hash: params.vendor_pk_hash,
-                vendor_pqc_type: params
-                    .vendor_pqc_type
-                    .unwrap_or(FwVerificationPqcKeyType::LMS),
+                vendor_pqc_type: params.vendor_pqc_type,
                 ..Default::default()
             },
         )?;
+
+        // Get the partitions reference before passing OTP to the bus
+        let otp_partitions = otp.partitions_ref();
+
+        // Share OTP partition data with the LC controller for transitions.
+        let mut lc = lc;
+        lc.set_otp_partitions(otp_partitions.clone());
 
         let create_flash_controller =
             |default_path: &str,
@@ -203,21 +255,23 @@ impl McuHwModel for ModelEmulated {
                 .unwrap()
             };
 
-        let primary_flash_controller = create_flash_controller(
+        let mut primary_flash_controller = create_flash_controller(
             "primary_flash",
             McuRootBus::PRIMARY_FLASH_CTRL_ERROR_IRQ,
             McuRootBus::PRIMARY_FLASH_CTRL_EVENT_IRQ,
-            None,
+            params.primary_flash_initial_contents.as_deref(),
             Some(direct_read_flash.clone()),
         );
+        primary_flash_controller.set_dma_rom_sram(rom_sram.clone());
 
-        let secondary_flash_controller = create_flash_controller(
+        let mut secondary_flash_controller = create_flash_controller(
             "secondary_flash",
             McuRootBus::SECONDARY_FLASH_CTRL_ERROR_IRQ,
             McuRootBus::SECONDARY_FLASH_CTRL_EVENT_IRQ,
             None,
             None,
         );
+        secondary_flash_controller.set_dma_rom_sram(rom_sram.clone());
 
         let mut dma_ctrl = emulator_periph::AxiCDMA::new(
             &clock.clone(),
@@ -231,9 +285,22 @@ impl McuHwModel for ModelEmulated {
 
         emulator_periph::AxiCDMA::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
 
+        // Map LC state to Caliptra device lifecycle per the Caliptra SS HW spec
+        // (caliptra-ss docs/CaliptraSSHardwareSpecification.md, LCC state table).
         let device_lifecycle: Option<String> = match params.lifecycle_controller_state {
             Some(LifecycleControllerState::Dev) => Some("manufacturing".into()),
-            Some(LifecycleControllerState::Raw) => Some("unprovisioned".into()),
+            Some(
+                LifecycleControllerState::Raw
+                | LifecycleControllerState::TestUnlocked0
+                | LifecycleControllerState::TestUnlocked1
+                | LifecycleControllerState::TestUnlocked2
+                | LifecycleControllerState::TestUnlocked3
+                | LifecycleControllerState::TestUnlocked4
+                | LifecycleControllerState::TestUnlocked5
+                | LifecycleControllerState::TestUnlocked6
+                | LifecycleControllerState::TestUnlocked7,
+            ) => Some("unprovisioned".into()),
+            // TestLocked*, Prod, ProdEnd, Rma, Scrap all map to production
             _ => Some("production".into()),
         };
 
@@ -242,7 +309,8 @@ impl McuHwModel for ModelEmulated {
             _ => None,
         };
 
-        let use_mcu_recovery_interface = false;
+        // Use MCU recovery interface when flash-based boot is enabled
+        let use_mcu_recovery_interface = params.flash_boot;
 
         let (mut caliptra_cpu, soc_to_caliptra, soc_to_caliptra_bus, ext_mci) =
             start_caliptra(&StartCaliptraArgs {
@@ -250,11 +318,8 @@ impl McuHwModel for ModelEmulated {
                 device_lifecycle,
                 req_idevid_csr,
                 use_mcu_recovery_interface,
-                extra_soc_bus: Some(
-                    params
-                        .caliptra_soc_axi_user
-                        .unwrap_or(McuStraps::default().axi_user1),
-                ),
+                extra_soc_bus: Some(params.caliptra_soc_axi_user.unwrap_or(0xdddd_dddd)),
+                debug_intent: params.debug_intent,
             })
             .expect("Failed to start Caliptra CPU");
         let soc_to_caliptra_bus = soc_to_caliptra_bus.unwrap();
@@ -263,12 +328,22 @@ impl McuHwModel for ModelEmulated {
         let mcu_mailbox1 = mcu_root_bus.mcu_mailbox1.clone();
 
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
+        // Start with go-bit unset so ROM-based tests can configure
+        // wires before the ROM proceeds (matching FPGA behavior).
+        let mci_generic_input_wires = if params.flash_boot {
+            [0, 1 << 29]
+        } else {
+            [0, 0]
+        };
+        let mci_regs = ext_mci.regs.clone();
         let mci = Mci::new(
             &clock.clone(),
             ext_mci,
             Rc::new(RefCell::new(mci_irq)),
             Some(mcu_mailbox0),
             Some(mcu_mailbox1),
+            None,
+            mci_generic_input_wires,
         );
 
         let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
@@ -278,6 +353,7 @@ impl McuHwModel for ModelEmulated {
             delegates,
             None,
             Some(Box::new(i3c)),
+            Some(Box::new(emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
             Some(Box::new(secondary_flash_controller)),
             Some(Box::new(mci)),
@@ -304,14 +380,46 @@ impl McuHwModel for ModelEmulated {
         }
 
         let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
-        let (mcu_event_sender, mcu_event_reciever) = cpu.register_events();
-        // prepare the BMC recovery interface emulator
-        let bmc = Bmc::new(
-            caliptra_event_sender,
-            caliptra_event_receiver,
-            mcu_event_sender,
-            mcu_event_reciever,
-        );
+        let (mcu_event_sender, mcu_event_receiver) = cpu.register_events();
+
+        // Use MCU recovery interface (I3C) when flash-based boot is enabled,
+        // otherwise use BMC recovery interface
+        let use_flash_based_boot = params.flash_boot;
+        let bmc = if use_flash_based_boot {
+            // Connect event channels to I3C peripheral for MCU recovery interface
+            cpu.bus
+                .bus
+                .i3c_periph
+                .as_mut()
+                .unwrap()
+                .periph
+                .register_event_channels(
+                    caliptra_event_sender,
+                    caliptra_event_receiver,
+                    mcu_event_sender,
+                    mcu_event_receiver,
+                );
+            None
+        } else {
+            // Use BMC recovery interface emulator
+            let mut bmc = Bmc::new(
+                caliptra_event_sender,
+                caliptra_event_receiver,
+                mcu_event_sender,
+                mcu_event_receiver,
+            );
+            // Push recovery images to BMC for streaming boot
+            if !params.caliptra_firmware.is_empty() {
+                bmc.push_recovery_image(params.caliptra_firmware.to_vec());
+            }
+            if !params.soc_manifest.is_empty() {
+                bmc.push_recovery_image(params.soc_manifest.to_vec());
+            }
+            if !params.mcu_firmware.is_empty() {
+                bmc.push_recovery_image(params.mcu_firmware.to_vec());
+            }
+            Some(bmc)
+        };
 
         let (events_to_caliptra, events_from_caliptra) = mpsc::channel();
 
@@ -324,6 +432,7 @@ impl McuHwModel for ModelEmulated {
             ready_for_fw,
             cpu_enabled,
             trace_path: trace_path_or_env(params.trace_path),
+            mcu_uart_output,
             _rom_image_tag: image_tag,
             iccm_image_tag: None,
             events_to_caliptra,
@@ -335,7 +444,10 @@ impl McuHwModel for ModelEmulated {
             i3c_address: Some(i3c_dynamic_address.into()),
             i3c_controller_join_handle: None,
             dot_flash,
+            otp_partitions,
+            mci_regs,
             check_booted_to_runtime: params.check_booted_to_runtime,
+            step_lock,
         };
         // Turn tracing on if the trace path was set
         m.tracing_hint(true);
@@ -346,18 +458,10 @@ impl McuHwModel for ModelEmulated {
         Ok(m)
     }
 
-    fn boot(&mut self, boot_params: crate::BootParams) -> Result<()>
+    fn boot(&mut self) -> Result<()>
     where
         Self: Sized,
     {
-        // load the firmware images and SoC manifest into the recovery interface emulator
-        self.bmc
-            .push_recovery_image(boot_params.fw_image.unwrap_or_default().to_vec());
-        self.bmc
-            .push_recovery_image(boot_params.soc_manifest.unwrap_or_default().to_vec());
-        self.bmc
-            .push_recovery_image(boot_params.mcu_fw_image.unwrap_or_default().to_vec());
-
         self.cpu_enabled.set(true);
 
         if self.check_booted_to_runtime {
@@ -392,10 +496,29 @@ impl McuHwModel for ModelEmulated {
 
     fn step(&mut self) {
         if self.cpu_enabled.get() {
-            self.cpu.step(self.caliptra_trace_fn.as_deref_mut());
-            self.caliptra_cpu
-                .step(self.caliptra_trace_fn.as_deref_mut());
-            self.bmc.step();
+            {
+                // Hold the step lock while advancing the clock so that
+                // cross-thread callers (e.g. I3C PollScheduler::incoming)
+                // cannot observe a mid-step clock value.
+                let _guard = self.step_lock.lock().unwrap();
+                self.cpu.step(self.caliptra_trace_fn.as_deref_mut());
+                self.caliptra_cpu
+                    .step(self.caliptra_trace_fn.as_deref_mut());
+            }
+            if let Some(ref mut bmc) = self.bmc {
+                bmc.step();
+            }
+        }
+        // Forward MCU UART output to the Output sink so that exit-status
+        // bytes (0xFF = pass, 0x01 = fail) and text are captured.
+        {
+            let mut buf = self.mcu_uart_output.borrow_mut();
+            if !buf.is_empty() {
+                for &b in buf.iter() {
+                    self.output.sink().push_uart_char(b);
+                }
+                buf.clear();
+            }
         }
         let events = self.events_from_caliptra.try_iter().collect::<Vec<_>>();
         self.collected_events_from_caliptra.extend(events);
@@ -461,7 +584,7 @@ impl McuHwModel for ModelEmulated {
     }
 
     fn read_otp_memory(&self) -> Vec<u8> {
-        unimplemented!()
+        self.otp_partitions.borrow().clone()
     }
 
     fn read_dot_flash(&self) -> Vec<u8> {
@@ -504,6 +627,11 @@ impl McuHwModel for ModelEmulated {
     fn warm_reset(&mut self) {
         self.cpu.warm_reset();
         self.step();
+    }
+
+    fn set_mcu_generic_input_wires(&mut self, value: &[u32; 2]) {
+        let mut regs = self.mci_regs.borrow_mut();
+        regs.generic_input_wires = *value;
     }
 }
 
@@ -592,33 +720,16 @@ mod test {
 
     #[test]
     fn test_new_unbooted() {
-        let mcu_rom = mcu_builder::rom_build(None, "").expect("Could not build MCU ROM");
-        let mcu_runtime = &mcu_builder::runtime_build_with_apps(
-            &[],
-            None,
-            false,
-            None,
-            None,
-            false,
-            None,
-            None,
-            None,
-            None,
-        )
-        .expect("Could not build MCU runtime");
-        let mut caliptra_builder = mcu_builder::CaliptraBuilder::new(
-            false,
-            None,
-            None,
-            None,
-            None,
-            Some(mcu_rom.clone().into()),
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
+        let mcu_rom = mcu_builder::rom_build(&mcu_builder::CaliptraBuildArgs::default())
+            .expect("Could not build MCU ROM");
+        let mcu_runtime =
+            &mcu_builder::runtime_build_with_apps(&mcu_builder::CaliptraBuildArgs::default())
+                .expect("Could not build MCU runtime");
+        let mut caliptra_builder =
+            mcu_builder::CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+                mcu_firmware: Some(mcu_runtime.clone()),
+                ..Default::default()
+            });
         let caliptra_rom = caliptra_builder
             .get_caliptra_rom()
             .expect("Could not build Caliptra ROM");

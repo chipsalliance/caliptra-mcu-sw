@@ -1,44 +1,22 @@
 // Licensed under the Apache-2.0 license
 
-use crate::registers::{file_check_contents, rustfmt, write_file, HEADER_PREFIX, HEADER_SUFFIX};
+use crate::registers::{file_check_contents, rustfmt, write_file};
 use anyhow::Result;
+use fusegen::{OtpMmap, HEADER_PREFIX, HEADER_SUFFIX, OTP_CTRL_MMAP_DEFAULT_PATH};
 use mcu_builder::PROJECT_ROOT;
 use registers_generator::snake_case;
-use serde::Deserialize;
 use std::fmt::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-const OTP_CTRL_DEFAULT_PATH: &str = "hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson";
-const SPECIFIC_FUSES_DEFAULT_PATH: &str = "hw/fuses.hjson";
+// Default in-field provisioning fuse configuration.
+const IFP_SPECIFIC_FUSES_DEFAULT_PATH: &str = "hw/fuses.hjson";
 
-const SKIP_PARTITIONS: &[&str] = &[
-    "SECRET_MANUF_PARTITION",
-    "SECRET_PROD_PARTITION_0",
-    "SECRET_PROD_PARTITION_1",
-    "SECRET_PROD_PARTITION_2",
-    "SECRET_PROD_PARTITION_3",
-];
-
-#[derive(Debug, Deserialize)]
-struct OtpMmap {
-    partitions: Vec<OtpPartition>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OtpPartition {
-    name: String,
-    size: Option<String>, // bytes
-    secret: bool,
-    items: Vec<OtpPartitionItem>,
-    desc: String,
-    sw_digest: bool,
-    hw_digest: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct OtpPartitionItem {
-    name: String,
-    size: String, // bytes
+fn get_file_path_or_default(input_path: Option<&Path>, default: &str) -> PathBuf {
+    if let Some(path) = input_path {
+        path.to_path_buf()
+    } else {
+        PROJECT_ROOT.join(default)
+    }
 }
 
 /// Autogenerate fuse code.
@@ -57,24 +35,30 @@ pub(crate) fn autogen_fuses(
     // Generate combined output from both functions
     let mut header = HEADER_PREFIX.to_string();
 
-    let mmap_hjson = if let Some(path) = otp_mmap_hjson_path {
-        path.to_path_buf()
-    } else {
-        PROJECT_ROOT.join(OTP_CTRL_DEFAULT_PATH)
-    };
+    // Parse OTP mmap for partition info
+    let mmap_hjson = get_file_path_or_default(otp_mmap_hjson_path, OTP_CTRL_MMAP_DEFAULT_PATH);
+    let otp: OtpMmap = serde_hjson::from_str(std::fs::read_to_string(&mmap_hjson)?.as_str())?;
+    let partition_mmap = build_partition_mmap(&otp);
 
     // Generate partition fuses output
-    let partition_output = generate_fuse_partitions(&mmap_hjson)?;
+    let partition_output = generate_fuse_partitions_from_otp(&otp)?;
 
     // Generate detailed fuses output if the file exists
-    let fuses_hjson = if let Some(path) = fuses_hjson_path {
-        path.to_path_buf()
+    let fuses_hjson = get_file_path_or_default(fuses_hjson_path, IFP_SPECIFIC_FUSES_DEFAULT_PATH);
+    let fuse_config = if fuses_hjson.exists() {
+        let hjson_content = std::fs::read_to_string(&fuses_hjson)?;
+        Some(mcu_fuses_generator::schema::parse_fuse_hjson_str(
+            &hjson_content,
+        )?)
     } else {
-        PROJECT_ROOT.join(SPECIFIC_FUSES_DEFAULT_PATH)
+        None
     };
 
-    let detailed_output = if fuses_hjson.exists() {
-        Some(generate_detailed_fuses(fuses_hjson_path)?)
+    let detailed_output = if let Some(ref config) = fuse_config {
+        Some(mcu_fuses_generator::codegen::generate_fuses(
+            config,
+            Some(&partition_mmap),
+        )?)
     } else {
         None
     };
@@ -107,31 +91,109 @@ pub(crate) fn autogen_fuses(
     let fuses_file = dest_dir.join("fuses.rs");
     file_action(&fuses_file, &rustfmt(&(header + &combined_output))?)?;
 
+    // Generate markdown documentation
+    let docs_output = generate_fuse_docs(&otp, fuse_config.as_ref(), &partition_mmap);
+    let docs_file = dest_dir.join("fuse_map.md");
+    file_action(&docs_file, &docs_output)?;
+
     Ok(())
 }
 
-/// Autogenerate fuse map code from hjson file used to generate OTP controller config.
-fn generate_fuse_partitions(mmap_hjson: &Path) -> Result<String> {
-    let otp: OtpMmap = serde_hjson::from_str(std::fs::read_to_string(mmap_hjson)?.as_str())?;
-    let mut output = "".to_string();
+/// Build a map of partition name → PartitionMmapInfo from the parsed OTP mmap.
+fn build_partition_mmap(
+    otp: &OtpMmap,
+) -> std::collections::HashMap<String, mcu_fuses_generator::codegen::PartitionMmapInfo> {
+    use mcu_fuses_generator::codegen::{PartitionItemInfo, PartitionMmapInfo};
 
-    output += "use zeroize::Zeroize;\n";
-    output += "/// Fuses contains the data in the OTP controller laid out as described in the controller configuration.\n";
-    output += "#[derive(Zeroize)]\n";
-    output += "pub struct Fuses {\n";
-    let mut impl_output = "impl Fuses {\n".to_string();
-    let mut default_impl_output = "impl Default for Fuses {\n".to_string();
-    default_impl_output += "fn default() -> Self {\n";
-    default_impl_output += "Self {\n";
-    let mut const_output = "".to_string();
-    let mut offset = 0;
-    otp.partitions.iter().for_each(|partition| {
-        let name = snake_case(&partition.name);
+    let mut map = std::collections::HashMap::new();
+    let mut offset: usize = 0;
+    for (partition_index, partition) in otp.partitions.iter().enumerate() {
         let digest_size: usize = if partition.hw_digest || partition.sw_digest {
             8
         } else {
             0
         };
+        let calculated_size: usize = partition
+            .items
+            .iter()
+            .map(|i| i.size.parse::<usize>().unwrap())
+            .sum();
+
+        let calculated_size = if digest_size == 8 {
+            calculated_size.next_multiple_of(8) + digest_size
+        } else {
+            calculated_size.next_multiple_of(4)
+        };
+
+        let size = partition
+            .size
+            .as_ref()
+            .map(|s| s.parse::<usize>().unwrap())
+            .unwrap_or(calculated_size);
+
+        let mut items = Vec::new();
+        let mut item_offset = offset;
+        for (entry_num, item) in partition.items.iter().enumerate() {
+            let item_size = item.size.parse::<usize>().unwrap();
+            let item_name_lower = snake_case(&item.name);
+            if item_name_lower.to_ascii_lowercase().ends_with("digest") {
+                item_offset = item_offset.next_multiple_of(8);
+            }
+            items.push(PartitionItemInfo {
+                name: item.name.clone(),
+                byte_offset: item_offset,
+                byte_size: item_size,
+                entry_num,
+            });
+            item_offset += item_size;
+        }
+
+        map.insert(
+            partition.name.clone(),
+            PartitionMmapInfo {
+                partition_index,
+                byte_offset: offset,
+                byte_size: size,
+                items,
+            },
+        );
+
+        offset += size;
+    }
+
+    map
+}
+
+/// Autogenerate fuse map code from pre-parsed OTP mmap.
+fn generate_fuse_partitions_from_otp(otp: &OtpMmap) -> Result<String> {
+    let mut output = "".to_string();
+
+    // OtpPartitionInfo struct
+    output += "/// Describes an OTP partition with its location, size, and digest properties.\n";
+    output += "#[derive(Debug, Clone, Copy)]\n";
+    output += "pub struct OtpPartitionInfo {\n";
+    output += "    /// Partition name.\n";
+    output += "    pub name: &'static str,\n";
+    output += "    /// Byte offset of the partition within the OTP address space.\n";
+    output += "    pub byte_offset: usize,\n";
+    output += "    /// Total byte size of the partition (including the digest field if present).\n";
+    output += "    pub byte_size: usize,\n";
+    output += "    /// Whether this partition supports a software-computed digest.\n";
+    output += "    pub sw_digest: bool,\n";
+    output += "    /// Whether this partition has a hardware-computed digest.\n";
+    output += "    pub hw_digest: bool,\n";
+    output += "    /// Byte offset of the 8-byte digest field within OTP (if sw_digest or hw_digest is true).\n";
+    output += "    pub digest_offset: Option<usize>,\n";
+    output += "}\n";
+
+    let mut const_output = "".to_string();
+    let mut partition_entries = Vec::new();
+    let mut offset = 0;
+
+    otp.partitions.iter().for_each(|partition| {
+        let name = snake_case(&partition.name);
+        let has_digest = partition.hw_digest || partition.sw_digest;
+        let digest_size: usize = if has_digest { 8 } else { 0 };
         let calculated_size = partition
             .items
             .iter()
@@ -156,40 +218,18 @@ fn generate_fuse_partitions(mmap_hjson: &Path) -> Result<String> {
             assert_eq!(calculated_size, size);
         }
 
-        if !SKIP_PARTITIONS.contains(&partition.name.as_str()) {
-            output += &format!("/// {}\n", &partition.desc.replace("\n", "\n/// "));
-            if !partition.secret {
-                output += "#[zeroize(skip)]\n";
-            }
-            output += &format!("pub {}: [u8; {}],\n", name, size);
-            default_impl_output += &format!("{}: [0; {}],\n", name, size);
+        // Digest is always the last 8 bytes of the partition
+        let digest_offset = if has_digest {
+            format!("Some(0x{:x})", offset + size - 8)
+        } else {
+            "None".to_string()
+        };
 
-            let mut item_offset: usize = offset;
-            partition.items.iter().for_each(|item| {
-                let item_name = snake_case(&item.name);
-                let item_size = item.size.parse::<usize>().unwrap();
-                // digests need to be 8-byte aligned
-                if item_name.to_ascii_lowercase().ends_with("digest") {
-                    item_offset = item_offset.next_multiple_of(8);
-                }
-                if item_size == 1 {
-                    impl_output += &format!("pub fn {}(&self) -> u8 {{\n", item_name);
-                    impl_output += &format!("    self.{}[{}]\n", name, item_offset - offset);
-                    impl_output += "}\n";
-                } else {
-                    impl_output += &format!("pub fn {}(&self) -> &[u8] {{\n", item_name);
-                    impl_output += &format!(
-                        "    &self.{}[{}..{}]\n",
-                        name,
-                        (item_offset - offset),
-                        (item_offset + item_size - offset)
-                    );
-                    impl_output += "}\n";
-                }
-                item_offset += item_size;
-            });
-            output += "\n";
-        }
+        partition_entries.push(format!(
+            "OtpPartitionInfo {{ name: \"{}\", byte_offset: 0x{:x}, byte_size: 0x{:x}, sw_digest: {}, hw_digest: {}, digest_offset: {} }}",
+            name, offset, size, partition.sw_digest, partition.hw_digest, digest_offset
+        ));
+
         const_output += &format!(
             "pub const {}_BYTE_OFFSET: usize = 0x{:x};\n",
             name.to_uppercase(),
@@ -202,27 +242,177 @@ fn generate_fuse_partitions(mmap_hjson: &Path) -> Result<String> {
         );
         offset += size;
     });
-    output += "}\n";
-    default_impl_output += "}\n}\n}\n";
-    impl_output += "}\n";
-    output += &impl_output;
-    output += &default_impl_output;
+
+    // Generate the OTP_PARTITIONS array
+    output += "/// All OTP partitions with their locations and digest properties.\npub const OTP_PARTITIONS: &[OtpPartitionInfo] = &[\n";
+    for e in &partition_entries {
+        writeln!(&mut output, "    {},", e)?;
+    }
+    output += "];\n";
+
+    // Generate named constants for each partition
+    for (i, partition) in otp.partitions.iter().enumerate() {
+        let name = snake_case(&partition.name);
+        output += &format!(
+            "pub const {}: &OtpPartitionInfo = &OTP_PARTITIONS[{}];\n",
+            name.to_uppercase(),
+            i
+        );
+    }
+
     output += &const_output;
 
     Ok(output)
 }
 
-/// Generate more detailed fuse definitions from the MCU-specific file.
-fn generate_detailed_fuses(fuses_hjson_path: Option<&Path>) -> Result<String> {
-    let fuses_hjson = if let Some(path) = fuses_hjson_path {
-        path.to_path_buf()
-    } else {
-        PROJECT_ROOT.join("hw/fuses.hjson")
-    };
+/// Generate markdown documentation for the fuse map.
+fn generate_fuse_docs(
+    otp: &OtpMmap,
+    fuse_config: Option<&mcu_fuses_generator::schema::FuseConfig>,
+    partition_mmap: &std::collections::HashMap<
+        String,
+        mcu_fuses_generator::codegen::PartitionMmapInfo,
+    >,
+) -> String {
+    let mut md = String::new();
+    md.push_str("<!-- Auto-generated by cargo xtask registers-autogen. Do not edit. -->\n\n");
+    md.push_str("# OTP Fuse Map\n\n");
 
-    let hjson_content = std::fs::read_to_string(&fuses_hjson)?;
-    let config = mcu_fuses_generator::schema::parse_fuse_hjson_str(&hjson_content)?;
-    let generated_code = mcu_fuses_generator::codegen::generate_fuses(&config)?;
+    // Partition summary table
+    md.push_str("## Partitions\n\n");
+    md.push_str("| # | Name | Offset | Size | Secret | Digest |\n");
+    md.push_str("|---|------|--------|------|--------|--------|\n");
 
-    Ok(generated_code)
+    let mut offset: usize = 0;
+    for (i, partition) in otp.partitions.iter().enumerate() {
+        let has_digest = partition.hw_digest || partition.sw_digest;
+        let digest_size: usize = if has_digest { 8 } else { 0 };
+        let calculated_size: usize = partition
+            .items
+            .iter()
+            .map(|item| item.size.parse::<usize>().unwrap_or(0))
+            .sum();
+        let calculated_size = if digest_size == 8 {
+            calculated_size.next_multiple_of(8) + digest_size
+        } else {
+            calculated_size.next_multiple_of(4)
+        };
+        let size = partition
+            .size
+            .as_ref()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(calculated_size);
+
+        let digest_str = if partition.hw_digest {
+            "HW"
+        } else if partition.sw_digest {
+            "SW"
+        } else {
+            "—"
+        };
+
+        let _ = writeln!(
+            &mut md,
+            "| {} | {} | 0x{:04x} | {} | {} | {} |",
+            i,
+            snake_case(&partition.name),
+            offset,
+            size,
+            if partition.secret { "Yes" } else { "No" },
+            digest_str,
+        );
+        offset += size;
+    }
+
+    // Per-partition item tables
+    md.push_str("\n## Partition Items\n\n");
+
+    let mut sorted_partitions: Vec<_> = partition_mmap.iter().collect();
+    sorted_partitions.sort_by_key(|(_, info)| info.partition_index);
+
+    for (name, pinfo) in &sorted_partitions {
+        if pinfo.items.is_empty() {
+            continue;
+        }
+        let _ = writeln!(
+            &mut md,
+            "### {} (partition {})\n",
+            snake_case(name),
+            pinfo.partition_index,
+        );
+        md.push_str("| Entry | Name | Offset | Size (bytes) | Layout |\n");
+        md.push_str("|-------|------|--------|-------------|--------|\n");
+
+        for item in &pinfo.items {
+            // Check if fuses.hjson overrides the layout for this item
+            let layout_str = if let Some(config) = fuse_config {
+                config
+                    .fields
+                    .iter()
+                    .find(|f| {
+                        f.otp_item
+                            .as_deref()
+                            .unwrap_or(&f.name)
+                            .eq_ignore_ascii_case(&item.name)
+                            && f.partition.is_some()
+                    })
+                    .map(|f| format_layout(&f.layout))
+            } else {
+                None
+            };
+            let layout_str = layout_str.unwrap_or_else(|| "Single".to_string());
+
+            let _ = writeln!(
+                &mut md,
+                "| {} | {} | 0x{:04x} | {} | {} |",
+                item.entry_num, item.name, item.byte_offset, item.byte_size, layout_str,
+            );
+        }
+        md.push('\n');
+    }
+
+    // Vendor-specific fields from fuses.hjson
+    if let Some(config) = fuse_config {
+        let vendor_fields: Vec<_> = config
+            .fields
+            .iter()
+            .filter(|f| f.partition.is_some())
+            .collect();
+        if !vendor_fields.is_empty() {
+            md.push_str("## Vendor-Specific Fields (from fuses.hjson)\n\n");
+            md.push_str("| Name | Bits | Partition | OTP Item | Layout | Description |\n");
+            md.push_str("|------|------|-----------|----------|--------|-------------|\n");
+            for field in &vendor_fields {
+                let _ = writeln!(
+                    &mut md,
+                    "| {} | {} | {} | {} | {} | {} |",
+                    field.name,
+                    field.bits,
+                    field.partition.as_deref().unwrap_or("—"),
+                    field.otp_item.as_deref().unwrap_or("—"),
+                    format_layout(&field.layout),
+                    field.description.as_deref().unwrap_or(""),
+                );
+            }
+        }
+    }
+
+    md
+}
+
+fn format_layout(layout: &Option<mcu_fuses_generator::schema::FuseLayoutPolicy>) -> String {
+    use mcu_fuses_generator::schema::FuseLayoutPolicy;
+    match layout {
+        None | Some(FuseLayoutPolicy::Single) => "Single".to_string(),
+        Some(FuseLayoutPolicy::OneHot) => "OneHot".to_string(),
+        Some(FuseLayoutPolicy::LinearMajorityVote { duplication }) => {
+            format!("LinearMajorityVote({}x)", duplication)
+        }
+        Some(FuseLayoutPolicy::OneHotLinearMajorityVote { duplication }) => {
+            format!("OneHotLinearMajorityVote({}x)", duplication)
+        }
+        Some(FuseLayoutPolicy::WordMajorityVote { duplication }) => {
+            format!("WordMajorityVote({}x)", duplication)
+        }
+    }
 }

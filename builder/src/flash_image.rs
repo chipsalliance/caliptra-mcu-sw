@@ -5,7 +5,9 @@ use flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, FLASH_IMAGE_MAGIC_NUMBER, HEADER_VERSION,
     MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
 };
-use mcu_config_emulator::flash::PartitionTable;
+use mcu_config_emulator::flash::{
+    PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
+};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error, ErrorKind, Read, Seek, Write};
 use std::mem::offset_of;
@@ -57,6 +59,19 @@ impl<'a> FlashImage<'a> {
         Self { header, payload }
     }
 
+    /// Convert the flash image to a byte vector
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(self.header.as_bytes());
+        for info in self.payload.image_info {
+            bytes.extend_from_slice(info.as_bytes());
+        }
+        for image in self.payload.images {
+            bytes.extend_from_slice(image.data);
+        }
+        bytes
+    }
+
     pub fn write_to_file(&self, offset: usize, filename: &str) -> Result<()> {
         let mut file = OpenOptions::new()
             .write(true)
@@ -82,6 +97,19 @@ impl<'a> FlashImage<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn verify_flash_partition_table(image: &[u8]) -> Result<PartitionTable> {
+        if image.len() < std::mem::size_of::<PartitionTable>() {
+            bail!("Image too small to contain the partition table.");
+        }
+        let partition_table =
+            PartitionTable::read_from_bytes(&image[..std::mem::size_of::<PartitionTable>()])
+                .map_err(|_| anyhow!("Partition table not detected"))?;
+        if !partition_table.verify_checksum(&StandAloneChecksumCalculator {}) {
+            return Err(anyhow!("Partition table not detected"));
+        }
+        Ok(partition_table)
     }
 
     pub fn verify_flash_image(image: &[u8]) -> Result<()> {
@@ -167,31 +195,36 @@ fn load_file(filename: &str) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
-pub fn flash_image_create(
-    caliptra_fw_path: &Option<String>,
-    soc_manifest_path: &Option<String>,
-    mcu_runtime_path: &Option<String>,
-    soc_image_paths: &Option<Vec<String>>,
-    offset: usize,
-    output_path: &str,
-) -> Result<()> {
+use crate::CaliptraBuildArgs;
+
+pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
+    let caliptra_fw_path = &args.caliptra_firmware;
+    let soc_manifest_path = &args.soc_manifest;
+    let mcu_runtime_path = &args.mcu_firmware;
+    let soc_image_paths = &args.soc_image_paths;
+    let offset = args.offset;
+    let output_path = args
+        .output_path
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("output_path is required for flash_image_create"))?;
+
     let mut images: Vec<FirmwareImage> = Vec::new();
 
     let content;
     if let Some(caliptra_fw_path) = caliptra_fw_path {
-        content = load_file(caliptra_fw_path)?;
+        content = load_file(&caliptra_fw_path.to_string_lossy())?;
         images.push(FirmwareImage::new(CALIPTRA_FMC_RT_IDENTIFIER, &content)?);
     }
 
     let content;
     if let Some(soc_manifest_path) = soc_manifest_path {
-        content = load_file(soc_manifest_path)?;
+        content = load_file(&soc_manifest_path.to_string_lossy())?;
         images.push(FirmwareImage::new(SOC_MANIFEST_IDENTIFIER, &content)?);
     }
 
     let content;
     if let Some(mcu_runtime_path) = mcu_runtime_path {
-        content = load_file(mcu_runtime_path)?;
+        content = load_file(&mcu_runtime_path.to_string_lossy())?;
         images.push(FirmwareImage::new(MCU_RT_IDENTIFIER, &content)?);
     }
 
@@ -240,6 +273,59 @@ pub fn generate_image_info(images: Vec<FirmwareImage>) -> Vec<ImageHeader> {
     info
 }
 
+/// Build a flash image from raw firmware data and return it as bytes.
+///
+/// This is useful for loading firmware to flash in the hardware model
+/// instead of using the recovery interface.
+pub fn build_flash_image_bytes(
+    caliptra_fw: Option<&[u8]>,
+    soc_manifest: Option<&[u8]>,
+    mcu_runtime: Option<&[u8]>,
+) -> Vec<u8> {
+    fn pad_to_256_bytes(data: &[u8]) -> Vec<u8> {
+        let padding = data.len().next_multiple_of(256) - data.len();
+        let mut padded = data.to_vec();
+        padded.extend(vec![0; padding]);
+        padded
+    }
+
+    // Build padded copies of the firmware images
+    let caliptra_fw_padded = caliptra_fw.map(pad_to_256_bytes);
+    let soc_manifest_padded = soc_manifest.map(pad_to_256_bytes);
+    let mcu_runtime_padded = mcu_runtime.map(pad_to_256_bytes);
+
+    let mut images: Vec<FirmwareImage> = Vec::new();
+
+    if let Some(ref data) = caliptra_fw_padded {
+        images.push(FirmwareImage {
+            identifier: CALIPTRA_FMC_RT_IDENTIFIER,
+            data,
+        });
+    }
+
+    if let Some(ref data) = soc_manifest_padded {
+        images.push(FirmwareImage {
+            identifier: SOC_MANIFEST_IDENTIFIER,
+            data,
+        });
+    }
+
+    if let Some(ref data) = mcu_runtime_padded {
+        images.push(FirmwareImage {
+            identifier: MCU_RT_IDENTIFIER,
+            data,
+        });
+    }
+
+    if images.is_empty() {
+        return Vec::new();
+    }
+
+    let image_info = generate_image_info(images.clone());
+    let flash_image = FlashImage::new(&images, &image_info);
+    flash_image.to_bytes()
+}
+
 pub fn flash_image_verify(image_file_path: &str, offset: u32) -> Result<()> {
     let mut file = File::open(image_file_path).map_err(|e| {
         Error::new(
@@ -256,7 +342,17 @@ pub fn flash_image_verify(image_file_path: &str, offset: u32) -> Result<()> {
         )
     })?;
     file.read_to_end(&mut data)?;
-    FlashImage::verify_flash_image(&data[offset as usize..])
+    // Check if flash image has partition table
+    match FlashImage::verify_flash_partition_table(&data[offset as usize..]) {
+        Ok(partition_table) => {
+            println!("Partition table found: {:?}", partition_table);
+            println!("Partition A (offset {}):", IMAGE_A_PARTITION.offset);
+            FlashImage::verify_flash_image(&data[IMAGE_A_PARTITION.offset..])?;
+            println!("Partition B (offset {}):", IMAGE_B_PARTITION.offset);
+            FlashImage::verify_flash_image(&data[IMAGE_B_PARTITION.offset..])
+        }
+        Err(_) => FlashImage::verify_flash_image(&data[offset as usize..]),
+    }
 }
 
 pub fn write_partition_table(
@@ -332,14 +428,15 @@ mod tests {
         let output_path = output_file.path().to_str().unwrap();
 
         // Build the flash image
-        flash_image_create(
-            &Some(caliptra_fw.path().to_str().unwrap().to_string()),
-            &Some(soc_manifest.path().to_str().unwrap().to_string()),
-            &Some(mcu_runtime.path().to_str().unwrap().to_string()),
-            &soc_image_paths,
-            0,
-            output_path,
-        )
+        flash_image_create(&CaliptraBuildArgs {
+            caliptra_firmware: Some(caliptra_fw.path().to_path_buf()),
+            soc_manifest: Some(soc_manifest.path().to_path_buf()),
+            mcu_firmware: Some(mcu_runtime.path().to_path_buf()),
+            soc_image_paths,
+            offset: 0,
+            output_path: Some(output_path.to_string()),
+            ..Default::default()
+        })
         .expect("Failed to build flash image");
 
         // Read and verify the generated flash image
@@ -405,10 +502,9 @@ mod tests {
 
     #[test]
     fn test_flash_image_verify_happy_path() {
-        let image_path = PROJECT_ROOT
-            .join("target")
-            .join("tmp")
-            .join("flash_image_happy_path.bin");
+        let tmp_dir = PROJECT_ROOT.join("target").join("tmp");
+        fs::create_dir_all(&tmp_dir).expect("Failed to create tmp directory");
+        let image_path = tmp_dir.join("flash_image_happy_path.bin");
         let image_path = image_path.to_str().unwrap();
 
         // Create a valid firmware image
@@ -454,10 +550,9 @@ mod tests {
 
     #[test]
     fn test_flash_image_verify_corrupted_case() {
-        let image_path = PROJECT_ROOT
-            .join("target")
-            .join("tmp")
-            .join("flash_image_corrupted.bin");
+        let tmp_dir = PROJECT_ROOT.join("target").join("tmp");
+        fs::create_dir_all(&tmp_dir).expect("Failed to create tmp directory");
+        let image_path = tmp_dir.join("flash_image_corrupted.bin");
         let image_path = image_path.to_str().unwrap();
 
         // Create a corrupted firmware image (tamper with the header or data)

@@ -2,6 +2,7 @@
 
 use crate::static_ref::StaticRef;
 use registers_generated::mci;
+use registers_generated::mci::bits::ResetRequest;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 /// MCU Reset Reason
@@ -87,14 +88,14 @@ impl Mci {
         self.registers.mci_reg_mcu_nmi_vector.set(nmi_vector);
     }
 
-    pub fn configure_wdt(&self, wdt1_timeout: u32, wdt2_timeout: u32) {
-        // Set WDT1 period.
-        self.registers.mci_reg_wdt_timer1_timeout_period[0].set(wdt1_timeout);
-        self.registers.mci_reg_wdt_timer1_timeout_period[1].set(0);
+    pub fn configure_wdt(&self, wdt1_timeout: u64, wdt2_timeout: u64) {
+        // Set WDT1 period (64-bit, split across two 32-bit registers).
+        self.registers.mci_reg_wdt_timer1_timeout_period[0].set(wdt1_timeout as u32);
+        self.registers.mci_reg_wdt_timer1_timeout_period[1].set((wdt1_timeout >> 32) as u32);
 
         // Set WDT2 period. Fire immediately after WDT1 expiry
-        self.registers.mci_reg_wdt_timer2_timeout_period[0].set(wdt2_timeout);
-        self.registers.mci_reg_wdt_timer2_timeout_period[1].set(0);
+        self.registers.mci_reg_wdt_timer2_timeout_period[0].set(wdt2_timeout as u32);
+        self.registers.mci_reg_wdt_timer2_timeout_period[1].set((wdt2_timeout >> 32) as u32);
 
         // Enable WDT1 only. WDT2 is automatically scheduled (since it is disabled) on WDT1 expiry.
         self.registers.mci_reg_wdt_timer1_ctrl.set(1); // Timer1Restart
@@ -181,16 +182,139 @@ impl Mci {
         const NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK: u32 = 0x2;
         let intr_status = self.registers.intr_block_rf_notif0_internal_intr_r.get();
         if intr_status & NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK != 0 {
-            // Disable the interrupt, on reset, MCU ROM will clear the interrupt
+            // Clear interrupt
             self.registers
-                .intr_block_rf_notif0_intr_en_r
-                .modify(mci::bits::Notif0IntrEnT::NotifCptraMcuResetReqEn::CLEAR);
+                .intr_block_rf_notif0_internal_intr_r
+                .modify(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
             // Request MCU reset
-            self.registers.mci_reg_reset_request.set(1); // Any value will trigger reset
+            self.registers
+                .mci_reg_reset_request
+                .modify(ResetRequest::McuReq::SET);
         }
     }
 
     pub fn trigger_warm_reset(&self) {
         self.registers.mci_reg_reset_request.set(1);
+    }
+
+    /// Sets the SS_CONFIG_DONE_STICKY register to lock configuration registers.
+    /// Once set, certain registers (like PROD_DEBUG_UNLOCK_PK_HASH) become read-only
+    /// until the next cold reset.
+    pub fn set_ss_config_done_sticky(&self) {
+        self.registers
+            .mci_reg_ss_config_done_sticky
+            .write(mci::bits::SsConfigDone::Done::SET);
+    }
+
+    /// Checks if SS_CONFIG_DONE_STICKY is set
+    pub fn is_ss_config_done_sticky(&self) -> bool {
+        self.registers
+            .mci_reg_ss_config_done_sticky
+            .is_set(mci::bits::SsConfigDone::Done)
+    }
+
+    /// Sets the SS_CONFIG_DONE register to lock configuration registers.
+    /// Once set, certain registers become read-only until the next warm reset.
+    pub fn set_ss_config_done(&self) {
+        self.registers
+            .mci_reg_ss_config_done
+            .write(mci::bits::SsConfigDone::Done::SET);
+    }
+
+    /// Checks if SS_CONFIG_DONE is set
+    pub fn is_ss_config_done(&self) -> bool {
+        self.registers
+            .mci_reg_ss_config_done
+            .is_set(mci::bits::SsConfigDone::Done)
+    }
+
+    /// Read the production debug unlock PK hash register at the given index
+    pub fn read_prod_debug_unlock_pk_hash(&self, index: usize) -> Option<u32> {
+        self.registers
+            .mci_reg_prod_debug_unlock_pk_hash_reg
+            .get(index)
+            .map(|reg| reg.get())
+    }
+
+    /// Get the length of the production debug unlock PK hash register array
+    pub fn prod_debug_unlock_pk_hash_len(&self) -> usize {
+        self.registers.mci_reg_prod_debug_unlock_pk_hash_reg.len()
+    }
+
+    /// Read the MCU mailbox 0 valid AXI user register at the given index
+    pub fn read_mbox0_valid_axi_user(&self, index: usize) -> Option<u32> {
+        self.registers
+            .mci_reg_mbox0_valid_axi_user
+            .get(index)
+            .map(|reg| reg.get())
+    }
+
+    /// Read the MCU mailbox 0 AXI user lock register at the given index
+    pub fn read_mbox0_axi_user_lock(&self, index: usize) -> Option<bool> {
+        self.registers
+            .mci_reg_mbox0_axi_user_lock
+            .get(index)
+            .map(|reg| reg.is_set(mci::bits::MboxxAxiUserLock::Lock))
+    }
+
+    /// Read the MCU mailbox 1 valid AXI user register at the given index
+    pub fn read_mbox1_valid_axi_user(&self, index: usize) -> Option<u32> {
+        self.registers
+            .mci_reg_mbox1_valid_axi_user
+            .get(index)
+            .map(|reg| reg.get())
+    }
+
+    /// Read the MCU mailbox 1 AXI user lock register at the given index
+    pub fn read_mbox1_axi_user_lock(&self, index: usize) -> Option<bool> {
+        self.registers
+            .mci_reg_mbox1_axi_user_lock
+            .get(index)
+            .map(|reg| reg.is_set(mci::bits::MboxxAxiUserLock::Lock))
+    }
+
+    /// Get the length of the MCU mailbox AXI user register arrays
+    pub fn mbox_axi_user_len(&self) -> usize {
+        self.registers.mci_reg_mbox0_valid_axi_user.len()
+    }
+
+    /// Write to the MCU mailbox 0 valid AXI user register at the given index
+    pub fn write_mbox0_valid_axi_user(&self, index: usize, value: u32) -> bool {
+        if let Some(reg) = self.registers.mci_reg_mbox0_valid_axi_user.get(index) {
+            reg.set(value);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Lock the MCU mailbox 0 AXI user register at the given index
+    pub fn lock_mbox0_axi_user(&self, index: usize) -> bool {
+        if let Some(reg) = self.registers.mci_reg_mbox0_axi_user_lock.get(index) {
+            reg.write(mci::bits::MboxxAxiUserLock::Lock::SET);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Write to the MCU mailbox 1 valid AXI user register at the given index
+    pub fn write_mbox1_valid_axi_user(&self, index: usize, value: u32) -> bool {
+        if let Some(reg) = self.registers.mci_reg_mbox1_valid_axi_user.get(index) {
+            reg.set(value);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Lock the MCU mailbox 1 AXI user register at the given index
+    pub fn lock_mbox1_axi_user(&self, index: usize) -> bool {
+        if let Some(reg) = self.registers.mci_reg_mbox1_axi_user_lock.get(index) {
+            reg.write(mci::bits::MboxxAxiUserLock::Lock::SET);
+            true
+        } else {
+            false
+        }
     }
 }

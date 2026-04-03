@@ -35,13 +35,12 @@ Abstract:
 
 use crate::i3c::{DynamicI3cAddress, ReguDataTransferCommand};
 use crate::i3c_socket_server::{IncomingHeader, OutgoingHeader, CRC8_SMBUS};
-use crate::{wait_for_runtime_start, MCU_RUNNING};
+use crate::{wait_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
 use std::collections::VecDeque;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::process::exit;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 use std::vec;
 use zerocopy::{transmute, FromBytes};
 
@@ -50,21 +49,27 @@ pub trait MctpTransportTest {
     fn is_passed(&self) -> bool;
 }
 
+/// Default timeout in emulator ticks
+pub const DEFAULT_TEST_TIMEOUT_TICKS: u64 = 120_000_000;
+
 pub fn run_tests(
     port: u16,
     target_addr: DynamicI3cAddress,
     tests: Vec<Box<dyn MctpTransportTest + Send>>,
-    test_timeout_seconds: Option<Duration>,
+    test_timeout_ticks: Option<u64>,
 ) {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let stream = TcpStream::connect(addr).unwrap();
-    // cancel the test after 120 seconds
+    // cancel the test after timeout ticks
+    let timeout_ticks = test_timeout_ticks.unwrap_or(DEFAULT_TEST_TIMEOUT_TICKS);
     std::thread::spawn(move || {
-        let timeout = test_timeout_seconds.unwrap_or(Duration::from_secs(120));
-        std::thread::sleep(timeout);
+        if !wait_emulator_ticks(timeout_ticks) {
+            // Emulator stopped before timeout - this is normal completion
+            return;
+        }
         println!(
-            "INTEGRATION TEST ON MCTP-I3C TIMED OUT AFTER {:?} SECONDS",
-            timeout
+            "INTEGRATION TEST ON MCTP-I3C TIMED OUT AFTER {} TICKS",
+            timeout_ticks
         );
         exit(-1);
     });
@@ -156,7 +161,7 @@ impl BufferedStream {
         })
     }
 
-    fn read_packet(&mut self, target_addr: u8) -> Option<Packet> {
+    fn read_packet(&mut self) -> Option<Packet> {
         let mut out_header_bytes: [u8; 6] = [0u8; 6];
         match self.stream.read_exact(&mut out_header_bytes) {
             Ok(()) => {
@@ -164,19 +169,23 @@ impl BufferedStream {
                 let desc = header.response_descriptor;
                 let data_len = desc.data_length() as usize;
                 let mut data = vec![0u8; data_len];
-                self.stream.set_nonblocking(false).unwrap();
-                self.stream
-                    .read_exact(&mut data)
-                    .expect("Failed to read message from socket");
-                self.stream.set_nonblocking(true).unwrap();
-                if header.from_addr == target_addr {
-                    Some(Packet { header, data })
-                } else {
-                    None
+                if data_len > 0 {
+                    self.stream.set_nonblocking(false).unwrap();
+                    self.stream
+                        .read_exact(&mut data)
+                        .expect("Failed to read message from socket");
+                    self.stream.set_nonblocking(true).unwrap();
                 }
+                Some(Packet { header, data })
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => None,
             Err(e) => panic!("Error reading message from socket: {}", e),
+        }
+    }
+
+    fn fill_buffer(&mut self) {
+        while let Some(packet) = self.read_packet() {
+            self.read_buffer.push_back(packet);
         }
     }
 
@@ -198,38 +207,33 @@ impl BufferedStream {
     }
 
     pub fn receive_ibi(&mut self, target_addr: u8) -> bool {
-        loop {
-            match self.read_packet(target_addr) {
-                Some(packet) => {
-                    if packet.header.ibi != 0 {
-                        let pvt_read_cmd = prepare_private_read_cmd(target_addr);
-                        self.stream.set_nonblocking(false).unwrap();
-                        self.stream.write_all(&pvt_read_cmd).unwrap();
-                        self.stream.set_nonblocking(true).unwrap();
-                        return true;
-                    } else {
-                        self.read_buffer.push_back(packet);
-                    }
-                }
-                _ => {
-                    return false;
-                }
+        self.fill_buffer();
+        let mut i = 0;
+        while i < self.read_buffer.len() {
+            if self.read_buffer[i].header.from_addr == target_addr
+                && self.read_buffer[i].header.ibi != 0
+            {
+                self.read_buffer.remove(i);
+                let pvt_read_cmd = prepare_private_read_cmd(target_addr);
+                self.stream.set_nonblocking(false).unwrap();
+                self.stream.write_all(&pvt_read_cmd).unwrap();
+                self.stream.set_nonblocking(true).unwrap();
+                return true;
             }
+            i += 1;
         }
+        false
     }
 
     pub fn receive_private_read(&mut self, target_addr: u8) -> Option<Vec<u8>> {
-        let mut packet = None;
-        while !self.read_buffer.is_empty() {
-            let read = self.read_buffer.pop_front().unwrap();
-            if read.header.from_addr == target_addr {
-                packet = Some(read);
-                break;
-            }
-        }
-
-        match packet.or_else(|| self.read_packet(target_addr)) {
-            Some(Packet { data, .. }) => {
+        self.fill_buffer();
+        let mut i = 0;
+        while i < self.read_buffer.len() {
+            if self.read_buffer[i].header.from_addr == target_addr
+                && self.read_buffer[i].header.ibi == 0
+            {
+                let packet = self.read_buffer.remove(i).unwrap();
+                let data = packet.data;
                 if data.is_empty() {
                     println!("Received empty data packet");
                     return None;
@@ -243,10 +247,11 @@ impl BufferedStream {
                     );
                     return None;
                 }
-                Some(data[..data.len() - 1].to_vec())
+                return Some(data[..data.len() - 1].to_vec());
             }
-            _ => None,
+            i += 1;
         }
+        None
     }
 
     pub fn set_nonblocking(&self, blocking: bool) -> std::io::Result<()> {

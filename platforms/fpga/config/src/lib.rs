@@ -8,7 +8,7 @@ use mcu_config::{McuMemoryMap, McuStraps, MemoryRegionType};
 pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     rom_offset: 0xb004_0000,
     rom_size: 128 * 1024,
-    rom_stack_size: 0x2f00,
+    rom_stack_size: 0x2d00,
     rom_estack_size: 0x200,
     rom_properties: MemoryRegionType::MEMORY,
 
@@ -26,6 +26,10 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     i3c_offset: 0xa403_0000,
     i3c_size: 0x1000,
     i3c_properties: MemoryRegionType::MMIO,
+
+    i3c1_offset: 0xa403_1000,
+    i3c1_size: 0x1000,
+    i3c1_properties: MemoryRegionType::MMIO,
 
     mci_offset: 0xa800_0000,
     mci_size: 0xa0_0028,
@@ -50,10 +54,19 @@ pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
 
 pub const FPGA_MCU_STRAPS: McuStraps = McuStraps {
     i3c_static_addr: 0x3a,
-    axi_user0: 0x1,
-    axi_user1: 0x2,
+    i3c1_static_addr: 0x3c,
+    active_i3c: 0,
     cptra_wdt_cfg0: 200_000_000,
     cptra_wdt_cfg1: 200_000_000,
     mcu_wdt_cfg0: 800_000_000, // the FPGA is slower to boot
     mcu_wdt_cfg1: 1,
+    mcu_wdt_cfg0_manufacturing: 800_000_000,
+    mcu_wdt_cfg1_manufacturing: 1,
+    mcu_wdt_cfg0_debug: 800_000_000,
+    mcu_wdt_cfg1_debug: 1,
 };
+
+/// The MRAC value which should be populated for this memory map.  This corresponds to a value
+/// utilized within the global start assembly and thus must be unmangled.
+#[no_mangle]
+pub static FPGA_MRAC_VALUE: u32 = FPGA_MEMORY_MAP.compute_mrac();

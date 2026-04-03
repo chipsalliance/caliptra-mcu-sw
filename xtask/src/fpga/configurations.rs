@@ -7,8 +7,9 @@ use mcu_builder::{AllBuildArgs, ImageCfg, PROJECT_ROOT};
 use super::{
     run_command, run_command_with_output,
     utils::{
-        build_base_docker_command, caliptra_sw_workspace_root, download_bitstream_pdi, rsync_file,
-        run_test_suite,
+        build_base_container_command, build_caliptra_firmware, caliptra_sw_workspace_root,
+        check_ssh_access, download_bitstream, load_bitstream, rsync_file, run_test_suite,
+        NextestArchiveCommand,
     },
     ActionHandler, BuildArgs, BuildTestArgs, TestArgs,
 };
@@ -22,6 +23,17 @@ pub enum Configuration {
     CoreOnSubsystem,
     /// Testing `caliptra-sw` in `core` mode.
     Core,
+}
+
+impl Configuration {
+    pub fn default_test_profile(&self) -> &str {
+        match self {
+            Self::Subsystem => "nightly-ci",
+            // Test profiles defined in caliptra-sw
+            Self::CoreOnSubsystem => "fpga-subsystem",
+            Self::Core => "fpga-core",
+        }
+    }
 }
 
 pub enum CommandExecutor {
@@ -65,6 +77,7 @@ impl<'a> Configuration {
     }
 
     pub fn from_cmd(target_host: Option<&str>) -> Result<Self> {
+        check_ssh_access(target_host)?;
         let cache_contents = run_command_with_output(target_host, "cat /dev/shm/fpga-config")?;
         let cache_contents = cache_contents.trim_end();
         Self::from_cache(cache_contents)
@@ -81,6 +94,14 @@ impl<'a> ActionHandler<'a> for CommandExecutor {
             Self::Subsystem(sub) => sub.bootstrap(),
             Self::CoreOnSubsystem(core) => core.bootstrap(),
             Self::Core(core) => core.bootstrap(),
+        }
+    }
+
+    fn download_bitstream(&self) -> Result<()> {
+        match self {
+            Self::Subsystem(sub) => sub.download_bitstream(),
+            Self::CoreOnSubsystem(core) => core.download_bitstream(),
+            Self::Core(core) => core.download_bitstream(),
         }
     }
 
@@ -164,7 +185,18 @@ impl<'a> ActionHandler<'a> for Subsystem {
             .join("fpga")
             .join("bitstream_manifests")
             .join("subsystem.toml");
-        download_bitstream_pdi(self.target_host.as_deref(), &subsystem_bitstream)?;
+        download_bitstream(self.target_host.as_deref(), &subsystem_bitstream)?;
+        load_bitstream(self.target_host.as_deref())?;
+        Ok(())
+    }
+
+    fn download_bitstream(&self) -> Result<()> {
+        let subsystem_bitstream = PROJECT_ROOT
+            .join("hw")
+            .join("fpga")
+            .join("bitstream_manifests")
+            .join("subsystem.toml");
+        download_bitstream(None, &subsystem_bitstream)?;
         Ok(())
     }
 
@@ -177,12 +209,12 @@ impl<'a> ActionHandler<'a> for Subsystem {
             staging_addr: 0xB00C0000,
             image_id: 2,
             exec_bit: 2,
+            component_id: 2,
             feature: "test-fpga-flash-ctrl".to_string(),
         }]);
         let args = AllBuildArgs {
             output: Some("all-fw.zip"),
             platform: Some("fpga"),
-            runtime_features: Some("test-mctp-capsule-loopback,test-fpga-flash-ctrl,test-pldm-fw-update-e2e,test-firmware-update-streaming"),
             mcu_cfgs: mcu_cfgs,
             separate_runtimes: true,
             ..Default::default()
@@ -194,12 +226,17 @@ impl<'a> ActionHandler<'a> for Subsystem {
         Ok(())
     }
 
-    fn build_test(&self, _args: &'a BuildTestArgs<'a>) -> Result<()> {
-        let mut base_cmd = build_base_docker_command()?;
-        base_cmd.arg(
-                "(cd /work-dir && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_realtime --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
-            );
-        base_cmd.status().context("failed to cross compile tests")?;
+    fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
+        let mut container = build_base_container_command()?;
+        let cmd = NextestArchiveCommand::new("/work-dir")
+            .feature("fpga_realtime")
+            .package_filter(args.package_filter.as_deref())
+            .build();
+
+        container.arg(&cmd);
+        container
+            .status()
+            .context("failed to cross compile tests")?;
         if let Some(target_host) = &self.target_host {
             rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
                 .context("failed to copy tests to fpga")?;
@@ -208,23 +245,10 @@ impl<'a> ActionHandler<'a> for Subsystem {
     }
 
     fn test(&self, args: &'a TestArgs) -> Result<()> {
-        let default_test_filter_string = String::from(
-            "package(mcu-hw-model) and test(test_mailbox_execute),\
-            package(mcu-hw-model) and test(test_mailbox_execute),\
-            package(tests-integration) and test(test_jtag_taps),\
-            package(tests-integration) and test(test_lc_transitions),\
-            package(tests-integration) and test(test_manuf_debug_unlock),\
-            package(tests-integration) and test(test_prod_debug_unlock),\
-            package(tests-integration) and test(test_uds),\
-            package(tests-integration) and test(test_imaginary_flash_controller),\
-            package(tests-integration) and test(test_fw_update_e2e),\
-            package(tests-integration) and test(test_firmware_update_streaming)",
-        );
-        let test_filter_string = args
+        let test_filters = args
             .test_filter
             .as_ref()
-            .unwrap_or(&default_test_filter_string);
-        let test_filters: Vec<&str> = test_filter_string.split(',').collect();
+            .map(|filter_str| filter_str.split(',').collect());
         let to = if *args.test_output {
             "--no-capture"
         } else {
@@ -238,6 +262,7 @@ impl<'a> ActionHandler<'a> for Subsystem {
             test_filters,
             to,
             self.target_host.as_deref(),
+            args.default_test_profile,
         )?;
         Ok(())
     }
@@ -261,8 +286,7 @@ impl CoreOnSubsystem {
 
 impl<'a> ActionHandler<'a> for CoreOnSubsystem {
     fn bootstrap(&self) -> Result<()> {
-        // TODO(clundin): Consider overriding branch command
-        let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=main-2.x --depth=1";
+        let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=caliptra-2.0 --depth=1";
         let target_host = self.target_host.as_deref();
         run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-sw repo")?;
 
@@ -277,23 +301,31 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
             .join("fpga")
             .join("bitstream_manifests")
             .join("subsystem.toml");
-        download_bitstream_pdi(self.target_host.as_deref(), &subsystem_bitstream)?;
+        download_bitstream(self.target_host.as_deref(), &subsystem_bitstream)?;
+        load_bitstream(self.target_host.as_deref())?;
+        Ok(())
+    }
+
+    fn download_bitstream(&self) -> Result<()> {
+        let caliptra_sw = caliptra_sw_workspace_root();
+        let subsystem_bitstream = caliptra_sw
+            .join("hw")
+            .join("fpga")
+            .join("bitstream_manifests")
+            .join("subsystem.toml");
+        download_bitstream(None, &subsystem_bitstream)?;
         Ok(())
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
-        run_command(
-            None,
-            "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
-        )?;
         let caliptra_sw = caliptra_sw_workspace_root();
-        // Skip building Caliptra binaries when the MCU flag is set.
+        let rom_path = mcu_builder::rom_build(&mcu_builder::CaliptraBuildArgs {
+            platform: Some("fpga"),
+            features: Some("core_test"),
+            ..Default::default()
+        })?;
         if !args.mcu {
-            run_command(
-                        None,
-                        &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display()),
-                    )?;
+            build_caliptra_firmware(&caliptra_sw, args.fw_id.as_deref())?;
         }
-        let rom_path = mcu_builder::rom_build(Some("fpga"), "core_test")?;
         if let Some(target_host) = &self.target_host {
             rsync_file(
                 target_host,
@@ -301,19 +333,30 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
                 "/tmp/caliptra-test-firmware",
                 false,
             )?;
-            rsync_file(target_host, &rom_path, "mcu-rom-fpga.bin", false)?;
+            rsync_file(
+                target_host,
+                &rom_path.to_string_lossy(),
+                "mcu-rom-fpga.bin",
+                false,
+            )?;
         }
         Ok(())
     }
 
-    fn build_test(&self, _args: &'a BuildTestArgs<'a>) -> Result<()> {
+    fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
         let caliptra_sw = caliptra_sw_workspace_root();
         let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
-        let mut base_cmd = build_base_docker_command()?;
-        base_cmd.arg(
-                format!("(cd /{} && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_subsystem,itrng --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
-            , base_name));
-        base_cmd.status().context("failed to cross compile tests")?;
+
+        let mut container = build_base_container_command()?;
+        let cmd = NextestArchiveCommand::new(&format!("/{base_name}"))
+            .features(&["fpga_subsystem", "itrng"])
+            .package_filter(args.package_filter.as_deref())
+            .build();
+
+        container.arg(&cmd);
+        container
+            .status()
+            .context("failed to cross compile tests")?;
         if let Some(target_host) = &self.target_host {
             rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
                 .context("failed to copy tests to fpga")?;
@@ -322,12 +365,10 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
     }
 
     fn test(&self, args: &'a TestArgs) -> Result<()> {
-        let default_test_filter = String::from("package(caliptra-drivers)");
-        let test_filters = vec![args
+        let test_filters = args
             .test_filter
             .as_ref()
-            .unwrap_or(&default_test_filter)
-            .as_str()];
+            .map(|filter_str| filter_str.split(',').collect());
 
         let to = if *args.test_output {
             "--no-capture"
@@ -342,6 +383,7 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
             test_filters,
             to,
             self.target_host.as_deref(),
+            args.default_test_profile,
         )?;
         Ok(())
     }
@@ -365,7 +407,7 @@ impl Core {
 
 impl<'a> ActionHandler<'a> for Core {
     fn bootstrap(&self) -> Result<()> {
-        let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=main-2.x --depth=1";
+        let bootstrap_cmd= "[ -d caliptra-sw ] || git clone https://github.com/chipsalliance/caliptra-sw --branch=caliptra-2.0 --depth=1";
         let target_host = self.target_host.as_deref();
         run_command(target_host, bootstrap_cmd).context("failed to clone caliptra-sw repo")?;
 
@@ -380,19 +422,26 @@ impl<'a> ActionHandler<'a> for Core {
             .join("fpga")
             .join("bitstream_manifests")
             .join("core.toml");
-        download_bitstream_pdi(self.target_host.as_deref(), &core_bitstream)?;
+        download_bitstream(self.target_host.as_deref(), &core_bitstream)?;
+        load_bitstream(self.target_host.as_deref())?;
         Ok(())
     }
-    fn build(&self, _args: &'a BuildArgs<'a>) -> Result<()> {
-        run_command(
-            None,
-            "mkdir -p /tmp/caliptra-test-firmware/caliptra-test-firmware",
-        )?;
+
+    fn download_bitstream(&self) -> Result<()> {
         let caliptra_sw = caliptra_sw_workspace_root();
-        run_command(
-                        None,
-                        &format!("(cd {} && cargo run --release -p caliptra-builder -- --all_elfs /tmp/caliptra-test-firmware)", caliptra_sw.display()),
-                    )?;
+        let core_bitstream = caliptra_sw
+            .join("hw")
+            .join("fpga")
+            .join("bitstream_manifests")
+            .join("core.toml");
+        download_bitstream(None, &core_bitstream)?;
+        Ok(())
+    }
+    fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
+        let caliptra_sw = caliptra_sw_workspace_root();
+        if !args.mcu {
+            build_caliptra_firmware(&caliptra_sw, args.fw_id.as_deref())?;
+        }
         if let Some(target_host) = &self.target_host {
             rsync_file(
                 target_host,
@@ -404,15 +453,20 @@ impl<'a> ActionHandler<'a> for Core {
         Ok(())
     }
 
-    fn build_test(&self, _args: &'a BuildTestArgs<'a>) -> Result<()> {
+    fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()> {
         let caliptra_sw = caliptra_sw_workspace_root();
         let base_name = caliptra_sw.file_name().unwrap().to_str().unwrap();
 
-        let mut base_cmd = build_base_docker_command()?;
-        base_cmd.arg(
-                format!("(cd /{} && CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo nextest archive --features=fpga_realtime,itrng --target=aarch64-unknown-linux-gnu --archive-file=/work-dir/caliptra-test-binaries.tar.zst --target-dir cross-target/)"
-            , base_name));
-        base_cmd.status().context("failed to cross compile tests")?;
+        let mut container = build_base_container_command()?;
+        let cmd = NextestArchiveCommand::new(&format!("/{base_name}"))
+            .features(&["fpga_realtime", "itrng"])
+            .package_filter(args.package_filter.as_deref())
+            .build();
+
+        container.arg(&cmd);
+        container
+            .status()
+            .context("failed to cross compile tests")?;
         if let Some(target_host) = &self.target_host {
             rsync_file(target_host, "caliptra-test-binaries.tar.zst", ".", false)
                 .context("failed to copy tests to fpga")?;
@@ -421,12 +475,10 @@ impl<'a> ActionHandler<'a> for Core {
     }
 
     fn test(&self, args: &'a TestArgs) -> Result<()> {
-        let default_test_filter = String::from("package(caliptra-drivers)");
-        let test_filters = vec![args
+        let test_filters = args
             .test_filter
             .as_ref()
-            .unwrap_or(&default_test_filter)
-            .as_str()];
+            .map(|filter_str| filter_str.split(',').collect());
 
         let to = if *args.test_output {
             "--no-capture"
@@ -441,6 +493,7 @@ impl<'a> ActionHandler<'a> for Core {
             test_filters,
             to,
             self.target_host.as_deref(),
+            args.default_test_profile,
         )?;
         Ok(())
     }

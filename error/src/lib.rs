@@ -129,6 +129,51 @@ impl McuError {
             "Device Ownership Transfer corrupt blob"
         ),
         (
+            ROM_COLD_BOOT_FLASH_NOT_CONFIGURED_ERROR,
+            0x1_0010,
+            "Flash not configured"
+        ),
+        (
+            ROM_DOT_RECOVERY_BLOB_AUTH_ERROR,
+            0x1_0011,
+            "DOT recovery blob authentication failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_FLASH_WRITE_ERROR,
+            0x1_0012,
+            "DOT recovery flash write failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_PK_HASH_MISMATCH,
+            0x1_0013,
+            "DOT recovery PK hash mismatch"
+        ),
+        (
+            ROM_DOT_RECOVERY_CHALLENGE_FAILED,
+            0x1_0014,
+            "DOT recovery challenge generation failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_SIG_VERIFY_FAILED,
+            0x1_0015,
+            "DOT recovery signature verification failed"
+        ),
+        (
+            ROM_DOT_RECOVERY_NO_RECOVERY_PK_HASH,
+            0x1_0016,
+            "DOT recovery no recovery PK hash in fuses"
+        ),
+        (
+            ROM_DOT_RECOVERY_TRANSPORT_ERROR,
+            0x1_0017,
+            "DOT recovery transport error"
+        ),
+        (
+            ROM_COLD_BOOT_ROM_DIGEST_MISMATCH,
+            0x1_0018,
+            "Cold boot ROM integrity check failed"
+        ),
+        (
             ROM_LC_TRANSITION_ERROR,
             0x2_0000,
             "Lifecycle transition error"
@@ -206,6 +251,31 @@ impl McuError {
             ROM_FUSE_VALUE_TOO_LARGE,
             0x3_000a,
             "Fuse value too large for layout"
+        ),
+        (
+            ROM_OTP_PENDING_TIMEOUT,
+            0x3_000b,
+            "OTP pending check exceeded maximum iterations"
+        ),
+        (
+            ROM_OTP_DIGEST_VERIFY_ERROR,
+            0x3_000c,
+            "OTP SW digest readback verification failed"
+        ),
+        (
+            ROM_OTP_READ_CPTRA_ITRNG_WINDOW_SIZE_ERROR,
+            0x3_000d,
+            "Failed to read CPTRA_ITRNG_WINDOW_SIZE from OTP"
+        ),
+        (
+            ROM_OTP_READ_CPTRA_ITRNG_CONFIG0_ERROR,
+            0x3_000e,
+            "Failed to read CPTRA_ITRNG_ENTROPY_CONFIG_0 from OTP"
+        ),
+        (
+            ROM_OTP_READ_CPTRA_ITRNG_CONFIG1_ERROR,
+            0x3_000f,
+            "Failed to read CPTRA_ITRNG_ENTROPY_CONFIG_1 from OTP"
         ),
         (
             ROM_I3C_CONFIG_RING_HEADER_ERROR,
@@ -286,6 +356,46 @@ impl McuError {
             ROM_SOC_MBOX_USER_LOCK_OUT_OF_RANGE,
             0x5_000D,
             "SOC tried to lock an Mbox user out of range"
+        ),
+        (
+            ROM_SOC_PK_HASH_VERIFY_FAILED,
+            0x5_000E,
+            "Production debug unlock PK hash verification failed after locking"
+        ),
+        (
+            ROM_SOC_MCU_MBOX_AXI_USER_VERIFY_FAILED,
+            0x5_000F,
+            "MCU mailbox AXI user verification failed after locking"
+        ),
+        (
+            ROM_SOC_SS_CONFIG_DONE_VERIFY_FAILED,
+            0x5_0010,
+            "SS_CONFIG_DONE or SS_CONFIG_DONE_STICKY verification failed after setting"
+        ),
+        (
+            ROM_SOC_ICCM_ECC_UNC,
+            0x5_0011,
+            "ICCM uncorrectable ECC error"
+        ),
+        (
+            ROM_SOC_DCCM_ECC_UNC,
+            0x5_0012,
+            "DCCM uncorrectable ECC error"
+        ),
+        (
+            ROM_SOC_WDT_CFG_OUT_OF_RANGE,
+            0x5_0013,
+            "Caliptra WDT config index out of range"
+        ),
+        (
+            ROM_BOOTFSM_TIMEOUT,
+            0x5_0014,
+            "Caliptra Core boot FSM timed out"
+        ),
+        (
+            ROM_PK_HASH_SELECTION_FAILED,
+            0x5_0015,
+            "Failed to select a valid and functional vendor PK slot"
         ),
         (
             GENERIC_EXCEPTION,

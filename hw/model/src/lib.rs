@@ -1,25 +1,26 @@
 // Licensed under the Apache-2.0 license
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 pub use api::mailbox::mbox_write_fifo;
 pub use api_types::{DbgManufServiceRegReq, DeviceLifecycle, Fuses, U4};
+use caliptra_api::mailbox::MailboxReqHeader;
 use caliptra_api::{self as api, SocManager};
 use caliptra_api_types as api_types;
 use caliptra_emu_bus::Event;
 pub use caliptra_emu_cpu::{CodeRange, ImageInfo, StackInfo, StackRange};
-use caliptra_hw_model::{BootParams, ExitStatus, ModelError, Output};
+use caliptra_hw_model::{ExitStatus, ModelError, Output};
 use caliptra_hw_model_types::{
     EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
 };
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
+use mcu_mbox_common::messages::calc_checksum;
 pub use mcu_mgr::McuManager;
-use mcu_rom_common::{
-    LifecycleControllerState, LifecycleRawTokens, LifecycleToken, McuBootMilestones,
-};
+pub use mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
 use mcu_testing_common::MCU_RUNNING;
 pub use model_emulated::ModelEmulated;
 use rand::{rngs::StdRng, SeedableRng};
+use romtime::McuBootMilestones;
 use sha2::Digest;
 use std::io::Write;
 use std::io::{stdout, ErrorKind};
@@ -29,6 +30,10 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use ureg::MmioMut;
 pub use vmem::read_otp_vmem_data;
+use zerocopy::FromBytes;
+
+// Re-export flash image builder for creating flash images from firmware bytes
+pub use mcu_builder::flash_image::build_flash_image_bytes;
 
 mod bus_logger;
 #[cfg(feature = "fpga_realtime")]
@@ -45,7 +50,7 @@ mod mcu_mgr;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
 mod model_fpga_realtime;
-mod otp_provision;
+pub mod otp_provision;
 mod vmem;
 
 pub enum ShaAccMode {
@@ -102,8 +107,8 @@ pub fn new_unbooted(params: InitParams) -> Result<DefaultHwModel> {
 /// (optionally) uploading firmware. Most test cases that need to construct a
 /// HwModel should use this function over [`HwModel::new()`] and
 /// [`crate::new_unbooted`].
-pub fn new(init_params: InitParams, boot_params: BootParams) -> Result<DefaultHwModel> {
-    DefaultHwModel::new(init_params, boot_params)
+pub fn new(init_params: InitParams) -> Result<DefaultHwModel> {
+    DefaultHwModel::new(init_params)
 }
 
 pub struct InitParams<'a> {
@@ -210,10 +215,17 @@ pub struct InitParams<'a> {
     /// Initial contents of DOT flash.
     pub dot_flash_initial_contents: Option<Vec<u8>>,
 
+    /// Initial contents of the primary flash (for flash-based boot testing).
+    pub primary_flash_initial_contents: Option<Vec<u8>>,
+
     pub check_booted_to_runtime: bool,
 
     /// Override the default AXI user that the model uses to access the Caliptra SoC interface.
     pub caliptra_soc_axi_user: Option<u32>,
+
+    pub flash_boot: bool,
+
+    pub active_i3c1: bool,
 }
 
 impl InitParams<'_> {
@@ -280,8 +292,11 @@ impl Default for InitParams<'_> {
             vendor_pqc_type: None,
             i3c_port: None,
             dot_flash_initial_contents: None,
+            primary_flash_initial_contents: None,
             check_booted_to_runtime: true,
             caliptra_soc_axi_user: None,
+            flash_boot: false,
+            active_i3c1: false,
         }
     }
 }
@@ -319,7 +334,7 @@ pub trait McuHwModel {
     /// Create a model, and boot it to the point where CPU execution can
     /// occur. This includes programming the fuses, initializing the
     /// boot_fsm state machine, and (optionally) uploading firmware.
-    fn new(init_params: InitParams, boot_params: BootParams) -> Result<Self>
+    fn new(init_params: InitParams) -> Result<Self>
     where
         Self: Sized,
     {
@@ -329,13 +344,13 @@ pub trait McuHwModel {
         println!("Using hardware-model {}", hw.type_name());
         println!("{init_params_summary:#?}");
 
-        hw.boot(boot_params)?;
+        hw.boot()?;
 
         Ok(hw)
     }
 
     // TODO this should have a common boot function similar to the Caliptra HW model.
-    fn boot(&mut self, boot_params: BootParams) -> Result<()>
+    fn boot(&mut self) -> Result<()>
     where
         Self: Sized;
 
@@ -408,6 +423,13 @@ pub trait McuHwModel {
                     ))
                 }
                 None => {}
+            }
+            // Check for fatal error in MCI register
+            if let Some(fatal_error) = self.mci_fw_fatal_error() {
+                return Err(std::io::Error::new(
+                    ErrorKind::Other,
+                    format!("firmware fatal error: 0x{:08x}", fatal_error),
+                ));
             }
             self.step();
         }
@@ -488,6 +510,54 @@ pub trait McuHwModel {
 
     fn mci_boot_milestones(&mut self) -> McuBootMilestones {
         McuBootMilestones::from((self.mci_flow_status() >> 16) as u16)
+    }
+
+    /// Executes a typed request and (on success), returns the typed response.
+    /// The checksum field of the request is calculated, and the checksum of the
+    /// response is validated.
+    fn mailbox_execute_req<R: mcu_mbox_common::messages::Request>(
+        &mut self,
+        mut req: R,
+    ) -> Result<R::Resp> {
+        let req_bytes = req.as_mut_bytes();
+
+        // Populate the request checksum
+        let checksum = calc_checksum(R::ID.into(), &req_bytes[size_of::<i32>()..]);
+        let hdr: &mut MailboxReqHeader =
+            MailboxReqHeader::mut_from_bytes(&mut req_bytes[..size_of::<MailboxReqHeader>()])
+                .unwrap();
+        hdr.chksum = checksum;
+
+        // Send the request to the mailbox
+        let mut response = self
+            .mailbox_execute(R::ID.into(), req_bytes)?
+            .unwrap_or_default();
+
+        // Check the reponse checksum
+        if response.len() < 4 {
+            bail!("Response too short to contain checksum");
+        }
+        let received_chksum = u32::from_le_bytes(response[..4].try_into().unwrap());
+        let calculated_chksum = calc_checksum(0, &response[4..]);
+        if received_chksum != calculated_chksum {
+            bail!(
+                "Response checksum mismatch: expected {:08x}, calculated {:08x}",
+                received_chksum,
+                calculated_chksum
+            );
+        }
+
+        if response.len() < std::mem::size_of::<R::Resp>() {
+            response.resize(std::mem::size_of::<R::Resp>(), 0);
+        }
+        let response = R::Resp::read_from_bytes(&response).map_err(|_| {
+            anyhow!(
+                "Failed to read response into struct: expected len {}, response len {}",
+                std::mem::size_of::<R::Resp>(),
+                response.len()
+            )
+        })?;
+        Ok(response)
     }
 
     /// Executes `cmd` with request data `buf`. Returns `Ok(Some(_))` if
@@ -592,11 +662,13 @@ pub trait McuHwModel {
 
         self.mcu_manager().with_mbox0(|mbox| {
             if status.cmd_complete() {
-                println!(">>> mbox cmd response: success");
-                mbox.mbox_execute().write(|w| w.execute(false));
-                return Ok(None);
-            }
-            if !status.data_ready() {
+                let dlen = mbox.mbox_dlen().read() as usize;
+                if dlen == 0 {
+                    println!(">>> mbox cmd response: success");
+                    mbox.mbox_execute().write(|w| w.execute(false));
+                    return Ok(None);
+                }
+            } else if !status.data_ready() {
                 bail!("Unknown mailbox status {:x}", u32::from(status));
             }
 
@@ -784,40 +856,41 @@ fn mbox_read_fifo(mbox: caliptra_registers::mbox::RegisterBlock<impl MmioMut>) -
 #[test]
 fn reg_access_test() {
     let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
-    let mut hw = new(
-        InitParams {
-            fuses: Fuses {
-                fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
-                vendor_pk_hash: {
-                    let mut vendor_pk_hash = [0u32; 12];
-                    binaries
-                        .vendor_pk_hash()
-                        .unwrap()
-                        .chunks(4)
-                        .enumerate()
-                        .for_each(|(i, chunk)| {
-                            let mut array = [0u8; 4];
-                            array.copy_from_slice(chunk);
-                            vendor_pk_hash[i] = u32::from_be_bytes(array);
-                        });
-                    vendor_pk_hash
-                },
-                ..Default::default()
+
+    // Build flash image from firmware binaries
+    let flash_image = build_flash_image_bytes(
+        Some(&binaries.caliptra_fw),
+        Some(&binaries.soc_manifest),
+        Some(&binaries.mcu_runtime),
+    );
+
+    let mut hw = new(InitParams {
+        fuses: Fuses {
+            fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
+            vendor_pk_hash: {
+                let mut vendor_pk_hash = [0u32; 12];
+                binaries
+                    .vendor_pk_hash()
+                    .unwrap()
+                    .chunks(4)
+                    .enumerate()
+                    .for_each(|(i, chunk)| {
+                        let mut array = [0u8; 4];
+                        array.copy_from_slice(chunk);
+                        vendor_pk_hash[i] = u32::from_be_bytes(array);
+                    });
+                vendor_pk_hash
             },
-            caliptra_rom: &binaries.caliptra_rom,
-            mcu_rom: &binaries.mcu_rom,
-            vendor_pk_hash: binaries.vendor_pk_hash(),
-            active_mode: true,
-            vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
             ..Default::default()
         },
-        BootParams {
-            fw_image: Some(&binaries.caliptra_fw),
-            soc_manifest: Some(&binaries.soc_manifest),
-            mcu_fw_image: Some(&binaries.mcu_runtime),
-            ..Default::default()
-        },
-    )
+        caliptra_rom: &binaries.caliptra_rom,
+        mcu_rom: &binaries.mcu_rom,
+        vendor_pk_hash: binaries.vendor_pk_hash(),
+        active_mode: true,
+        vendor_pqc_type: Some(FwVerificationPqcKeyType::LMS),
+        primary_flash_initial_contents: Some(flash_image),
+        ..Default::default()
+    })
     .unwrap();
 
     assert_eq!(
@@ -867,20 +940,18 @@ mod tests {
         let mcu_rom = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
             binaries.test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)?
         } else {
-            let rom_file = mcu_builder::test_rom_build(
-                Some(platform()),
-                &firmware::hw_model_tests::MAILBOX_RESPONDER,
-            )?;
+            let rom_file = mcu_builder::test_rom_build(&mcu_builder::CaliptraBuildArgs {
+                platform: Some(platform()),
+                fwid: Some(&firmware::hw_model_tests::MAILBOX_RESPONDER),
+                ..Default::default()
+            })?;
             std::fs::read(&rom_file)?
         };
 
-        let mut model = new(
-            InitParams {
-                mcu_rom: &mcu_rom,
-                ..Default::default()
-            },
-            BootParams::default(),
-        )?;
+        let mut model = new(InitParams {
+            mcu_rom: &mcu_rom,
+            ..Default::default()
+        })?;
 
         // Send command that echoes the command and input message
         assert_eq!(

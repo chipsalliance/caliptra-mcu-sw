@@ -1,0 +1,21 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-firmware-bundler"
+edition = "2021"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+elf.workspace = true
+mcu-image-header.workspace = true
+serde.workspace = true
+subst.workspace = true
+tbf-header.workspace = true
+toml.workspace = true
+uuid.workspace = true
+walkdir.workspace = true
+zerocopy.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

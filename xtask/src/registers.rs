@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
+use fusegen::{HEADER_PREFIX, HEADER_SUFFIX};
 use mcu_builder::PROJECT_ROOT;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
@@ -20,14 +21,6 @@ use std::str::FromStr;
 use std::sync::LazyLock;
 
 use crate::fuses::autogen_fuses;
-
-pub(crate) static HEADER_PREFIX: &str = r"/*
-Licensed under the Apache-2.0 license.
-";
-
-pub(crate) static HEADER_SUFFIX: &str = r"
-*/
-";
 
 static SKIP_TYPES: LazyLock<HashSet<&str>> = LazyLock::new(|| {
     HashSet::from([
@@ -239,7 +232,7 @@ fn generate_emulator_types(
     scopes: &[ParentScope],
     dest_dir: &Path,
     header: String,
-    register_types_to_crates: &HashMap<String, String>,
+    register_types_to_crates: &HashMap<String, Vec<String>>,
 ) -> Result<()> {
     let file_action = if check {
         file_check_contents
@@ -270,6 +263,9 @@ fn generate_emulator_types(
         }
         if block.name == "I3CCSR" {
             block.name = "i3c".to_string();
+        }
+        if block.name == "I3CCSR1" {
+            block.name = "i3c1".to_string();
         }
         if SKIP_TYPES.contains(block.name.as_str()) {
             continue;
@@ -314,6 +310,31 @@ fn generate_emulator_types(
 
     lib_code.extend(quote! { pub mod root_bus; });
 
+    // Write the stub_warnings module (static, not generated from RDL)
+    let stub_warnings_code = r#"
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static WARN_ON_STUB: AtomicBool = AtomicBool::new(true);
+
+/// Enable or disable warning logs when auto-generated register stubs
+/// handle a read/write that was not overridden by the peripheral implementation.
+pub fn set_stub_warnings(enabled: bool) {
+    WARN_ON_STUB.store(enabled, Ordering::Relaxed);
+}
+
+/// Returns `true` if stub warning logs are enabled.
+#[inline]
+pub fn stub_warnings_enabled() -> bool {
+    WARN_ON_STUB.load(Ordering::Relaxed)
+}
+"#;
+    let stub_warnings_file = dest_dir.join("stub_warnings.rs");
+    file_action(
+        &stub_warnings_file,
+        &rustfmt(&(header.clone() + stub_warnings_code))?,
+    )?;
+    lib_code.extend(quote! { pub mod stub_warnings; });
+
     let lib_file = dest_dir.join("lib.rs");
     file_action(
         &lib_file,
@@ -353,7 +374,7 @@ fn flatten_registers(
 /// Make a peripheral trait that the emulator code can implement.
 fn emu_make_peripheral_trait(
     block: RegisterBlock,
-    register_types_to_crates: &HashMap<String, String>,
+    register_types_to_crates: &HashMap<String, Vec<String>>,
 ) -> Result<TokenStream> {
     let base = camel_ident(block.name.as_str());
     let periph = format_ident!("{}Peripheral", base);
@@ -363,6 +384,8 @@ fn emu_make_peripheral_trait(
     let mut struct_defaults = TokenStream::new();
     let mut impl_tokens = TokenStream::new();
     let mut state_field_names = HashSet::new();
+
+    let block_name_str = block.name.clone();
 
     let registers = flatten_registers(0, String::new(), &block);
     for (_, base_name, reg_rc) in registers.iter() {
@@ -410,12 +433,51 @@ fn emu_make_peripheral_trait(
         }
 
         let is_simple = has_single_32_bit_field(&register.ty);
+        let warn_label = format!("{}::{}", block_name_str, method_suffix);
+
+        // Pre-format all message variants with the register name baked in
+        // to avoid clippy::print_literal warnings
+        let stub_read_arr = Literal::string(&format!(
+            "[EMU] Non-functional register stub: read {}[{{}}]",
+            warn_label
+        ));
+        let stub_read = Literal::string(&format!(
+            "[EMU] Non-functional register stub: read {}",
+            warn_label
+        ));
+        let stub_write_arr = Literal::string(&format!(
+            "[EMU] Non-functional register stub: write {}[{{}}] = 0x{{:08x}}",
+            warn_label
+        ));
+        let stub_write = Literal::string(&format!(
+            "[EMU] Non-functional register stub: write {} = 0x{{:08x}}",
+            warn_label
+        ));
+        let gen_read_arr = Literal::string(&format!(
+            "[EMU] Generated default register handler: read {}[{{}}]",
+            warn_label
+        ));
+        let gen_read = Literal::string(&format!(
+            "[EMU] Generated default register handler: read {}",
+            warn_label
+        ));
+        let gen_write_arr = Literal::string(&format!(
+            "[EMU] Generated default register handler: write {}[{{}}] = 0x{{:08x}}",
+            warn_label
+        ));
+        let gen_write = Literal::string(&format!(
+            "[EMU] Generated default register handler: write {} = 0x{{:08x}}",
+            warn_label
+        ));
 
         if is_simple {
             if register.can_read() {
                 if register.is_array() {
                     fn_tokens.extend(quote! {
                         fn #read_name(&mut self, index: usize) -> caliptra_emu_types::RvData {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#stub_read_arr, index);
+                            }
                             if let Some(generated) = self.generated() {
                                 return generated.#read_name(index);
                             }
@@ -424,12 +486,18 @@ fn emu_make_peripheral_trait(
                     });
                     impl_tokens.extend(quote! {
                         fn #read_name(&mut self, index: usize) -> caliptra_emu_types::RvData {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#gen_read_arr, index);
+                            }
                             self.#state_ident[index]
                         }
                     });
                 } else {
                     fn_tokens.extend(quote! {
                         fn #read_name(&mut self) -> caliptra_emu_types::RvData {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#stub_read);
+                            }
                             if let Some(generated) = self.generated() {
                                 return generated.#read_name();
                             }
@@ -438,6 +506,9 @@ fn emu_make_peripheral_trait(
                     });
                     impl_tokens.extend(quote! {
                         fn #read_name(&mut self) -> caliptra_emu_types::RvData {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#gen_read);
+                            }
                             self.#state_ident
                         }
                     });
@@ -447,6 +518,9 @@ fn emu_make_peripheral_trait(
                 if register.is_array() {
                     fn_tokens.extend(quote! {
                         fn #write_name(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#stub_write_arr, index, val);
+                            }
                             if let Some(generated) = self.generated() {
                                 generated.#write_name(val, index);
                             }
@@ -457,12 +531,18 @@ fn emu_make_peripheral_trait(
                         make_register_write_logic(register, target_expr.clone(), quote! { val });
                     impl_tokens.extend(quote! {
                         fn #write_name(&mut self, val: caliptra_emu_types::RvData, index: usize) {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#gen_write_arr, index, val);
+                            }
                             #write_logic
                         }
                     });
                 } else {
                     fn_tokens.extend(quote! {
                         fn #write_name(&mut self, val: caliptra_emu_types::RvData) {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#stub_write, val);
+                            }
                             if let Some(generated) = self.generated() {
                                 generated.#write_name(val);
                             }
@@ -473,25 +553,32 @@ fn emu_make_peripheral_trait(
                         make_register_write_logic(register, target_expr.clone(), quote! { val });
                     impl_tokens.extend(quote! {
                         fn #write_name(&mut self, val: caliptra_emu_types::RvData) {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#gen_write, val);
+                            }
                             #write_logic
                         }
                     });
                 }
             }
         } else {
-            if register_types_to_crates
+            // Determine the crate name by searching through the Register associated crates to find
+            // one which is contained by the block's name.  Add a special case for flash to support
+            // its primary/secondary nature, and for i3c1 which shares types with i3c.
+            //
+            // NOTE: This to be replaced by the upcoming new parser implementation.
+            let crate_name = register_types_to_crates
                 .get(register.ty.name.as_ref().unwrap())
-                .is_none()
-            {
-                let mut i: Vec<_> = register_types_to_crates.keys().collect();
-                i.sort();
-            }
-            let rcrate = format_ident!(
-                "{}",
-                register_types_to_crates
-                    .get(register.ty.name.as_ref().unwrap())
-                    .unwrap()
-            );
+                .unwrap()
+                .iter()
+                .find(|s| {
+                    s.contains(&block.name)
+                        || (s.contains("flash") && block.name.contains("flash"))
+                        || (s.as_str() == "i3c" && block.name == "i3c1")
+                })
+                .unwrap();
+
+            let rcrate = format_ident!("{crate_name}",);
             let tyn = camel_ident(register.ty.name.as_ref().unwrap());
             let read_val = quote! { registers_generated :: #rcrate :: bits :: #tyn :: Register };
             let prim = format_ident!("{}", register.ty.width.rust_primitive_name());
@@ -500,6 +587,9 @@ fn emu_make_peripheral_trait(
                 if register.is_array() {
                     fn_tokens.extend(quote! {
                         fn #read_name(&mut self, index: usize) -> #fulltyn {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#stub_read_arr, index);
+                            }
                             if let Some(generated) = self.generated() {
                                 return generated.#read_name(index);
                             }
@@ -508,12 +598,18 @@ fn emu_make_peripheral_trait(
                     });
                     impl_tokens.extend(quote! {
                         fn #read_name(&mut self, index: usize) -> #fulltyn {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#gen_read_arr, index);
+                            }
                             caliptra_emu_bus::ReadWriteRegister::new(self.#state_ident[index])
                         }
                     });
                 } else {
                     fn_tokens.extend(quote! {
                         fn #read_name(&mut self) -> #fulltyn {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#stub_read);
+                            }
                             if let Some(generated) = self.generated() {
                                 return generated.#read_name();
                             }
@@ -522,6 +618,9 @@ fn emu_make_peripheral_trait(
                     });
                     impl_tokens.extend(quote! {
                         fn #read_name(&mut self) -> #fulltyn {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#gen_read);
+                            }
                             caliptra_emu_bus::ReadWriteRegister::new(self.#state_ident)
                         }
                     });
@@ -531,6 +630,9 @@ fn emu_make_peripheral_trait(
                 if register.is_array() {
                     fn_tokens.extend(quote! {
                         fn #write_name(&mut self, val: #fulltyn, index: usize) {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#stub_write_arr, index, val.reg.get());
+                            }
                             if let Some(generated) = self.generated() {
                                 generated.#write_name(val, index);
                             }
@@ -544,12 +646,18 @@ fn emu_make_peripheral_trait(
                     );
                     impl_tokens.extend(quote! {
                         fn #write_name(&mut self, val: #fulltyn, index: usize) {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#gen_write_arr, index, val.reg.get());
+                            }
                             #write_logic
                         }
                     });
                 } else {
                     fn_tokens.extend(quote! {
                         fn #write_name(&mut self, val: #fulltyn) {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#stub_write, val.reg.get());
+                            }
                             if let Some(generated) = self.generated() {
                                 generated.#write_name(val);
                             }
@@ -563,6 +671,9 @@ fn emu_make_peripheral_trait(
                     );
                     impl_tokens.extend(quote! {
                         fn #write_name(&mut self, val: #fulltyn) {
+                            if crate::stub_warnings::stub_warnings_enabled() {
+                                eprintln!(#gen_write, val.reg.get());
+                            }
                             #write_logic
                         }
                     });
@@ -1134,7 +1245,7 @@ fn generate_fw_registers(
     scopes: &[ParentScope],
     header: String,
     dest_dir: &Path,
-    register_types_to_crates: &mut HashMap<String, String>,
+    register_types_to_crates: &mut HashMap<String, Vec<String>>,
 ) -> Result<()> {
     let file_action = if check {
         file_check_contents
@@ -1163,6 +1274,12 @@ fn generate_fw_registers(
         }
         if block.name == "I3CCSR" {
             block.name = "i3c".to_string();
+        }
+        if block.name == "I3CCSR1" {
+            // The firmware driver handles I3C1 by parameterizing the base
+            // address via McuMemoryMap, so no separate codegen is needed.
+            // The emulator path still generates I3c1Peripheral for the root bus.
+            continue;
         }
         if SKIP_TYPES.contains(block.name.as_str()) {
             continue;

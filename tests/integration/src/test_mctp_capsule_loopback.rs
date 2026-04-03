@@ -1,6 +1,6 @@
 //! Licensed under the Apache-2.0 license
 
-//! This module tests the PLDM Firmware Update
+//! This module tests MCTP Capsule Loopback functionality
 
 #[cfg(test)]
 mod test {
@@ -21,7 +21,7 @@ mod test {
         let feature = feature.replace("_", "-");
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some(&feature),
-            i3c_port: Some(PortPicker::new().pick().unwrap()),
+            i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
             ..Default::default()
         });
 
@@ -83,7 +83,8 @@ mod test {
                     }
                     MctpTestState::ReceiveReq => {
                         self.loopback_msg =
-                            self.mctp_util.receive_request(stream, target_addr, None);
+                            self.mctp_util
+                                .receive_request(stream, target_addr, Some(30));
                         self.test_state = MctpTestState::SendResp;
                     }
                     MctpTestState::SendResp => {

@@ -356,6 +356,16 @@ impl MctpUtil {
             MCTPHdr::mut_from_bytes(&mut pkt[0..MCTP_HDR_SIZE]).unwrap();
 
         if mctp_hdr.som() == 1 {
+            // If we are already collecting a message, check if this SOM packet
+            // belongs to a different message. If so, ignore it for now.
+            // In a more robust implementation, we would multiplex multiple messages.
+            if !pkts.is_empty()
+                && (mctp_hdr.msg_tag() != message_identifier.msg_tag
+                    || mctp_hdr.src_eid() != message_identifier.src_eid)
+            {
+                return false;
+            }
+
             pkts.clear();
             if mctp_hdr.tag_owner() == 1 {
                 // This is a request
@@ -369,10 +379,15 @@ impl MctpUtil {
             message_identifier.src_eid = mctp_hdr.src_eid();
             message_identifier.msg_tag = mctp_hdr.msg_tag();
             message_identifier.tag_owner = mctp_hdr.tag_owner();
+        } else {
+            // Check if this packet belongs to the message we are currently collecting
+            if message_identifier.msg_tag != mctp_hdr.msg_tag()
+                || message_identifier.tag_owner != mctp_hdr.tag_owner()
+                || message_identifier.src_eid != mctp_hdr.src_eid()
+            {
+                return false;
+            }
         }
-
-        assert!(message_identifier.msg_tag == mctp_hdr.msg_tag());
-        assert!(message_identifier.tag_owner == mctp_hdr.tag_owner());
 
         if mctp_hdr.eom() == 1 {
             last_pkt = true;

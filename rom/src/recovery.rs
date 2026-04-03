@@ -7,13 +7,11 @@ use flash_image::{
     SOC_MANIFEST_IDENTIFIER,
 };
 use registers_generated::i3c;
-use registers_generated::i3c::bits::{
-    IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess, RecoveryCtrl,
-};
+use registers_generated::i3c::bits::{IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess};
 use romtime::StaticRef;
 use smlang::statemachine;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
-use zerocopy::FromBytes;
+use zerocopy::{FromBytes, IntoBytes};
 
 const ACTIVATE_RECOVERY_IMAGE_CMD: u32 = 0xF;
 const BYPASS_CFG_USE_I3C: u32 = 0x0;
@@ -55,7 +53,7 @@ statemachine! {
         ActivateCheckRecoveryStatus + RecoveryStatus(RecoveryStatus) [check_recovery_status_awaiting]
              = ReadDeviceStatus,
 
-        ActivateCheckRecoveryStatus + RecoveryStatus(RecoveryStatus) [check_fw_recovery_success]
+        ActivateCheckRecoveryStatus + RecoveryStatus(RecoveryStatus) [check_recovery_status_booting_mcu_img]
              = Done,
 
     }
@@ -121,8 +119,13 @@ bitfield! {
 pub mod dev_rec_status_code {
     pub const AWAITING_IMAGE: u8 = 0x1;
     pub const BOOTING_IMAGE: u8 = 0x2;
+    #[allow(dead_code)]
     pub const RECOVERY_SUCCESS: u8 = 0x3;
     // 0x4-0xB: Reserved
+}
+
+pub mod rec_img_index {
+    pub const MCU_IMG_INDEX: u8 = 0x2;
 }
 
 /// State machine extended variables.
@@ -181,14 +184,6 @@ impl StateMachineContext for Context {
         }
     }
 
-    fn check_fw_recovery_success(&self, status: &RecoveryStatus) -> Result<bool, ()> {
-        if status.dev_rec_status() == dev_rec_status_code::RECOVERY_SUCCESS as u32 {
-            Ok(true)
-        } else {
-            Ok(false)
-        }
-    }
-
     /// Check that the device status is recovery pending
     fn check_device_status_recovery_pending(&self, status: &DeviceStatus0) -> Result<bool, ()> {
         if status.device_status() == device_status_code::RECOVERY_PENDING as u32 {
@@ -204,6 +199,11 @@ impl StateMachineContext for Context {
         } else {
             Ok(false)
         }
+    }
+
+    fn check_recovery_status_booting_mcu_img(&self, status: &RecoveryStatus) -> Result<bool, ()> {
+        Ok(self.check_fw_booting_image(status)?
+            && status.rec_img_index() == rec_img_index::MCU_IMG_INDEX as u32)
     }
 }
 
@@ -354,36 +354,38 @@ pub fn load_flash_image_to_recovery(
                     // If the transfer is complete, we can move to the next state
                     let _ = state_machine.process_event(Events::TransferComplete);
                     let end_cycle = romtime::mcycle();
-                    let cycles = end_cycle - start_cycle.unwrap_or_default();
+                    let cycles = (end_cycle - start_cycle.unwrap_or_default()).max(1);
                     romtime::println!(
                         "[mcu-rom] Image transfer complete after {} cycles (≈{} bytes per 1,000 cycles)",
                         cycles,
                         (state_machine.context().image_size as u64 * 1000) / cycles,
                     );
                 } else {
-                    let offset = (state_machine.context().flash_offset
-                        + state_machine.context().transfer_offset)
-                        as usize;
-                    let num_bytes = 256.min(
-                        state_machine.context().image_size
-                            - state_machine.context().transfer_offset,
-                    ) as usize;
+                    // wait for fifo empty before transferring full 256 bytes
+                    // this is necessary to work around some hardware quirks where
+                    // being not full does not mean it is safe to write
+                    if i3c_periph
+                        .sec_fw_recovery_if_indirect_fifo_status_0
+                        .is_set(IndirectFifoStatus0::Empty)
+                    {
+                        let mut data = [0u32; 64];
+                        flash_driver
+                            .read(
+                                (state_machine.context().flash_offset
+                                    + state_machine.context().transfer_offset)
+                                    as usize,
+                                data.as_mut_bytes(),
+                            )
+                            .map_err(|_| ())?;
 
-                    // always read 256 bytes from flash if we can
-                    let mut buf = [0u8; 256];
-                    flash_driver
-                        .read(offset, &mut buf[..num_bytes])
-                        .map_err(|_| ())?;
-                    let buf_dwords = <[u32; 64]>::ref_from_bytes(&buf).unwrap();
-
-                    for &dword in &buf_dwords[..num_bytes / 4] {
-                        // Check if the Indirect FIFO is ready for more data
-                        while i3c_periph
-                            .sec_fw_recovery_if_indirect_fifo_status_0
-                            .is_set(IndirectFifoStatus0::Full)
-                        {}
-                        i3c_periph.tti_tx_data_port.set(dword);
-                        state_machine.context_mut().transfer_offset += 4; // Simulate writing bytes
+                        let left = state_machine.context().image_size
+                            - state_machine.context().transfer_offset;
+                        let process = core::cmp::min(left, 256);
+                        // load a dword at a time to recovery interface
+                        for dword in data.iter().take(process.div_ceil(4) as usize) {
+                            i3c_periph.tti_tx_data_port.set(*dword);
+                        }
+                        state_machine.context_mut().transfer_offset += process;
                     }
                 }
             }
@@ -395,14 +397,11 @@ pub fn load_flash_image_to_recovery(
             }
 
             States::Activate => {
-                // Set the RECOVERY_CTRL_ACTIVATE_REC_IMG bit to allow access to RecoveryCtrl
-                i3c_periph
-                    .soc_mgmt_if_rec_intf_reg_w1_c_access
-                    .modify(RecIntfRegW1cAccess::RecoveryCtrlActivateRecImg.val(0xff));
                 // Activate the recovery image
-                i3c_periph
-                    .sec_fw_recovery_if_recovery_ctrl
-                    .modify(RecoveryCtrl::ActivateRecImg.val(ACTIVATE_RECOVERY_IMAGE_CMD));
+                i3c_periph.soc_mgmt_if_rec_intf_reg_w1_c_access.modify(
+                    RecIntfRegW1cAccess::RecoveryCtrlActivateRecImg
+                        .val(ACTIVATE_RECOVERY_IMAGE_CMD),
+                );
                 let _ = state_machine.process_event(Events::CheckFwActivation);
             }
 

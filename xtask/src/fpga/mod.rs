@@ -1,43 +1,41 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use caliptra_hw_model::BootParams;
 use caliptra_image_gen::to_hw_format;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use clap::Subcommand;
 use configurations::Configuration;
+use mcu_builder::flash_image::build_flash_image_bytes;
 use mcu_builder::FirmwareBinaries;
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
 use mcu_rom_common::LifecycleControllerState;
-use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use utils::{
-    check_fpga_dependencies, check_host_dependencies, run_command, run_command_with_output,
+    check_fpga_dependencies, check_host_dependencies, check_ssh_access, run_command,
+    run_command_with_output,
 };
 
 mod configurations;
 
 mod utils;
 
-#[derive(Default)]
 struct BuildArgs<'a> {
     mcu: bool,
-    // Marker type to preserve lifetime until arguments get re-introduced.
-    _marker: PhantomData<&'a Path>,
+    fw_id: &'a Option<String>,
 }
 
-#[derive(Default)]
 struct BuildTestArgs<'a> {
-    // Marker type to preserve lifetime until arguments get re-introduced.
-    _marker: PhantomData<&'a Path>,
+    package_filter: &'a Option<String>,
 }
 struct TestArgs<'a> {
     test_filter: &'a Option<String>,
     test_output: &'a bool,
+    default_test_profile: &'a str,
 }
 trait ActionHandler<'a> {
     fn bootstrap(&self) -> Result<()>;
+    fn download_bitstream(&self) -> Result<()>;
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()>;
     fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()>;
     fn test(&self, args: &'a TestArgs) -> Result<()>;
@@ -49,6 +47,11 @@ pub(crate) enum Fpga {
     Bootstrap {
         #[arg(long)]
         target_host: Option<String>,
+        #[arg(long, default_value_t = Configuration::Subsystem, value_enum)]
+        configuration: Configuration,
+    },
+    /// Download an FPGA bitstream.
+    DownloadBitstream {
         #[arg(long, default_value_t = Configuration::Subsystem, value_enum)]
         configuration: Configuration,
     },
@@ -73,11 +76,11 @@ pub(crate) enum Fpga {
         otp: Option<PathBuf>,
 
         /// Save OTP memory to a file after running.
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         save_otp: bool,
 
         /// Run UDS provisioning flow
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         uds: bool,
 
         /// Number of "steps" to run the FPGA before stopping
@@ -85,7 +88,7 @@ pub(crate) enum Fpga {
         steps: u64,
 
         /// Whether to disable the recovery interface and I3C
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         no_recovery: bool,
 
         /// Lifecycle controller state to set (raw, test_unlocked0, manufacturing, prod, etc.).
@@ -99,14 +102,25 @@ pub(crate) enum Fpga {
         target_host: Option<String>,
 
         /// Only Build MCU binaries
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         mcu: bool,
+
+        /// Only build the specified Caliptra Firmware
+        /// By default all Caliptra firmware binaries are built
+        #[arg(long)]
+        fw_id: Option<String>,
     },
     /// Build FPGA test binaries
     BuildTest {
-        /// When copy test binaries to `target_host`
+        /// When set copy test binaries to `target_host`
         #[arg(long)]
         target_host: Option<String>,
+        /// Filter packages for the test archive. This can be used to reduce the total archive
+        /// size and speed up `build-test` commands.
+        ///
+        /// Uses a `cargo-nextest` package filter-set, e.g. `package(caliptra-rom)`.
+        #[arg(long)]
+        package_filter: Option<String>,
     },
     /// Run FPGA tests
     Test {
@@ -117,7 +131,7 @@ pub(crate) enum Fpga {
         #[arg(long)]
         test_filter: Option<String>,
         /// Print test output during execution.
-        #[arg(long, default_value_t = false)]
+        #[arg(long)]
         test_output: bool,
     },
 }
@@ -187,7 +201,11 @@ fn is_module_loaded(module: &str, target_host: Option<&str>) -> Result<bool> {
 pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
     check_host_dependencies()?;
     match args {
-        Fpga::Build { target_host, mcu } => {
+        Fpga::Build {
+            target_host,
+            mcu,
+            fw_id: calitpra_fw_id,
+        } => {
             println!("Building FPGA firmware");
             let config = Configuration::from_cmd(target_host.as_deref())?;
             config
@@ -195,16 +213,19 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                 .set_target_host(target_host.as_deref())
                 .build(&BuildArgs {
                     mcu: *mcu,
-                    ..Default::default()
+                    fw_id: calitpra_fw_id,
                 })?;
         }
-        Fpga::BuildTest { target_host } => {
+        Fpga::BuildTest {
+            target_host,
+            package_filter,
+        } => {
             println!("Building FPGA tests");
             let config = Configuration::from_cmd(target_host.as_deref())?;
             config
                 .executor()
                 .set_target_host(target_host.as_deref())
-                .build_test(&BuildTestArgs::default())?;
+                .build_test(&BuildTestArgs { package_filter })?;
         }
         Fpga::Bootstrap {
             target_host,
@@ -214,7 +235,9 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             println!("configuration: {:?}", configuration);
 
             let target_host = target_host.as_deref();
+            check_ssh_access(target_host)?;
             check_fpga_dependencies(target_host)?;
+
             let hostname = run_command_with_output(target_host, "hostname")?;
 
             // skip this step for CI images. Kernel modules are already installed.
@@ -238,6 +261,12 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                 .set_caliptra_fpga(caliptra_fpga)
                 .bootstrap()?;
         }
+        Fpga::DownloadBitstream { configuration } => {
+            println!("Downloading FPGA bitstream");
+            println!("configuration: {:?}", configuration);
+
+            configuration.executor().download_bitstream()?;
+        }
         Fpga::Test {
             target_host,
             test_filter,
@@ -256,6 +285,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                 .test(&TestArgs {
                     test_filter,
                     test_output,
+                    default_test_profile: config.default_test_profile(),
                 })?;
         }
         _ => todo!("implement this command"),
@@ -326,6 +356,8 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
             test_runtimes: vec![],
             test_soc_manifests: vec![],
             test_pldm_fw_pkgs: vec![],
+            test_flash_images: vec![],
+            test_update_flash_images: vec![],
         }
     };
     let otp_memory = if otp_file.is_some() && otp_file.unwrap().exists() {
@@ -337,6 +369,14 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
     // If we're doing UDS provisioning, we need to set the bootfsm breakpoint
     // so we can use JTAG/TAP.
     let bootfsm_break = uds;
+
+    // Build flash image from firmware binaries
+    let flash_image = build_flash_image_bytes(
+        Some(binaries.caliptra_fw.as_slice()),
+        Some(binaries.soc_manifest.as_slice()),
+        Some(binaries.mcu_runtime.as_slice()),
+    );
+
     let mut model = ModelFpgaRealtime::new_unbooted(InitParams {
         fuses: caliptra_api_types::Fuses {
             vendor_pk_hash: binaries
@@ -358,15 +398,11 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         lifecycle_controller_state,
         vendor_pk_hash: binaries.vendor_pk_hash(),
         enable_mcu_uart_log: true,
+        primary_flash_initial_contents: Some(flash_image),
         ..Default::default()
     })
     .unwrap();
-    model.boot(BootParams {
-        fw_image: Some(binaries.caliptra_fw.as_slice()),
-        soc_manifest: Some(binaries.soc_manifest.as_slice()),
-        mcu_fw_image: Some(binaries.mcu_runtime.as_slice()),
-        ..Default::default()
-    })?;
+    model.boot()?;
 
     let mut uds_requested = false;
     let mut xi3c_configured = false;

@@ -16,11 +16,12 @@ use crate::dis;
 use crate::doe_mbox_fsm;
 use crate::elf;
 use crate::tests;
-use crate::tests::spdm_responder_validator::SpdmTestType;
 use caliptra_api_types::DeviceLifecycle;
+use caliptra_emu_bus::BusMmio;
 use caliptra_emu_bus::{Bus, Clock, Timer};
 use caliptra_emu_cpu::{Cpu, Pic, RvInstr, StepAction};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
+use caliptra_emu_periph::MailboxRequester;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
@@ -41,6 +42,7 @@ use mcu_testing_common::i3c_socket;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use mcu_testing_common::mctp_transport::MctpTransport;
 use mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
+use mcu_testing_common::spdm_responder_validator::SpdmTestType;
 use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND};
 use pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::daemon::PldmDaemon;
@@ -79,6 +81,19 @@ fn parse_vendor_pqc_type(s: &str) -> Result<FwVerificationPqcKeyType, String> {
     }
 }
 
+/// Map an LC state index (0–20) to the Caliptra device lifecycle string per the HW spec.
+/// TestUnlocked* → "unprovisioned", Dev → "manufacturing", all others → "production".
+fn lc_state_to_device_lifecycle_str(lc_state_index: u32) -> &'static str {
+    match lc_state_index {
+        // TestUnlocked0..TestUnlocked7 = indices 1,3,5,7,9,11,13,15
+        1 | 3 | 5 | 7 | 9 | 11 | 13 | 15 => "unprovisioned",
+        // Dev = index 16
+        16 => "manufacturing",
+        // Raw, TestLocked*, Prod, ProdEnd, Rma, Scrap, PostTransition → production
+        _ => "production",
+    }
+}
+
 #[derive(Parser, Debug, Clone)]
 #[command(version, about, long_about = None, name = "Caliptra MCU Emulator")]
 pub struct EmulatorArgs {
@@ -113,6 +128,10 @@ pub struct EmulatorArgs {
     // this is used only to set stdin_uart to false
     #[arg(long = "stdin-uart", overrides_with = "stdin_uart")]
     pub _no_stdin_uart: bool,
+
+    /// Allow writing to the ROM while the emulator is running.
+    #[arg(long, action = ArgAction::SetTrue, default_value_t = false)]
+    pub allow_sideloaded_rom: bool,
 
     /// Enable flash based boot (default false).
     #[arg(long, default_value_t = false)]
@@ -262,6 +281,18 @@ pub struct EmulatorArgs {
     pub fuse_vendor_hashes_prod_partition: Option<String>,
     #[arg(long)]
     pub fuse_vendor_test_partition: Option<String>,
+
+    /// Enable warning prints when auto-generated register stubs handle a read/write.
+    #[arg(long, default_value_t = false)]
+    pub stub_warnings: bool,
+
+    /// Test feature to enable at runtime.
+    #[arg(long)]
+    pub test_feature: Option<String>,
+
+    /// Selects which I3C core is used for MCTP transport.
+    #[arg(long, default_value_t = false)]
+    pub active_i3c1: bool,
 }
 
 pub struct Emulator {
@@ -284,6 +315,9 @@ pub struct Emulator {
     pub doe_mbox_fsm: doe_mbox_fsm::DoeMboxFsm,
     pub i3c_address: Option<u8>,
     pub i3c_controller_join_handle: Option<JoinHandle<()>>,
+    // Synchronizes cross-thread timer scheduling (I3C / DOE controller
+    // threads) with the CPU step that advances the clock.
+    pub step_lock: Arc<Mutex<()>>,
 }
 
 impl Emulator {
@@ -299,11 +333,11 @@ impl Emulator {
         external_read_callback: Option<ExternalReadCallback>,
         external_write_callback: Option<ExternalWriteCallback>,
     ) -> std::io::Result<Self> {
-        #[cfg(feature = "test-flash-based-boot")]
-        let is_flash_based_boot = true;
+        let test_feature = cli.test_feature.as_deref().unwrap_or("");
+        let is_flash_based_boot = cli.flash_based_boot || test_feature == "test-flash-based-boot";
 
-        #[cfg(not(feature = "test-flash-based-boot"))]
-        let is_flash_based_boot = cli.flash_based_boot;
+        // Configure stub warnings based on CLI flag
+        emulator_registers_generated::stub_warnings::set_stub_warnings(cli.stub_warnings);
 
         let args_rom = &cli.rom;
         let args_log_dir = &cli.log_dir.unwrap_or_else(|| PathBuf::from("/tmp"));
@@ -322,20 +356,58 @@ impl Emulator {
                 ),
             )
         })?;
+        if device_lifecycle == DeviceLifecycle::Reserved2 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Reserved device lifecycle value (2) is not supported by the emulator",
+            ));
+        }
 
-        let device_lifecycle_str: Option<String> = match device_lifecycle {
-            DeviceLifecycle::Manufacturing => Some("manufacturing".into()),
-            DeviceLifecycle::Production => Some("production".into()),
-            DeviceLifecycle::Unprovisioned => Some("unprovisioned".into()),
-            DeviceLifecycle::Reserved2 => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Reserved device lifecycle value (2) is not supported by the emulator",
-                ))
-            }
+        // Determine lifecycle state from OTP fuses (source of truth) or CLI arg.
+        // If OTP file has lifecycle fuses, decode the state from them.
+        // Otherwise, generate fuse data from the --device-security-state CLI arg.
+        let (lc_state_index, lc_transition_cnt, lifecycle_fuse_data) = if let Some(lc_bytes) = cli
+            .otp
+            .as_ref()
+            .and_then(|p| Otp::read_lifecycle_from_file(p))
+        {
+            let mem: [u8; mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE] =
+                lc_bytes.try_into().map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "OTP lifecycle partition has wrong size",
+                    )
+                })?;
+            let (state, count) = mcu_otp_lifecycle::lc_decode_memory(&mem).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Failed to decode lifecycle from OTP fuses: {e}"),
+                )
+            })?;
+            (state as u32, count as u32, None)
+        } else {
+            // No existing fuses — generate from CLI arg.
+            let (idx, cnt) = match device_lifecycle {
+                DeviceLifecycle::Unprovisioned => (1u8, 1u8), // TestUnlocked0
+                DeviceLifecycle::Manufacturing => (16u8, 1u8), // Dev
+                DeviceLifecycle::Production => (17u8, 1u8),   // Prod
+                _ => (17u8, 1u8),
+            };
+            let fuse_data = mcu_otp_lifecycle::lc_generate_memory(idx, cnt).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Failed to generate lifecycle fuses: {e}"),
+                )
+            })?;
+            (idx as u32, cnt as u32, Some(fuse_data.to_vec()))
         };
 
-        let req_idevid_csr: Option<bool> = if device_lifecycle == DeviceLifecycle::Manufacturing {
+        // Map LC state index to Caliptra device lifecycle string per the HW spec.
+        let device_lifecycle_str: Option<String> =
+            Some(lc_state_to_device_lifecycle_str(lc_state_index).into());
+
+        let req_idevid_csr: Option<bool> = if lc_state_index == 16 {
+            // Dev state → manufacturing
             Some(true)
         } else {
             None
@@ -349,6 +421,7 @@ impl Emulator {
             req_idevid_csr,
             use_mcu_recovery_interface,
             extra_soc_bus: None,
+            debug_intent: true, // Emulator app defaults to debug intent enabled
         })
         .expect("Failed to start Caliptra CPU");
 
@@ -473,6 +546,11 @@ impl Emulator {
             auto_root_bus_offsets.lc_size = lc_size;
         }
 
+        let mut straps = mcu_config_emulator::EMULATOR_MCU_STRAPS;
+        if cli.active_i3c1 {
+            straps.active_i3c = 1;
+        }
+
         let bus_args = McuRootBusArgs {
             offsets: mcu_root_bus_offsets.clone(),
             rom: rom_buffer,
@@ -481,8 +559,26 @@ impl Emulator {
             uart_rx: stdin_uart.clone(),
             pic: pic.clone(),
             clock: clock.clone(),
+            allow_sideloaded_rom: cli.allow_sideloaded_rom,
+            straps,
         };
         let root_bus = McuRootBus::new(bus_args).unwrap();
+
+        // Set test_mcu_mbox_driver if requested
+        if test_feature == "test-mcu-mbox-driver" {
+            root_bus
+                .mcu_mailbox0
+                .regs
+                .lock()
+                .unwrap()
+                .test_mcu_mbox_driver = true;
+            root_bus
+                .mcu_mailbox1
+                .regs
+                .lock()
+                .unwrap()
+                .test_mcu_mbox_driver = true;
+        }
 
         // Create external communication bus
         let mut caliptra_to_ext = CaliptraToExtBus::new();
@@ -509,12 +605,17 @@ impl Emulator {
         } else {
             I3cController::default()
         };
+
+        let step_lock = Arc::new(Mutex::new(()));
+
         let i3c = I3c::new(
             &clock.clone(),
             &mut i3c_controller,
             i3c_irq,
             cli.hw_revision.clone(),
+            step_lock.clone(),
         );
+
         let i3c_dynamic_address = i3c.get_dynamic_address().unwrap();
 
         let doe_event_irq = pic.register_irq(McuRootBus::DOE_MBOX_EVENT_IRQ);
@@ -522,29 +623,37 @@ impl Emulator {
 
         let mut doe_mbox_fsm = doe_mbox_fsm::DoeMboxFsm::new(doe_mbox_periph.clone());
 
-        let doe_mbox = DummyDoeMbox::new(&clock.clone(), doe_event_irq, doe_mbox_periph);
+        let doe_mbox = DummyDoeMbox::new(
+            &clock.clone(),
+            doe_event_irq,
+            doe_mbox_periph,
+            step_lock.clone(),
+        );
 
         println!("Starting DOE mailbox transport thread");
 
         let mut i3c_controller_join_handle = None;
 
         // Feature flag based test setup
-        if cfg!(feature = "test-doe-transport-loopback") {
+        if test_feature == "test-doe-transport-loopback" {
             let (test_rx, test_tx) = doe_mbox_fsm.start();
             println!("Starting DOE transport loopback test thread");
             let tests = tests::doe_transport_loopback::generate_tests();
             doe_mbox_fsm::run_doe_transport_tests(test_tx, test_rx, tests);
-        } else if cfg!(feature = "test-doe-discovery") {
+        }
+        if test_feature == "test-doe-discovery" {
             let (test_rx, test_tx) = doe_mbox_fsm.start();
             println!("Starting DOE discovery test thread");
             let tests = tests::doe_discovery::DoeDiscoveryTest::generate_tests();
             doe_mbox_fsm::run_doe_transport_tests(test_tx, test_rx, tests);
-        } else if cfg!(feature = "test-doe-user-loopback") {
+        }
+        if test_feature == "test-doe-user-loopback" {
             let (test_rx, test_tx) = doe_mbox_fsm.start();
             println!("Starting DOE user loopback test thread");
             let tests = tests::doe_user_loopback::generate_tests();
             doe_mbox_fsm::run_doe_transport_tests(test_tx, test_rx, tests);
-        } else if cfg!(feature = "test-mctp-ctrl-cmds") {
+        }
+        if test_feature == "test-mctp-ctrl-cmds" {
             i3c_controller_join_handle = Some(i3c_controller.start());
             println!(
                 "Starting test-mctp-ctrl-cmds test thread for testing target {:?}",
@@ -558,7 +667,8 @@ impl Emulator {
                 tests,
                 None,
             );
-        } else if cfg!(feature = "test-mctp-user-loopback") {
+        }
+        if test_feature == "test-mctp-user-loopback" {
             i3c_controller_join_handle = Some(i3c_controller.start());
             println!(
                 "Starting loopback test thread for testing target {:?}",
@@ -575,37 +685,27 @@ impl Emulator {
                 spdm_loopback_tests,
                 None,
             );
-        } else if cfg!(feature = "test-mctp-spdm-responder-conformance") {
-            if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
-                println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
-                exit(0);
-            }
-            i3c_controller_join_handle = Some(i3c_controller.start());
-            crate::tests::spdm_responder_validator::mctp::run_mctp_spdm_conformance_test(
-                cli.i3c_port.unwrap(),
-                i3c.get_dynamic_address().unwrap(),
-                SpdmTestType::SpdmResponderConformance,
-                std::time::Duration::from_secs(9000), // timeout in seconds
-            );
-        } else if cfg!(feature = "test-doe-spdm-responder-conformance") {
+        }
+        if test_feature == "test-doe-spdm-responder-conformance" {
             if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
                 println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
                 exit(0);
             }
             let (test_rx, test_tx) = doe_mbox_fsm.start();
-            crate::tests::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
+            mcu_testing_common::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
                 test_tx,
                 test_rx,
                 SpdmTestType::SpdmResponderConformance,
                 std::time::Duration::from_secs(9000), // timeout in seconds
             );
-        } else if cfg!(feature = "test-doe-spdm-tdisp-ide-validator") {
+        }
+        if test_feature == "test-doe-spdm-tdisp-ide-validator" {
             if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
                 println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
                 exit(0);
             }
             let (test_rx, test_tx) = doe_mbox_fsm.start();
-            crate::tests::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
+            mcu_testing_common::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
                 test_tx,
                 test_rx,
                 SpdmTestType::SpdmTeeIoValidator,
@@ -613,18 +713,17 @@ impl Emulator {
             );
         }
 
-        if cfg!(any(
-            feature = "test-pldm-request-response",
-            feature = "test-pldm-discovery",
-            feature = "test-pldm-fw-update",
-        )) {
+        if test_feature == "test-pldm-request-response"
+            || test_feature == "test-pldm-discovery"
+            || test_feature == "test-pldm-fw-update"
+        {
             i3c_controller_join_handle = Some(i3c_controller.start());
             let pldm_transport =
                 MctpTransport::new(cli.i3c_port.unwrap(), i3c.get_dynamic_address().unwrap());
             let pldm_socket = pldm_transport
                 .create_socket(EndpointId(0), EndpointId(1))
                 .unwrap();
-            PldmRequestResponseTest::run(pldm_socket);
+            PldmRequestResponseTest::run(pldm_socket, test_feature.to_string());
         }
 
         let create_flash_controller =
@@ -634,18 +733,18 @@ impl Emulator {
              initial_content: Option<&[u8]>,
              direct_read_region: Option<Rc<RefCell<caliptra_emu_bus::Ram>>>| {
                 // Use a temporary file for flash storage if we're running a test
-                let flash_file = if cfg!(any(
-                    feature = "test-flash-ctrl-init",
-                    feature = "test-flash-ctrl-read-write-page",
-                    feature = "test-flash-ctrl-erase-page",
-                    feature = "test-flash-storage-read-write",
-                    feature = "test-flash-storage-erase",
-                    feature = "test-flash-usermode",
-                    feature = "test-mcu-rom-flash-access",
-                    feature = "test-log-flash-linear",
-                    feature = "test-log-flash-circular",
-                    feature = "test-log-flash-usermode",
-                )) {
+                let is_test = test_feature == "test-flash-ctrl-init"
+                    || test_feature == "test-flash-ctrl-read-write-page"
+                    || test_feature == "test-flash-ctrl-erase-page"
+                    || test_feature == "test-flash-storage-read-write"
+                    || test_feature == "test-flash-storage-erase"
+                    || test_feature == "test-flash-usermode"
+                    || test_feature == "test-mcu-rom-flash-access"
+                    || test_feature == "test-log-flash-linear"
+                    || test_feature == "test-log-flash-circular"
+                    || test_feature == "test-log-flash-usermode";
+
+                let flash_file = if is_test {
                     Some(
                         tempfile::NamedTempFile::new()
                             .unwrap()
@@ -755,7 +854,10 @@ impl Emulator {
             .fuse_vendor_test_partition
             .map(|fuse| hex::decode(fuse).expect("Invalid hex in vendor_test_partition"));
 
-        let lc = LcCtrl::new();
+        // Map DeviceLifecycle to LC state index per the Caliptra SS HW spec
+        // (caliptra-ss docs/CaliptraSSHardwareSpecification.md, LCC state table).
+        // The lifecycle state was already resolved above from fuses or CLI arg.
+        let lc = LcCtrl::with_state(lc_state_index, lc_transition_cnt);
 
         let otp = Otp::new(
             &clock.clone(),
@@ -763,31 +865,46 @@ impl Emulator {
                 file_name: cli.otp,
                 owner_pk_hash,
                 vendor_pk_hash,
-                vendor_pqc_type: cli.vendor_pqc_type,
+                vendor_pqc_type: Some(cli.vendor_pqc_type),
                 soc_manifest_svn: cli.fuse_soc_manifest_svn.map(|v| v as u8),
                 soc_manifest_max_svn: cli.fuse_soc_manifest_max_svn.map(|v| v as u8),
                 vendor_hashes_prod_partition: fuse_vendor_hashes_prod_partition,
                 vendor_test_partition: fuse_vendor_test_partition,
+                lifecycle_state: lifecycle_fuse_data,
                 ..Default::default()
             },
         )?;
-        #[cfg(any(
-            feature = "test-mcu-mbox-soc-requester-loopback",
-            feature = "test-caliptra-util-host-validator",
-        ))]
+
+        // Share OTP partition data with the LC controller for transitions.
+        let mut lc = lc;
+        lc.set_otp_partitions(otp.partitions_ref());
         let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
+        let soc_ifc = unsafe {
+            caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
+                cli.soc_offset.unwrap_or(0x3003_0000) as *mut u32,
+                BusMmio::new(
+                    caliptra_cpu
+                        .bus
+                        .soc_to_caliptra_bus(MailboxRequester::Caliptra),
+                ),
+            )
+        };
+
         let mci = Mci::new(
             &clock.clone(),
             ext_mci,
             mci_irq,
             Some(mcu_mailbox0),
             Some(mcu_mailbox1),
+            Some(soc_ifc),
+            [0, 0],
         );
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
             Some(auto_root_bus_offsets),
             Some(Box::new(i3c)),
+            Some(Box::new(emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
             Some(Box::new(secondary_flash_controller)),
             Some(Box::new(mci)),
@@ -880,23 +997,19 @@ impl Emulator {
             println!("Active mode enabled with 3 recovery images");
         }
 
-        #[cfg(any(
-            feature = "test-mcu-mbox-soc-requester-loopback",
-            feature = "test-mcu-mbox-usermode",
-            feature = "test-mcu-mbox-cmds",
-        ))]
+        if test_feature == "test-mcu-mbox-soc-requester-loopback"
+            || test_feature == "test-mcu-mbox-usermode"
+            || test_feature == "test-mcu-mbox-cmds"
         {
-            const SOC_AGENT_ID: u32 = 0x1;
             use emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;
-            let transport = McuMailboxTransport::new(ext_mcu_mailbox0);
+            let transport = McuMailboxTransport::new(ext_mcu_mailbox0.clone());
             let test = crate::tests::emulator_mcu_mailbox_test::RequestResponseTest::new(transport);
-            test.run();
+            test.run(test_feature.to_string());
         }
 
-        #[cfg(feature = "test-caliptra-util-host-validator")]
-        {
+        if test_feature == "test-caliptra-util-host-validator" {
             use emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;
-            let transport = McuMailboxTransport::new(ext_mcu_mailbox0);
+            let transport = McuMailboxTransport::new(ext_mcu_mailbox0.clone());
             crate::tests::caliptra_util_host_validator::run_mbox_responder(transport);
             crate::tests::caliptra_util_host_validator::run_caliptra_util_host_validator();
         }
@@ -927,7 +1040,7 @@ impl Emulator {
             let pldm_socket = pldm_transport
                 .create_socket(EndpointId(LOCAL_TEST_ENDPOINT_EID), EndpointId(1))
                 .unwrap();
-            if cfg!(feature = "test-pldm-streaming-boot") {
+            if test_feature == "test-pldm-streaming-boot" {
                 // If we are running the PLDM daemon from an integration test,
                 // we need to set the update state machine to exit on error
                 let _ = PldmDaemon::run(
@@ -976,6 +1089,7 @@ impl Emulator {
             doe_mbox_fsm,
             Some(i3c_dynamic_address.into()),
             i3c_controller_join_handle,
+            step_lock,
         ))
     }
 
@@ -994,6 +1108,7 @@ impl Emulator {
         doe_mbox_fsm: doe_mbox_fsm::DoeMboxFsm,
         i3c_address: Option<u8>,
         i3c_controller_join_handle: Option<JoinHandle<()>>,
+        step_lock: Arc<Mutex<()>>,
     ) -> Self {
         // read from the console in a separate thread to prevent blocking
         let stdin_uart_clone = stdin_uart.clone();
@@ -1017,6 +1132,7 @@ impl Emulator {
             doe_mbox_fsm,
             i3c_address,
             i3c_controller_join_handle,
+            step_lock,
         }
     }
 
@@ -1046,6 +1162,11 @@ impl Emulator {
                 self.timer.schedule_poll_in(1);
             }
         }
+
+        // Hold the step lock while advancing clocks so that cross-thread
+        // callers (I3C / DOE PollScheduler::incoming) cannot observe a
+        // mid-step clock value.
+        let _step_guard = self.step_lock.lock().unwrap();
 
         let action = if let Some(ref mut trace_file) = self.trace_file {
             let trace_fn: &mut dyn FnMut(u32, RvInstr) = &mut |pc, instr| match instr {

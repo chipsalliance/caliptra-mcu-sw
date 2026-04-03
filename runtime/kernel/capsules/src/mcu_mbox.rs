@@ -31,7 +31,7 @@ mod upcall {
 }
 
 // Adjust as needed
-const MAX_DATA_SIZE_DWORDS: usize = 512;
+const MAX_DATA_SIZE_DWORDS: usize = 1024;
 struct BufferedMessage {
     pub command: u32,
     pub data: [u32; MAX_DATA_SIZE_DWORDS],

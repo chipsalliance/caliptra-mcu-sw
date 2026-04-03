@@ -3,13 +3,14 @@
 use caliptra_api_types::DeviceLifecycle;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
-use core::panic;
 use mcu_builder::ImageCfg;
+use mcu_firmware_bundler::args::Commands as BundleCommands;
 use std::path::PathBuf;
 
 mod auth_manifest;
 mod cargo_lock;
 mod clippy;
+mod corim;
 mod deps;
 mod docs;
 mod emulator_cbinding;
@@ -83,17 +84,14 @@ enum Commands {
         #[arg(long)]
         streaming_boot: Option<PathBuf>,
 
-        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>
-        /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2
+        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>
+        /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2,2,test-flash-based-boot
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
         soc_images: Option<Vec<ImageCfg>>,
 
         /// Path to the Flash image to be used in streaming boot
         #[arg(long)]
         flash_image: Option<PathBuf>,
-
-        #[arg(long, default_value_t = false)]
-        use_dccm_for_stack: bool,
 
         #[arg(long, value_parser=maybe_hex::<u32>)]
         dccm_offset: Option<u32>,
@@ -113,15 +111,6 @@ enum Commands {
         /// Platform to build for. Default: emulator
         #[arg(long)]
         platform: Option<String>,
-
-        #[arg(long, default_value_t = false)]
-        use_dccm_for_stack: bool,
-
-        #[arg(long, value_parser=maybe_hex::<u32>)]
-        dccm_offset: Option<u32>,
-
-        #[arg(long, value_parser=maybe_hex::<u32>)]
-        dccm_size: Option<u32>,
     },
     /// Build ROM
     RomBuild {
@@ -139,6 +128,11 @@ enum Commands {
         #[arg(short, long, default_value_t = false)]
         trace: bool,
     },
+    /// Build emulator binary and package it in emulators.zip
+    EmulatorBuild {
+        #[arg(long)]
+        output: Option<String>,
+    },
     /// Build Caliptra ROM, firmware bundle, MCU ROM, runtime, and SoC manifest and package them together
     AllBuild {
         #[arg(long)]
@@ -147,15 +141,6 @@ enum Commands {
         /// Platform to build for. Default: emulator
         #[arg(long)]
         platform: Option<String>,
-
-        #[arg(long, default_value_t = false)]
-        use_dccm_for_stack: bool,
-
-        #[arg(long, value_parser=maybe_hex::<u32>)]
-        dccm_offset: Option<u32>,
-
-        #[arg(long, value_parser=maybe_hex::<u32>)]
-        dccm_size: Option<u32>,
 
         #[arg(long)]
         rom_features: Option<String>,
@@ -166,8 +151,8 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         separate_runtimes: bool,
 
-        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>
-        /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2
+        /// List of SoC images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>
+        /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2,2,test-flash-based-boot
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
         soc_images: Option<Vec<ImageCfg>>,
 
@@ -185,6 +170,11 @@ enum Commands {
         /// Path to the PLDM manifest TOML file
         #[arg(short, long, value_name = "MANIFEST", required = false)]
         pldm_manifest: Option<String>,
+    },
+    /// Generate CoRIM (Concise Reference Integrity Manifest) from build artifacts
+    Corim {
+        #[command(subcommand)]
+        subcommand: CorimCommands,
     },
     /// Commands related to flash images
     FlashImage {
@@ -206,8 +196,28 @@ enum Commands {
     /// Add Apache license header to files where it is missing
     HeaderFix,
     /// Run tests
-    Test,
-    /// Autogenerate register files and emulator bus from RDL
+    Test {
+        /// Archive tests to a file
+        #[arg(long)]
+        archive: Option<String>,
+
+        /// Run tests in a shard (e.g., "hash:1/4")
+        #[arg(long)]
+        shard: Option<String>,
+
+        /// Remap workspace path for archived tests
+        #[arg(long)]
+        workspace_remap: Option<PathBuf>,
+
+        /// Path to the firmware bundle ZIP
+        #[arg(long)]
+        firmware_bundle: Option<PathBuf>,
+
+        /// Path to the emulator bundle ZIP
+        #[arg(long)]
+        emulator_bundle: Option<PathBuf>,
+    },
+    /// Autogenerate register files, fuse files and emulator bus from RDL
     RegistersAutogen {
         /// Check output only
         #[arg(short, long, default_value_t = false)]
@@ -292,6 +302,11 @@ enum Commands {
     AuthManifest {
         #[command(subcommand)]
         subcommand: AuthManifestCommands,
+    },
+    /// Commands related to firmware bundling.
+    FirmwareBundler {
+        #[command(subcommand)]
+        cmd: BundleCommands,
     },
 }
 
@@ -384,15 +399,61 @@ enum EmulatorCbindingCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum CorimCommands {
+    /// Generate a reference-value CoRIM from a firmware bundle
+    #[command(long_about = "\
+Generate a reference-value CoRIM from a firmware bundle.
+
+Reads the all-build ZIP bundle (from `cargo xtask all-build`) and produces
+CoMID/CoRIM CBOR files with reference value digests for each firmware component.
+
+Components are auto-discovered from the bundle:
+  mkey 0: FMC_INFO      - Caliptra FMC (from caliptra_fw.bin)
+  mkey 1: RT_INFO        - Caliptra Runtime (from caliptra_fw.bin)
+  mkey 2: SOC_MANIFEST   - Authorization Manifest (soc_manifest.bin)
+  mkey 3+: SoC firmware  - Auto-discovered from AuthManifest metadata
+
+CONFIG FILE (--config):
+  Optional JSON file controlling vendor/model, hash algorithm, output
+  directory, and signing. Run `cargo xtask corim sample-config` to see
+  a fully annotated sample. All fields are optional with defaults:
+
+    vendor      \"ChipsAlliance\"    Vendor string for SoC components
+    model       \"Caliptra-SS\"      Model string for SoC components
+    hash_algo   \"sha-384\"          Digest algorithm (sha-256 or sha-384)
+    output_dir  \"target/corim\"     Output directory
+    signing     (default test key)  Always signs; uses deterministic P-384 test key by default
+
+  Signing modes (mutually exclusive):
+    test_key    Seed string for deterministic P-384 test key generation (default if omitted)
+    key + cert  Paths to external JWK (RFC 7517) key and DER certificate
+
+EXAMPLES:
+  # Signed with default test key, all defaults:
+  cargo xtask corim gen-refval --bundle target/all-fw.zip
+
+  # With custom config (signing, vendor, etc.):
+  cargo xtask corim gen-refval --bundle target/all-fw.zip --config config.json")]
+    GenRefval {
+        /// Path to the firmware bundle ZIP (from `cargo xtask all-build`)
+        #[arg(long, value_name = "BUNDLE", required = true)]
+        bundle: String,
+
+        /// Path to JSON config file (vendor, model, hash_algo, signing, etc.)
+        #[arg(long, value_name = "CONFIG")]
+        config: Option<String>,
+    },
+    /// Print a sample JSON config file with all fields documented
+    SampleConfig,
+}
+
 fn main() {
     let cli = Xtask::parse();
     let result = match &cli.xtask {
         Commands::AllBuild {
             output,
             platform,
-            use_dccm_for_stack,
-            dccm_offset,
-            dccm_size,
             rom_features,
             runtime_features,
             separate_runtimes,
@@ -402,9 +463,6 @@ fn main() {
         } => mcu_builder::all_build(mcu_builder::AllBuildArgs {
             output: output.as_deref(),
             platform: platform.as_deref(),
-            use_dccm_for_stack: *use_dccm_for_stack,
-            dccm_offset: *dccm_offset,
-            dccm_size: *dccm_size,
             rom_features: rom_features.as_deref(),
             runtime_features: runtime_features.as_deref(),
             separate_runtimes: *separate_runtimes,
@@ -412,44 +470,34 @@ fn main() {
             mcu_cfgs: mcu_cfgs.clone(),
             pldm_manifest: pldm_manifest.as_deref(),
         }),
+        Commands::EmulatorBuild { output } => {
+            mcu_builder::emulator_build(mcu_builder::EmulatorBuildArgs {
+                output: output.as_deref(),
+            })
+        }
         Commands::Runtime { .. } => runtime::runtime_run(cli.xtask),
         Commands::RuntimeBuild {
             features,
             output,
             platform,
-            use_dccm_for_stack,
-            dccm_offset,
-            dccm_size,
         } => {
-            let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            mcu_builder::runtime_build_with_apps(
-                &features,
-                output.clone(),
-                false,
-                platform.as_deref(),
-                match platform.as_deref() {
-                    None | Some("emulator") => Some(&mcu_config_emulator::EMULATOR_MEMORY_MAP),
-                    Some("fpga") => Some(&mcu_config_fpga::FPGA_MEMORY_MAP),
-                    _ => panic!("Unsupported platform"),
-                },
-                *use_dccm_for_stack,
-                *dccm_offset,
-                *dccm_size,
-                match platform.as_deref() {
-                    None | Some("emulator") => {
-                        Some(&mcu_config_emulator::flash::LOGGING_FLASH_CONFIG)
-                    }
-                    Some("fpga") => None,
-                    _ => panic!("Unsupported platform"),
-                },
-                None,
-            )
+            let features_str = features.join(",");
+            mcu_builder::runtime_build_with_apps(&mcu_builder::CaliptraBuildArgs {
+                features: Some(&features_str),
+                output_name: output.clone(),
+                platform: platform.as_deref(),
+                ..Default::default()
+            })
             .map(|_| ())
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild { platform, features } => {
-            mcu_builder::rom_build(platform.as_deref(), features.as_deref().unwrap_or(""))
-                .map(|_| ())
+            mcu_builder::rom_build(&mcu_builder::CaliptraBuildArgs {
+                platform: platform.as_deref(),
+                features: features.as_deref(),
+                ..Default::default()
+            })
+            .map(|_| ())
         }
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
@@ -458,14 +506,15 @@ fn main() {
                 mcu_runtime,
                 soc_images,
                 output,
-            } => mcu_builder::flash_image::flash_image_create(
-                caliptra_fw,
-                soc_manifest,
-                mcu_runtime,
-                soc_images,
-                0,
-                output,
-            ),
+            } => mcu_builder::flash_image::flash_image_create(&mcu_builder::CaliptraBuildArgs {
+                caliptra_firmware: caliptra_fw.clone().map(PathBuf::from),
+                soc_manifest: soc_manifest.clone().map(PathBuf::from),
+                mcu_firmware: mcu_runtime.clone().map(PathBuf::from),
+                soc_image_paths: soc_images.clone(),
+                offset: 0,
+                output_path: Some(output.clone()),
+                ..Default::default()
+            }),
             FlashImageCommands::Verify { file, offset } => {
                 mcu_builder::flash_image::flash_image_verify(file, *offset)
             }
@@ -477,7 +526,19 @@ fn main() {
         Commands::CargoLock => cargo_lock::cargo_lock(),
         Commands::HeaderFix => header::fix(),
         Commands::HeaderCheck => header::check(),
-        Commands::Test => test::test(),
+        Commands::Test {
+            archive,
+            shard,
+            workspace_remap,
+            firmware_bundle,
+            emulator_bundle,
+        } => test::test(test::TestArgs {
+            archive: archive.as_deref(),
+            shard: shard.as_deref(),
+            workspace_remap: workspace_remap.as_deref().and_then(|p| p.to_str()),
+            firmware_bundle: firmware_bundle.as_deref().and_then(|p| p.to_str()),
+            emulator_bundle: emulator_bundle.as_deref().and_then(|p| p.to_str()),
+        }),
         Commands::RegistersAutogen {
             check,
             files,
@@ -517,10 +578,22 @@ fn main() {
                 mcu_image,
                 output,
             } => auth_manifest::create(images, mcu_image, output),
+            AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
+        Commands::Corim { subcommand } => match subcommand {
+            CorimCommands::GenRefval { bundle, config } => {
+                corim::CorimConfig::load(config.as_deref())
+                    .and_then(|cfg| corim::generate(bundle, cfg))
+            }
+            CorimCommands::SampleConfig => {
+                corim::CorimConfig::print_sample();
+                Ok(())
+            }
+        },
+        Commands::FirmwareBundler { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
     };
     result.unwrap_or_else(|e| {
-        eprintln!("Error: {}", e);
+        eprintln!("Error: {:?}", e);
         std::process::exit(1);
     });
 }

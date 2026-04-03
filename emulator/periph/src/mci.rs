@@ -2,34 +2,42 @@
 
 use crate::mcu_mbox0::McuMailbox0Internal;
 use crate::reset_reason::ResetReasonEmulator;
-use caliptra_emu_bus::{ActionHandle, Clock, ReadWriteRegister, Timer, TimerAction};
+use caliptra_emu_bus::{ActionHandle, BusMmio, Clock, ReadWriteRegister, Timer, TimerAction};
 use caliptra_emu_cpu::Irq;
+use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_types::RvData;
+use caliptra_registers::soc_ifc::RegisterBlock;
 use emulator_registers_generated::mci::{MciGenerated, MciPeripheral};
 use registers_generated::mci::bits::{
-    Error0IntrT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest, SecurityState, WdtStatus,
-    WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
+    Error0IntrT, Error0IntrTrigT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest,
+    SecurityState, WdtStatus, WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
 };
 use std::{cell::RefCell, rc::Rc};
 use tock_registers::interfaces::{ReadWriteable, Readable};
 
 const RESET_STATUS_MCU_RESET_MASK: u32 = 0x2;
-const RESET_REQUEST_MCU_REQ_MASK: u32 = 0x1; // McuReq bit (bit 0)
+
+/// Clamp a timer period to below i64::MAX to avoid overflow in the timer scheduler.
+/// This can happen when software writes timer registers in two halves,
+/// creating a temporary very large value.
+fn clamp_timer_period(period: u64) -> u64 {
+    period.min((i64::MAX as u64) - 1)
+}
 
 pub struct Mci {
     ext_mci_regs: caliptra_emu_periph::mci::Mci,
     generated: MciGenerated,
 
-    error0_internal_intr_r: ReadWriteRegister<u32, Error0IntrT::Register>,
     timer: Timer,
     op_wdt_timer1_expired_action: Option<ActionHandle>,
     op_wdt_timer2_expired_action: Option<ActionHandle>,
-    op_mcu_reset_request_action: Option<ActionHandle>,
-    op_mcu_assert_mcu_reset_status_action: Option<ActionHandle>,
-    op_mcu_deassert_mcu_reset_status_action: Option<ActionHandle>,
 
     // emulates the RESET_REASON register
     reset_reason: ResetReasonEmulator,
+    /// Tracks whether the last reset cycle has completed, so we can
+    /// distinguish fresh FW update bits (written by Caliptra via DMA
+    /// for the current reset) from stale bits left over from a previous cycle.
+    reset_cycle_complete: bool,
     irq: Rc<RefCell<Irq>>,
     mcu_mailbox0: Option<McuMailbox0Internal>,
 
@@ -37,6 +45,9 @@ pub struct Mci {
     mtimecmp: u64,
     op_mtimecmp_due_action: Option<ActionHandle>,
     mcu_mailbox1: Option<McuMailbox0Internal>,
+    soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
+
+    reset_requested: bool,
 }
 
 impl Mci {
@@ -46,9 +57,12 @@ impl Mci {
         irq: Rc<RefCell<Irq>>,
         mcu_mailbox0: Option<McuMailbox0Internal>,
         mcu_mailbox1: Option<McuMailbox0Internal>,
+        soc_regs: Option<RegisterBlock<BusMmio<SocToCaliptraBus>>>,
+        generic_input_wires: [u32; 2],
     ) -> Self {
         // Clear the reset status, MCU and Caiptra are out of reset
         ext_mci_regs.regs.borrow_mut().reset_status = 0;
+        ext_mci_regs.regs.borrow_mut().generic_input_wires = generic_input_wires;
 
         let mut reset_reason = ResetReasonEmulator::new(ext_mci_regs.clone());
         reset_reason.handle_power_up();
@@ -58,25 +72,41 @@ impl Mci {
         // Reasonable default: ~4B ticks in the future (within scheduling horizon).
         let default_mtimecmp = timer.now().wrapping_add(1u64 << 32);
 
+        let generated = MciGenerated::default();
+
         Self {
             ext_mci_regs,
-            generated: MciGenerated::default(),
+            generated,
 
-            error0_internal_intr_r: ReadWriteRegister::new(0),
             timer: Timer::new(clock),
             op_wdt_timer1_expired_action: None,
             op_wdt_timer2_expired_action: None,
-            op_mcu_reset_request_action: None,
-            op_mcu_assert_mcu_reset_status_action: None,
-            op_mcu_deassert_mcu_reset_status_action: None,
             reset_reason,
+            reset_cycle_complete: false,
             irq,
             mcu_mailbox0,
+            reset_requested: false,
 
             // --- init mtimecmp ---
             mtimecmp: default_mtimecmp,
             op_mtimecmp_due_action: None,
             mcu_mailbox1,
+            soc_regs,
+        }
+    }
+
+    #[inline]
+    fn reschedule_poll(timer: &mut Timer, slot: &mut Option<ActionHandle>, period: u64) {
+        if let Some(old) = slot.take() {
+            timer.cancel(old);
+        }
+        *slot = Some(timer.schedule_poll_in(clamp_timer_period(period)));
+    }
+
+    #[inline]
+    fn cancel_poll(timer: &mut Timer, slot: &mut Option<ActionHandle>) {
+        if let Some(old) = slot.take() {
+            timer.cancel(old);
         }
     }
 
@@ -95,7 +125,10 @@ impl Mci {
         let delay = if now >= self.mtimecmp {
             1
         } else {
-            self.mtimecmp - now
+            // Clamp to below i64::MAX to avoid overflow in the timer scheduler.
+            // This can happen when software writes mtimecmp in two halves,
+            // creating a temporary very large value.
+            (self.mtimecmp - now).min((i64::MAX as u64) - 1)
         };
 
         // Directly schedule the machine timer interrupt
@@ -104,11 +137,35 @@ impl Mci {
                 .schedule_action_in(delay, TimerAction::MachineTimerInterrupt),
         );
     }
+
+    fn update_mci_irq(&mut self) {
+        let regs = self.ext_mci_regs.regs.borrow();
+
+        let global_en = (regs.intr_block_rf_global_intr_en_r & 0x1) != 0;
+        if !global_en {
+            self.irq.borrow_mut().set_level(false);
+            return;
+        }
+
+        let error0_pending =
+            (regs.intr_block_rf_error0_internal_intr_r & regs.intr_block_rf_error0_intr_en_r) != 0;
+
+        let notif0_pending =
+            (regs.intr_block_rf_notif0_internal_intr_r & regs.intr_block_rf_notif0_intr_en_r) != 0;
+
+        self.irq
+            .borrow_mut()
+            .set_level(error0_pending || notif0_pending);
+    }
 }
 
 impl MciPeripheral for Mci {
     fn generated(&mut self) -> Option<&mut MciGenerated> {
         Some(&mut self.generated)
+    }
+
+    fn read_mci_reg_generic_input_wires(&mut self, index: usize) -> caliptra_emu_types::RvData {
+        self.ext_mci_regs.regs.borrow().generic_input_wires[index]
     }
 
     fn read_mci_reg_fw_flow_status(&mut self) -> caliptra_emu_types::RvData {
@@ -217,9 +274,13 @@ impl MciPeripheral for Mci {
                 ((self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[0] as u64;
 
-            self.op_wdt_timer1_expired_action = Some(self.timer.schedule_poll_in(timer_period));
+            Mci::reschedule_poll(
+                &mut self.timer,
+                &mut self.op_wdt_timer1_expired_action,
+                timer_period,
+            );
         } else {
-            self.op_wdt_timer1_expired_action = None;
+            Mci::cancel_poll(&mut self.timer, &mut self.op_wdt_timer1_expired_action);
         }
     }
 
@@ -245,7 +306,11 @@ impl MciPeripheral for Mci {
                 ((self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer1_timeout_period[0] as u64;
 
-            self.op_wdt_timer1_expired_action = Some(self.timer.schedule_poll_in(timer_period));
+            Mci::reschedule_poll(
+                &mut self.timer,
+                &mut self.op_wdt_timer1_expired_action,
+                timer_period,
+            );
         }
     }
 
@@ -274,9 +339,13 @@ impl MciPeripheral for Mci {
                 ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
-            self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
+            Mci::reschedule_poll(
+                &mut self.timer,
+                &mut self.op_wdt_timer2_expired_action,
+                timer_period,
+            );
         } else {
-            self.op_wdt_timer2_expired_action = None;
+            Mci::cancel_poll(&mut self.timer, &mut self.op_wdt_timer2_expired_action);
         }
     }
 
@@ -300,7 +369,11 @@ impl MciPeripheral for Mci {
                 ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                     | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
-            self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
+            Mci::reschedule_poll(
+                &mut self.timer,
+                &mut self.op_wdt_timer2_expired_action,
+                timer_period,
+            );
         }
     }
 
@@ -309,6 +382,144 @@ impl MciPeripheral for Mci {
             .regs
             .borrow_mut()
             .wdt_timer2_timeout_period[index] = val;
+    }
+
+    fn read_mci_reg_intr_block_rf_error0_intr_trig_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, Error0IntrTrigT::Register> {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_intr_trig_r
+            .into()
+    }
+
+    fn write_mci_reg_intr_block_rf_error0_intr_trig_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Error0IntrTrigT::Register,
+        >,
+    ) {
+        // 1) Pulse behavior: clear trigger bits after write
+        let cur_trig = self
+            .read_mci_reg_intr_block_rf_error0_intr_trig_r()
+            .reg
+            .get();
+        let new_trig = cur_trig & !val.reg.get();
+
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_error0_intr_trig_r = new_trig;
+
+        // 2) Trigger sets corresponding ERROR0 status bit(s)
+        let cur_status = self
+            .ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_internal_intr_r;
+        let new_status = cur_status | val.reg.get();
+
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_error0_internal_intr_r = new_status;
+
+        self.update_mci_irq();
+    }
+
+    fn read_mci_reg_intr_block_rf_error0_internal_intr_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Error0IntrT::Register,
+    > {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_internal_intr_r
+            .into()
+    }
+
+    fn write_mci_reg_intr_block_rf_error0_internal_intr_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Error0IntrT::Register,
+        >,
+    ) {
+        // W1C clear
+        let cur = self
+            .ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_internal_intr_r;
+        let clear_mask = val.reg.get();
+        let new_val = cur & !clear_mask;
+
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_error0_internal_intr_r = new_val;
+
+        self.update_mci_irq();
+    }
+
+    fn read_mci_reg_intr_block_rf_error0_intr_en_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::Error0IntrEnT::Register,
+    > {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_error0_intr_en_r
+            .into()
+    }
+
+    fn write_mci_reg_intr_block_rf_error0_intr_en_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::Error0IntrEnT::Register,
+        >,
+    ) {
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_error0_intr_en_r = val.reg.get();
+
+        self.update_mci_irq();
+    }
+
+    fn write_mci_reg_intr_block_rf_global_intr_en_r(
+        &mut self,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            registers_generated::mci::bits::GlobalIntrEnT::Register,
+        >,
+    ) {
+        self.ext_mci_regs
+            .regs
+            .borrow_mut()
+            .intr_block_rf_global_intr_en_r = val.reg.get();
+
+        self.update_mci_irq();
+    }
+
+    fn read_mci_reg_intr_block_rf_global_intr_en_r(
+        &mut self,
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        registers_generated::mci::bits::GlobalIntrEnT::Register,
+    > {
+        self.ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_global_intr_en_r
+            .into()
     }
 
     fn read_mci_reg_intr_block_rf_notif0_intr_trig_r(
@@ -350,6 +561,18 @@ impl MciPeripheral for Mci {
             .regs
             .borrow_mut()
             .intr_block_rf_notif0_internal_intr_r = new_val;
+
+        self.update_mci_irq();
+
+        // Raise CPU IRQ if any enabled interrupt bits are now set.
+        let notif_en = self
+            .ext_mci_regs
+            .regs
+            .borrow()
+            .intr_block_rf_notif0_intr_en_r;
+        if new_val & notif_en != 0 {
+            self.irq.borrow_mut().set_level(true);
+        }
     }
 
     fn write_mci_reg_reset_request(
@@ -364,14 +587,26 @@ impl MciPeripheral for Mci {
 
         if val.reg.is_set(ResetRequest::McuReq) {
             let reason = self.reset_reason.get();
-            // If the reason isn't set or it is set to warm reset, perform a warm reset
-            if reason == 0 || reason == ResetReason::WarmReset::SET.mask() {
-                // Set warm reset reason immediately
+            let has_fw_update_bits = {
+                let reg = ReadWriteRegister::<u32, ResetReason::Register>::new(reason);
+                reg.reg.is_set(ResetReason::FwBootUpdReset)
+                    || reg.reg.is_set(ResetReason::FwHitlessUpdReset)
+            };
+
+            if has_fw_update_bits && !self.reset_cycle_complete {
+                // Caliptra wrote FW update bits for this reset cycle
+                // (first reset after cold boot). Preserve them.
+            } else {
+                // Either no FW update bits (plain warm reset), or
+                // FW bits are stale from the previous reset cycle.
+                // Per hardware spec: mci_rst_b toggle sets WARM_RESET
+                // and clears FW update bits.
                 self.reset_reason.handle_warm_reset();
             }
 
             // Schedule the reset status assertion
-            self.op_mcu_reset_request_action = Some(self.timer.schedule_poll_in(100));
+            println!("MCI: MCU reset requested");
+            self.reset_requested = true;
         }
     }
 
@@ -407,9 +642,7 @@ impl MciPeripheral for Mci {
             .borrow_mut()
             .intr_block_rf_notif0_internal_intr_r = new_val;
         // If all bits are cleared, lower the IRQ
-        if new_val == 0 {
-            self.irq.borrow_mut().set_level(false);
-        }
+        self.update_mci_irq();
     }
 
     fn read_mci_reg_intr_block_rf_notif0_intr_en_r(
@@ -436,6 +669,7 @@ impl MciPeripheral for Mci {
             .regs
             .borrow_mut()
             .intr_block_rf_notif0_intr_en_r = val.reg.get();
+        self.update_mci_irq();
     }
 
     fn read_mcu_mbox0_csr_mbox_sram(&mut self, index: usize) -> caliptra_emu_types::RvData {
@@ -460,7 +694,7 @@ impl MciPeripheral for Mci {
 
     fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
     {
         self.mcu_mailbox0
             .as_mut()
@@ -576,7 +810,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxExecute::Register,
+        registers_generated::mci::bits::MboxExecute::Register,
     > {
         self.mcu_mailbox0
             .as_mut()
@@ -591,7 +825,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxExecute::Register,
+            registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         self.mcu_mailbox0
@@ -702,7 +936,7 @@ impl MciPeripheral for Mci {
 
     fn read_mcu_mbox1_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
+    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
     {
         self.mcu_mailbox1
             .as_mut()
@@ -818,7 +1052,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxExecute::Register,
+        registers_generated::mci::bits::MboxExecute::Register,
     > {
         self.mcu_mailbox1
             .as_mut()
@@ -833,7 +1067,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxExecute::Register,
+            registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         self.mcu_mailbox1
@@ -954,9 +1188,20 @@ impl MciPeripheral for Mci {
             wdt_status.reg.modify(WdtStatus::T1Timeout::SET);
             self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
-            self.error0_internal_intr_r
-                .reg
-                .modify(Error0IntrT::ErrorWdtTimer1TimeoutSts::SET);
+            // Set ERROR0 status bit for Timer1 timeout (MMIO-visible)
+            let cur = self
+                .ext_mci_regs
+                .regs
+                .borrow()
+                .intr_block_rf_error0_internal_intr_r;
+            let new_val = cur | Error0IntrT::ErrorWdtTimer1TimeoutSts::SET.value;
+            self.ext_mci_regs
+                .regs
+                .borrow_mut()
+                .intr_block_rf_error0_internal_intr_r = new_val;
+
+            // Now recompute IRQ (uses global_en + enables + pending)
+            self.update_mci_irq();
 
             // If WDT2 is disabled, schedule a callback on its expiry.
             let wdt2_en = ReadWriteRegister::<u32, WdtTimer2En::Register>::new(
@@ -970,18 +1215,31 @@ impl MciPeripheral for Mci {
                 wdt_status.reg.modify(WdtStatus::T2Timeout::CLEAR);
                 self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
-                self.error0_internal_intr_r
-                    .reg
-                    .modify(Error0IntrT::ErrorWdtTimer2TimeoutSts::CLEAR);
+                let cur = self
+                    .ext_mci_regs
+                    .regs
+                    .borrow()
+                    .intr_block_rf_error0_internal_intr_r;
+
+                let cleared = cur & !Error0IntrT::ErrorWdtTimer2TimeoutSts::SET.value;
+
+                self.ext_mci_regs
+                    .regs
+                    .borrow_mut()
+                    .intr_block_rf_error0_internal_intr_r = cleared;
+                self.update_mci_irq();
 
                 let timer_period: u64 =
                     ((self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[1] as u64) << 32)
                         | self.ext_mci_regs.regs.borrow().wdt_timer2_timeout_period[0] as u64;
 
-                self.op_wdt_timer2_expired_action = Some(self.timer.schedule_poll_in(timer_period));
+                Mci::reschedule_poll(
+                    &mut self.timer,
+                    &mut self.op_wdt_timer2_expired_action,
+                    timer_period,
+                );
             }
         }
-
         if self.timer.fired(&mut self.op_wdt_timer2_expired_action) {
             let wdt_status = ReadWriteRegister::<u32, WdtStatus::Register>::new(
                 self.ext_mci_regs.regs.borrow().wdt_status,
@@ -989,23 +1247,30 @@ impl MciPeripheral for Mci {
             wdt_status.reg.modify(WdtStatus::T2Timeout::SET);
             self.ext_mci_regs.regs.borrow_mut().wdt_status = wdt_status.reg.get();
 
-            // If WDT2 was not scheduled due to WDT1 expiry (i.e WDT2 is disabled), schedule an NMI.
-            // Else, do nothing.
+            // Independent mode: Timer2 timeout generates ERROR0 interrupt
             let wdt2_en = ReadWriteRegister::<u32, WdtTimer2En::Register>::new(
                 self.ext_mci_regs.regs.borrow().wdt_timer2_en,
             );
             if wdt2_en.reg.is_set(WdtTimer2En::Timer2En) {
-                self.error0_internal_intr_r
-                    .reg
-                    .modify(Error0IntrT::ErrorWdtTimer2TimeoutSts::SET);
+                // Set ERROR0 status bit for Timer2 timeout (MMIO-visible)
+                let cur = self
+                    .ext_mci_regs
+                    .regs
+                    .borrow()
+                    .intr_block_rf_error0_internal_intr_r;
+                let new_val = cur | Error0IntrT::ErrorWdtTimer2TimeoutSts::SET.value;
+                self.ext_mci_regs
+                    .regs
+                    .borrow_mut()
+                    .intr_block_rf_error0_internal_intr_r = new_val;
+
+                self.update_mci_irq();
                 return;
             }
 
-            // Raise an NMI. NMIs don't fire immediately; a couple instructions is a fairly typicaly delay on VeeR.
+            // Cascaded mode: Timer2 timeout -> NMI
             const NMI_DELAY: u64 = 2;
-
-            // From RISC-V_VeeR_EL2_PRM.pdf
-            const NMI_CAUSE_WDT_TIMEOUT: u32 = 0x0000_0000; // [TODO] Need correct mcause value.
+            const NMI_CAUSE_WDT_TIMEOUT: u32 = 0x0000_0000; // TODO correct mcause value
 
             self.timer.schedule_action_in(
                 NMI_DELAY,
@@ -1015,36 +1280,59 @@ impl MciPeripheral for Mci {
             );
         }
 
-        if self.timer.fired(&mut self.op_mcu_reset_request_action) {
+        if self.reset_requested {
             // Handle MCU reset request
-            println!("[MCI] TimerAction::UpdateReset");
-            self.timer.schedule_action_in(100, TimerAction::UpdateReset);
-            self.op_wdt_timer2_expired_action = None;
-            // Allow enough time for MCU to reset before asserting RESET_STATUS_MCU_RESET
-            self.op_mcu_assert_mcu_reset_status_action = Some(self.timer.schedule_poll_in(100));
-        }
-        if self
-            .timer
-            .fired(&mut self.op_mcu_assert_mcu_reset_status_action)
-        {
-            // MCU is now in reset, assert the reset status
-            self.ext_mci_regs.regs.borrow_mut().reset_status |= RESET_STATUS_MCU_RESET_MASK;
+            let reset_reason = self.reset_reason.get();
+            // Only check MCU go bit for hitless updates (reset_reason bit 0 = hitless update)
+            // For other resets, proceed without waiting for Caliptra
+            let is_hitless_update = reset_reason & 0x1 != 0;
+            let mut proceed_with_reboot = true;
 
-            // At this point MCU is already reset, clear reset request
-            self.ext_mci_regs.regs.borrow_mut().reset_request &= !RESET_REQUEST_MCU_REQ_MASK;
+            if is_hitless_update {
+                // For hitless updates: read ss_generic_fw_exec_ctrl to coordinate
+                // with Caliptra. MCU halts when FW_EXEC_CTRL[2] is cleared,
+                // sets reset_status, and waits for FW_EXEC_CTRL[2] to be set again.
+                let mcu_fw_exec_ctrl = self
+                    .soc_regs
+                    .as_ref()
+                    .map(|regs| regs.ss_generic_fw_exec_ctrl().get(0).unwrap().read());
 
-            self.op_mcu_assert_mcu_reset_status_action = None;
-            // Allow enough time for Caliptra to process the reset status before deasserting it
-            self.op_mcu_deassert_mcu_reset_status_action = Some(self.timer.schedule_poll_in(1000));
-        }
-        if self
-            .timer
-            .fired(&mut self.op_mcu_deassert_mcu_reset_status_action)
-        {
-            // MCU is now out of reset, deassert the reset status and interrupt
-            self.ext_mci_regs.regs.borrow_mut().reset_status &= !RESET_STATUS_MCU_RESET_MASK;
-            self.op_mcu_deassert_mcu_reset_status_action = None;
-            self.irq.borrow_mut().set_level(false);
+                if let Some(val) = mcu_fw_exec_ctrl {
+                    if (val & (1 << 2)) == 0 {
+                        // FW_EXEC_CTRL bit is cleared
+                        if self.ext_mci_regs.regs.borrow().reset_status
+                            & RESET_STATUS_MCU_RESET_MASK
+                            == 0
+                        {
+                            println!("MCI: Halting MCU");
+                            // Not yet in reset - schedule halt and assert reset status
+                            self.timer
+                                .schedule_action_in(0, TimerAction::SetGlobalIntEn { en: false });
+                            self.timer.schedule_action_in(0, TimerAction::Halt);
+                            // Assert reset status to indicate MCU is in reset
+                            self.ext_mci_regs.regs.borrow_mut().reset_status |=
+                                RESET_STATUS_MCU_RESET_MASK;
+                        }
+                        proceed_with_reboot = false;
+                    } else {
+                        println!("MCI: Resuming MCU");
+                        // FW_EXEC_CTRL bit is now set - MCU can proceed with reboot
+                        // Deassert reset status as MCU is coming out of reset
+                        self.ext_mci_regs.regs.borrow_mut().reset_status &=
+                            !RESET_STATUS_MCU_RESET_MASK;
+                        self.irq.borrow_mut().set_level(false);
+                        proceed_with_reboot = true;
+                    }
+                }
+            }
+
+            if proceed_with_reboot {
+                println!("MCI: MCU proceeding with reboot");
+                self.reset_requested = false;
+                self.reset_cycle_complete = true;
+                self.timer.schedule_action_in(0, TimerAction::UpdateReset);
+                self.op_wdt_timer2_expired_action = None;
+            }
         }
 
         // Check if there are any mcu_mbox0 IRQ events to process.
@@ -1079,9 +1367,7 @@ impl MciPeripheral for Mci {
                 .borrow_mut()
                 .intr_block_rf_notif0_internal_intr_r = notif_reg;
             // Raise IRQ level if any bit is set
-            if notif_reg != 0 {
-                self.irq.borrow_mut().set_level(true);
-            }
+            self.update_mci_irq();
         }
     }
 }
@@ -1117,7 +1403,15 @@ mod tests {
         let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
         let pic = caliptra_emu_cpu::Pic::new();
         let irq = pic.register_irq(1);
-        let mci_reg: Mci = Mci::new(&clock, ext_mci_regs, Rc::new(RefCell::new(irq)), None, None);
+        let mci_reg: Mci = Mci::new(
+            &clock,
+            ext_mci_regs,
+            Rc::new(RefCell::new(irq)),
+            None,
+            None,
+            None,
+            [0, 0],
+        );
         let mut mci_bus = MciBus {
             periph: Box::new(mci_reg),
         };
@@ -1155,7 +1449,7 @@ mod tests {
         assert_eq!(
             next_action(&clock),
             Some(TimerAction::Nmi {
-                mcause: 0x0000_0000,
+                mcause: 0x0000_0000
             })
         );
     }
@@ -1210,6 +1504,8 @@ mod tests {
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
             None,
+            None,
+            [0, 0],
         );
         let mut mcu_mailbox = mci_reg.mcu_mailbox0.clone().unwrap();
         let mut mci_bus = MciBus {
@@ -1247,6 +1543,8 @@ mod tests {
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
             None,
+            None,
+            [0, 0],
         );
 
         let hi: u32 = 0x0022_3344;
@@ -1275,6 +1573,8 @@ mod tests {
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
             None,
+            None,
+            [0, 0],
         );
 
         let lo: u32 = 0x0000_FFFF;
@@ -1303,6 +1603,8 @@ mod tests {
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
             None,
+            None,
+            [0, 0],
         );
 
         // Seed a known value.
@@ -1329,6 +1631,8 @@ mod tests {
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
             None,
+            None,
+            [0, 0],
         );
 
         // use a safe 48-bit range: 0x0000_DEAD_FFFF_FFFE
@@ -1346,6 +1650,109 @@ mod tests {
         assert_eq!(combined, 0x0000_BEEF_FFFF_FFFEu64);
     }
 
+    const RESET_REASON_OFFSET: u32 = 0x38;
+    const RESET_REQUEST_OFFSET: u32 = 0x100;
+
+    /// Bit masks for ResetReason register (from HW spec)
+    const FW_HITLESS_UPD_RESET_MASK: u32 = 1 << 0; // bit 0
+    const FW_BOOT_UPD_RESET_MASK: u32 = 1 << 1; // bit 1
+    const WARM_RESET_MASK: u32 = 1 << 2; // bit 2
+
+    /// Simulate the bug scenario:
+    /// 1. Cold boot: reset_reason = 0x0
+    /// 2. Caliptra writes FW_BOOT_UPD_RESET (0x2) via DMA before MCU_REQ
+    /// 3. First MCU_REQ: MCU should read reset_reason = 0x2
+    /// 4. Second MCU_REQ: MCU should read reset_reason = 0x4 (WARM_RESET)
+    #[test]
+    fn test_reset_reason_fw_boot_then_warm() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs.clone(),
+            Rc::new(RefCell::new(irq)),
+            None,
+            None,
+            None,
+            [0, 0],
+        );
+
+        // Step 1: Cold boot - reset_reason should be 0x0
+        assert_eq!(mci.read_mci_reg_reset_reason().reg.get(), 0x0);
+
+        // Step 2: Caliptra writes FW_BOOT_UPD_RESET via DMA (directly to shared regs)
+        ext_mci_regs.regs.borrow_mut().reset_reason = FW_BOOT_UPD_RESET_MASK;
+
+        // Verify it's visible through the MCI
+        assert_eq!(
+            mci.read_mci_reg_reset_reason().reg.get(),
+            FW_BOOT_UPD_RESET_MASK
+        );
+
+        // Step 3: MCU writes MCU_REQ - should preserve FW_BOOT_UPD_RESET
+        let mut reset_req = ReadWriteRegister::<u32, ResetRequest::Register>::new(0);
+        reset_req.reg.modify(ResetRequest::McuReq::SET);
+        mci.write_mci_reg_reset_request(reset_req);
+
+        assert!(mci.reset_requested);
+        // FW_BOOT_UPD_RESET should be preserved (Caliptra set it for this cycle)
+        assert_eq!(
+            mci.read_mci_reg_reset_reason().reg.get(),
+            FW_BOOT_UPD_RESET_MASK,
+            "First reset: FW_BOOT_UPD_RESET should be preserved"
+        );
+
+        // Simulate poll() completing the reset
+        mci.reset_requested = false;
+        mci.reset_cycle_complete = true;
+
+        // Step 4: Second MCU_REQ (no new FW update bits written by Caliptra)
+        // The stale FW_BOOT_UPD_RESET should be cleared and WARM_RESET set
+        let mut reset_req2 = ReadWriteRegister::<u32, ResetRequest::Register>::new(0);
+        reset_req2.reg.modify(ResetRequest::McuReq::SET);
+        mci.write_mci_reg_reset_request(reset_req2);
+
+        assert_eq!(
+            mci.read_mci_reg_reset_reason().reg.get(),
+            WARM_RESET_MASK,
+            "Second reset: should be WARM_RESET (stale FW bits cleared)"
+        );
+    }
+
+    /// Test that plain warm resets (no FW update bits) always produce WARM_RESET
+    #[test]
+    fn test_reset_reason_plain_warm_reset() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs.clone(),
+            Rc::new(RefCell::new(irq)),
+            None,
+            None,
+            None,
+            [0, 0],
+        );
+
+        // Cold boot: reset_reason = 0x0
+        assert_eq!(mci.read_mci_reg_reset_reason().reg.get(), 0x0);
+
+        // MCU_REQ without any FW update bits → should produce WARM_RESET
+        let mut reset_req = ReadWriteRegister::<u32, ResetRequest::Register>::new(0);
+        reset_req.reg.modify(ResetRequest::McuReq::SET);
+        mci.write_mci_reg_reset_request(reset_req);
+
+        assert_eq!(
+            mci.read_mci_reg_reset_reason().reg.get(),
+            WARM_RESET_MASK,
+            "Plain warm reset should produce WARM_RESET"
+        );
+    }
+
     #[test]
     fn test_mtime_reads() {
         let clock = Clock::new();
@@ -1358,6 +1765,8 @@ mod tests {
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
             None,
+            None,
+            [0, 0],
         );
 
         // Initial time is 0
@@ -1383,6 +1792,8 @@ mod tests {
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
             None,
+            None,
+            [0, 0],
         );
 
         // Move time to a known value.
@@ -1417,6 +1828,8 @@ mod tests {
             Rc::new(RefCell::new(irq)),
             Some(McuMailbox0Internal::new(&clock)),
             None,
+            None,
+            [0, 0],
         );
 
         // Advance by 2^32 + 1 -> high = 1, low = 1, as clock start at 0

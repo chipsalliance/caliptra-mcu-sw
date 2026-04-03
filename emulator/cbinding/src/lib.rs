@@ -16,7 +16,10 @@ use caliptra_emu_bus::Bus;
 use caliptra_emu_cpu::xreg_file::XReg;
 use caliptra_emu_cpu::StepAction;
 use caliptra_emu_types::{RvAddr, RvSize};
-use emulator::{gdb, Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback};
+use emulator::{
+    gdb::{self, ControlledGdbServer},
+    Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback,
+};
 use mcu_testing_common::MCU_RUNNING;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_longlong, c_uchar, c_uint};
@@ -35,7 +38,8 @@ enum EmulatorWrapper {
 /// Internal state for the C emulator instance
 struct CEmulatorState {
     wrapper: EmulatorWrapper,
-    gdb_port: Option<u16>, // Store GDB port for later use
+    gdb_port: Option<u16>,                   // Store GDB port for later use
+    gdb_server: Option<ControlledGdbServer>, // Non-blocking GDB server
 }
 
 /// Error codes for C API
@@ -159,6 +163,8 @@ pub struct CEmulatorConfig {
     pub hw_revision_minor: c_uint,
     pub hw_revision_patch: c_uint,
     pub flash_based_boot: c_uchar,
+    pub allow_sideloaded_rom: c_uchar,
+    pub active_i3c1: c_uchar,
 
     // Memory layout override parameters (-1 means use default)
     pub rom_offset: c_longlong,
@@ -198,10 +204,29 @@ pub struct CEmulatorConfig {
     pub fuse_vendor_hashes_prod_partition: *const c_char, // Optional, can be null
     pub fuse_vendor_test_partition: *const c_char,        // Optional, can be null
 
+    // Enable stub warning prints for unoverridden register stubs
+    pub stub_warnings: c_uchar, // 0 = false, 1 = true
+
     // External device callbacks (can be null)
+    /// Function pointer for external read callback, or null for none.
+    /// Must match the CExternalReadCallback signature when non-null.
     pub external_read_callback: *const std::ffi::c_void,
+    /// Function pointer for external write callback, or null for none.
+    /// Must match the CExternalWriteCallback signature when non-null.
     pub external_write_callback: *const std::ffi::c_void,
-    pub callback_context: *const std::ffi::c_void, // Context pointer for callbacks
+    /// Context pointer passed to external read/write callbacks.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the object pointed to by this pointer
+    /// remains valid for the entire lifetime of the emulator instance
+    /// (i.e., until emulator_destroy is called). The emulator stores
+    /// this pointer internally and will pass it to the registered
+    /// callbacks on every bus transaction that hits the external
+    /// address range. Freeing or invalidating the context object
+    /// while the emulator is still alive will result in undefined
+    /// behavior.
+    pub callback_context: *const std::ffi::c_void,
 }
 
 /// Get the size required to allocate memory for the emulator
@@ -232,6 +257,7 @@ pub extern "C" fn emulator_get_alignment() -> usize {
 /// * `emulator_memory` must be properly aligned (use `emulator_get_alignment()`)
 /// * `config` must be a valid pointer to a CEmulatorConfig structure
 /// * All string pointers in `config` must be valid null-terminated C strings
+/// * `config.callback_context` must remain valid until `emulator_destroy` is called
 #[no_mangle]
 pub unsafe extern "C" fn emulator_init(
     emulator_memory: *mut CEmulator,
@@ -293,6 +319,7 @@ pub unsafe extern "C" fn emulator_init(
         },
         device_security_state: DeviceLifecycle::try_from(config.device_security_state)
             .unwrap_or(DeviceLifecycle::Production) as u32,
+        test_feature: None,
         vendor_pk_hash: convert_optional_c_string(config.vendor_pk_hash),
         vendor_pqc_type: caliptra_image_types::FwVerificationPqcKeyType::from_u8(
             config.vendor_pqc_type,
@@ -310,6 +337,7 @@ pub unsafe extern "C" fn emulator_init(
             config.hw_revision_patch as u64,
         ),
         flash_based_boot: config.flash_based_boot != 0,
+        allow_sideloaded_rom: config.allow_sideloaded_rom != 0,
         // Use provided offset and size override parameters (-1 means use default)
         rom_offset: convert_optional_offset_size(config.rom_offset),
         rom_size: convert_optional_offset_size(config.rom_size),
@@ -348,25 +376,30 @@ pub unsafe extern "C" fn emulator_init(
             config.fuse_vendor_hashes_prod_partition,
         ),
         fuse_vendor_test_partition: convert_optional_c_string(config.fuse_vendor_test_partition),
+        stub_warnings: config.stub_warnings != 0,
+        active_i3c1: config.active_i3c1 != 0,
     };
 
     // Convert C callbacks to Rust callbacks if provided
     let read_callback = if config.external_read_callback.is_null() {
         None
     } else {
+        // Safety: caller guarantees non-null callback matches CExternalReadCallback signature
         let c_callback: CExternalReadCallback =
             unsafe { std::mem::transmute(config.external_read_callback) };
-        let context = config.callback_context;
-        Some(convert_c_read_callback(c_callback, context))
+        Some(convert_c_read_callback(c_callback, config.callback_context))
     };
 
     let write_callback = if config.external_write_callback.is_null() {
         None
     } else {
+        // Safety: caller guarantees non-null callback matches CExternalWriteCallback signature
         let c_callback: CExternalWriteCallback =
             unsafe { std::mem::transmute(config.external_write_callback) };
-        let context = config.callback_context;
-        Some(convert_c_write_callback(c_callback, context))
+        Some(convert_c_write_callback(
+            c_callback,
+            config.callback_context,
+        ))
     };
 
     // Create the emulator with callbacks
@@ -392,11 +425,13 @@ pub unsafe extern "C" fn emulator_init(
         CEmulatorState {
             wrapper: EmulatorWrapper::Gdb(gdb::gdb_target::GdbTarget::new(emulator)),
             gdb_port: Some(port),
+            gdb_server: None, // Will be created when needed
         }
     } else {
         CEmulatorState {
             wrapper: EmulatorWrapper::Normal(emulator),
             gdb_port: None,
+            gdb_server: None,
         }
     };
 
@@ -536,12 +571,16 @@ pub unsafe extern "C" fn emulator_send_uart_char(
     };
 
     if let Some(ref stdin_uart_arc) = stdin_uart {
-        let mut uart_rx = stdin_uart_arc.lock().unwrap();
-        if uart_rx.is_none() {
-            *uart_rx = Some(character as u8);
-            1
-        } else {
-            0 // Buffer full
+        match stdin_uart_arc.lock() {
+            Ok(mut uart_rx) => {
+                if uart_rx.is_none() {
+                    *uart_rx = Some(character as u8);
+                    1
+                } else {
+                    0 // Buffer full
+                }
+            }
+            Err(_) => -1, // Mutex poisoned
         }
     } else {
         -1 // UART RX not enabled
@@ -573,11 +612,15 @@ pub unsafe extern "C" fn emulator_uart_rx_ready(emulator_memory: *mut CEmulator)
     };
 
     if let Some(ref stdin_uart_arc) = stdin_uart {
-        let uart_rx = stdin_uart_arc.lock().unwrap();
-        if uart_rx.is_none() {
-            1
-        } else {
-            0
+        match stdin_uart_arc.lock() {
+            Ok(uart_rx) => {
+                if uart_rx.is_none() {
+                    1
+                } else {
+                    0
+                }
+            }
+            Err(_) => -1, // Mutex poisoned
         }
     } else {
         -1 // UART RX not enabled
@@ -795,6 +838,412 @@ pub unsafe extern "C" fn emulator_start_i3c_controller(
 pub extern "C" fn emulator_trigger_exit() -> EmulatorError {
     MCU_RUNNING.store(false, Ordering::Relaxed);
     EmulatorError::Success
+}
+
+/// Start non-blocking GDB server that can be controlled from the C side
+///
+/// This function starts a GDB server that listens for connections but doesn't block.
+/// Use emulator_gdb_try_accept() to check for connections and emulator_gdb_process_messages()
+/// to handle GDB communication while maintaining full control over emulator stepping.
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator in GDB mode
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * Appropriate error code on failure
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator in GDB mode
+#[no_mangle]
+pub unsafe extern "C" fn emulator_start_nonblocking_gdb_server(
+    emulator_memory: *mut CEmulator,
+) -> EmulatorError {
+    if emulator_memory.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &mut *emulator_ptr;
+
+    if let Some(port) = emulator_state.gdb_port {
+        if emulator_state.gdb_server.is_none() {
+            match ControlledGdbServer::new(port) {
+                Ok(server) => {
+                    emulator_state.gdb_server = Some(server);
+                    EmulatorError::Success
+                }
+                Err(_) => EmulatorError::InitializationFailed,
+            }
+        } else {
+            EmulatorError::Success // Already started
+        }
+    } else {
+        EmulatorError::InvalidEmulator // Not in GDB mode
+    }
+}
+
+/// Try to accept a GDB connection (non-blocking)
+///
+/// This function checks for incoming GDB connections without blocking.
+/// Call this periodically to accept new connections.
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator in GDB mode
+///
+/// # Returns
+/// * 1 if a connection was accepted or already connected
+/// * 0 if no connection is available yet
+/// * -1 on error
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator in GDB mode
+/// * Must call emulator_start_nonblocking_gdb_server() first
+#[no_mangle]
+pub unsafe extern "C" fn emulator_gdb_try_accept(emulator_memory: *mut CEmulator) -> c_int {
+    if emulator_memory.is_null() {
+        return -1;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &mut *emulator_ptr;
+
+    if let (Some(ref mut gdb_server), EmulatorWrapper::Gdb(ref mut gdb_target)) =
+        (&mut emulator_state.gdb_server, &mut emulator_state.wrapper)
+    {
+        match gdb_server.try_accept_connection(gdb_target) {
+            Ok(connected) => {
+                if connected {
+                    1
+                } else {
+                    0
+                }
+            }
+            Err(_) => -1,
+        }
+    } else {
+        -1 // Not in GDB mode or server not started
+    }
+}
+
+/// Process GDB messages (non-blocking)
+///
+/// This function processes any pending GDB messages without blocking.
+/// Call this regularly while the emulator is running to handle GDB communication.
+/// The emulator stepping is still controlled by the C code calling emulator_step().
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator in GDB mode
+///
+/// # Returns
+/// * 1 if GDB connection is still active
+/// * 0 if GDB connection was closed
+/// * -1 on error
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator in GDB mode
+/// * Must have an active GDB connection (call emulator_gdb_try_accept() first)
+#[no_mangle]
+pub unsafe extern "C" fn emulator_gdb_process_messages(emulator_memory: *mut CEmulator) -> c_int {
+    if emulator_memory.is_null() {
+        return -1;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &mut *emulator_ptr;
+
+    if let (Some(ref mut gdb_server), EmulatorWrapper::Gdb(ref mut gdb_target)) =
+        (&mut emulator_state.gdb_server, &mut emulator_state.wrapper)
+    {
+        match gdb_server.process_messages(gdb_target) {
+            Ok(connected) => {
+                if connected {
+                    1
+                } else {
+                    0
+                }
+            }
+            Err(_) => -1,
+        }
+    } else {
+        -1 // Not in GDB mode or server not started
+    }
+}
+
+/// Send an interrupt signal to the GDB target
+///
+/// This function sends an interrupt signal (equivalent to Ctrl+C) to the running emulator.
+/// This will cause the emulator to stop at the next step when in GDB mode.
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator in GDB mode
+///
+/// # Returns
+/// * `EmulatorError::Success` on success
+/// * Appropriate error code on failure
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator in GDB mode
+#[no_mangle]
+pub unsafe extern "C" fn emulator_gdb_interrupt(emulator_memory: *mut CEmulator) -> EmulatorError {
+    if emulator_memory.is_null() {
+        return EmulatorError::NullPointer;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &*emulator_ptr;
+
+    if let Some(ref gdb_server) = emulator_state.gdb_server {
+        gdb_server.interrupt();
+        EmulatorError::Success
+    } else {
+        EmulatorError::InvalidEmulator // GDB server not started
+    }
+}
+
+/// Check if the GDB server has an active connection
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+///
+/// # Returns
+/// * 1 if GDB server has an active connection
+/// * 0 if no active connection or not in GDB mode
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator
+#[no_mangle]
+pub unsafe extern "C" fn emulator_gdb_is_connected(emulator_memory: *mut CEmulator) -> c_int {
+    if emulator_memory.is_null() {
+        return 0;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &*emulator_ptr;
+
+    if let Some(ref gdb_server) = emulator_state.gdb_server {
+        if gdb_server.is_connected() {
+            1
+        } else {
+            0
+        }
+    } else {
+        0
+    }
+}
+
+/// Check if GDB should stop before the next step (useful for immediate breakpoint detection)
+///
+/// This function should be called before emulator_step() when in GDB mode to check
+/// for stop conditions like breakpoints at the current PC location.
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator in GDB mode
+///
+/// # Returns
+/// * 1 if execution should stop (breakpoint, interrupt, etc.)
+/// * 0 if execution should continue
+/// * -1 on error or not in GDB mode
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator in GDB mode
+#[no_mangle]
+pub unsafe extern "C" fn emulator_gdb_should_stop_before_step(
+    emulator_memory: *mut CEmulator,
+) -> c_int {
+    if emulator_memory.is_null() {
+        return -1;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &mut *emulator_ptr;
+
+    if let (Some(ref mut gdb_server), EmulatorWrapper::Gdb(ref mut gdb_target)) =
+        (&mut emulator_state.gdb_server, &mut emulator_state.wrapper)
+    {
+        if let Some(stop_reason) = gdb_target.should_stop_before_step() {
+            // Report the stop condition to GDB
+            match gdb_server.report_stop(gdb_target, stop_reason) {
+                Ok(_) => 1,   // Should stop
+                Err(_) => -1, // Error
+            }
+        } else {
+            0 // Continue execution
+        }
+    } else {
+        -1 // Not in GDB mode
+    }
+}
+
+/// Check if GDB should stop after the step (for single stepping)
+///
+/// This function should be called after emulator_step() when in GDB mode to check
+/// if we should stop due to single step mode completion.
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator in GDB mode
+///
+/// # Returns
+/// * 1 if execution should stop (single step completed)
+/// * 0 if execution should continue
+/// * -1 on error or not in GDB mode
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator in GDB mode
+#[no_mangle]
+pub unsafe extern "C" fn emulator_gdb_should_stop_after_step(
+    emulator_memory: *mut CEmulator,
+) -> c_int {
+    if emulator_memory.is_null() {
+        return -1;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &mut *emulator_ptr;
+
+    if let (Some(ref mut gdb_server), EmulatorWrapper::Gdb(ref mut gdb_target)) =
+        (&mut emulator_state.gdb_server, &mut emulator_state.wrapper)
+    {
+        if let Some(stop_reason) = gdb_target.should_stop_after_step() {
+            // Report the stop condition to GDB
+            match gdb_server.report_stop(gdb_target, stop_reason) {
+                Ok(_) => 1,   // Should stop
+                Err(_) => -1, // Error
+            }
+        } else {
+            0 // Continue execution
+        }
+    } else {
+        -1 // Not in GDB mode
+    }
+}
+
+/// Report a stop condition to GDB after stepping the emulator
+///
+/// This function should be called by C code after calling emulator_step() when
+/// a stop condition is detected (breakpoint hit, watchpoint, etc.).
+/// It converts the CStepAction to appropriate GDB stop reason and reports it.
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator in GDB mode
+/// * `step_action` - The step action result from emulator_step()
+///
+/// # Returns
+/// * 1 if stop was successfully reported and GDB connection is still active
+/// * 0 if GDB connection was closed
+/// * -1 on error
+///
+/// # Safety
+/// * `emulator_memory` must point to a valid, initialized emulator in GDB mode
+/// * Must have an active GDB connection
+#[no_mangle]
+pub unsafe extern "C" fn emulator_gdb_report_stop(
+    emulator_memory: *mut CEmulator,
+    step_action: CStepAction,
+) -> c_int {
+    if emulator_memory.is_null() {
+        return -1;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &mut *emulator_ptr;
+
+    if let (Some(ref mut gdb_server), EmulatorWrapper::Gdb(ref mut gdb_target)) =
+        (&mut emulator_state.gdb_server, &mut emulator_state.wrapper)
+    {
+        // Convert CStepAction back to SystemStepAction
+        let system_step_action = match step_action {
+            CStepAction::Continue => StepAction::Continue,
+            CStepAction::Break => StepAction::Break,
+            CStepAction::ExitSuccess | CStepAction::ExitFailure => StepAction::Fatal,
+        };
+
+        // Check for stop conditions without stepping (the C code already stepped)
+        if let Some(stop_reason) = gdb_target.check_stop_conditions(system_step_action) {
+            match gdb_server.report_stop(gdb_target, stop_reason) {
+                Ok(connected) => {
+                    if connected {
+                        1
+                    } else {
+                        0
+                    }
+                }
+                Err(_) => -1,
+            }
+        } else {
+            // No stop condition detected, continue
+            1
+        }
+    } else {
+        -1 // Not in GDB mode or server not started
+    }
+}
+
+/// Check if GDB server is currently in an Idle (stopped) state
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+///
+/// # Returns
+/// * 1 if GDB server is idle (target stopped at breakpoint / after step / interrupt)
+/// * 0 if not idle or not in GDB mode
+/// * -1 on error
+///
+/// # Safety
+/// * `emulator_memory` must reference a properly initialized emulator instance
+/// * Caller must ensure the pointer remains valid for the duration of the call
+#[no_mangle]
+pub unsafe extern "C" fn emulator_gdb_is_idle(emulator_memory: *mut CEmulator) -> c_int {
+    if emulator_memory.is_null() {
+        return -1;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &*emulator_ptr;
+
+    if let Some(ref gdb_server) = emulator_state.gdb_server {
+        if gdb_server.is_idle() {
+            1
+        } else {
+            0
+        }
+    } else {
+        0
+    }
+}
+
+/// Check if GDB server considers the target running
+/// (i.e. after a Continue/Step command and before the next stop report)
+///
+/// # Arguments
+/// * `emulator_memory` - Pointer to the initialized emulator
+///
+/// # Returns
+/// * 1 if target is in running state
+/// * 0 if target not running / idle / not in GDB mode
+/// * -1 on error
+///
+/// # Safety
+/// * `emulator_memory` must reference a properly initialized emulator instance
+/// * Caller must ensure the pointer remains valid for the duration of the call
+#[no_mangle]
+pub unsafe extern "C" fn emulator_gdb_is_running(emulator_memory: *mut CEmulator) -> c_int {
+    if emulator_memory.is_null() {
+        return -1;
+    }
+
+    let emulator_ptr = emulator_memory as *mut CEmulatorState;
+    let emulator_state = &*emulator_ptr;
+
+    if let Some(ref gdb_server) = emulator_state.gdb_server {
+        if gdb_server.is_running() {
+            1
+        } else {
+            0
+        }
+    } else {
+        0
+    }
 }
 
 /// Example external read callback that returns the address as data
@@ -1106,7 +1555,7 @@ pub unsafe extern "C" fn emulator_write_pc(
 ///
 /// # Arguments
 /// * `emulator_memory` - Pointer to the initialized emulator
-/// * `irq_num` - IRQ number to set (0-31)
+/// * `irq_num` - IRQ number to set (0-255]
 /// * `is_high` - 1 to set interrupt high, 0 to set interrupt low
 ///
 /// # Returns
@@ -1125,7 +1574,7 @@ pub unsafe extern "C" fn emulator_set_external_interrupt(
         return EmulatorError::NullPointer;
     }
 
-    if irq_num > 31 {
+    if irq_num == 0 || irq_num > 255 {
         return EmulatorError::InvalidArgs;
     }
 

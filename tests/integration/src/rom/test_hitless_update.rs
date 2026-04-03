@@ -2,9 +2,8 @@
 
 use crate::platform;
 use anyhow::Result;
-use caliptra_hw_model::BootParams;
 use mcu_hw_model::{new, InitParams, McuHwModel};
-use mcu_rom_common::McuBootMilestones;
+use romtime::McuBootMilestones;
 
 // TODO(zhalvorsen): Enable this test for emulator when it is supported
 #[cfg_attr(not(feature = "fpga_realtime"), ignore)]
@@ -18,21 +17,22 @@ fn test_hitless_update_flow() -> Result<()> {
             binaries.test_rom(mcu_rom_id)?,
         )
     } else {
-        let rom_file = mcu_builder::test_rom_build(Some(platform()), mcu_rom_id)?;
+        let rom_file = mcu_builder::test_rom_build(&mcu_builder::CaliptraBuildArgs {
+            platform: Some(platform()),
+            fwid: Some(mcu_rom_id),
+            ..Default::default()
+        })?;
         (
             caliptra_builder::build_firmware_rom(cptra_rom_id).unwrap(),
             std::fs::read(&rom_file)?,
         )
     };
-    let mut hw = new(
-        InitParams {
-            caliptra_rom: &caliptra_rom,
-            mcu_rom: &mcu_rom,
-            enable_mcu_uart_log: true,
-            ..Default::default()
-        },
-        BootParams::default(),
-    )?;
+    let mut hw = new(InitParams {
+        caliptra_rom: &caliptra_rom,
+        mcu_rom: &mcu_rom,
+        enable_mcu_uart_log: true,
+        ..Default::default()
+    })?;
 
     println!("Waiting for flow to start");
     hw.step_until(|hw| {
