@@ -57,7 +57,7 @@ fn fifo_cms_via_indirect_ctrl_returns_unsupported() {
 
     // INDIRECT_CTRL write: select CMS 1 (FIFO)
     let action = sm.process_command().unwrap();
-    assert_eq!(action, RecoveryAction::None);
+    assert_eq!(action, RecoveryAction::IndirectCtrlChanged);
 
     // INDIRECT_STATUS read
     let action = sm.process_command().unwrap();
@@ -105,7 +105,7 @@ fn indirect_cms_via_fifo_ctrl_returns_unsupported() {
 
     // INDIRECT_FIFO_CTRL write: select CMS 0 (indirect)
     let action = sm.process_command().unwrap();
-    assert_eq!(action, RecoveryAction::None);
+    assert_eq!(action, RecoveryAction::IndirectFifoCtrlChanged);
 
     // INDIRECT_FIFO_STATUS read
     let action = sm.process_command().unwrap();

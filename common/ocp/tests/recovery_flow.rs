@@ -89,7 +89,7 @@ fn full_recovery_sequence() {
 
     // Step 5: Write INDIRECT_CTRL — select CMS 0, IMO 0.
     let action = sm.process_command().unwrap();
-    assert_eq!(action, RecoveryAction::None);
+    assert_eq!(action, RecoveryAction::IndirectCtrlChanged);
 
     // Step 6: Write INDIRECT_DATA — push recovery image bytes.
     let action = sm.process_command().unwrap();
