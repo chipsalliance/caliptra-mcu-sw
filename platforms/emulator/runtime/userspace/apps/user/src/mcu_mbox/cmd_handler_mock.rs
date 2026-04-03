@@ -5,7 +5,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use external_cmds_common::{
-    CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
+    AttestedCsrData, CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
     UnifiedCommandHandler, MAX_FW_VERSION_LEN, MAX_UID_LEN,
 };
 use mcu_mbox_common::config;
@@ -83,5 +83,14 @@ impl UnifiedCommandHandler for NonCryptoCmdHandlerMock {
         capabilities.mcu_rom = test_capabilities.mcu_rom;
         capabilities.reserved = test_capabilities.reserved;
         Ok(())
+    }
+
+    async fn export_attested_csr(
+        &self,
+        _device_key_id: u32,
+        _algorithm: u32,
+        _csr_data: &mut AttestedCsrData,
+    ) -> Result<(), CommandError> {
+        Err(CommandError::NotSupported)
     }
 }

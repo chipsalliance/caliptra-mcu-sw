@@ -18,6 +18,7 @@ pub enum VdmCommand {
     ClearLog = 0x09,
     RequestDebugUnlock = 0x0A,
     AuthorizeDebugUnlockToken = 0x0B,
+    ExportAttestedCsr = 0x0C,
 }
 
 impl TryFrom<u8> for VdmCommand {
@@ -36,6 +37,7 @@ impl TryFrom<u8> for VdmCommand {
             0x09 => Ok(VdmCommand::ClearLog),
             0x0A => Ok(VdmCommand::RequestDebugUnlock),
             0x0B => Ok(VdmCommand::AuthorizeDebugUnlockToken),
+            0x0C => Ok(VdmCommand::ExportAttestedCsr),
             _ => Err(VdmError::UnsupportedCommand),
         }
     }
@@ -74,6 +76,10 @@ mod tests {
         assert_eq!(VdmCommand::try_from(0x03), Ok(VdmCommand::DeviceId));
         assert_eq!(VdmCommand::try_from(0x04), Ok(VdmCommand::DeviceInfo));
         assert_eq!(
+            VdmCommand::try_from(0x0C),
+            Ok(VdmCommand::ExportAttestedCsr)
+        );
+        assert_eq!(
             VdmCommand::try_from(0xFF),
             Err(VdmError::UnsupportedCommand)
         );
@@ -85,6 +91,7 @@ mod tests {
         assert_eq!(u8::from(VdmCommand::DeviceCapabilities), 0x02);
         assert_eq!(u8::from(VdmCommand::DeviceId), 0x03);
         assert_eq!(u8::from(VdmCommand::DeviceInfo), 0x04);
+        assert_eq!(u8::from(VdmCommand::ExportAttestedCsr), 0x0C);
     }
 
     #[test]
@@ -93,6 +100,7 @@ mod tests {
         assert!(is_command_supported(VdmCommand::DeviceCapabilities));
         assert!(is_command_supported(VdmCommand::DeviceId));
         assert!(is_command_supported(VdmCommand::DeviceInfo));
+        assert!(!is_command_supported(VdmCommand::ExportAttestedCsr));
         assert!(!is_command_supported(VdmCommand::GetLog));
         assert!(!is_command_supported(VdmCommand::ClearLog));
     }

@@ -10,6 +10,8 @@ use zerocopy::{Immutable, IntoBytes};
 
 pub const MAX_FW_VERSION_LEN: usize = 32;
 pub const MAX_UID_LEN: usize = 32;
+// TODO: Replace with imported constant from Caliptra core crate when available.
+pub const MAX_ATTESTED_CSR_DATA_LEN: usize = 12800;
 
 /// Common error type for unified commands.
 #[derive(Debug)]
@@ -19,6 +21,21 @@ pub enum CommandError {
     InternalError,
     NotSupported,
     Busy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttestedCsrData {
+    pub len: usize,
+    pub data: [u8; MAX_ATTESTED_CSR_DATA_LEN],
+}
+
+impl Default for AttestedCsrData {
+    fn default() -> Self {
+        Self {
+            len: 0,
+            data: [0u8; MAX_ATTESTED_CSR_DATA_LEN],
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -108,5 +125,21 @@ pub trait UnifiedCommandHandler {
     async fn get_device_capabilities(
         &self,
         capabilities: &mut DeviceCapabilities,
+    ) -> Result<(), CommandError>;
+
+    /// Exports an attested CSR for the specified device key.
+    ///
+    /// # Arguments
+    /// * `device_key_id` - The device key identifier (0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias).
+    /// * `algorithm` - The asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87).
+    /// * `csr_data` - Mutable reference to store the attested CSR data.
+    ///
+    /// # Returns
+    /// * `Result<(), CommandError>` - Ok on success, or an error.
+    async fn export_attested_csr(
+        &self,
+        device_key_id: u32,
+        algorithm: u32,
+        csr_data: &mut AttestedCsrData,
     ) -> Result<(), CommandError>;
 }
