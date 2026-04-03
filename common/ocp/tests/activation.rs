@@ -64,7 +64,7 @@ fn multi_stage_activation_sequence() {
     // -- Stage 1 --
     // Select CMS 0
     let action = sm.process_command().unwrap();
-    assert_eq!(action, RecoveryAction::None);
+    assert_eq!(action, RecoveryAction::IndirectCtrlChanged);
     // Push data
     let action = sm.process_command().unwrap();
     assert_eq!(action, RecoveryAction::None);
