@@ -878,17 +878,22 @@ pub fn process_fw_manifest_dot_commands(
                 // A blank/missing DOT blob is a fatal error when DOT is
                 // enabled, so we must always leave a valid sealed blob.
                 if dot_fuses.is_locked() {
-                    burn_dot_lock_fuse(&env.otp, &dot_fuses)?;
-                    // Re-read fuse state after the burn (now EVEN = unlocked).
-                    let new_fuses = DotFuses::load_from_otp(&env.otp)?;
-                    // Write an unlock DOT blob: zero CAK (no owner), keep LAK.
+                    // Pre-compute the post-burn fuse state so we can seal the
+                    // blob before touching the fuses.
+                    let post_burn_fuses = DotFuses {
+                        burned: dot_fuses.burned + 1,
+                        ..dot_fuses.clone()
+                    };
                     create_and_seal_dot_blob(
                         env,
-                        &new_fuses,
+                        &post_burn_fuses,
                         &ZERO_OWNER_PK_HASH,
                         &LakPkHash(section.lak),
                         dot_flash,
                     )?;
+                    // If we have a power loss here before the fuse is burned,
+                    // then the HMAC seal on the DOT blob will be invalid.
+                    burn_dot_lock_fuse(&env.otp, &dot_fuses)?;
                 }
             }
 
@@ -910,7 +915,10 @@ pub fn process_fw_manifest_dot_commands(
                 }
             }
 
-            _ => {}
+            _ => {
+                romtime::println!("[mcu-rom-dot] Unknown DOT command: {}", cmd);
+                return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
+            }
         }
     }
 
