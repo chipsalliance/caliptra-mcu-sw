@@ -2036,4 +2036,127 @@ mod test {
         println!("[TEST] Unsupported manifest version correctly triggers fatal error");
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
+
+    /// Test: After UNLOCK command, the device boots successfully on the next cold boot.
+    #[test]
+    fn test_fw_manifest_dot_unlock_second_boot_succeeds() {
+        use mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
+        use romtime::McuBootMilestones;
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
+        let dot_flash = blob.to_flash_contents();
+
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_UNLOCK], 0, [0u32; 12], test_lak());
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        // Boot 1: process the UNLOCK manifest — burns a fuse and writes new unlock blob.
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Boot 1 (UNLOCK manifest) failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        // Extract post-UNLOCK OTP and flash state.
+        let otp_after_unlock = hw.read_otp_memory();
+        let dot_flash_after_unlock = hw.read_dot_flash();
+
+        // Boot 2: boot again with the post-UNLOCK state and no firmware manifest.
+        // The blob written during boot 1 must be correctly sealed for the new EVEN
+        // state (burned=2, derivation_value=3) so this boot can verify it.
+        let mut hw2 = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(dot_flash_after_unlock),
+            rom_only: true,
+            otp_memory: Some(otp_after_unlock),
+            ..Default::default()
+        });
+
+        hw2.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error2 = hw2.mci_fw_fatal_error();
+        assert!(
+            fatal_error2.is_none(),
+            "Boot 2 (post-UNLOCK) failed: 0x{:x} — blob was not correctly sealed for the new EVEN state",
+            fatal_error2.unwrap_or(0)
+        );
+
+        println!("[TEST] Firmware manifest UNLOCK: second boot succeeds with post-UNLOCK blob");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: An unknown DOT command code triggers a fatal error.
+    ///
+    /// Command codes outside the defined set (NOP/LOCK/UNLOCK/ROTATE/DISABLE) must
+    /// not be silently ignored; the ROM should return an error so a malformed or
+    /// future-version manifest is not silently accepted on an older ROM.
+    #[test]
+    fn test_fw_manifest_dot_unknown_command() {
+        use romtime::McuBootMilestones;
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        // Command 0xFF is not defined; the ROM must reject it.
+        let manifest = create_manifest_section(&[0xFF], 0, [0u32; 12], [0u32; 12]);
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_fw_fatal_error().is_some()
+                || m.mci_boot_milestones()
+                    .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_some(),
+            "Expected fatal error for unknown DOT command, but boot completed"
+        );
+        assert_eq!(
+            fatal_error.unwrap(),
+            u32::from(mcu_error::McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR),
+            "Expected ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR for unknown command, got 0x{:x}",
+            fatal_error.unwrap()
+        );
+
+        println!(
+            "[TEST] Unknown DOT command correctly triggers ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR"
+        );
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }
