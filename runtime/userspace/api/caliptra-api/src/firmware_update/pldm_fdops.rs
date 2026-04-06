@@ -4,6 +4,7 @@ extern crate alloc;
 
 use super::pldm_client::{FW_UPDATE_TASK_YIELD, PLDM_DAEMON_TASK_YIELD};
 use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
+use crate::MAX_PLDM_TRANSFER_SIZE;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
@@ -18,7 +19,6 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::{
 use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
 use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
 
-const MAX_PLDM_TRANSFER_SIZE: usize = 196; // This should be smaller than I3C MAX_READ_WRITE_SIZE
 const ESTIMATED_ACTIVATION_TIME_SECS: u16 = 600; // 10 minutes estimated activation time including reset
 
 pub struct UpdateFdOps {}
