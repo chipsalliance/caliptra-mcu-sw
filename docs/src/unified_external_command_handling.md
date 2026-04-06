@@ -18,6 +18,7 @@ The Caliptra MCU firmware provides two external command interfaces: [MCTP VDM ex
 | Clear Log                         | MC_CLEAR_LOG                           | Clears the log in the RoT subsystem.                    |
 | Request Debug Unlock              | MC_PRODUCTION_DEBUG_UNLOCK_REQ         | Requests debug unlock in a production environment.       |
 | Authorize Debug Unlock Token      | MC_PRODUCTION_DEBUG_UNLOCK_TOKEN       | Sends the debug unlock token for authorization.         |
+| Export Attested CSR               | -                                      | Exports attested CSR for a specified device key.        |
 
 To ensure consistent command behavior and maximize code reuse, we define a protocol-agnostic command handler trait with unified command IDs and input/output types. Both MCTP VDM and MCI mailbox frontends parse their protocol, map to the unified command and call the same backend handler, ensuring code reuse and consistent behavior.
 
@@ -155,6 +156,8 @@ pub enum UnifiedCommandId {
     GetLog,
     /// Clear device logs.
     ClearLog,
+    /// Export an attested CSR for a specified device key.
+    ExportAttestedCsr,
     // ... add more as needed
 }
 
