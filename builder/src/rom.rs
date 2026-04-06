@@ -52,7 +52,7 @@ pub fn rom_build(args: &CaliptraBuildArgs) -> Result<PathBuf> {
 }
 
 /// Pad the ROM binary to its full size and append a SHA384 digest of its contents to the end.
-fn append_rom_digest(binary: &PathBuf, rom_size: usize) -> Result<()> {
+pub fn append_rom_digest(binary: &PathBuf, rom_size: usize) -> Result<()> {
     let mut data = std::fs::read(binary)?;
     const DIGEST_SIZE: usize = 48;
     let digest_offset = rom_size - DIGEST_SIZE;
@@ -64,7 +64,7 @@ fn append_rom_digest(binary: &PathBuf, rom_size: usize) -> Result<()> {
     Ok(())
 }
 
-fn rom_size_for_platform(platform: &str) -> usize {
+pub fn rom_size_for_platform(platform: &str) -> usize {
     match platform {
         "fpga" => mcu_config_fpga::FPGA_MEMORY_MAP.rom_size as usize,
         _ => mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size as usize,
