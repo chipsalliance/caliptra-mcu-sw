@@ -312,8 +312,15 @@ mod test {
             soc_manifest,
             mcu_runtime,
         } = match FirmwareBinaries::from_env() {
-            Ok(binaries) if params.rom_feature.is_none() && params.firmware_prefix.is_none() => {
-                prebuilt_binaries(params.feature, binaries)
+            Ok(binaries) if params.firmware_prefix.is_none() => {
+                if let Some(rom_feature) = params.rom_feature {
+                    // Use prebuilt base binaries with a feature-specific ROM
+                    let mut tb = prebuilt_binaries(params.feature, binaries);
+                    tb.mcu_rom = binaries.test_feature_rom(rom_feature);
+                    tb
+                } else {
+                    prebuilt_binaries(params.feature, binaries)
+                }
             }
             _ => {
                 println!("Could not find prebuilt firmware binaries, building firmware...");

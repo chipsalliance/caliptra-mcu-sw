@@ -56,3 +56,8 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mcu-mbox-fips-periodic",
     "test-exit-immediately",
 ];
+
+/// ROM-only test features that need a prebuilt ROM but no custom runtime.
+/// These features exist in both the emulator and FPGA ROM crates; the
+/// standard runtime is used unmodified.
+pub const ROM_ONLY_TEST_FEATURES: &[&str] = &["test-i3c-services"];

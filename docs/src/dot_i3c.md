@@ -1,10 +1,10 @@
 # DOT I3C Recovery Protocol
 
-This document specifies the I3C-based transport protocol used for Device Ownership Transfer (DOT) recovery in the MCU ROM or runtime. For the overall DOT specification, see [Device Ownership Transfer](dot.md).
+This document specifies the I3C-based transport protocol used for Device Ownership Transfer (DOT) recovery in the MCU ROM or runtime. For the overall DOT specification, see [Device Ownership Transfer](dot.md). For the general I3C services framework and framing, see [ROM I3C Services](rom_i3c_services.md).
 
 ## Overview
 
-When the MCU ROM detects a corrupted or missing DOT blob while in ODD state (Locked or Disabled), the device enters DOT recovery mode. In this mode, the ROM or early RT waits for an external recovery agent to send a backup DOT blob over I3C.
+When the MCU ROM detects a corrupted or missing DOT blob while in ODD state (Locked or Disabled), the device enters DOT recovery mode via the ROM's I3C services handler (with `I3cServicesModes::DOT_RECOVERY` enabled). In this mode, the ROM waits for an external recovery agent to send a backup DOT blob over I3C.
 
 ### Recovery Trigger Conditions
 
