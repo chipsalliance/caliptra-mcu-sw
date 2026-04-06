@@ -3,7 +3,6 @@
 pub mod flash;
 pub mod ocp;
 
-use crate::{flash::flash_partition::FlashPartition, recovery::flash::FlashImageProvider};
 use bitfield::bitfield;
 use registers_generated::i3c;
 use registers_generated::i3c::bits::{IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess};
@@ -304,9 +303,31 @@ impl StateMachineContext for Context {
     }
 }
 
-pub fn load_flash_image_to_recovery<'a>(
+/// Attempt to load an image using the [`ImageProviderManager`], retrying with
+/// subsequent providers according to each entry's [`ErrorPolicy`].
+///
+/// Returns `Ok(())` once a provider succeeds, or `Err(())` if all providers
+/// are exhausted.
+pub(crate) fn load_image_with_retry(
     i3c_periph: StaticRef<i3c::regs::I3c>,
-    flash_driver: &'a mut FlashPartition<'a>,
+    manager: &mut ImageProviderManager<'_>,
+) -> Result<(), ()> {
+    while let Some(provider) = manager.provider() {
+        match load_image_to_recovery(i3c_periph, provider) {
+            Ok(()) => return Ok(()),
+            Err(()) => {
+                romtime::println!("[mcu-rom] Image provider failed, trying next");
+                continue;
+            }
+        }
+    }
+    romtime::println!("[mcu-rom] All image providers exhausted");
+    Err(())
+}
+
+fn load_image_to_recovery(
+    i3c_periph: StaticRef<i3c::regs::I3c>,
+    image_provider: &mut dyn ImageProvider,
 ) -> Result<(), ()> {
     let context = Context::new();
     let mut state_machine = StateMachine::new(context);
@@ -314,8 +335,6 @@ pub fn load_flash_image_to_recovery<'a>(
     let mut prev_state = States::ReadProtCap;
     let mut next_print_checkpoint = 0;
     let mut start_cycle = None;
-
-    let mut image_provider = FlashImageProvider::new(flash_driver);
 
     i3c_periph
         .soc_mgmt_if_rec_intf_cfg

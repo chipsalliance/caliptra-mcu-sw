@@ -46,7 +46,7 @@ impl BootFlow for WarmBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraReadyForFuses.into());
 
         // TODO: Handle flash image loading with the watchdog enabled
-        if params.flash_partition_driver.is_none() {
+        if params.image_provider_manager.is_none() {
             soc.set_cptra_wdt_cfg(0, straps.cptra_wdt_cfg0);
             soc.set_cptra_wdt_cfg(1, straps.cptra_wdt_cfg1);
 

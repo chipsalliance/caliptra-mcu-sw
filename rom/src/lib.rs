@@ -30,7 +30,7 @@ mod rom_env;
 pub use rom_env::*;
 mod i3c;
 mod mailbox;
-mod recovery;
+pub mod recovery;
 
 // Boot flow modules
 mod cold_boot;

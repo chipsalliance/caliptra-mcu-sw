@@ -15,7 +15,6 @@ Abstract:
 #![allow(clippy::empty_loop)]
 
 use crate::fatal_error;
-use crate::flash::flash_partition::FlashPartition;
 use crate::hil::FlashStorage;
 use crate::ColdBoot;
 use crate::FwBoot;
@@ -784,7 +783,7 @@ pub fn verify_mcu_mbox_axi_users(
 pub struct RomParameters<'a> {
     pub lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
     pub burn_lifecycle_tokens: Option<LifecycleHashedTokens>,
-    pub flash_partition_driver: Option<&'a mut FlashPartition<'a>>,
+    pub image_provider_manager: Option<crate::recovery::ImageProviderManager<'a>>,
     /// Whether or not to program field entropy after booting Caliptra runtime firmware
     pub program_field_entropy: [bool; 4],
     pub mcu_image_header_size: usize,
@@ -802,8 +801,8 @@ pub struct RomParameters<'a> {
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,
-    /// Request flash boot (AXI recovery bypass).
-    pub request_flash_boot: bool,
+    /// Request recovery boot (AXI recovery bypass).
+    pub request_recovery_boot: bool,
     /// By default, we will set recovery status as successful after loading MCU firmware.
     /// Set this to true if you want to leave recovery status as open for further firmware image loading.
     /// Note that in 2.0, Caliptra already sets recovery status as successful so there may be a race
