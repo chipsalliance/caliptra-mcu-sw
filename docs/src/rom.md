@@ -47,8 +47,13 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
     * [`FUSE_IDEVID_CERT_ATTR`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_idevid_cert_attr): IDevID certificate attributes (768 bits)
     * [`FUSE_IDEVID_MANUF_HSM_ID`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.fuse_idevid_manuf_hsm_id): IDevID manufacturing HSM identifier (128 bits)
     * [`SS_UDS_SEED_BASE_ADDR_L/H`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_UDS_SEED_BASE_ADDR_L): UDS/FE partition base address in OTP
-    * [`SS_STRAP_GENERIC`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): OTP DAI idle bit offset and direct access command register offset
+    * [`SS_STRAP_GENERIC[0]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): OTP DAI idle bit offset (bits\[31:16\])
+    * [`SS_STRAP_GENERIC[1]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): OTP direct access command register offset
+    * [`SS_STRAP_GENERIC[2]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): iTRNG health test window size from OTP (bits\[15:0\]) and bypass mode flag (bit\[31\], from ROM parameters)
+    * [`CPTRA_I_TRNG_ENTROPY_CONFIG_0`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.CPTRA_I_TRNG_ENTROPY_CONFIG_0): iTRNG entropy configuration word 0, from OTP `cptra_itrng_entropy_config_0`
+    * [`CPTRA_I_TRNG_ENTROPY_CONFIG_1`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.CPTRA_I_TRNG_ENTROPY_CONFIG_1): iTRNG entropy configuration word 1, from OTP `cptra_itrng_entropy_config_1`
     * [MCI] [`PROD_DEBUG_UNLOCK_PK_HASH_REG`](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.PROD_DEBUG_UNLOCK_PK_HASH_REG%5B0%5D%5B0%5D) Production debug unlock public key hashes (384 bytes total for 8 key hashes)
+    * See [the ROM fuses](rom-fuses.md) documentation for details on how these are read and interpreted.
 1. Configure MCU mailbox AXI users (see [Security Configuration](#security-configuration) below).
 1. Set mailbox AXI user lock registers.
 1. [2.1] Set [FC_FIPS_ZEROZATION](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.FC_FIPS_ZEROZATION) to the appropriate value.
