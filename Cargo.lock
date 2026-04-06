@@ -3442,6 +3442,7 @@ dependencies = [
  "flash-image",
  "mcu-config",
  "mcu-error",
+ "ocp",
  "otp-digest",
  "registers-generated",
  "riscv-csr",
