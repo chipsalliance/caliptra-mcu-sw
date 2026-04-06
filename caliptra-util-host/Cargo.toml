@@ -12,7 +12,9 @@ members = [
     "xtask",
     "apps/mailbox/config",
     "apps/mailbox/client",
-    "apps/mailbox/server"
+    "apps/mailbox/server",
+    "apps/mctp-vdm/config",
+    "apps/mctp-vdm/client"
 ]
 
 [workspace.package]
@@ -31,6 +33,8 @@ caliptra-util-host-cbinding = { path = "cbinding" }
 caliptra-util-host-mailbox-test-config = { path = "apps/mailbox/config" }
 caliptra-mailbox-client = { path = "apps/mailbox/client" }
 caliptra-mailbox-server = { path = "apps/mailbox/server" }
+caliptra-util-host-mctp-vdm-test-config = { path = "apps/mctp-vdm/config" }
+caliptra-mctp-vdm-client = { path = "apps/mctp-vdm/client" }
 
 # External dependencies
 anyhow = "1.0.97"
@@ -46,6 +50,8 @@ clap = { version = "4.5.23", features = [
     "wrap_help",
 ] }
 hmac = "0.12"
+mctp-vdm-common = { path = "../common/mctp-vdm" }
+mcu-testing-common = { path = "../common/testing" }
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
 sha2 = "0.10"
