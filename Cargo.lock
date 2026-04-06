@@ -3427,6 +3427,7 @@ dependencies = [
  "mcu-config",
  "mcu-error",
  "mcu-otp-lifecycle",
+ "ocp",
  "otp-digest",
  "registers-generated",
  "riscv-csr",
