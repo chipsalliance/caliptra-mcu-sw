@@ -11,23 +11,8 @@
 // (read_word, write_word, finalize_digest).
 
 use crate::{HexWord, Otp};
-use caliptra_api::mailbox::MailboxRespHeader;
+use mcu_error::McuError;
 use registers_generated::fuses;
-
-// ---------------------------------------------------------------------------
-// Command codes
-// ---------------------------------------------------------------------------
-pub const MC_FUSE_READ_CMD: u32 = 0x4946_5052; // "IFPR"
-pub const MC_FUSE_WRITE_CMD: u32 = 0x4946_5057; // "IFPW"
-pub const MC_FUSE_LOCK_PARTITION_CMD: u32 = 0x4946_504B; // "IFPK"
-
-pub const FIPS_STATUS_APPROVED: u32 = MailboxRespHeader::FIPS_STATUS_APPROVED;
-
-// ---------------------------------------------------------------------------
-// Limits
-// ---------------------------------------------------------------------------
-pub const MAX_FUSE_DATA_BYTES: usize = 512;
-pub const MAX_FUSE_DATA_WORDS: usize = MAX_FUSE_DATA_BYTES / 4;
 
 // ---------------------------------------------------------------------------
 // Partition identifiers (same numbering as the Fuse definition script)
@@ -55,40 +40,6 @@ pub const PARTITION_CPTRA_SS_LOCK_HEK_PROD_4: u32 = 0x0000_0013;
 pub const PARTITION_CPTRA_SS_LOCK_HEK_PROD_5: u32 = 0x0000_0014;
 pub const PARTITION_CPTRA_SS_LOCK_HEK_PROD_6: u32 = 0x0000_0015;
 pub const PARTITION_CPTRA_SS_LOCK_HEK_PROD_7: u32 = 0x0000_0016;
-
-// ---------------------------------------------------------------------------
-// Error codes  (0xE100_xxxx range)
-// ---------------------------------------------------------------------------
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
-pub enum FuseError {
-    Success = 0x0000_0000,
-    InvalidPartition = 0xE100_0001,
-    EntryOutOfBounds = 0xE100_0002,
-    InvalidLength = 0xE100_0003,
-    InvalidStartBit = 0xE100_0004,
-    DaiReadError = 0xE100_0005,
-    DaiWriteError = 0xE100_0006,
-    LockError = 0xE100_0007,
-    SecretPartitionReadDenied = 0xE100_0008,
-    BitClearNotAllowed = 0xE100_0009,
-    ChecksumError = 0xE100_000A,
-    DataTooLarge = 0xE100_000B,
-    InputTooShort = 0xE100_000C,
-    UnknownCommand = 0xE100_000D,
-}
-
-impl FuseError {
-    #[inline]
-    pub fn as_u32(self) -> u32 {
-        self as u32
-    }
-
-    #[inline]
-    pub fn is_success(self) -> bool {
-        self == FuseError::Success
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Partition metadata
@@ -246,15 +197,15 @@ pub fn fuse_read_dai_params(
     partition: u32,
     entry: u32,
     max_words: usize,
-) -> Result<FuseReadParams, FuseError> {
-    let info = get_partition_info(partition).ok_or(FuseError::InvalidPartition)?;
+) -> Result<FuseReadParams, McuError> {
+    let info = get_partition_info(partition).ok_or(McuError::ROM_OTP_FUSE_INVALID_PARTITION)?;
 
     if info.is_secret {
         crate::println!(
             "[otp-provision] Read denied: partition {} is secret",
             partition
         );
-        return Err(FuseError::SecretPartitionReadDenied);
+        return Err(McuError::ROM_OTP_FUSE_SECRET_READ_DENIED);
     }
 
     let entry_offset = entry as usize;
@@ -264,7 +215,7 @@ pub fn fuse_read_dai_params(
             entry_offset,
             info.byte_size
         );
-        return Err(FuseError::EntryOutOfBounds);
+        return Err(McuError::ROM_OTP_FUSE_ENTRY_OUT_OF_BOUNDS);
     }
 
     let remaining_bytes = info.byte_size - entry_offset;
@@ -296,7 +247,7 @@ pub fn fuse_read_dai(
     partition: u32,
     entry: u32,
     out_data: &mut [u32],
-) -> Result<u32, FuseError> {
+) -> Result<u32, McuError> {
     let params = fuse_read_dai_params(partition, entry, out_data.len())?;
 
     for (i, slot) in out_data.iter_mut().enumerate().take(params.words_to_read) {
@@ -307,7 +258,7 @@ pub fn fuse_read_dai(
                     "[otp-provision] DAI read error at word addr {}",
                     params.base_word_addr + i
                 );
-                return Err(FuseError::DaiReadError);
+                return Err(McuError::ROM_OTP_FUSE_DAI_READ_ERROR);
             }
         }
     }
@@ -338,19 +289,16 @@ pub fn fuse_write_dai(
     length: u32,
     data_len: usize,
     data_word: impl Fn(usize) -> u32,
-) -> FuseError {
-    let info = match get_partition_info(partition) {
-        Some(i) => i,
-        None => return FuseError::InvalidPartition,
-    };
+) -> Result<(), McuError> {
+    let info = get_partition_info(partition).ok_or(McuError::ROM_OTP_FUSE_INVALID_PARTITION)?;
 
     if length == 0 {
-        return FuseError::InvalidLength;
+        return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
     }
 
     let entry_offset = entry as usize;
     if entry_offset >= info.byte_size || entry_offset % 4 != 0 {
-        return FuseError::EntryOutOfBounds;
+        return Err(McuError::ROM_OTP_FUSE_ENTRY_OUT_OF_BOUNDS);
     }
 
     let data_area_bits = ((info.byte_size - entry_offset) * 8) as u32;
@@ -358,7 +306,7 @@ pub fn fuse_write_dai(
         Some(v) => v,
         None => {
             crate::println!("[otp-provision] Write overflow: start_bit + length wraps u32");
-            return FuseError::EntryOutOfBounds;
+            return Err(McuError::ROM_OTP_FUSE_ENTRY_OUT_OF_BOUNDS);
         }
     };
     if end_bit_excl > data_area_bits {
@@ -368,12 +316,12 @@ pub fn fuse_write_dai(
             length,
             data_area_bits
         );
-        return FuseError::EntryOutOfBounds;
+        return Err(McuError::ROM_OTP_FUSE_ENTRY_OUT_OF_BOUNDS);
     }
 
     let required_data_words = ((length + 31) / 32) as usize;
     if data_len < required_data_words {
-        return FuseError::InvalidLength;
+        return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
     }
 
     let base_word_addr = (info.byte_offset + entry_offset) / 4;
@@ -437,7 +385,7 @@ pub fn fuse_write_dai(
             Ok(v) => v,
             Err(_) => {
                 crate::println!("[otp-provision] DAI read error at word addr {}", word_addr);
-                return FuseError::DaiReadError;
+                return Err(McuError::ROM_OTP_FUSE_DAI_READ_ERROR);
             }
         };
 
@@ -448,7 +396,7 @@ pub fn fuse_write_dai(
                 HexWord(current & mask),
                 HexWord(new_bits)
             );
-            return FuseError::BitClearNotAllowed;
+            return Err(McuError::ROM_OTP_FUSE_BIT_CLEAR_NOT_ALLOWED);
         }
 
         let write_value = current | new_bits;
@@ -457,7 +405,7 @@ pub fn fuse_write_dai(
                 Ok(_) => {}
                 Err(_) => {
                     crate::println!("[otp-provision] DAI write error at word addr {}", word_addr);
-                    return FuseError::DaiWriteError;
+                    return Err(McuError::ROM_OTP_FUSE_DAI_WRITE_ERROR);
                 }
             }
         }
@@ -465,7 +413,7 @@ pub fn fuse_write_dai(
         data_bit_consumed += bits_in_word;
     }
 
-    FuseError::Success
+    Ok(())
 }
 
 // ===========================================================================
@@ -476,11 +424,8 @@ pub fn fuse_write_dai(
 // Idempotent: locking an already-locked partition is a no-op.
 // Locking does not fully take effect until the next reset.
 
-pub fn fuse_lock_partition_dai(otp: &Otp, partition: u32) -> FuseError {
-    let info = match get_partition_info(partition) {
-        Some(i) => i,
-        None => return FuseError::InvalidPartition,
-    };
+pub fn fuse_lock_partition_dai(otp: &Otp, partition: u32) -> Result<(), McuError> {
+    let info = get_partition_info(partition).ok_or(McuError::ROM_OTP_FUSE_INVALID_PARTITION)?;
 
     crate::println!(
         "[otp-provision] DAI lock: partition={}, base_addr={}",
@@ -494,11 +439,11 @@ pub fn fuse_lock_partition_dai(otp: &Otp, partition: u32) -> FuseError {
                 "[otp-provision] Partition {} locked successfully",
                 partition
             );
-            FuseError::Success
+            Ok(())
         }
         Err(_) => {
             crate::println!("[otp-provision] Failed to lock partition {}", partition);
-            FuseError::LockError
+            Err(McuError::ROM_OTP_FUSE_LOCK_ERROR)
         }
     }
 }

@@ -2,253 +2,216 @@
 //
 // MCI Mailbox Command Handler for Fuse Provisioning
 //
-// Receives fuse provisioning commands from MCI mailbox CSRs, verifies
-// checksums, dispatches to the DAI-backed handlers in otp_provision,
-// and writes caliptra-compatible responses (chksum + fips_status).
+// Receives fuse provisioning commands from MCI mailbox CSRs, dispatches to the
+// DAI-backed handlers in otp_provision, and writes caliptra-compatible responses.
 //
-use crate::otp_provision::{
-    fuse_lock_partition_dai, fuse_read_dai_params, fuse_write_dai, FuseError, FIPS_STATUS_APPROVED,
-    MAX_FUSE_DATA_WORDS, MC_FUSE_LOCK_PARTITION_CMD, MC_FUSE_READ_CMD, MC_FUSE_WRITE_CMD,
-};
+// Checksum verification and response formatting are centralized in the dispatch
+// loop (process_fuse_mbox_commands), following the patterns established in
+// caliptra-sw runtime and mcu-mbox-lib transport.
+
+use crate::otp_provision::{fuse_lock_partition_dai, fuse_read_dai_params, fuse_write_dai};
 use crate::{HexWord, Mci, Otp};
+use caliptra_api::mailbox::{populate_checksum, MailboxReqHeader, MailboxRespHeader};
+use caliptra_api::verify_checksum;
 use core::cmp::Ordering;
+use core::mem::size_of;
+use mcu_error::McuError;
+use mcu_mbox_common::messages::{
+    CommandId, FuseLockPartitionReq, FuseReadReq, MAX_FUSE_DATA_WORDS,
+};
 use registers_generated::mci;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+use zerocopy::{FromBytes, Immutable, KnownLayout};
 
-// ---------------------------------------------------------------------------
-// Per-command expected input dlen (fixed-size commands use exact values;
-// variable-length commands use a maximum to reject oversized requests early)
-// ---------------------------------------------------------------------------
-const DLEN_FUSE_READ: u32 = 12; // chksum + partition + entry
-const DLEN_FUSE_LOCK: u32 = 8; // chksum + partition
-const FUSE_WRITE_HEADER_BYTES: u32 = 20; // chksum + partition + entry + start_bit + length
-const MAX_DLEN_FUSE_WRITE: u32 = FUSE_WRITE_HEADER_BYTES + (MAX_FUSE_DATA_WORDS * 4) as u32;
+/// Wire-format header for MC_FUSE_WRITE requests (without the variable-length data).
+#[repr(C)]
+#[derive(FromBytes, KnownLayout, Immutable)]
+struct FuseWriteReqHdr {
+    pub hdr: MailboxReqHeader,
+    pub partition: u32,
+    pub entry: u32,
+    pub start_bit: u32,
+    pub length: u32,
+}
 
-// ---------------------------------------------------------------------------
-// Mailbox register bundle (works for either mbox0 or mbox1)
-// ---------------------------------------------------------------------------
+const MAX_FUSE_REQ_BYTES: usize = size_of::<FuseWriteReqHdr>() + MAX_FUSE_DATA_WORDS * 4;
+const RESP_HDR_BYTES: usize = size_of::<MailboxRespHeader>();
+
+/// 4-byte–aligned buffer so zerocopy `ref_from_bytes` can produce references
+/// to structs containing `u32` fields without alignment errors.
+#[repr(C, align(4))]
+struct AlignedBuf([u8; MAX_FUSE_REQ_BYTES]);
+
 struct MciMboxRegs<'a> {
     execute: &'a tock_registers::registers::ReadWrite<u32, mci::bits::MboxExecute::Register>,
     status: &'a tock_registers::registers::ReadWrite<u32, mci::bits::MboxCmdStatus::Register>,
     dlen: &'a tock_registers::registers::ReadWrite<u32>,
     cmd: &'a tock_registers::registers::ReadWrite<u32>,
-    /// MMIO-backed SRAM window — uses `ReadWrite<u32>` to guarantee volatile
-    /// loads/stores so the compiler cannot elide, reorder, or cache accesses.
     sram: &'a [tock_registers::registers::ReadWrite<u32>],
 }
 
 // ---------------------------------------------------------------------------
-// Checksum helpers operating directly on SRAM registers
+// SRAM ↔ byte-buffer helpers
 // ---------------------------------------------------------------------------
 
-/// Sum the first `count` little-endian bytes of a u32 value.
-fn sum_u32_bytes(val: u32, count: usize) -> u32 {
-    debug_assert!(count <= 4, "count ({}) exceeds u32 byte width", count);
-    val.to_le_bytes()
-        .iter()
-        .take(count)
-        .map(|&b| b as u32)
-        .sum()
+fn sram_to_buf(
+    sram: &[tock_registers::registers::ReadWrite<u32>],
+    buf: &mut [u8],
+    byte_count: usize,
+) {
+    let words = (byte_count + 3) / 4;
+    for i in 0..words.min(sram.len()).min(buf.len() / 4) {
+        buf[i * 4..i * 4 + 4].copy_from_slice(&sram[i].get().to_le_bytes());
+    }
 }
 
-/// Verify the caliptra-style request checksum.
-///
-/// Layout: SRAM\[0\] = chksum, SRAM\[1..\] = payload.
-/// chksum == calc_checksum(cmd, LE-bytes-of(SRAM\[1..dlen/4\]))
-fn verify_request_checksum(
+fn buf_to_sram(buf: &[u8], sram: &[tock_registers::registers::ReadWrite<u32>], byte_count: usize) {
+    let full_words = byte_count / 4;
+    let tail = byte_count % 4;
+    for i in 0..full_words.min(sram.len()) {
+        sram[i].set(u32::from_le_bytes(
+            buf[i * 4..i * 4 + 4].try_into().unwrap(),
+        ));
+    }
+    if tail > 0 && full_words < sram.len() {
+        let mut word_bytes = [0u8; 4];
+        word_bytes[..tail].copy_from_slice(&buf[full_words * 4..full_words * 4 + tail]);
+        sram[full_words].set(u32::from_le_bytes(word_bytes));
+    }
+}
+
+/// Populate the response checksum, write the buffer to SRAM, and set
+/// dlen / status in one shot.
+fn send_response(mbox: &MciMboxRegs, buf: &mut [u8], resp_len: usize, success: bool) {
+    populate_checksum(&mut buf[..resp_len]);
+    buf_to_sram(buf, mbox.sram, resp_len);
+    mbox.dlen.set(resp_len as u32);
+    if success {
+        mbox.status
+            .write(mci::bits::MboxCmdStatus::Status::DataReady);
+    } else {
+        mbox.status
+            .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Validation + dispatch
+// ---------------------------------------------------------------------------
+
+/// Validate the request envelope (size, checksum), then dispatch to the
+/// appropriate handler.  Returns the response byte count on success with
+/// the response body (excluding checksum) pre-filled in `buf`.
+fn dispatch_fuse_command(
     cmd: u32,
+    input_dlen: usize,
     sram: &[tock_registers::registers::ReadWrite<u32>],
-    dlen: u32,
-) -> bool {
-    if dlen < 4 {
-        return false;
-    }
-    let payload_len = (dlen - 4) as usize;
-    let full_words = payload_len / 4;
-    let tail_bytes = payload_len % 4;
-
-    let mut sum = sum_u32_bytes(cmd, 4);
-
-    for reg in sram.iter().skip(1).take(full_words) {
-        sum = sum.wrapping_add(sum_u32_bytes(reg.get(), 4));
+    buf: &mut [u8],
+    otp: &Otp,
+) -> Result<usize, McuError> {
+    if input_dlen < size_of::<u32>() || input_dlen > MAX_FUSE_REQ_BYTES {
+        crate::println!(
+            "[mci-mbox] Invalid dlen {} (must be {}..={})",
+            input_dlen,
+            size_of::<u32>(),
+            MAX_FUSE_REQ_BYTES
+        );
+        return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
     }
 
-    if tail_bytes > 0 {
-        sum = sum.wrapping_add(sum_u32_bytes(sram[1 + full_words].get(), tail_bytes));
+    sram_to_buf(sram, buf, input_dlen);
+
+    let chksum = u32::from_le_bytes(buf[..4].try_into().unwrap());
+    if !verify_checksum(chksum, cmd, &buf[size_of::<u32>()..input_dlen]) {
+        crate::println!("[mci-mbox] Checksum mismatch");
+        return Err(McuError::ROM_OTP_FUSE_CHECKSUM_ERROR);
     }
 
-    sum.wrapping_add(sram[0].get()) == 0
-}
-
-/// Compute and write the caliptra-style response checksum into SRAM\[0\].
-///
-/// Covers bytes in SRAM\[1..resp_words\]; cmd = 0 for responses.
-fn write_response_checksum(sram: &[tock_registers::registers::ReadWrite<u32>], resp_words: usize) {
-    let sum: u32 = sram
-        .iter()
-        .take(resp_words)
-        .skip(1)
-        .map(|reg| sum_u32_bytes(reg.get(), 4))
-        .sum();
-    sram[0].set(0u32.wrapping_sub(sum));
-}
-
-/// Write a complete fuse-command response into SRAM.
-///
-/// Returns the total number of SRAM words written (chksum + fips_status +
-/// optional data).
-fn write_fuse_response(
-    sram: &[tock_registers::registers::ReadWrite<u32>],
-    fips_status: u32,
-    data: Option<&[u32]>,
-) -> usize {
-    sram[1].set(fips_status);
-
-    let mut resp_words: usize = 2; // chksum + fips_status
-
-    if let Some(d) = data {
-        for (i, &w) in d.iter().enumerate() {
-            sram[2 + i].set(w);
+    match CommandId(cmd) {
+        CommandId::MC_FUSE_READ => handle_fuse_read(buf, input_dlen, otp),
+        CommandId::MC_FUSE_WRITE => handle_fuse_write(buf, input_dlen, otp),
+        CommandId::MC_FUSE_LOCK_PARTITION => handle_fuse_lock_partition(buf, input_dlen, otp),
+        _ => {
+            crate::println!("[mci-mbox] Unknown fuse command: {}", HexWord(cmd));
+            Err(McuError::ROM_OTP_FUSE_UNKNOWN_COMMAND)
         }
-        resp_words += d.len();
     }
-
-    // SRAM[0] = chksum (over everything after it, cmd = 0)
-    write_response_checksum(sram, resp_words);
-
-    resp_words
 }
 
 // ---------------------------------------------------------------------------
 // Command handlers
+//
+// Each handler receives the request bytes in `buf` (checksum already verified)
+// and builds the response body in the same buffer.  Returns the total response
+// byte count on success; the caller populates the checksum and writes to SRAM.
 // ---------------------------------------------------------------------------
 
-/// MC_FUSE_READ handler.
-///
-/// Input  SRAM: chksum(u32), partition(u32), entry(u32)   — 12 bytes min
-/// Output SRAM: chksum(u32), fips_status(u32), length_bits(u32), data…
-fn handle_fuse_read(cmd: u32, input_dlen: u32, mbox: &MciMboxRegs, otp: &Otp) {
+fn handle_fuse_read(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, McuError> {
     crate::println!("[mci-mbox] Processing MC_FUSE_READ (IFPR)");
 
-    if input_dlen != DLEN_FUSE_READ {
+    if dlen != size_of::<FuseReadReq>() {
         crate::println!(
             "[mci-mbox] IFPR: unexpected dlen {} (expected {})",
-            input_dlen,
-            DLEN_FUSE_READ
+            dlen,
+            size_of::<FuseReadReq>()
         );
-        let n = write_fuse_response(mbox.sram, FuseError::InvalidLength.as_u32(), None);
-        mbox.dlen.set((n * 4) as u32);
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-        return;
+        return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
     }
 
-    if !verify_request_checksum(cmd, mbox.sram, input_dlen) {
-        crate::println!("[mci-mbox] IFPR: checksum mismatch");
-        let n = write_fuse_response(mbox.sram, FuseError::ChecksumError.as_u32(), None);
-        mbox.dlen.set((n * 4) as u32);
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-        return;
-    }
-
-    let partition = mbox.sram[1].get();
-    let entry = mbox.sram[2].get();
+    let req = FuseReadReq::ref_from_bytes(&buf[..size_of::<FuseReadReq>()])
+        .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
+    let partition = req.partition;
+    let entry = req.entry;
     crate::println!(
         "[mci-mbox] IFPR: partition={}, entry={}",
         HexWord(partition),
         entry
     );
 
-    let params = match fuse_read_dai_params(partition, entry, MAX_FUSE_DATA_WORDS) {
-        Ok(p) => p,
-        Err(e) => {
-            let n = write_fuse_response(mbox.sram, e.as_u32(), None);
-            mbox.dlen.set((n * 4) as u32);
-            mbox.status
-                .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-            crate::println!("[mci-mbox] IFPR: failed {}", HexWord(e.as_u32()));
-            return;
-        }
-    };
+    let params = fuse_read_dai_params(partition, entry, MAX_FUSE_DATA_WORDS)?;
 
-    // Read DAI words directly into SRAM — no intermediate stack buffer.
-    mbox.sram[1].set(FIPS_STATUS_APPROVED);
-    mbox.sram[2].set(params.valid_bits);
+    // Response: [chksum(4)][fips_status(4)][length_bits(4)][data…]
+    buf[4..8].copy_from_slice(&MailboxRespHeader::FIPS_STATUS_APPROVED.to_le_bytes());
+    buf[8..12].copy_from_slice(&params.valid_bits.to_le_bytes());
     for i in 0..params.words_to_read {
         match otp.read_word(params.base_word_addr + i) {
-            Ok(word) => mbox.sram[3 + i].set(word),
+            Ok(word) => {
+                buf[12 + i * 4..16 + i * 4].copy_from_slice(&word.to_le_bytes());
+            }
             Err(_) => {
                 crate::println!(
                     "[mci-mbox] IFPR: DAI read error at word addr {}",
                     params.base_word_addr + i
                 );
-                // Zero any partially-written fuse data in SRAM before
-                // returning an error to avoid leaking partial reads.
-                for j in 0..params.words_to_read {
-                    mbox.sram[3 + j].set(0);
-                }
-                let n = write_fuse_response(mbox.sram, FuseError::DaiReadError.as_u32(), None);
-                mbox.dlen.set((n * 4) as u32);
-                mbox.status
-                    .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-                return;
+                return Err(McuError::ROM_OTP_FUSE_DAI_READ_ERROR);
             }
         }
     }
-    let resp_words = 3 + params.words_to_read;
-    write_response_checksum(mbox.sram, resp_words);
-    mbox.dlen.set((resp_words * 4) as u32);
-    mbox.status
-        .write(mci::bits::MboxCmdStatus::Status::DataReady);
+
+    let resp_bytes = 12 + params.words_to_read * 4;
     crate::println!("[mci-mbox] IFPR: success, {} bits", params.valid_bits);
+    Ok(resp_bytes)
 }
 
-/// MC_FUSE_WRITE handler.
-///
-/// Input  SRAM: chksum(u32), partition(u32), entry(u32),
-///              start_bit(u32), length(u32), data…   — 20+ bytes
-/// Output SRAM: chksum(u32), fips_status(u32)
-fn handle_fuse_write(cmd: u32, input_dlen: u32, mbox: &MciMboxRegs, otp: &Otp) {
+fn handle_fuse_write(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, McuError> {
     crate::println!("[mci-mbox] Processing MC_FUSE_WRITE (IFPW)");
 
-    if input_dlen < FUSE_WRITE_HEADER_BYTES {
+    let hdr_size = size_of::<FuseWriteReqHdr>();
+    if dlen < hdr_size {
         crate::println!(
             "[mci-mbox] IFPW: dlen too short {} (minimum {})",
-            input_dlen,
-            FUSE_WRITE_HEADER_BYTES
+            dlen,
+            hdr_size
         );
-        let n = write_fuse_response(mbox.sram, FuseError::InputTooShort.as_u32(), None);
-        mbox.dlen.set((n * 4) as u32);
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-        return;
-    } else if input_dlen > MAX_DLEN_FUSE_WRITE {
-        crate::println!(
-            "[mci-mbox] IFPW: dlen too large {} (max {})",
-            input_dlen,
-            MAX_DLEN_FUSE_WRITE
-        );
-        let n = write_fuse_response(mbox.sram, FuseError::InvalidLength.as_u32(), None);
-        mbox.dlen.set((n * 4) as u32);
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-        return;
+        return Err(McuError::ROM_OTP_FUSE_INPUT_TOO_SHORT);
     }
 
-    if !verify_request_checksum(cmd, mbox.sram, input_dlen) {
-        crate::println!("[mci-mbox] IFPW: checksum mismatch");
-        let n = write_fuse_response(mbox.sram, FuseError::ChecksumError.as_u32(), None);
-        mbox.dlen.set((n * 4) as u32);
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-        return;
-    }
-
-    let partition = mbox.sram[1].get();
-    let entry = mbox.sram[2].get();
-    let start_bit = mbox.sram[3].get();
-    let length = mbox.sram[4].get();
+    let req = FuseWriteReqHdr::ref_from_bytes(&buf[..hdr_size])
+        .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
+    let partition = req.partition;
+    let entry = req.entry;
+    let start_bit = req.start_bit;
+    let length = req.length;
 
     crate::println!(
         "[mci-mbox] IFPW: partition={}, entry={}, start_bit={}, length={}",
@@ -258,18 +221,13 @@ fn handle_fuse_write(cmd: u32, input_dlen: u32, mbox: &MciMboxRegs, otp: &Otp) {
         length
     );
 
-    // Checked arithmetic: length + 7 and header + data_bytes can wrap on crafted inputs.
-    let data_bytes = match length.checked_add(7) {
-        Some(v) => (v / 8) as usize,
-        None => {
+    let data_bytes = length
+        .checked_add(7)
+        .map(|v| (v / 8) as usize)
+        .ok_or_else(|| {
             crate::println!("[mci-mbox] IFPW: length overflow");
-            let n = write_fuse_response(mbox.sram, FuseError::InvalidLength.as_u32(), None);
-            mbox.dlen.set((n * 4) as u32);
-            mbox.status
-                .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-            return;
-        }
-    };
+            McuError::ROM_OTP_FUSE_INVALID_LENGTH
+        })?;
     let data_words = (data_bytes + 3) / 4;
 
     if data_words > MAX_FUSE_DATA_WORDS {
@@ -278,136 +236,71 @@ fn handle_fuse_write(cmd: u32, input_dlen: u32, mbox: &MciMboxRegs, otp: &Otp) {
             data_words,
             MAX_FUSE_DATA_WORDS
         );
-        let n = write_fuse_response(mbox.sram, FuseError::DataTooLarge.as_u32(), None);
-        mbox.dlen.set((n * 4) as u32);
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-        return;
+        return Err(McuError::ROM_OTP_FUSE_DATA_TOO_LARGE);
     }
 
-    let expected_dlen = match FUSE_WRITE_HEADER_BYTES.checked_add(data_bytes as u32) {
-        Some(v) => v,
-        None => {
-            crate::println!("[mci-mbox] IFPW: expected dlen overflow");
-            let n = write_fuse_response(mbox.sram, FuseError::InvalidLength.as_u32(), None);
-            mbox.dlen.set((n * 4) as u32);
-            mbox.status
-                .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-            return;
-        }
-    };
+    let expected_dlen = hdr_size.checked_add(data_bytes).ok_or_else(|| {
+        crate::println!("[mci-mbox] IFPW: expected dlen overflow");
+        McuError::ROM_OTP_FUSE_INVALID_LENGTH
+    })?;
 
-    match input_dlen.cmp(&expected_dlen) {
+    match dlen.cmp(&expected_dlen) {
         Ordering::Less => {
             crate::println!(
                 "[mci-mbox] IFPW: input too short for data ({} < {})",
-                input_dlen,
+                dlen,
                 expected_dlen
             );
-            let n = write_fuse_response(mbox.sram, FuseError::InputTooShort.as_u32(), None);
-            mbox.dlen.set((n * 4) as u32);
-            mbox.status
-                .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-            return;
+            return Err(McuError::ROM_OTP_FUSE_INPUT_TOO_SHORT);
         }
         Ordering::Greater => {
             crate::println!(
                 "[mci-mbox] IFPW: input too long for data ({} > {})",
-                input_dlen,
+                dlen,
                 expected_dlen
             );
-            let n = write_fuse_response(mbox.sram, FuseError::InvalidLength.as_u32(), None);
-            mbox.dlen.set((n * 4) as u32);
-            mbox.status
-                .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-            return;
+            return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
         }
         Ordering::Equal => {}
     }
 
-    let result = fuse_write_dai(otp, partition, entry, start_bit, length, data_words, |i| {
-        mbox.sram[5 + i].get()
-    });
+    fuse_write_dai(otp, partition, entry, start_bit, length, data_words, |i| {
+        u32::from_le_bytes(
+            buf[hdr_size + i * 4..hdr_size + i * 4 + 4]
+                .try_into()
+                .unwrap(),
+        )
+    })?;
 
-    let fips = if result.is_success() {
-        FIPS_STATUS_APPROVED
-    } else {
-        result.as_u32()
-    };
-    let n = write_fuse_response(mbox.sram, fips, None);
-    mbox.dlen.set((n * 4) as u32);
-
-    if result.is_success() {
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::DataReady);
-        crate::println!("[mci-mbox] IFPW: success");
-    } else {
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-        crate::println!("[mci-mbox] IFPW: failed {}", HexWord(result.as_u32()));
-    }
+    // Response: [chksum(4)][fips_status(4)]
+    buf[4..8].copy_from_slice(&MailboxRespHeader::FIPS_STATUS_APPROVED.to_le_bytes());
+    crate::println!("[mci-mbox] IFPW: success");
+    Ok(RESP_HDR_BYTES)
 }
 
-/// MC_FUSE_LOCK_PARTITION handler.
-///
-/// Input  SRAM: chksum(u32), partition(u32)   — 8 bytes min
-/// Output SRAM: chksum(u32), fips_status(u32)
-fn handle_fuse_lock_partition(cmd: u32, input_dlen: u32, mbox: &MciMboxRegs, otp: &Otp) {
+fn handle_fuse_lock_partition(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, McuError> {
     crate::println!("[mci-mbox] Processing MC_FUSE_LOCK_PARTITION (IFPK)");
 
-    if input_dlen != DLEN_FUSE_LOCK {
+    if dlen != size_of::<FuseLockPartitionReq>() {
         crate::println!(
             "[mci-mbox] IFPK: unexpected dlen {} (expected {})",
-            input_dlen,
-            DLEN_FUSE_LOCK
+            dlen,
+            size_of::<FuseLockPartitionReq>()
         );
-        let n = write_fuse_response(mbox.sram, FuseError::InvalidLength.as_u32(), None);
-        mbox.dlen.set((n * 4) as u32);
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-        return;
+        return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
     }
 
-    if !verify_request_checksum(cmd, mbox.sram, input_dlen) {
-        crate::println!("[mci-mbox] IFPK: checksum mismatch");
-        let n = write_fuse_response(mbox.sram, FuseError::ChecksumError.as_u32(), None);
-        mbox.dlen.set((n * 4) as u32);
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-        return;
-    }
-
-    let partition = mbox.sram[1].get();
+    let req = FuseLockPartitionReq::ref_from_bytes(&buf[..size_of::<FuseLockPartitionReq>()])
+        .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
+    let partition = req.partition;
     crate::println!("[mci-mbox] IFPK: partition={}", HexWord(partition));
 
-    let result = fuse_lock_partition_dai(otp, partition);
+    fuse_lock_partition_dai(otp, partition)?;
 
-    let fips = if result.is_success() {
-        FIPS_STATUS_APPROVED
-    } else {
-        result.as_u32()
-    };
-    let n = write_fuse_response(mbox.sram, fips, None);
-    mbox.dlen.set((n * 4) as u32);
-
-    if result.is_success() {
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::DataReady);
-        crate::println!("[mci-mbox] IFPK: success");
-    } else {
-        mbox.status
-            .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
-        crate::println!("[mci-mbox] IFPK: failed {}", HexWord(result.as_u32()));
-    }
-}
-
-/// Handle an unrecognised command code.
-fn handle_unknown_cmd(cmd: u32, mbox: &MciMboxRegs) {
-    crate::println!("[mci-mbox] Unknown fuse command: {}", HexWord(cmd));
-    let n = write_fuse_response(mbox.sram, FuseError::UnknownCommand.as_u32(), None);
-    mbox.dlen.set((n * 4) as u32);
-    mbox.status
-        .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
+    // Response: [chksum(4)][fips_status(4)]
+    buf[4..8].copy_from_slice(&MailboxRespHeader::FIPS_STATUS_APPROVED.to_le_bytes());
+    crate::println!("[mci-mbox] IFPK: success");
+    Ok(RESP_HDR_BYTES)
 }
 
 // ---------------------------------------------------------------------------
@@ -424,14 +317,12 @@ pub fn process_fuse_mbox_commands(mci: &Mci, otp: &Otp) {
 
     let notif0 = &mci.registers.intr_block_rf_notif0_internal_intr_r;
 
-    // Mailbox 0 registers
     let mbox0_execute = &mci.registers.mcu_mbox0_csr_mbox_execute;
     let mbox0_status = &mci.registers.mcu_mbox0_csr_mbox_cmd_status;
     let mbox0_dlen = &mci.registers.mcu_mbox0_csr_mbox_dlen;
     let mbox0_cmd = &mci.registers.mcu_mbox0_csr_mbox_cmd;
     let mbox0_sram = &mci.registers.mcu_mbox0_csr_mbox_sram;
 
-    // Mailbox 1 registers
     let mbox1_execute = &mci.registers.mcu_mbox1_csr_mbox_execute;
     let mbox1_status = &mci.registers.mcu_mbox1_csr_mbox_cmd_status;
     let mbox1_dlen = &mci.registers.mcu_mbox1_csr_mbox_dlen;
@@ -439,7 +330,6 @@ pub fn process_fuse_mbox_commands(mci: &Mci, otp: &Otp) {
     let mbox1_sram = &mci.registers.mcu_mbox1_csr_mbox_sram;
 
     loop {
-        // Poll both mailboxes until one has MBOX_EXECUTE asserted.
         let (active_mbox, is_mbox0) = loop {
             if mbox0_execute.read(mci::bits::MboxExecute::Execute) != 0 {
                 break (
@@ -473,7 +363,6 @@ pub fn process_fuse_mbox_commands(mci: &Mci, otp: &Otp) {
             mbox_name
         );
 
-        // Clear notification sticky bit.
         if is_mbox0 {
             notif0.modify(mci::bits::Notif0IntrT::NotifMbox0CmdAvailSts::SET);
         } else {
@@ -481,23 +370,30 @@ pub fn process_fuse_mbox_commands(mci: &Mci, otp: &Otp) {
         }
 
         let cmd = active_mbox.cmd.get();
-        let input_dlen = active_mbox.dlen.get();
+        let input_dlen = active_mbox.dlen.get() as usize;
         crate::println!(
             "[mci-mbox] Command: {}, dlen: {} bytes",
             HexWord(cmd),
             input_dlen
         );
 
-        match cmd {
-            MC_FUSE_READ_CMD => handle_fuse_read(cmd, input_dlen, &active_mbox, otp),
-            MC_FUSE_WRITE_CMD => handle_fuse_write(cmd, input_dlen, &active_mbox, otp),
-            MC_FUSE_LOCK_PARTITION_CMD => {
-                handle_fuse_lock_partition(cmd, input_dlen, &active_mbox, otp)
+        let mut aligned_buf = AlignedBuf([0u8; MAX_FUSE_REQ_BYTES]);
+        let buf = &mut aligned_buf.0[..];
+
+        let result = dispatch_fuse_command(cmd, input_dlen, active_mbox.sram, buf, otp);
+
+        match result {
+            Ok(resp_len) => {
+                send_response(&active_mbox, buf, resp_len, true);
             }
-            _ => handle_unknown_cmd(cmd, &active_mbox),
+            Err(e) => {
+                let err_code = u32::from(e);
+                crate::println!("[mci-mbox] Command failed: {}", HexWord(err_code));
+                buf[4..8].copy_from_slice(&err_code.to_le_bytes());
+                send_response(&active_mbox, buf, RESP_HDR_BYTES, false);
+            }
         }
 
-        // Wait for SoC to release the mailbox (MBOX_EXECUTE → 0).
         crate::println!(
             "[mci-mbox] Waiting for SoC to release {} (MBOX_EXECUTE → 0)",
             mbox_name

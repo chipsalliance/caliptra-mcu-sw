@@ -4522,6 +4522,7 @@ dependencies = [
  "caliptra-api",
  "caliptra-registers",
  "mcu-error",
+ "mcu-mbox-common",
  "registers-generated",
  "riscv-csr",
  "rv32i",
