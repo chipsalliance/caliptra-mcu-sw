@@ -14,6 +14,7 @@ use caliptra_hw_model_types::{
 };
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
+use caliptra_ureg::MmioMut;
 use mcu_mbox_common::messages::calc_checksum;
 pub use mcu_mgr::McuManager;
 pub use mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
@@ -28,7 +29,6 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
-use ureg::MmioMut;
 pub use vmem::read_otp_vmem_data;
 use zerocopy::FromBytes;
 
