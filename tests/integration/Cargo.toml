@@ -52,6 +52,7 @@ mcu-hw-model.workspace = true
 mcu-image-header.workspace = true
 mcu-mbox-common.workspace = true
 mcu-rom-common.workspace = true
+ocp.workspace = true
 mcu-testing-common.workspace = true
 network-config.workspace = true
 openssl.workspace = true

@@ -5235,6 +5235,7 @@ dependencies = [
  "mcu-rom-common",
  "mcu-testing-common",
  "network-config",
+ "ocp",
  "openssl",
  "otp-digest",
  "p384",
