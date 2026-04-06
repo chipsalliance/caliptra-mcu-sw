@@ -129,9 +129,9 @@ impl McuError {
             "Device Ownership Transfer corrupt blob"
         ),
         (
-            ROM_COLD_BOOT_FLASH_NOT_CONFIGURED_ERROR,
+            ROM_COLD_BOOT_RECOVERY_NOT_CONFIGURED_ERROR,
             0x1_0010,
-            "Flash not configured"
+            "Recovery boot mechanism not configured"
         ),
         (
             ROM_DOT_RECOVERY_BLOB_AUTH_ERROR,

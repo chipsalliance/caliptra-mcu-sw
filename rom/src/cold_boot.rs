@@ -775,7 +775,7 @@ fn enter_i3c_services(
 }
 
 impl BootFlow for ColdBoot {
-    fn run(env: &mut RomEnv, params: RomParameters) -> ! {
+    fn run(env: &mut RomEnv, mut params: RomParameters) -> ! {
         #[cfg(feature = "ocp-lock")]
         let mut params = params;
 
@@ -899,19 +899,19 @@ impl BootFlow for ColdBoot {
 
         romtime::println!("[mcu-rom] OTP initialized");
 
-        let flash_boot = ((mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 29)) != 0)
-            || params.request_flash_boot;
+        let recovery_boot = ((mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 29)) != 0)
+            || params.request_recovery_boot;
 
-        if flash_boot && (params.flash_partition_driver.is_none() || !cfg!(feature = "hw-2-1")) {
+        if recovery_boot && (params.image_provider_manager.is_none() || !cfg!(feature = "hw-2-1")) {
             romtime::println!(
-                "Flash boot requested but missing flash driver or AXI bypass not enabled in ROM"
+                "Recovery boot requested but missing image provider or AXI bypass not enabled"
             );
-            fatal_error(McuError::ROM_COLD_BOOT_FLASH_NOT_CONFIGURED_ERROR);
+            fatal_error(McuError::ROM_COLD_BOOT_RECOVERY_NOT_CONFIGURED_ERROR);
         }
 
-        if flash_boot {
+        if recovery_boot {
             romtime::println!(
-                "[mcu-rom] Configurating Caliptra watchdog timers for flash boot: {} {}",
+                "[mcu-rom] Configuring Caliptra watchdog timers for recovery boot: {} {}",
                 straps.cptra_wdt_cfg0,
                 straps.cptra_wdt_cfg1
             );
@@ -1269,10 +1269,10 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::RiDownloadFirmwareComplete.into());
         mci.set_flow_milestone(McuBootMilestones::RI_DOWNLOAD_COMPLETED.into());
 
-        // Loading flash into the recovery flow is only possible in 2.1+.
-        if flash_boot {
-            if let Some(flash_driver) = params.flash_partition_driver {
-                romtime::println!("[mcu-rom] Starting Flash recovery flow");
+        // Loading images into the recovery flow is only possible in 2.1+.
+        if recovery_boot {
+            if let Some(ref mut manager) = params.image_provider_manager {
+                romtime::println!("[mcu-rom] Starting recovery flow");
                 mci.set_flow_checkpoint(McuRomBootStatus::FlashRecoveryFlowStarted.into());
 
                 // Set AXI bypass mode once before the recovery flow
@@ -1280,10 +1280,10 @@ impl BootFlow for ColdBoot {
                     .soc_mgmt_if_rec_intf_cfg
                     .modify(RecIntfCfg::RecIntfBypass::SET);
 
-                crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
+                crate::recovery::load_image_with_retry(i3c_base, manager)
                     .unwrap_or_else(|_| fatal_error(McuError::ROM_COLD_BOOT_LOAD_IMAGE_ERROR));
 
-                romtime::println!("[mcu-rom] Flash Recovery flow complete");
+                romtime::println!("[mcu-rom] Recovery flow complete");
                 mci.set_flow_checkpoint(McuRomBootStatus::FlashRecoveryFlowComplete.into());
                 mci.set_flow_milestone(McuBootMilestones::FLASH_RECOVERY_FLOW_COMPLETED.into());
             }
