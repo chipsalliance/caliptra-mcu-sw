@@ -773,6 +773,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mctp-vdm-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-util-host-command-types",
+ "caliptra-util-host-mctp-vdm-test-config",
+ "caliptra-util-host-transport",
+ "clap 4.5.51",
+ "mctp-vdm-common",
+ "mcu-testing-common",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-ocp-eat"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=294bcacbd34aca6e23ce7b652885e3236f7e7afe#294bcacbd34aca6e23ce7b652885e3236f7e7afe"
@@ -879,12 +893,42 @@ version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=294bcacbd34aca6e23ce7b652885e3236f7e7afe#294bcacbd34aca6e23ce7b652885e3236f7e7afe"
 
 [[package]]
+name = "caliptra-util-host-command-types"
+version = "0.1.0"
+dependencies = [
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-util-host-mailbox-test-config"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "serde",
  "toml 0.8.23",
+]
+
+[[package]]
+name = "caliptra-util-host-mctp-vdm-test-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "caliptra-util-host-osal"
+version = "0.1.0"
+
+[[package]]
+name = "caliptra-util-host-transport"
+version = "0.1.0"
+dependencies = [
+ "caliptra-util-host-command-types",
+ "caliptra-util-host-osal",
+ "mctp-vdm-common",
+ "zerocopy",
 ]
 
 [[package]]
@@ -4834,6 +4878,9 @@ dependencies = [
  "caliptra-image-fake-keys",
  "caliptra-image-gen",
  "caliptra-image-types",
+ "caliptra-mctp-vdm-client",
+ "caliptra-util-host-mctp-vdm-test-config",
+ "caliptra-util-host-transport",
  "chrono",
  "crc",
  "ecdsa",

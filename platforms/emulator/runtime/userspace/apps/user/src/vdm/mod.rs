@@ -1,6 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-#[cfg(feature = "test-mctp-vdm-cmds")]
+#[cfg(any(
+    feature = "test-mctp-vdm-cmds",
+    feature = "test-caliptra-util-host-mctp-vdm-validator"
+))]
 mod cmd_handler_mock;
 
 use core::fmt::Write;
@@ -12,7 +15,10 @@ use libsyscall_caliptra::system::System;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
-#[cfg(feature = "test-mctp-vdm-cmds")]
+#[cfg(any(
+    feature = "test-mctp-vdm-cmds",
+    feature = "test-caliptra-util-host-mctp-vdm-validator"
+))]
 use static_cell::StaticCell;
 
 #[embassy_executor::task]
@@ -29,7 +35,10 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     writeln!(console_writer, "Starting MCTP VDM task...").unwrap();
 
-    #[cfg(feature = "test-mctp-vdm-cmds")]
+    #[cfg(any(
+        feature = "test-mctp-vdm-cmds",
+        feature = "test-caliptra-util-host-mctp-vdm-validator"
+    ))]
     {
         // Use static storage to ensure 'static lifetime for handler, transport, and cmd_interface.
         static HANDLER: StaticCell<cmd_handler_mock::NonCryptoCmdHandlerMock> = StaticCell::new();

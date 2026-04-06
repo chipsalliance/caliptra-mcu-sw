@@ -116,6 +116,11 @@ jobs:
           cargo test --package tests-integration --lib -- test::test_caliptra_util_host_validator --nocapture --include-ignored
           sccache --show-stats
 
+      - name: Run Caliptra Util Host MCTP VDM validator tests
+        run: |
+          cargo test --package tests-integration --lib -- test_mctp_vdm_validator::test::test_caliptra_util_host_mctp_vdm_validator --nocapture --include-ignored
+          sccache --show-stats
+
       - name: Upload test results and logs
         if: always()
         uses: actions/upload-artifact@v4

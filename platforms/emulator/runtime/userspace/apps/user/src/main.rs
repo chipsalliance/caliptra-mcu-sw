@@ -108,7 +108,10 @@ pub(crate) async fn async_main() {
         .spawn(mcu_mbox_lib::fips_periodic::fips_periodic_task())
         .unwrap();
 
-    #[cfg(feature = "test-mctp-vdm-cmds")]
+    #[cfg(any(
+        feature = "test-mctp-vdm-cmds",
+        feature = "test-caliptra-util-host-mctp-vdm-validator"
+    ))]
     EXECUTOR.get().spawner().spawn(vdm::vdm_task()).unwrap();
 
     loop {

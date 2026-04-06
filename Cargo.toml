@@ -186,6 +186,11 @@ zip = { version = "4.3.0", default-features = false, features = ["chrono", "defl
 
 # local dependencies
 caliptra-util-host-mailbox-test-config = { path = "caliptra-util-host/apps/mailbox/config" }
+caliptra-util-host-mctp-vdm-test-config = { path = "caliptra-util-host/apps/mctp-vdm/config" }
+caliptra-mctp-vdm-client = { path = "caliptra-util-host/apps/mctp-vdm/client" }
+caliptra-util-host-transport = { path = "caliptra-util-host/transport" }
+caliptra-util-host-command-types = { path = "caliptra-util-host/command-types" }
+caliptra-util-host-osal = { path = "caliptra-util-host/osal" }
 caliptra-mailbox-server = { path = "caliptra-util-host/apps/mailbox/server" }
 capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
 capsules-runtime = { path = "runtime/kernel/capsules" }
