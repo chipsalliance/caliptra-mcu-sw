@@ -28,8 +28,8 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
+use caliptra_ureg::MmioMut;
 use emulator_periph::TapDevice;
-use ureg::MmioMut;
 pub use vmem::read_otp_vmem_data;
 
 // Re-export flash image builder for creating flash images from firmware bytes

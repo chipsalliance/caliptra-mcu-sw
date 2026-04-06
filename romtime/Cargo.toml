@@ -9,10 +9,10 @@ edition.workspace = true
 [dependencies]
 caliptra-api.workspace = true
 caliptra-registers.workspace = true
+caliptra-ureg.workspace = true
 mcu-error.workspace = true
 registers-generated.workspace = true
 tock-registers.workspace = true
-ureg.workspace = true
 zerocopy.workspace = true
 
 [features]
