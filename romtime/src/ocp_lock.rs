@@ -93,9 +93,18 @@ pub enum PermaBitStatus {
 pub struct Error(u32);
 
 impl Error {
+    // TODO(clundin): Prefix with ROM
+    // ROM Errors
     pub const INVALID_HEK_SLOT: Self = Self(0x0000_0000_0000_0001);
     pub const EXHAUSTED_HEK_SLOTS: Self = Self(0x0000_0000_0000_0002);
     pub const MISSING_PLATFORM_IMPLEMENTATION: Self = Self(0x0000_0000_0000_0003);
+
+    // Runtime Errors
+    pub const RUNTIME_HPKE_ENDORSEMENT_FAILURE: Self = Self(0x0000_0000_1000_0000);
+    pub const RUNTIME_HPKE_PUB_KEY_EMPTY: Self = Self(0x0000_0000_1000_0001);
+    pub const RUNTIME_HPKE_UNSUPPORTED_ALGORITHM: Self = Self(0x0000_0000_1000_0002);
+    pub const RUNTIME_HPKE_INVALID_CERT_FORMAT: Self = Self(0x0000_0000_1000_0003);
+    pub const RUNTIME_HPKE_CERT_SIGNING_FAILURE: Self = Self(0x0000_0000_1000_0004);
 }
 
 #[derive(Debug)]

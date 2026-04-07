@@ -234,6 +234,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
     #[cfg(feature = "test-ocp-lock")]
     {
         test_ocp_lock::test_get_algorithms().await;
+        test_ocp_lock::test_get_hpke_public_key_x509().await;
         System::exit(0);
     }
 
