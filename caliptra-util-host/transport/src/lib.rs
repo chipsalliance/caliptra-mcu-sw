@@ -20,6 +20,9 @@ pub use error::{TransportError, TransportResult};
 // Re-export mailbox types specifically
 pub use transports::mailbox::{Mailbox, MailboxDriver, MailboxError};
 
+// Re-export MCTP VDM types
+pub use transports::mctp_vdm::{MctpVdmDriver, MctpVdmError, MctpVdmTransport};
+
 /// Transport configuration
 #[derive(Debug, Clone, Default)]
 pub struct TransportConfig {
