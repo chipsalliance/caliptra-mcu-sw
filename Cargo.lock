@@ -351,7 +351,7 @@ dependencies = [
 [[package]]
 name = "caliptra-bitstream-downloader"
 version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-sw?rev=294bcacbd34aca6e23ce7b652885e3236f7e7afe#294bcacbd34aca6e23ce7b652885e3236f7e7afe"
+source = "git+https://github.com/chipsalliance/caliptra-infra?rev=3db904cf9cd704fcf890da32fd61dd30bfce8d11#3db904cf9cd704fcf890da32fd61dd30bfce8d11"
 dependencies = [
  "anyhow",
  "clap 4.5.51",

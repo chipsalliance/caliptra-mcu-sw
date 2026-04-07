@@ -267,12 +267,13 @@ libtock_small_panic = { path = "runtime/userspace/libtock/panic_handlers/small_p
 libtock_unittest = { path = "runtime/userspace/libtock/unittest" }
 tbf-header = { path = "runtime/userspace/libtock/tbf-header" }
 
+caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-infra", rev = "3db904cf9cd704fcf890da32fd61dd30bfce8d11" }
+
 # caliptra dependencies; keep git revs in sync
 caliptra-api = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "294bcacbd34aca6e23ce7b652885e3236f7e7afe" }
 caliptra-api-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "294bcacbd34aca6e23ce7b652885e3236f7e7afe" }
 caliptra-auth-man-gen = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "294bcacbd34aca6e23ce7b652885e3236f7e7afe" }
 caliptra-auth-man-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "294bcacbd34aca6e23ce7b652885e3236f7e7afe" }
-caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "294bcacbd34aca6e23ce7b652885e3236f7e7afe" }
 caliptra-builder = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "294bcacbd34aca6e23ce7b652885e3236f7e7afe" }
 caliptra-drivers = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "294bcacbd34aca6e23ce7b652885e3236f7e7afe" }
 caliptra-emu-bus = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "294bcacbd34aca6e23ce7b652885e3236f7e7afe" }
