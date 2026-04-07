@@ -316,7 +316,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test_emulator]
     if: always()
-    steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
@@ -339,3 +338,68 @@ jobs:
           for xml in /tmp/junit/junit-*.xml; do
             /tmp/test-printer/bin/test-printer --xml-path "$xml" >> $GITHUB_STEP_SUMMARY
           done
+
+  coverage:
+    runs-on: ubuntu-latest
+    needs: [precheckin, build-firmware, build-emulator, build-tests]
+
+    env:
+      CARGO_INCREMENTAL: 0
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential curl git && \
+          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Install cargo-nextest (prebuilt binary)
+        run: |
+          curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
+
+      - name: Download firmware bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-bundle
+          path: target/
+
+      - name: Download emulator bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: emulator-bundle
+          path: target/
+
+      - name: Download test archive
+        uses: actions/download-artifact@v4
+        with:
+          name: nextest-archive
+          path: /tmp/
+
+      - name: Build ROM ELF for coverage analysis
+        run: cargo xtask rom-build
+
+      - name: Run tests with coverage collection
+        run: |
+          mkdir -p /tmp/mcu-coverage
+          CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip" \
+          CPTRA_EMULATOR_BUNDLE="${PWD}/target/emulators.zip" \
+          MCU_COVERAGE_PATH=/tmp/mcu-coverage \
+          cargo nextest run \
+            --archive-file /tmp/nextest-archive.tar.zst \
+            --workspace-remap . \
+            -E 'not (test(test_firmware_update) | test(test_soc_boot) | test(test_dot::test::test_fw_manifest) | test(test_dot::test::test_dot_fuse) | test(test_new_unbooted))' \
+            || true
+
+      - name: Analyze coverage
+        run: |
+          MCU_COVERAGE_PATH=/tmp/mcu-coverage cargo xtask coverage --analyze-only 2>&1 | tee /tmp/coverage-results.txt
+          echo '# Code Coverage' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat /tmp/coverage-results.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+

@@ -1239,6 +1239,7 @@ dependencies = [
  "fips204",
  "hex",
  "int-enum",
+ "mcu-coverage",
  "nix 0.26.4",
  "p384",
  "rand 0.8.5",
@@ -3549,6 +3550,19 @@ name = "managed"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
+
+[[package]]
+name = "mcu-coverage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bit-vec",
+ "elf",
+ "hex",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "mcu-rom-emulator"
@@ -5928,6 +5942,7 @@ dependencies = [
  "ecdsa",
  "elf",
  "hex",
+ "mcu-coverage",
  "p384",
  "proc-macro2",
  "quote",
