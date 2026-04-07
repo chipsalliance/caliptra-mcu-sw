@@ -414,6 +414,14 @@ impl caliptra_mcu_emulator_registers_generated::lc::LcPeripheral for LcCtrl {
         self.reload_from_otp();
     }
 
+    fn update_reset(&mut self) {
+        // UpdateReset is the action the MCI schedules for warm resets.
+        // Reload lifecycle state from OTP so the new committed state
+        // (e.g. SCRAP after a MANUF→SCRAP transition) is visible to
+        // firmware on the next boot.
+        self.reload_from_otp();
+    }
+
     fn read_status(&mut self) -> ReadWriteRegister<u32, lc_ctrl::bits::Status::Register> {
         self.check_reload_flag();
         ReadWriteRegister::new(self.status.reg.get())

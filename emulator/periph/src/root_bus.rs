@@ -348,7 +348,18 @@ impl Bus for McuRootBus {
         self.uart.update_reset();
         self.ctrl.update_reset();
         self.ram.borrow_mut().update_reset();
+
+        // Clear the DCCM (rom_sram) on reset.  In RTL the MCU DCCM is on
+        // the sss_rst_n domain; the init block erases all SRAMs (including
+        // MCU DCCM) on every warm reset before releasing the MCU from reset.
+        {
+            let mut sram = self.rom_sram.borrow_mut();
+            for b in sram.data_mut().iter_mut() {
+                *b = 0;
+            }
+        }
         self.rom_sram.borrow_mut().update_reset();
+
         self.pic_regs.update_reset();
         self.external_test_sram.borrow_mut().update_reset();
     }
