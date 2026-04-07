@@ -841,6 +841,15 @@ pub unsafe fn main() {
         unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
     let mci_wdt = romtime::Mci::new(mci);
     mci_wdt.disable_wdt();
+
+    // Enable MCI Interrupts
+    mci.intr_block_rf_global_intr_en_r
+        .modify(mci::bits::GlobalIntrEnT::NotifEn::SET + mci::bits::GlobalIntrEnT::ErrorEn::SET);
+    mci.intr_block_rf_notif0_intr_en_r.modify(
+        mci::bits::Notif0IntrEnT::NotifCptraMcuResetReqEn::SET
+            + mci::bits::Notif0IntrEnT::NotifMbox0CmdAvailEn::SET,
+    );
+
     mci_wdt.set_flow_milestone(McuBootMilestones::FIRMWARE_OS_INITIALIZED.into());
     board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
 }
