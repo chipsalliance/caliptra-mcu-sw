@@ -31,23 +31,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      MDBOOK_VERSION: 0.4.52
-      MDBOOK_MERMAID_VERSION: 0.16.2
-      MDBOOK_PLANTUML_VERSION: 0.8.0
+      MDBOOK_VERSION: "0.4.43"
+      MDBOOK_MERMAID_VERSION: "0.14.0"
+      MDBOOK_PLANTUML_VERSION: "0.8.0"
     steps:
       - uses: actions/checkout@v4
-      - name: Install required packages
-        run: |
-          sudo apt-get update -qy
-          sudo apt-get install -qy rustup
-          rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
       - name: Install mdBook
         run: |
-          cargo install --version ${MDBOOK_VERSION} mdbook
-          cargo install --version ${MDBOOK_MERMAID_VERSION} mdbook-mermaid
-          cargo install --version ${MDBOOK_PLANTUML_VERSION} mdbook-plantuml --no-default-features
-          wget https://github.com/plantuml/plantuml/releases/download/v1.2025.7/plantuml-asl-1.2025.7.jar -O docs/plantuml-asl-1.2025.7.jar
-
+          mkdir -p $HOME/.local/bin
+          curl -sSL "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar xz -C $HOME/.local/bin
+          curl -sSL "https://github.com/badboy/mdbook-mermaid/releases/download/v${MDBOOK_MERMAID_VERSION}/mdbook-mermaid-v${MDBOOK_MERMAID_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar xz -C $HOME/.local/bin
+          RUSTUP_TOOLCHAIN=stable cargo install mdbook-plantuml --version "=${MDBOOK_PLANTUML_VERSION}" --no-default-features
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+      - name: Install plantuml
+        run: |
+          wget -q https://github.com/plantuml/plantuml/releases/download/v1.2025.7/plantuml-asl-1.2025.7.jar -O docs/plantuml-asl-1.2025.7.jar
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
