@@ -43,9 +43,9 @@ jobs:
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
       - name: Install mdBook
         run: |
-          cargo install --version ${MDBOOK_VERSION} mdbook
-          cargo install --version ${MDBOOK_MERMAID_VERSION} mdbook-mermaid
-          cargo install --version ${MDBOOK_PLANTUML_VERSION} mdbook-plantuml --no-default-features
+          cargo install --locked --version ${MDBOOK_VERSION} mdbook
+          cargo install --locked --version ${MDBOOK_MERMAID_VERSION} mdbook-mermaid
+          cargo install --locked --version ${MDBOOK_PLANTUML_VERSION} mdbook-plantuml --no-default-features
           wget https://github.com/plantuml/plantuml/releases/download/v1.2025.7/plantuml-asl-1.2025.7.jar -O docs/plantuml-asl-1.2025.7.jar
 
       - name: Setup Pages
