@@ -40,7 +40,7 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
 
 - **`CPTRA_CORE_IDEVID_MANUF_HSM_IDENTIFIER`** ✓ → `FUSE_IDEVID_MANUF_HSM_ID[0..3]`: raw u32 × 4
 
-- **`CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN`** ✓ → `FUSE_MANUF_DBG_UNLOCK_TOKEN[0..3]`: raw u32 × 4
+- **`CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN`** ✓ → `FUSE_MANUF_DBG_UNLOCK_TOKEN[0..15]`: raw u32 × 16 (512 bits)
 
 - **`CPTRA_SS_OWNER_PK_HASH`** ✓ → `CPTRA_OWNER_PK_HASH[0..11]`
   Raw bytes `transmute`d to `[u32; 12]` (LE); same LE-dword format as vendor PK hash.
@@ -67,6 +67,22 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
 - **`dot_fuse_array`** — MCU internal
   use only, not written to any register. `OneHot{bits:256}` → count of burned bits, used to track
   the DOT state counter. Also written (next bit burned) during DOT state transitions.
+
+- **`perma_hek_en`** (2.1+) — MCU internal use only, not written to any register.
+  `LinearMajorityVote{bits:1, dupe:3}` → logical 0 or 1, indicates whether the
+  HEK is permanently set. Used by OCP LOCK logic to determine HEK slot state.
+
+- **`CPTRA_SS_LOCK_HEK_PROD_{0..7}`** ✓ → `FUSE_HEK_SEED[0..7]` (2.1+): 8 OTP
+  partitions. Contains HEK seeds for OCP LOCK. The
+  active slot's seed is written to `FUSE_HEK_SEED[0..7]` (raw u32 × 8)
+  by the OCP LOCK fuse logic. Inactive exhausted/sanitized slots write
+  all-zeros or all-ones to the register. The active slot is determined by the
+  OCP LOCK `RomConfig` platform logic.
+
+- **`ss_key_release_base_addr_l`**, **`ss_key_release_base_addr_h`**,
+  **`ss_key_release_size`** ✓ (2.1+) — OCP LOCK key release configuration. Set from
+  `RomConfig` parameters (not from OTP). `ss_key_release_size` is the MEK size;
+  `ss_key_release_base_addr_l/h` is the 64-bit key release base address.
 
 ### OTP Encoding Recommendations
 
@@ -100,6 +116,8 @@ fault tolerance without causing ECC integrity issues.
 | `cptra_itrng_health_test_window_size` | ✅ | `Single{bits:16}` |
 | `cptra_itrng_entropy_config_0` | ✅ | `Single{bits:32}` |
 | `cptra_itrng_entropy_config_1` | ✅ | `Single{bits:32}` |
+| `perma_hek_en` (2.1 only) | ✅ | `Single{bits:1}` or if no ECC, `LinearMajorityVote{bits:1, dupe:3}` |
+| `CPTRA_SS_LOCK_HEK_PROD_{0..7}` (2.1 only) | ✅ | `Single{bits:384}` each |
 
 TODO: there are only 32 LMS revocation bits specificed in the reference fuse map, but with redundant encoding, we would get 16 or fewer bits, unless  they are backed with HW redundancy.
 
