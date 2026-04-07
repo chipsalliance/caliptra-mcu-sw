@@ -31,6 +31,7 @@ members = [
     "hw/model/test-fw/otp-blank-check",
     "hw/model/test-fw/lc-ctrl",
     "hw/model/test-fw/otp-scramble-check",
+    "coverage",
     "hw/model/test-fw/sw-digest-lock",
     "platforms/common",
     "platforms/emulator/config",
@@ -225,6 +226,7 @@ caliptra-mcu-config-fpga = { path = "platforms/fpga/config" }
 caliptra-mcu-error = { path = "error" }
 caliptra-mcu-firmware-bundler = { path = "firmware-bundler" }
 caliptra-mcu-fuses-generator = { path = "registers/fuses" }
+caliptra-mcu-coverage = { path = "coverage" }
 caliptra-mcu-hw-model = { path = "hw/model" }
 caliptra-mcu-test-fw-exception-handler = { path = "hw/model/test-fw/exception-handler" }
 caliptra-mcu-test-fw-hitless-update-flow = { path = "hw/model/test-fw/hitless-update-flow" }

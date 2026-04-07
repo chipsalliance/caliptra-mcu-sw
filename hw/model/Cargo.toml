@@ -6,7 +6,8 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-default = []
+default = ["coverage"]
+coverage = ["dep:caliptra-mcu-coverage"]
 fpga_realtime = [
     "dep:uio",
     "dep:caliptra-mcu-config-fpga",
@@ -31,6 +32,7 @@ caliptra-ureg.workspace = true
 ecdsa.workspace = true
 caliptra-mcu-emulator-bmc.workspace = true
 caliptra-mcu-emulator-caliptra.workspace = true
+caliptra-mcu-coverage = { workspace = true, optional = true }
 caliptra-mcu-emulator-periph.workspace = true
 caliptra-mcu-emulator-registers-generated.workspace = true
 fips204.workspace = true

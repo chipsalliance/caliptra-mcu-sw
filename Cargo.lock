@@ -959,6 +959,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-coverage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bit-vec",
+ "elf",
+ "hex",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "caliptra-mcu-debug-unlock-signer"
 version = "0.1.0"
 dependencies = [
@@ -1253,6 +1266,7 @@ dependencies = [
  "caliptra-mcu-builder",
  "caliptra-mcu-config",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-coverage",
  "caliptra-mcu-emulator-bmc",
  "caliptra-mcu-emulator-caliptra",
  "caliptra-mcu-emulator-periph",
@@ -5967,6 +5981,7 @@ dependencies = [
  "caliptra-mcu-builder",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-coverage",
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-fusegen",
  "caliptra-mcu-fuses-generator",

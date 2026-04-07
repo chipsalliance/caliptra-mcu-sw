@@ -30,6 +30,7 @@ clap-num.workspace = true
 ecdsa.workspace = true
 elf.workspace = true
 hex.workspace = true
+caliptra-mcu-coverage.workspace = true
 caliptra-mcu-builder.workspace = true
 caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-config-fpga.workspace = true

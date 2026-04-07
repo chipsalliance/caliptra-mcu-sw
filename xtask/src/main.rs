@@ -11,6 +11,7 @@ mod auth_manifest;
 mod cargo_lock;
 mod clippy;
 mod corim;
+mod coverage;
 mod deps;
 mod docs;
 mod emulator_cbinding;
@@ -191,6 +192,12 @@ enum Commands {
     Precheckin,
     /// Check cargo lock
     CargoLock,
+    /// Run code coverage analysis
+    Coverage {
+        /// Only analyze existing coverage data (skip test run)
+        #[arg(long, default_value_t = false)]
+        analyze_only: bool,
+    },
     /// Check files for Apache license header
     HeaderCheck,
     /// Add Apache license header to files where it is missing
@@ -538,6 +545,7 @@ fn main() {
         Commands::Precheckin => precheckin::precheckin(),
         Commands::Format => format::format(),
         Commands::CargoLock => cargo_lock::cargo_lock(),
+        Commands::Coverage { analyze_only } => coverage::coverage(*analyze_only),
         Commands::HeaderFix => header::fix(),
         Commands::HeaderCheck => header::check(),
         Commands::Test {

@@ -17,8 +17,7 @@ use caliptra_emu_bus::BusError;
 use caliptra_emu_bus::BusMmio;
 use caliptra_emu_bus::Ram;
 use caliptra_emu_bus::{Clock, Event};
-use caliptra_emu_cpu::CpuOrgArgs;
-use caliptra_emu_cpu::{Cpu, CpuArgs, InstrTracer, Pic};
+use caliptra_emu_cpu::{Cpu, CpuArgs, CpuOrgArgs, InstrTracer, Pic};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_types::RvAddr;
@@ -115,9 +114,7 @@ impl McuHwModel for ModelEmulated {
 
         let output = Output::new(params.log_writer);
 
-        let mut hasher = DefaultHasher::new();
-        std::hash::Hash::hash_slice(params.caliptra_rom, &mut hasher);
-        let image_tag = hasher.finish();
+        let image_tag = hash_slice(params.mcu_rom);
 
         let memory_map = McuMemoryMap::default();
         let offsets = McuRootBusOffsets {
@@ -371,13 +368,22 @@ impl McuHwModel for ModelEmulated {
             Some(Box::new(dma_ctrl)),
         );
 
-        let args = CpuArgs {
-            org: CpuOrgArgs {
-                reset_vector: McuMemoryMap::default().rom_offset,
-                ..Default::default()
+        let mut cpu = Cpu::new(
+            BusLogger::new(auto_root_bus),
+            clock,
+            pic,
+            CpuArgs {
+                org: CpuOrgArgs {
+                    rom: memory_map.rom_offset,
+                    rom_size: memory_map.rom_size,
+                    iccm: memory_map.sram_offset,
+                    iccm_size: memory_map.sram_size,
+                    dccm: memory_map.dccm_offset,
+                    dccm_size: memory_map.dccm_size,
+                    reset_vector: memory_map.rom_offset,
+                },
             },
-        };
-        let mut cpu = Cpu::new(BusLogger::new(auto_root_bus), clock, pic, args);
+        );
 
         if let Some(stack_info) = params.stack_info {
             cpu.with_stack_info(stack_info);
@@ -713,6 +719,26 @@ impl SocManager for &mut ModelEmulated {
 
 impl Drop for ModelEmulated {
     fn drop(&mut self) {
+        #[cfg(feature = "coverage")]
+        {
+            let cov_path =
+                std::env::var(caliptra_mcu_coverage::MCU_COVERAGE_PATH).unwrap_or_default();
+            if !cov_path.is_empty() {
+                let bitmaps = self.cpu.code_coverage.code_coverage_bitmap();
+                let _ = caliptra_mcu_coverage::dump_coverage_to_file(
+                    &cov_path,
+                    self._rom_image_tag,
+                    bitmaps.rom,
+                );
+                if let Some(iccm_tag) = self.iccm_image_tag {
+                    let _ = caliptra_mcu_coverage::dump_coverage_to_file(
+                        &cov_path,
+                        iccm_tag,
+                        bitmaps.iccm,
+                    );
+                }
+            }
+        }
         MCU_RUNNING.store(false, Ordering::Relaxed);
     }
 }
