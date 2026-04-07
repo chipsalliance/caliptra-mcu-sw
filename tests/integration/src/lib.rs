@@ -159,7 +159,7 @@ mod test {
         // Do NOT copy to a generic name: subsequent builds re-create the
         // intermediate mcu-rom-<platform>.bin (without the appended ROM
         // digest), which would silently clobber the copy.
-        let output: PathBuf = mcu_builder::rom_build(Some(platform().to_string()), Some(&feature))
+        let output: PathBuf = mcu_builder::rom_build(Some(platform().to_string()), Some(feature))
             .expect("ROM build failed");
         assert!(output.exists());
         output

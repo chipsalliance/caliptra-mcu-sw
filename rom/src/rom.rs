@@ -790,24 +790,18 @@ pub fn verify_mcu_mbox_axi_users(
     Ok(())
 }
 
-/// Policy controlling which DOT recovery mechanisms are attempted.
+/// Policy controlling whether DOT backup-blob recovery is attempted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DotRecoveryPolicy {
-    /// Try challenge/response first, then backup blob (default).
-    ChallengeFirst,
-    /// Try backup blob first, then challenge/response.
-    BackupBlobFirst,
-    /// Only attempt challenge/response recovery.
-    ChallengeOnly,
-    /// Only attempt backup blob recovery.
-    BackupBlobOnly,
+    /// Attempt backup blob recovery (default).
+    BackupBlob,
     /// Do not attempt any recovery.
     None,
 }
 
 impl Default for DotRecoveryPolicy {
     fn default() -> Self {
-        Self::ChallengeFirst
+        Self::BackupBlob
     }
 }
 
@@ -831,15 +825,14 @@ pub struct RomParameters<'a> {
     pub fw_manifest_dot_enabled: bool,
     /// Recovery handler for recovering from corrupted DOT blob in ODD state (backup blob flow).
     pub dot_recovery_handler: Option<&'a dyn crate::DotRecoveryHandler>,
-    /// Recovery transport for full challenge/response DOT recovery protocol.
-    pub dot_recovery_transport: Option<&'a dyn crate::RecoveryTransport>,
-    /// DOT recovery watchdog timeout in clock cycles. If non-zero, the MCU
-    /// watchdog is configured with this value before waiting for mbox0
-    /// commands during challenge/response recovery. 0 = no watchdog.
-    pub dot_recovery_wdt_timeout: u64,
-    /// Which DOT recovery mechanisms to attempt and in what order.
-    /// Defaults to challenge/response first, then backup blob.
+    /// Whether to attempt backup-blob recovery.
     pub dot_recovery_policy: DotRecoveryPolicy,
+    /// Recovery/override transport for DOT challenge/response protocol (e.g., MCI mbox0, I3C).
+    pub dot_recovery_transport: Option<&'a dyn crate::RecoveryTransport>,
+    /// DOT recovery/override watchdog timeout in clock cycles. If non-zero,
+    /// the MCU watchdog is configured with this value before waiting for
+    /// mbox0 commands during recovery or override. 0 = no watchdog.
+    pub dot_recovery_wdt_timeout: u64,
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,

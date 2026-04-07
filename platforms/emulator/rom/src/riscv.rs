@@ -373,8 +373,8 @@ pub extern "C" fn rom_entry() -> ! {
             blob: recovery_backup_blob,
         };
 
-        // Create MCI mbox0 challenge/response transport for DOT recovery.
-        let challenge_transport = {
+        // Create MCI mbox0 transport for DOT recovery/override.
+        let recovery_transport = {
             let mci_base: romtime::StaticRef<registers_generated::mci::regs::Mci> = unsafe {
                 romtime::StaticRef::new(
                     MCU_MEMORY_MAP.mci_offset as *const registers_generated::mci::regs::Mci,
@@ -399,7 +399,7 @@ pub extern "C" fn rom_entry() -> ! {
                 None
             },
             dot_recovery_transport: if cfg!(feature = "test-dot-recovery") {
-                Some(&challenge_transport)
+                Some(&recovery_transport)
             } else {
                 None
             },

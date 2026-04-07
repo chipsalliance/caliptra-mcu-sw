@@ -936,52 +936,37 @@ pub struct EccP384PublicKey {
 pub const MLDSA87_PUB_KEY_SIZE_DWORDS: usize = 2592 / 4;
 pub const MLDSA87_SIGNATURE_SIZE_DWORDS: usize = 4628 / 4;
 
-/// Recovery request received from the recovery agent (e.g., BMC).
-pub struct RecoveryRequest<'a> {
+/// Override request containing vendor public keys for verification.
+pub struct OverrideRequest<'a> {
     pub ecc_pub_key: EccP384PublicKey,
     pub mldsa_pub_key: &'a [u32; MLDSA87_PUB_KEY_SIZE_DWORDS],
-    /// New DOT blob data to install after authentication.
-    pub new_dot_blob_data: DotBlobData,
 }
 
-/// Challenge response containing ECDSA P-384 and MLDSA-87 signatures.
-///
-/// The MLDSA signature and public key are passed as `&[u32]` references to
-/// avoid large stack allocations.  The public key is included here (in
-/// addition to `RecoveryRequest`) because the underlying transport may
-/// invalidate the original request data when the challenge is sent.
-pub struct ChallengeResponse<'a> {
+/// Override challenge response containing vendor public keys and dual signatures over the challenge.
+pub struct OverrideChallengeResponse<'a> {
+    pub ecc_pub_key: EccP384PublicKey,
     pub ecc_signature_r: [u8; 48],
     pub ecc_signature_s: [u8; 48],
     pub mldsa_signature: &'a [u32; MLDSA87_SIGNATURE_SIZE_DWORDS],
     pub mldsa_pub_key: &'a [u32; MLDSA87_PUB_KEY_SIZE_DWORDS],
 }
 
-/// New DOT blob data provided by the recovery agent.
-pub struct DotBlobData {
-    /// Code Authentication Key — owner's public key hash.
-    pub cak: OwnerPkHash,
-    /// Lock Authentication Key — public key hash for lock/unlock.
-    pub lak: LakPkHash,
-}
-
-/// Transport trait for communicating with the recovery agent.
+/// Transport trait for DOT recovery and override communication.
 ///
-/// Abstracts the communication channel between ROM and the recovery agent
-/// (e.g., BMC). The default implementation uses MCI mailbox 0, but tests
-/// can provide a mock transport.
+/// Abstracts the communication channel between ROM and the BMC for
+/// DOT_OVERRIDE operations. Implementations may use MCI mailbox 0,
+/// a SoC-specific mailbox, or I3C.
 pub trait RecoveryTransport {
-    /// Wait for a recovery request from the recovery agent.
+    /// Wait for a DOT_UNLOCK_CHALLENGE request from the BMC.
     ///
-    /// Blocks until the agent sends a DOT_RECOVERY initiation containing
-    /// the recovery public key and new DOT blob data.
-    fn wait_for_recovery_request(&self) -> McuResult<RecoveryRequest<'_>>;
+    /// Returns the VendorKey public keys that will be used for signature verification.
+    fn wait_for_override_request(&self) -> McuResult<OverrideRequest<'_>>;
 
-    /// Send a challenge nonce to the recovery agent.
+    /// Send a challenge nonce to the BMC.
     fn send_challenge(&self, challenge: &[u8; 48]) -> McuResult<()>;
 
-    /// Receive the signed challenge response from the recovery agent.
-    fn receive_challenge_response(&self) -> McuResult<ChallengeResponse<'_>>;
+    /// Receive the signed challenge response from the BMC.
+    fn receive_override_response(&self) -> McuResult<OverrideChallengeResponse<'_>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1012,14 +997,14 @@ fn cm_sha384(env: &mut RomEnv, data_parts: &[&[u32]]) -> McuResult<[u8; SHA384_D
         &mut resp32,
     ) {
         romtime::println!("[mcu-rom-dot] CM_SHA failed: {:?}", err);
-        return Err(McuError::ROM_DOT_RECOVERY_CHALLENGE_FAILED);
+        return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
     }
 
     let resp: CmShaResp = transmute!(resp32);
     let src = resp
         .hash
         .get(..SHA384_DIGEST_SIZE)
-        .ok_or(McuError::ROM_DOT_RECOVERY_CHALLENGE_FAILED)?;
+        .ok_or(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED)?;
     let mut hash = [0u8; SHA384_DIGEST_SIZE];
     for (d, s) in hash.iter_mut().zip(src.iter()) {
         *d = *s;
@@ -1071,7 +1056,7 @@ fn cm_random_generate(env: &mut RomEnv) -> McuResult<[u8; 48]> {
         &mut resp32,
     ) {
         romtime::println!("[mcu-rom-dot] CM_RANDOM_GENERATE failed: {:?}", err);
-        return Err(McuError::ROM_DOT_RECOVERY_CHALLENGE_FAILED);
+        return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
     }
     let resp: CmRandomResp = transmute!(resp32);
     Ok(resp.data)
@@ -1119,7 +1104,7 @@ fn cm_ecdsa384_verify(
         &mut resp32,
     ) {
         romtime::println!("[mcu-rom-dot] ECDSA384_SIGNATURE_VERIFY failed: {:?}", err);
-        return Err(McuError::ROM_DOT_RECOVERY_SIG_VERIFY_FAILED);
+        return Err(McuError::ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED);
     }
     Ok(())
 }
@@ -1137,20 +1122,19 @@ fn cm_mldsa87_verify(
     if pub_key.len() != MLDSA87_PUB_KEY_SIZE_DWORDS
         || signature.len() != MLDSA87_SIGNATURE_SIZE_DWORDS
     {
-        return Err(McuError::ROM_DOT_RECOVERY_SIG_VERIFY_FAILED);
+        return Err(McuError::ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED);
     }
 
     // Build the small parts that live on the stack:
-    //   part 0: MailboxReqHeader (checksum filled by exec_mailbox_req_u32_parts)
-    //   part 1: pub_key  (borrowed)
-    //   part 2: signature (borrowed)
-    //   part 3: message_size (u32) + message data (u32 words)
+    //   part 0: pub_key  (borrowed)
+    //   part 1: signature (borrowed)
+    //   part 2: message_size (u32) + message data (u32 words)
     let mut hdr = [0u32; core::mem::size_of::<MailboxReqHeader>() / 4];
     let message_bytes = (message.len() * 4) as u32;
     // message_size word + message data; 64 u32s supports messages up to 252 bytes
     const MAX_MSG_WORDS: usize = 64;
     if message.len() > MAX_MSG_WORDS - 1 {
-        return Err(McuError::ROM_DOT_RECOVERY_SIG_VERIFY_FAILED);
+        return Err(McuError::ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED);
     }
     let mut msg_part = [0u32; MAX_MSG_WORDS];
     msg_part[0] = message_bytes;
@@ -1172,7 +1156,7 @@ fn cm_mldsa87_verify(
         &mut resp32,
     ) {
         romtime::println!("[mcu-rom-dot] MLDSA87_SIGNATURE_VERIFY failed: {:?}", err);
-        return Err(McuError::ROM_DOT_RECOVERY_SIG_VERIFY_FAILED);
+        return Err(McuError::ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED);
     }
     Ok(())
 }
@@ -1253,202 +1237,187 @@ pub fn dot_recovery_flow(
     Ok(())
 }
 
-/// Performs full DOT recovery with challenge/response authentication.
+/// Performs DOT override with challenge/response authentication.
 ///
-/// This implements the complete recovery protocol per the DOT spec:
-/// 1. Wait for recovery request from recovery agent via transport
-/// 2. Verify the recovery public key against the recovery PK hash fuse
-/// 3. Generate a random challenge and send to agent
-/// 4. Receive and verify challenge response signature
-/// 5. Create a new DOT blob with provided CAK/LAK
-/// 6. Compute HMAC with DOT_EFFECTIVE_KEY
-/// 7. Write new blob to flash
+/// This implements the DOT_OVERRIDE flow:
+/// 1. Wait for override request from BMC (includes VendorKey public keys: ECC + MLDSA)
+/// 2. Verify device is in ODD (locked) state
+/// 3. Verify vendor public key hash matches vendor recovery PK hash in OTP fuses
+/// 4. Generate random challenge and send to BMC
+/// 5. Receive and verify ECDSA P-384 and MLDSA-87 signatures over challenge
+/// 6. Burn DOT fuse (n→n+1) to transition to EVEN state
+/// 7. Write a new empty DOT blob (no CAK/LAK) HMAC'd with the new EVEN-state key
 ///
 /// After success, the caller should trigger a warm reset.
-pub fn dot_recovery_challenge_flow(
+pub fn dot_override_challenge_flow(
     env: &mut RomEnv,
     dot_fuses: &DotFuses,
     transport: &dyn RecoveryTransport,
     dot_flash: &dyn FlashStorage,
     stable_key_type: CmStableKeyType,
 ) -> McuResult<()> {
-    romtime::println!("[mcu-rom-dot] Starting DOT recovery challenge flow");
+    romtime::println!("[mcu-rom-dot] Starting DOT override flow");
     env.mci
-        .set_flow_checkpoint(McuRomBootStatus::DotRecoveryStarted.into());
+        .set_flow_checkpoint(McuRomBootStatus::DotOverrideStarted.into());
 
-    // Verify recovery PK hash is available in fuses
+    if !dot_fuses.is_locked() {
+        env.mci
+            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+        return Err(McuError::ROM_DOT_OVERRIDE_NOT_LOCKED);
+    }
+
     let recovery_pk_hash = match dot_fuses.recovery_pk_hash.as_ref() {
         Some(hash) => hash,
         None => {
-            romtime::println!("[mcu-rom-dot] No recovery PK hash in fuses");
-            return Err(McuError::ROM_DOT_RECOVERY_NO_RECOVERY_PK_HASH);
-        }
-    };
-
-    // Step 1: Wait for recovery request from agent
-    romtime::println!("[mcu-rom-dot] Waiting for recovery request");
-    let request = match transport.wait_for_recovery_request() {
-        Ok(r) => r,
-        Err(e) => {
-            romtime::println!("[mcu-rom-dot] Transport error waiting for request");
             env.mci
-                .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
-            return Err(e);
+                .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+            return Err(McuError::ROM_DOT_OVERRIDE_NO_RECOVERY_PK_HASH);
         }
     };
 
-    // Step 2: Verify recovery public key against fuse hash
-    // Compute SHA-384 of the combined public keys (ECC + MLDSA)
+    let request = transport.wait_for_override_request().inspect_err(|_e| {
+        env.mci
+            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+    })?;
+
+    // Verify vendor public key hash matches recovery PK hash in OTP fuses (ECC + MLDSA)
     let ecc_key_u32: &[u32] = {
         let ecc_bytes = request.ecc_pub_key.as_bytes();
-        // SAFETY: EccP384PublicKey is repr(C) with [u32] fields, so aligned.
         unsafe {
             core::slice::from_raw_parts(ecc_bytes.as_ptr() as *const u32, ecc_bytes.len() / 4)
         }
     };
-    romtime::println!("[mcu-rom-dot] Computing PK hash...");
-    let computed_hash = match cm_sha384(env, &[ecc_key_u32, request.mldsa_pub_key]) {
-        Ok(h) => h,
-        Err(e) => {
-            romtime::println!("[mcu-rom-dot] Failed to compute PK hash");
+    let computed_hash =
+        cm_sha384(env, &[ecc_key_u32, request.mldsa_pub_key]).inspect_err(|_e| {
             env.mci
-                .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
-            return Err(e);
-        }
-    };
+                .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+        })?;
 
-    // Compare computed hash to fuse value
     let fuse_hash_bytes: [u8; 48] = transmute!(recovery_pk_hash.0);
     if !constant_time_eq::constant_time_eq(&computed_hash, &fuse_hash_bytes) {
-        romtime::println!("[mcu-rom-dot] Recovery PK hash mismatch");
+        romtime::println!("[mcu-rom-dot] Vendor recovery PK hash mismatch");
         env.mci
-            .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
-        return Err(McuError::ROM_DOT_RECOVERY_PK_HASH_MISMATCH);
+            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+        return Err(McuError::ROM_DOT_OVERRIDE_PK_HASH_MISMATCH);
     }
-    romtime::println!("[mcu-rom-dot] Recovery PK hash verified");
-    env.mci
-        .set_flow_checkpoint(McuRomBootStatus::DotRecoveryPkHashVerified.into());
 
-    // Step 3: Generate random challenge
-    romtime::println!("[mcu-rom-dot] Generating random challenge...");
-    let challenge = match cm_random_generate(env) {
-        Ok(c) => c,
-        Err(e) => {
-            romtime::println!("[mcu-rom-dot] Failed to generate challenge");
-            env.mci
-                .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
-            return Err(e);
+    // Generate and send challenge
+    let challenge = cm_random_generate(env).inspect_err(|_e| {
+        env.mci
+            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+    })?;
+
+    transport.send_challenge(&challenge).inspect_err(|_e| {
+        env.mci
+            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+    })?;
+    env.mci
+        .set_flow_checkpoint(McuRomBootStatus::DotOverrideChallengeSent.into());
+
+    // Receive and verify signed response
+    let response = transport.receive_override_response().inspect_err(|_e| {
+        env.mci
+            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+    })?;
+
+    // Re-verify that the public keys in the response match the OTP hash.
+    // The override response carries fresh copies of both keys; without this
+    // check an attacker could substitute their own keys + matching signatures.
+    let response_ecc_u32: &[u32] = {
+        let ecc_bytes = response.ecc_pub_key.as_bytes();
+        unsafe {
+            core::slice::from_raw_parts(ecc_bytes.as_ptr() as *const u32, ecc_bytes.len() / 4)
         }
     };
-
-    // Step 4: Send challenge to agent
-    if let Err(e) = transport.send_challenge(&challenge) {
-        romtime::println!("[mcu-rom-dot] Transport error sending challenge");
-        env.mci
-            .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
-        return Err(e);
-    }
-    romtime::println!("[mcu-rom-dot] Challenge sent to recovery agent");
-    env.mci
-        .set_flow_checkpoint(McuRomBootStatus::DotRecoveryChallengeSent.into());
-
-    // Step 5: Receive and verify challenge response
-    let response = match transport.receive_challenge_response() {
-        Ok(r) => r,
-        Err(e) => {
-            romtime::println!("[mcu-rom-dot] Transport error receiving response");
+    let response_pk_hash = cm_sha384(env, &[response_ecc_u32, response.mldsa_pub_key])
+        .inspect_err(|_e| {
             env.mci
-                .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
-            return Err(e);
-        }
-    };
+                .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+        })?;
+    if !constant_time_eq::constant_time_eq(&response_pk_hash, &fuse_hash_bytes) {
+        romtime::println!("[mcu-rom-dot] Override response PK hash mismatch");
+        env.mci
+            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+        return Err(McuError::ROM_DOT_OVERRIDE_PK_HASH_MISMATCH);
+    }
 
-    // Hash the challenge for ECDSA verification (ECDSA384_SIGNATURE_VERIFY takes a hash)
-    romtime::println!("[mcu-rom-dot] Hashing challenge for ECDSA verify...");
     let challenge_u32: [u32; 12] = transmute!(challenge);
-    let challenge_hash = match cm_sha384(env, &[&challenge_u32]) {
-        Ok(h) => h,
-        Err(e) => {
-            romtime::println!("[mcu-rom-dot] Failed to hash challenge for verification");
-            env.mci
-                .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
-            return Err(e);
-        }
-    };
+    let challenge_hash = cm_sha384(env, &[&challenge_u32]).inspect_err(|_e| {
+        env.mci
+            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+    })?;
 
-    romtime::println!("[mcu-rom-dot] Verifying ECDSA signature...");
-    if let Err(e) = cm_ecdsa384_verify(
+    if let Err(_e) = cm_ecdsa384_verify(
         env,
-        &request.ecc_pub_key,
+        &response.ecc_pub_key,
         &response.ecc_signature_r,
         &response.ecc_signature_s,
         &challenge_hash,
     ) {
-        romtime::println!("[mcu-rom-dot] ECDSA signature verification failed");
+        romtime::println!("[mcu-rom-dot] Override ECDSA signature verification failed");
         env.mci
-            .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
-        return Err(e);
+            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+        return Err(McuError::ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED);
     }
 
     romtime::println!("[mcu-rom-dot] ECDSA verified, verifying MLDSA signature...");
-    if let Err(e) = cm_mldsa87_verify(
+    if let Err(_e) = cm_mldsa87_verify(
         env,
         response.mldsa_pub_key,
         response.mldsa_signature,
         &challenge_u32,
     ) {
-        romtime::println!("[mcu-rom-dot] MLDSA signature verification failed");
+        romtime::println!("[mcu-rom-dot] Override MLDSA signature verification failed");
         env.mci
-            .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
-        return Err(e);
+            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+        return Err(McuError::ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED);
     }
 
-    romtime::println!("[mcu-rom-dot] Challenge response verified");
     env.mci
-        .set_flow_checkpoint(McuRomBootStatus::DotRecoveryChallengeResponseVerified.into());
+        .set_flow_checkpoint(McuRomBootStatus::DotOverrideSigVerified.into());
 
-    // Step 6: Create new DOT blob with provided CAK/LAK
-    romtime::println!("[mcu-rom-dot] Deriving stable key...");
-    let dot_effective_key = derive_stable_key_flow(env, dot_fuses, stable_key_type)?;
+    // Burn DOT fuse (n→n+1) to transition ODD→EVEN
+    if let Err(e) = burn_dot_lock_fuse(&env.otp, dot_fuses) {
+        env.mci
+            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+        return Err(e);
+    }
+    env.mci
+        .set_flow_checkpoint(McuRomBootStatus::DotOverrideFuseBurned.into());
+
+    // Write a new empty DOT blob HMAC'd with the EVEN-state key.
+    // The fuse has been burned so the device is now EVEN (unlocked). Derive
+    // the key that the next boot will use to verify this blob.
+    let even_fuses = DotFuses {
+        enabled: dot_fuses.enabled,
+        burned: dot_fuses.burned + 1,
+        total: dot_fuses.total,
+        recovery_pk_hash: dot_fuses.recovery_pk_hash.clone(),
+    };
+    let even_key = derive_stable_key_flow(env, &even_fuses, stable_key_type)?;
 
     let mut new_blob = DotBlob {
-        fields: DotBlobFields {
-            version: 1,
-            cak: request.new_dot_blob_data.cak,
-            lak_pub: request.new_dot_blob_data.lak,
-            unlock_method: CHALLENGE_RESPONSE,
-            reserved: [0; 3],
-        },
+        fields: DotBlobFields::default(),
         hmac: [0u32; 16],
     };
+    new_blob.fields.version = 1;
 
     // Step 7: Compute HMAC over blob data (everything except the HMAC field)
     romtime::println!("[mcu-rom-dot] Computing HMAC...");
-    let hmac = cm_hmac(env, &dot_effective_key.0, new_blob.fields.as_bytes())?;
+    let hmac = cm_hmac(env, &even_key.0, new_blob.fields.as_bytes())?;
     new_blob.hmac = hmac;
 
-    romtime::println!("[mcu-rom-dot] New DOT blob created with HMAC");
-    env.mci
-        .set_flow_checkpoint(McuRomBootStatus::DotRecoveryBlobAuthenticated.into());
-
-    // Step 8: Write to flash
-    if let Err(err) = dot_flash.write(new_blob.as_bytes(), 0) {
-        romtime::println!(
-            "[mcu-rom-dot] Failed to write new DOT blob to flash: {:?}",
-            err
-        );
+    if let Err(_err) = dot_flash.write(new_blob.as_bytes(), 0) {
         env.mci
-            .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
+            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
         return Err(McuError::ROM_DOT_RECOVERY_FLASH_WRITE_ERROR);
     }
-    romtime::println!("[mcu-rom-dot] New DOT blob written to flash");
     env.mci
-        .set_flow_checkpoint(McuRomBootStatus::DotRecoveryBlobWritten.into());
+        .set_flow_checkpoint(McuRomBootStatus::DotOverrideBlobWritten.into());
 
-    romtime::println!("[mcu-rom-dot] DOT recovery challenge flow complete, reset required");
+    romtime::println!("[mcu-rom-dot] DOT override complete");
     env.mci
-        .set_flow_checkpoint(McuRomBootStatus::DotRecoveryComplete.into());
+        .set_flow_checkpoint(McuRomBootStatus::DotOverrideComplete.into());
 
     Ok(())
 }
-
