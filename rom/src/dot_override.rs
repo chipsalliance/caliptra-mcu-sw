@@ -178,6 +178,11 @@ impl RecoveryTransport for Mbox0RecoveryTransport {
         }
 
         let dlen = self.helpers.dlen();
+        if dlen < core::mem::size_of::<OverrideChallengeRequest>() {
+            romtime::println!("[dot-override] DOT_UNLOCK_CHALLENGE dlen too small");
+            self.helpers.cmd_failure();
+            return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
+        }
         if !self.helpers.verify_checksum(cmd, dlen) {
             romtime::println!("[dot-override] DOT_UNLOCK_CHALLENGE checksum failed");
             self.helpers.cmd_failure();
@@ -228,6 +233,11 @@ impl RecoveryTransport for Mbox0RecoveryTransport {
         }
 
         let dlen = self.helpers.dlen();
+        if dlen < core::mem::size_of::<OverrideResponse>() {
+            romtime::println!("[dot-override] DOT_OVERRIDE dlen too small");
+            self.helpers.cmd_failure();
+            return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
+        }
         if !self.helpers.verify_checksum(cmd, dlen) {
             romtime::println!("[dot-override] DOT_OVERRIDE checksum failed");
             self.helpers.cmd_failure();
