@@ -4,6 +4,7 @@
 - [Reference ROM Specification](./rom.md)
     - [OCP LOCK Integrator Guide](./ocp_lock_integrator_guide.md)
     - [Device Ownership Transfer](./dot.md)
+    - [ROM Fuses](./rom-fuses.md)
 - [Runtime Specification](./runtime.md)
     - [PLDM Package](./pldm_package.md)
     - [Flash Layout](./flash_layout.md)
