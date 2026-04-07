@@ -32,19 +32,12 @@ impl BootFlow for FwBoot {
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::FirmwareBootFlowStarted.into());
 
-        // Check that the firmware was actually loaded before jumping to it
-        let firmware_ptr = unsafe {
-            (MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32) as *const u32
-        };
-        // Safety: this address is valid
-        if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
-            romtime::println!("Invalid firmware detected; halting");
-            fatal_error(McuError::ROM_FW_BOOT_INVALID_FIRMWARE);
-        }
+        // Start with the static header offset; the DOT section (if present)
+        // is detected dynamically and added below.
+        #[allow(unused_mut)]
+        let mut firmware_offset = params.mcu_image_header_size as u32;
 
         // --- Process optional firmware manifest DOT commands ---
-        // Runs during FwBoot.
-        //
         // Compile-gated by the fw-manifest-dot feature so ROMs that do not
         // need this feature stay panic-free and pay no code-size cost.
         // Additionally gated at runtime by fw_manifest_dot_enabled.
@@ -59,6 +52,8 @@ impl BootFlow for FwBoot {
                 device_ownership_transfer::FwManifestDotSection::ref_from_prefix(sram)
             {
                 if section.magic == device_ownership_transfer::FW_MANIFEST_DOT_MAGIC {
+                    firmware_offset += manifest_size as u32;
+
                     env.mci.set_flow_checkpoint(
                         McuRomBootStatus::FwManifestDotProcessingStarted.into(),
                     );
@@ -80,6 +75,14 @@ impl BootFlow for FwBoot {
             }
         }
 
+        // Check that the firmware was actually loaded before jumping to it
+        let firmware_ptr = unsafe { (MCU_MEMORY_MAP.sram_offset + firmware_offset) as *const u32 };
+        // Safety: this address is valid
+        if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
+            romtime::println!("Invalid firmware detected; halting");
+            fatal_error(McuError::ROM_FW_BOOT_INVALID_FIRMWARE);
+        }
+
         // Jump to firmware
         romtime::println!("[mcu-rom] Jumping to firmware");
         env.mci
@@ -87,7 +90,7 @@ impl BootFlow for FwBoot {
 
         #[cfg(target_arch = "riscv32")]
         unsafe {
-            let firmware_entry = MCU_MEMORY_MAP.sram_offset + params.mcu_image_header_size as u32;
+            let firmware_entry = MCU_MEMORY_MAP.sram_offset + firmware_offset;
             core::arch::asm!(
                 "jr {0}",
                 in(reg) firmware_entry,

@@ -168,7 +168,6 @@ pub extern "C" fn rom_entry() -> ! {
     } else if cfg!(feature = "test-fw-manifest-dot") {
         mcu_rom_common::rom_start(RomParameters {
             dot_flash: Some(dot_flash),
-            mcu_image_header_size: core::mem::size_of::<mcu_rom_common::FwManifestDotSection>(),
             fw_manifest_dot_enabled: true,
             otp_enable_integrity_check: true,
             otp_enable_consistency_check: true,
