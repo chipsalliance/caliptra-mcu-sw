@@ -1209,15 +1209,9 @@ impl Request for McuProdDebugUnlockReqReq {
 }
 
 #[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct McuProdDebugUnlockReqResp(pub ProductionAuthDebugUnlockChallenge);
 impl Response for McuProdDebugUnlockReqResp {}
-
-impl Default for McuProdDebugUnlockReqResp {
-    fn default() -> Self {
-        Self(ProductionAuthDebugUnlockChallenge::default())
-    }
-}
 
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
