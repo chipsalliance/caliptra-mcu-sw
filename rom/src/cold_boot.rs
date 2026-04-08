@@ -266,8 +266,7 @@ fn enter_i3c_services(
     // for an extended period waiting for commands from the BMC.
     mci.configure_wdt(u32::MAX as u64, 1);
 
-    // Disable the recovery interface so the I3C core routes private writes
-    // to the TTI instead of the recovery FIFO.
+    // Disable the recovery interface status registers.
     i3c_base
         .sec_fw_recovery_if_recovery_status
         .write(registers_generated::i3c::bits::RecoveryStatus::DevRecStatus.val(3));

@@ -2,7 +2,7 @@
 
 use mcu_error::McuError;
 use registers_generated::i3c;
-use registers_generated::i3c::bits::{InterruptStatus, Status};
+use registers_generated::i3c::bits::{InterruptStatus, Status, TtiResetControl};
 use romtime::StaticRef;
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -23,6 +23,11 @@ const MAX_POLL_ITERATIONS: u32 = 200_000_000;
 
 /// Maximum number of poll iterations waiting for an IBI to complete.
 const MAX_IBI_POLL_ITERATIONS: u32 = 100_000_000;
+
+/// Maximum number of poll iterations for the initial STATUS_AWAITING IBI.
+/// Shorter than the normal IBI timeout since the controller may not be
+/// ready yet. At ~200 MHz this gives roughly 50ms.
+const AWAITING_IBI_POLL_ITERATIONS: u32 = 10_000_000;
 
 /// Maximum RX data words (each word is 4 bytes).
 const MAX_RX_WORDS: usize = 64;
@@ -60,14 +65,16 @@ impl I3cMailboxHandler {
     pub fn run(&mut self) -> Result<(), McuError> {
         romtime::println!("[mcu-rom-i3c-svc] Entering I3C services mode");
 
-        // Announce readiness
-        self.send_status(STATUS_AWAITING);
+        // Announce readiness via IBI. Use a short timeout since the I3C
+        // controller may not be ready to acknowledge IBIs yet (e.g. on FPGA
+        // it re-enumerates the bus after recovery). If the IBI doesn't
+        // complete, reset the IBI queue to abort it — a pending IBI in the
+        // queue causes the I3C target FSM to stay in DoIBI state and ignore
+        // incoming private writes (i3c-core: i3c_target_fsm.sv line 565).
+        self.send_ibi_with_abort(&[STATUS_AWAITING]);
 
         for _ in 0..MAX_POLL_ITERATIONS {
             if let Some((cmd, rx_buf, data_len)) = self.try_receive_command() {
-                // Payload bytes start after the command byte (byte 0 of
-                // word 0). Pass the raw word buffer and data_len to dispatch
-                // so it can interpret the payload without slice indexing.
                 match self.dispatch(cmd, &rx_buf, data_len) {
                     DispatchResult::Continue => {}
                     DispatchResult::Done => return Ok(()),
@@ -150,6 +157,48 @@ impl I3cMailboxHandler {
                 break;
             }
         }
+    }
+
+    /// Send an IBI with a short timeout; if the controller does not
+    /// acknowledge it, reset the IBI queue to prevent the pending IBI
+    /// from blocking the target FSM (which would prevent TTI RX).
+    fn send_ibi_with_abort(&self, data: &[u8]) {
+        let regs = self.registers;
+
+        let ibi_desc = ((MDB_SERVICES as u32) << 24) | (data.len() as u32);
+        regs.tti_tti_ibi_port.set(ibi_desc);
+
+        let words = data.len().div_ceil(4);
+        let mut i = 0;
+        while i < words {
+            let base = i * 4;
+            let mut word = 0u32;
+            let mut j = 0;
+            while j < 4 {
+                if base + j < data.len() {
+                    word |= (data[base + j] as u32) << (j * 8);
+                }
+                j += 1;
+            }
+            regs.tti_tti_ibi_port.set(word);
+            i += 1;
+        }
+
+        for _ in 0..AWAITING_IBI_POLL_ITERATIONS {
+            if regs
+                .tti_interrupt_status
+                .extract()
+                .is_set(InterruptStatus::IbiDone)
+            {
+                let _ = regs.tti_status.read(Status::LastIbiStatus);
+                return;
+            }
+        }
+
+        // IBI was not acknowledged — flush the IBI queue so the pending
+        // entry does not keep the target FSM in DoIBI state.
+        regs.tti_tti_reset_control
+            .write(TtiResetControl::IbiQueueRst::SET);
     }
 
     /// Try to read a command from the I3C RX queue.

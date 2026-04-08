@@ -451,21 +451,18 @@ impl McuHwModel for ModelFpgaRealtime {
                 u32::from(self.mci_flow_status())
             );
             self.base.recovery_started = false;
-            // Do NOT do a full configure() (RSTDAA + ENTDAA) here. The ROM
-            // may have already entered an I3C services loop that disables the
-            // recovery interface and polls TTI for private writes. A bus
-            // reset via RSTDAA disrupts the target's TTI routing and causes
-            // subsequent private writes to never reach the TTI RX queue.
-            //
-            // The controller is already configured from upload_firmware_rri()
-            // and has valid address mappings; just drain stale recovery data
-            // from the FIFOs.
-            println!("Resetting I3C controller FIFOs for TTI mode");
+            // Reconfigure the I3C controller (RSTDAA+ENTDAA) so the bus
+            // transitions from recovery state to normal TTI operation.
+            // The RSTDAA strips the target's dynamic address, then ENTDAA
+            // re-assigns it. This ensures the controller and target are in
+            // sync for private write transactions.
+            println!("Resetting I3C controller for TTI mode");
             {
                 let i3c_ctrl = self.base.i3c_controller().unwrap();
                 let ctrl = i3c_ctrl.controller.lock().unwrap();
-                ctrl.reset_fifos();
+                ctrl.ready.set(false);
             }
+            self.base.i3c_controller().unwrap().configure();
         }
 
         Ok(())
