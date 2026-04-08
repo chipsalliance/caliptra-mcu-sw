@@ -7,7 +7,10 @@ use registers_generated::otp_ctrl;
 use romtime::{HexBytes, HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
-use crate::{FuseLayout, LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_OFFSET};
+use crate::{
+    extract_fuse_value, extract_single_fuse_value, FuseLayout, LifecycleHashedToken,
+    LifecycleHashedTokens, LC_TOKENS_OFFSET,
+};
 
 // TODO: use the Lifecycle controller to read the Lifecycle state
 
@@ -495,21 +498,35 @@ impl Otp {
         }
     }
 
-    /// Read cptra_core_fmc_key_manifest_svn (4 bytes).
-    pub fn read_cptra_core_fmc_key_manifest_svn(&self) -> McuResult<[u8; 4]> {
+    /// Read raw cptra_core_fmc_key_manifest_svn (4 bytes).
+    pub fn read_cptra_core_fmc_key_manifest_svn_raw(&self) -> McuResult<[u8; 4]> {
         let mut data = [0u8; 4];
         self.read_entry_raw(fuses::OTP_CPTRA_CORE_FMC_KEY_MANIFEST_SVN, &mut data)?;
         Ok(data)
     }
 
+    /// Read and decode cptra_core_fmc_key_manifest_svn.
+    pub fn read_cptra_core_fmc_key_manifest_svn(&self) -> McuResult<u32> {
+        self.read_entry(fuses::OTP_CPTRA_CORE_FMC_KEY_MANIFEST_SVN)
+    }
+
     /// Read vendor public key hash (48 bytes).
+    ///
+    /// Supports 48 byte single value layout.
     pub fn read_vendor_pk_hash(&self, index: usize, buf: &mut [u8]) -> McuResult<()> {
         let entry = vendor_pk_hash_entry(index)?;
+
+        if !matches!(entry.layout, fuses::FuseLayoutType::Single { bits: _ })
+            || entry.byte_size != 48
+        {
+            return Err(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT);
+        }
+
         self.read_entry_raw(entry, buf)
     }
 
-    /// Read cptra_core_runtime_svn (16 bytes).
-    pub fn read_cptra_core_runtime_svn(
+    /// Read raw cptra_core_runtime_svn (16 bytes).
+    pub fn read_cptra_core_runtime_svn_raw(
         &self,
     ) -> McuResult<[u8; fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_size]> {
         let mut data = [0u8; fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_size];
@@ -517,8 +534,31 @@ impl Otp {
         Ok(data)
     }
 
-    /// Read cptra_core_soc_manifest_svn (16 bytes).
-    pub fn read_cptra_core_soc_manifest_svn(
+    /// Read and decode cptra_core_runtime_svn.
+    ///
+    /// The size of the resulting array depends on the layout.
+    pub fn read_cptra_core_runtime_svn(
+        &self,
+    ) -> McuResult<[u32; fuses::OTP_CPTRA_CORE_RUNTIME_SVN.layout.decoded_words()]> {
+        let mut data = [0u32; fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_size / 4];
+        self.read_words_to_registers(
+            fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_offset,
+            data.len(),
+            |i, word| {
+                if let Some(v) = data.get_mut(i) {
+                    *v = word;
+                }
+            },
+        )?;
+        let layout = FuseLayout::from_generated(&fuses::OTP_CPTRA_CORE_RUNTIME_SVN.layout)
+            .ok_or(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT)?;
+        let svn: [u32; fuses::OTP_CPTRA_CORE_RUNTIME_SVN.layout.decoded_words()] =
+            extract_fuse_value(layout, &data)?;
+        Ok(svn)
+    }
+
+    /// Read raw cptra_core_soc_manifest_svn (16 bytes).
+    pub fn read_cptra_core_soc_manifest_svn_raw(
         &self,
     ) -> McuResult<[u8; fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_size]> {
         let mut data = [0u8; fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_size];
@@ -526,11 +566,43 @@ impl Otp {
         Ok(data)
     }
 
-    /// Read cptra_core_soc_manifest_max_svn (4 bytes).
-    pub fn read_cptra_core_soc_manifest_max_svn(&self) -> McuResult<[u8; 4]> {
-        let mut data = [0u8; 4];
-        self.read_entry_raw(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN, &mut data)?;
-        Ok(data)
+    /// Read and decode cptra_core_soc_manifest_svn.
+    ///
+    /// The size of the resulting array depends on the layout.
+    pub fn read_cptra_core_soc_manifest_svn(
+        &self,
+    ) -> McuResult<
+        [u32; fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN
+            .layout
+            .decoded_words()],
+    > {
+        let mut data = [0u32; fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_size / 4];
+        self.read_words_to_registers(
+            fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_offset,
+            data.len(),
+            |i, word| {
+                if let Some(v) = data.get_mut(i) {
+                    *v = word;
+                }
+            },
+        )?;
+        let layout = FuseLayout::from_generated(&fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.layout)
+            .ok_or(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT)?;
+        let svn: [u32; fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN
+            .layout
+            .decoded_words()] = extract_fuse_value(layout, &data)?;
+        Ok(svn)
+    }
+
+    /// Read and decode cptra_core_soc_manifest_max_svn.
+    pub fn read_cptra_core_soc_manifest_max_svn(&self) -> McuResult<u32> {
+        if fuses::OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_size != 4 {
+            return Err(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT);
+        }
+        let raw = self.read_u32_at(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_offset)?;
+        let layout = FuseLayout::from_generated(&fuses::OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.layout)
+            .ok_or(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT)?;
+        extract_single_fuse_value(layout, raw)
     }
 
     /// Read cptra_ss_manuf_debug_unlock_token (64 bytes).
@@ -634,7 +706,7 @@ impl Otp {
     ///
     /// Reads raw bytes from OTP at the entry's byte_offset, then applies
     /// FuseLayout extraction to produce the logical value.
-    /// Suitable for entries whose logical value fits in a single u32.
+    /// Suitable for entries whose raw __and__ logical value fit in a single u32.
     pub fn read_entry(&self, entry: &FuseEntryInfo) -> McuResult<u32> {
         let layout = FuseLayout::from_generated(&entry.layout)
             .ok_or(McuError::ROM_UNSUPPORTED_FUSE_LAYOUT)?;

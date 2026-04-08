@@ -221,7 +221,7 @@ impl Soc {
 
         // FMC Key Manifest SVN.
         let svn = otp
-            .read_u32_at(fuses::OTP_CPTRA_CORE_FMC_KEY_MANIFEST_SVN.byte_offset)
+            .read_cptra_core_fmc_key_manifest_svn()
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_fmc_key_manifest_svn.set(svn);
 
@@ -238,24 +238,34 @@ impl Soc {
         romtime::println!("");
 
         // Runtime SVN.
-        for i in 0..self.registers.fuse_runtime_svn.len() {
-            let word = otp
-                .read_u32_at(fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_offset + i * 4)
-                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-            self.registers.fuse_runtime_svn[i].set(word);
+        let rt_svn = otp
+            .read_cptra_core_runtime_svn()
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        for (i, word) in rt_svn.iter().enumerate() {
+            let reg = self
+                .registers
+                .fuse_runtime_svn
+                .get(i)
+                .unwrap_or_else(|| fatal_error(McuError::ROM_OTP_READ_ERROR));
+            reg.set(*word);
         }
 
         // SoC Manifest SVN.
-        for i in 0..self.registers.fuse_soc_manifest_svn.len() {
-            let word = otp
-                .read_u32_at(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_offset + i * 4)
-                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-            self.registers.fuse_soc_manifest_svn[i].set(word);
+        let manifest_svn = otp
+            .read_cptra_core_soc_manifest_svn()
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        for (i, word) in manifest_svn.iter().enumerate() {
+            let reg = self
+                .registers
+                .fuse_soc_manifest_svn
+                .get(i)
+                .unwrap_or_else(|| fatal_error(McuError::ROM_OTP_READ_ERROR));
+            reg.set(*word);
         }
 
         // SoC Manifest Max SVN.
         let word = otp
-            .read_u32_at(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_offset)
+            .read_cptra_core_soc_manifest_max_svn()
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_soc_manifest_max_svn.set(word);
 

@@ -98,6 +98,28 @@ pub fn generate_fuses(
             OneHotLinearMajorityVote { bits: u32, duplication: u32 },
             WordMajorityVote { bits: u32, duplication: u32 },
         }
+        impl FuseLayoutType {
+            /// The size of the decoded value in words (rounded up).
+            pub const fn decoded_words(&self) -> usize {
+                match self {
+                    FuseLayoutType::Single { bits } => bits.div_ceil(32) as usize,
+                    FuseLayoutType::OneHot { bits: _ } => 1,
+                    FuseLayoutType::LinearMajorityVote {
+                        bits,
+                        duplication: _,
+                    } => bits.div_ceil(32) as usize,
+                    FuseLayoutType::OneHotLinearMajorityVote {
+                        bits: _,
+                        duplication: _,
+                    } => 1,
+                    FuseLayoutType::WordMajorityVote {
+                        bits,
+                        duplication: _,
+                    } => bits.div_ceil(32) as usize,
+                }
+            }
+        }
+
         /// Entry in the fuse lookup table mapping (partition, entry) to OTP location and layout.
         #[derive(Debug, Clone)]
         pub struct FuseEntryInfo {
