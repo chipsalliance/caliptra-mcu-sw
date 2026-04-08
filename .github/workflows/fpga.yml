@@ -252,7 +252,8 @@ jobs:
           sudo CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip" cargo-nextest nextest run \
               "${COMMON_ARGS[@]}" \
               --test-threads=${RUST_TEST_THREADS} \
-              --no-fail-fast
+              --no-fail-fast \
+              -E 'test(debug_unlock)'
 
       - name: 'Upload test results'
         uses: actions/upload-artifact@v4

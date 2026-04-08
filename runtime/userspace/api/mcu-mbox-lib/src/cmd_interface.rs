@@ -24,8 +24,8 @@ use mcu_mbox_common::messages::{
     McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuFipsSelfTestGetResultsReq,
     McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
     McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
-    McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuHmacResp, McuMailboxResp,
-    McuRandomGenerateReq, McuRandomGenerateResp, McuRandomStirReq, McuRandomStirResp,
+    McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuHmacResp, McuMailboxResp,    McuManufDebugUnlockTokenReq, McuManufDebugUnlockTokenResp, McuProdDebugUnlockReqReq,
+    McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq, McuProdDebugUnlockTokenResp,    McuRandomGenerateReq, McuRandomGenerateResp, McuRandomStirReq, McuRandomStirResp,
     McuShaFinalReq, McuShaFinalResp, McuShaInitReq, McuShaInitResp, McuShaUpdateReq,
     DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
 };
@@ -427,6 +427,37 @@ impl<'a> CmdInterface<'a> {
                     msg_buf,
                     req_len,
                     CaliptraCommandId::CM_ECDSA_VERIFY.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            // Debug Unlock commands
+            CommandId::MC_MANUF_DEBUG_UNLOCK_TOKEN => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuManufDebugUnlockTokenResp>()];
+                self.handle_crypto_passthrough::<McuManufDebugUnlockTokenReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::MANUF_DEBUG_UNLOCK_REQ_TOKEN.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuProdDebugUnlockReqResp>()];
+                self.handle_crypto_passthrough::<McuProdDebugUnlockReqReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_REQ.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuProdDebugUnlockTokenResp>()];
+                self.handle_crypto_passthrough::<McuProdDebugUnlockTokenReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.into(),
                     &mut resp_bytes,
                 )
                 .await
