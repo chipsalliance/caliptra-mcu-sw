@@ -791,7 +791,7 @@ name = "caliptra-mcu-capsules-emulator"
 version = "0.1.0"
 dependencies = [
  "bitfield",
- "dma-driver",
+ "caliptra-mcu-dma-driver",
  "flash-driver",
  "kernel",
  "mcu-platforms-common",
@@ -816,6 +816,17 @@ dependencies = [
  "romtime",
  "tock-registers",
  "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-dma-driver"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "kernel",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
 ]
 
 [[package]]
@@ -1544,17 +1555,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.109",
-]
-
-[[package]]
-name = "dma-driver"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "kernel",
- "registers-generated",
- "romtime",
- "tock-registers",
 ]
 
 [[package]]
@@ -3001,11 +3001,11 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-capsules-emulator",
  "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-dma-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "dma-driver",
  "doe-transport",
  "flash-driver",
  "i3c-driver",
@@ -3273,11 +3273,11 @@ dependencies = [
  "arrayvec",
  "caliptra-mcu-capsules-emulator",
  "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-dma-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "dma-driver",
  "doe-mbox-driver",
  "doe-transport",
  "flash-ctrl-emulator",
@@ -3306,11 +3306,11 @@ dependencies = [
  "arrayvec",
  "caliptra-mcu-capsules-emulator",
  "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-dma-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "dma-driver",
  "flash-ctrl-fpga",
  "flash-driver",
  "i3c-driver",

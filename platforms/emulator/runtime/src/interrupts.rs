@@ -18,7 +18,7 @@ pub struct EmulatorPeripherals<'a> {
     pub uart: SemihostUart<'a>,
     pub primary_flash_ctrl: flash_ctrl_emulator::EmulatedFlashCtrl<'a>,
     pub secondary_flash_ctrl: flash_ctrl_emulator::EmulatedFlashCtrl<'a>,
-    pub dma: dma_driver::axicdma::AxiCDMA<'a, InternalTimers<'a>>,
+    pub dma: caliptra_mcu_dma_driver::axicdma::AxiCDMA<'a, InternalTimers<'a>>,
     pub doe_transport: doe_mbox_driver::EmulatedDoeTransport<'a, InternalTimers<'a>>,
 }
 
@@ -32,8 +32,8 @@ impl<'a> EmulatorPeripherals<'a> {
             secondary_flash_ctrl: flash_ctrl_emulator::EmulatedFlashCtrl::new(
                 flash_ctrl_emulator::SECONDARY_FLASH_CTRL_BASE,
             ),
-            dma: dma_driver::axicdma::AxiCDMA::new(
-                dma_driver::axicdma::DMA_CTRL_BASE,
+            dma: caliptra_mcu_dma_driver::axicdma::AxiCDMA::new(
+                caliptra_mcu_dma_driver::axicdma::DMA_CTRL_BASE,
                 false,
                 alarm,
             ),

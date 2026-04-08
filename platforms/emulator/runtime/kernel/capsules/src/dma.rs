@@ -36,7 +36,7 @@ pub struct App {
 
 pub struct Dma<'a> {
     // The underlying dma storage driver.
-    driver: &'a dyn dma_driver::hil::DMA,
+    driver: &'a dyn caliptra_mcu_dma_driver::hil::DMA,
     // Per-app state.
     apps: Grant<App, UpcallCount<1>, AllowRoCount<0>, AllowRwCount<0>>,
     current_app: OptionalCell<ProcessId>,
@@ -44,7 +44,7 @@ pub struct Dma<'a> {
 
 impl<'a> Dma<'a> {
     pub fn new(
-        driver: &'a dyn dma_driver::hil::DMA,
+        driver: &'a dyn caliptra_mcu_dma_driver::hil::DMA,
         grant: Grant<App, UpcallCount<1>, AllowRoCount<0>, AllowRwCount<0>>,
     ) -> Dma<'a> {
         Dma {
@@ -115,8 +115,8 @@ impl<'a> Dma<'a> {
                         app.dest_address,
                     )?;
                     self.driver.start_transfer(
-                        dma_driver::hil::DmaRoute::AxiToAxi,
-                        dma_driver::hil::DmaRoute::AxiToAxi,
+                        caliptra_mcu_dma_driver::hil::DmaRoute::AxiToAxi,
+                        caliptra_mcu_dma_driver::hil::DmaRoute::AxiToAxi,
                         false,
                     )
                 })
@@ -125,8 +125,8 @@ impl<'a> Dma<'a> {
     }
 }
 
-impl dma_driver::hil::DMAClient for Dma<'_> {
-    fn transfer_complete(&self, status: dma_driver::hil::DMAStatus) {
+impl caliptra_mcu_dma_driver::hil::DMAClient for Dma<'_> {
+    fn transfer_complete(&self, status: caliptra_mcu_dma_driver::hil::DMAStatus) {
         if let Some(processid) = self.current_app.take() {
             let _ = self.apps.enter(processid, move |_, kernel_data| {
                 // Signal the app.
@@ -137,7 +137,7 @@ impl dma_driver::hil::DMAClient for Dma<'_> {
         };
     }
 
-    fn transfer_error(&self, error: dma_driver::hil::DMAError) {
+    fn transfer_error(&self, error: caliptra_mcu_dma_driver::hil::DMAError) {
         if let Some(processid) = self.current_app.take() {
             let _ = self.apps.enter(processid, move |_, kernel_data| {
                 // Signal the app.
