@@ -24,8 +24,10 @@ use mcu_mbox_common::messages::{
     McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuFipsSelfTestGetResultsReq,
     McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
     McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
-    McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuHmacResp, McuMailboxResp,    McuManufDebugUnlockTokenReq, McuManufDebugUnlockTokenResp, McuProdDebugUnlockReqReq,
-    McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq, McuProdDebugUnlockTokenResp,    McuRandomGenerateReq, McuRandomGenerateResp, McuRandomStirReq, McuRandomStirResp,
+    McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuHmacResp, McuMailboxResp,
+    McuManufDebugUnlockTokenReq, McuManufDebugUnlockTokenResp, McuProdDebugUnlockReqReq,
+    McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq, McuProdDebugUnlockTokenResp,
+    McuRandomGenerateReq, McuRandomGenerateResp, McuRandomStirReq, McuRandomStirResp,
     McuShaFinalReq, McuShaFinalResp, McuShaInitReq, McuShaInitResp, McuShaUpdateReq,
     DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
 };

@@ -24,23 +24,23 @@ pub mod test {
         CmRandomGenerateReq, CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq,
         CmShaUpdateReq, Cmk, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp,
         DeviceInfoReq, DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, MailboxReqHeader,
-        MailboxRespHeader, MailboxRespHeaderVarSize, ManufDebugUnlockTokenReq, McuAesDecryptInitReq,
-        McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq,
+        MailboxRespHeader, MailboxRespHeaderVarSize, ManufDebugUnlockTokenReq,
+        McuAesDecryptInitReq, McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq,
         McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq,
         McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq,
         McuCmDeleteReq, McuCmImportReq, McuCmImportResp, McuCmStatusReq, McuCmStatusResp,
         McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
-        McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
-        McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp,
-        McuFipsPeriodicEnableReq, McuFipsPeriodicStatusReq, McuFipsPeriodicStatusResp,
-        McuFipsSelfTestGetResultsReq, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
-        McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
-        McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuMailboxReq, McuMailboxResp,
-        McuManufDebugUnlockTokenReq, McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq,
-        McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
-        McuShaInitResp, McuShaUpdateReq, ProductionAuthDebugUnlockReq,
-        ProductionAuthDebugUnlockToken, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
-        CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
+        McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq, McuEcdsaCmkSignResp,
+        McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuFipsPeriodicEnableReq,
+        McuFipsPeriodicStatusReq, McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsReq,
+        McuFipsSelfTestStartReq, McuFipsSelfTestStartResp, McuHkdfExpandReq, McuHkdfExpandResp,
+        McuHkdfExtractReq, McuHkdfExtractResp, McuHmacKdfCounterReq, McuHmacKdfCounterResp,
+        McuHmacReq, McuMailboxReq, McuMailboxResp, McuManufDebugUnlockTokenReq,
+        McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq, McuRandomGenerateReq,
+        McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq, McuShaInitResp,
+        McuShaUpdateReq, ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
+        CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE,
+        MAX_CMB_DATA_SIZE,
     };
     use mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
@@ -117,10 +117,8 @@ pub mod test {
 
         // Set up keypairs for unlock level 1 (index 0)
         let unlock_level = 1u8;
-        let mut prod_dbg_keypairs: Vec<([u8; 96], [u8; 2592])> =
-            vec![([0u8; 96], [0u8; 2592]); 8];
-        prod_dbg_keypairs[(unlock_level - 1) as usize] =
-            (ecc_pub_key_bytes, mldsa_pub_key_bytes);
+        let mut prod_dbg_keypairs: Vec<([u8; 96], [u8; 2592])> = vec![([0u8; 96], [0u8; 2592]); 8];
+        prod_dbg_keypairs[(unlock_level - 1) as usize] = (ecc_pub_key_bytes, mldsa_pub_key_bytes);
 
         // Prepare ECC private key for signing
         let mut be_ecc_priv_key_bytes = [0u8; ECC384_SCALAR_BYTE_SIZE];
@@ -145,9 +143,7 @@ pub mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some(feature),
             i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
-            lifecycle_controller_state: Some(
-                mcu_hw_model::LifecycleControllerState::Prod,
-            ),
+            lifecycle_controller_state: Some(mcu_hw_model::LifecycleControllerState::Prod),
             debug_intent: true,
             prod_dbg_unlock_keypairs: prod_dbg_keypairs,
             ..Default::default()
@@ -162,8 +158,7 @@ pub mod test {
                 exit(-1);
             }
             sleep_emulator_ticks(5_000_000);
-            let mci_base =
-                unsafe { romtime::StaticRef::new(mci_ptr as *const mci::regs::Mci) };
+            let mci_base = unsafe { romtime::StaticRef::new(mci_ptr as *const mci::regs::Mci) };
             let mbox_transport = McuMailboxTransport::new(mci_base);
             println!("MCU MBOX Prod Debug Unlock Test Thread Starting:");
             let mut test = RequestResponseTest::new(mbox_transport);
@@ -2464,19 +2459,16 @@ pub mod test {
             // The Caliptra runtime does not handle this command, so we expect a
             // failure response. This verifies the MCU mailbox dispatch works.
             println!("  Testing manuf debug unlock token passthrough...");
-            let mut manuf_req =
-                McuMailboxReq::ManufDebugUnlockToken(McuManufDebugUnlockTokenReq(
-                    ManufDebugUnlockTokenReq {
-                        hdr: MailboxReqHeader::default(),
-                        token: [0xAA; 32],
-                    },
-                ));
+            let mut manuf_req = McuMailboxReq::ManufDebugUnlockToken(McuManufDebugUnlockTokenReq(
+                ManufDebugUnlockTokenReq {
+                    hdr: MailboxReqHeader::default(),
+                    token: [0xAA; 32],
+                },
+            ));
             manuf_req.populate_chksum().unwrap();
 
-            let manuf_resp = self.process_message(
-                manuf_req.cmd_code().0,
-                manuf_req.as_bytes().unwrap(),
-            );
+            let manuf_resp =
+                self.process_message(manuf_req.cmd_code().0, manuf_req.as_bytes().unwrap());
             // Expect failure since this is a ROM-only command not supported by runtime.
             // A response (even failure) confirms the passthrough dispatch works.
             match manuf_resp {
@@ -2503,21 +2495,18 @@ pub mod test {
             // Production lifecycle. In the default test configuration, the device
             // is not in production mode, so the command will be rejected.
             println!("  Testing prod debug unlock request passthrough...");
-            let mut prod_req =
-                McuMailboxReq::ProdDebugUnlockReq(McuProdDebugUnlockReqReq(
-                    ProductionAuthDebugUnlockReq {
-                        hdr: MailboxReqHeader::default(),
-                        length: 2,
-                        unlock_level: 1,
-                        reserved: [0; 3],
-                    },
-                ));
+            let mut prod_req = McuMailboxReq::ProdDebugUnlockReq(McuProdDebugUnlockReqReq(
+                ProductionAuthDebugUnlockReq {
+                    hdr: MailboxReqHeader::default(),
+                    length: 2,
+                    unlock_level: 1,
+                    reserved: [0; 3],
+                },
+            ));
             prod_req.populate_chksum().unwrap();
 
-            let prod_resp = self.process_message(
-                prod_req.cmd_code().0,
-                prod_req.as_bytes().unwrap(),
-            );
+            let prod_resp =
+                self.process_message(prod_req.cmd_code().0, prod_req.as_bytes().unwrap());
             // Expect failure due to lifecycle mismatch (not Production).
             // A response confirms the passthrough dispatch and Caliptra handling works.
             match prod_resp {
@@ -2543,10 +2532,9 @@ pub mod test {
             // a valid challenge-response flow. Sending a zeroed token will be
             // rejected, confirming the passthrough dispatch works.
             println!("  Testing prod debug unlock token passthrough...");
-            let mut prod_token_req =
-                McuMailboxReq::ProdDebugUnlockToken(McuProdDebugUnlockTokenReq(
-                    ProductionAuthDebugUnlockToken::new_zeroed(),
-                ));
+            let mut prod_token_req = McuMailboxReq::ProdDebugUnlockToken(
+                McuProdDebugUnlockTokenReq(ProductionAuthDebugUnlockToken::new_zeroed()),
+            );
             prod_token_req.populate_chksum().unwrap();
 
             let prod_token_resp = self.process_message(
@@ -2590,16 +2578,18 @@ pub mod test {
             println!("Running production debug unlock end-to-end test");
 
             // Step 1: Send production debug unlock request to get challenge
-            println!("  Sending prod debug unlock request (unlock_level={})...", unlock_level);
-            let mut prod_req =
-                McuMailboxReq::ProdDebugUnlockReq(McuProdDebugUnlockReqReq(
-                    ProductionAuthDebugUnlockReq {
-                        hdr: MailboxReqHeader::default(),
-                        length: 2,
-                        unlock_level,
-                        reserved: [0; 3],
-                    },
-                ));
+            println!(
+                "  Sending prod debug unlock request (unlock_level={})...",
+                unlock_level
+            );
+            let mut prod_req = McuMailboxReq::ProdDebugUnlockReq(McuProdDebugUnlockReqReq(
+                ProductionAuthDebugUnlockReq {
+                    hdr: MailboxReqHeader::default(),
+                    length: 2,
+                    unlock_level,
+                    reserved: [0; 3],
+                },
+            ));
             prod_req.populate_chksum().unwrap();
 
             let resp = self
@@ -2620,8 +2610,8 @@ pub mod test {
             );
 
             // Step 2: Parse the challenge response
-            let challenge =
-                ProductionAuthDebugUnlockChallenge::read_from_bytes(&resp.data).map_err(|e| {
+            let challenge = ProductionAuthDebugUnlockChallenge::read_from_bytes(&resp.data)
+                .map_err(|e| {
                     println!("    Failed to parse challenge: {:?}", e);
                 })?;
             println!(
