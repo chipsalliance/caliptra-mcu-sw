@@ -2660,7 +2660,8 @@ pub mod test {
             );
 
             println!("Production debug unlock end-to-end test passed");
-            Ok(())
+//            Ok(())
+            Err(())
         }
     }
 
