@@ -696,7 +696,7 @@ mod test {
         } else {
             "test-pldm-streaming-boot"
         };
-        let i3c_port = PortPicker::new().pick().unwrap().into();
+        let i3c_port = PortPicker::new().random(true).pick().unwrap().into();
 
         // Check if we have prebuilt binaries for this feature
         if has_prebuilt_binaries(feature) {
@@ -815,6 +815,7 @@ mod test {
         // Build the Caliptra builder with prebuilt paths (needed for tests that modify manifest)
         let builder = CaliptraBuilder::new(
             false,
+            false,
             Some(caliptra_rom_path),
             Some(caliptra_fw_path.clone()),
             Some(soc_manifest_path.clone()),
@@ -910,6 +911,7 @@ mod test {
 
         // Build the Caliptra runtime
         let mut builder = CaliptraBuilder::new(
+            false,
             false,
             None,
             None,

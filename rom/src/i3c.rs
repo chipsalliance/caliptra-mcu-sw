@@ -162,11 +162,8 @@ impl I3c {
 
         romtime::println!("[mcu-rom-i3c] Enable PHY to the bus");
         // enable the PHY connection to the bus
-        regs.i3c_base_hc_control.modify(
-            HcControl::ModeSelector::SET +
-                // clear is bus enabled, set is suspended
-                HcControl::BusEnable::CLEAR,
-        );
+        regs.i3c_base_hc_control
+            .modify(HcControl::ModeSelector::SET + HcControl::BusEnable::SET);
     }
 
     pub fn disable_recovery(&mut self) {

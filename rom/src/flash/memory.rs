@@ -47,8 +47,13 @@ impl FlashStorage for SimpleFlash {
     fn write(&self, buffer: &[u8], address: usize) -> Result<(), FlashDrvError> {
         let mem = self.memory.take();
         let result = match mem.get_mut(address..address + buffer.len()) {
-            Some(slice) => {
-                slice.copy_from_slice(buffer);
+            Some(slice) if slice.len() == buffer.len() => {
+                // Same technique as read() above – iterate instead of
+                // copy_from_slice to avoid pulling in a panic path that
+                // the compiler cannot optimise away.
+                for (d, s) in slice.iter_mut().zip(buffer.iter()) {
+                    *d = *s;
+                }
                 Ok(())
             }
             _ => Err(FlashDrvError::INVAL),

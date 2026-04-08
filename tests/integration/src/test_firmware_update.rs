@@ -258,6 +258,7 @@ mod test {
 
         let mut update_builder = CaliptraBuilder::new(
             false,
+            false,
             None,
             None,
             None,
@@ -510,7 +511,7 @@ mod test {
             format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
         );
 
-        let i3c_port = PortPicker::new().pick().unwrap().into();
+        let i3c_port = PortPicker::new().random(true).pick().unwrap().into();
 
         // Check if we have prebuilt binaries for this feature
         if has_prebuilt_binaries(feature) {
@@ -655,6 +656,7 @@ mod test {
         // Build the Caliptra builder with prebuilt paths
         let builder = CaliptraBuilder::new(
             false,
+            false,
             Some(caliptra_rom_path),
             Some(caliptra_fw_path.clone()),
             Some(soc_manifest_path.clone()),
@@ -772,6 +774,7 @@ mod test {
 
         // Build the Runtime image
         let mut builder = CaliptraBuilder::new(
+            false,
             false,
             None,
             None,

@@ -41,6 +41,7 @@ pub enum AuthManifestCommands {
 pub fn create(soc_images: &[ImageCfg], mcu_image: &ImageCfg, output: &str) -> Result<()> {
     let mut builder = CaliptraBuilder::new(
         false,
+        false,
         None,
         None,
         None,

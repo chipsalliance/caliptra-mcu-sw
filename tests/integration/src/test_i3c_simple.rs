@@ -16,7 +16,7 @@ mod test {
 
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some("test-i3c-simple"),
-            i3c_port: Some(PortPicker::new().pick().unwrap()),
+            i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
             ..Default::default()
         });
 

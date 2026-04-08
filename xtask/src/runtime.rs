@@ -37,8 +37,8 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     features.push("debug");
     let rom_binary = mcu_builder::rom_build(None, None)?;
     let tock_binary = runtime_build_with_apps(&features, None, false, None, None)?;
-
     let mut caliptra_builder = CaliptraBuilder::new(
+        false,
         false,
         caliptra_rom,
         caliptra_firmware,

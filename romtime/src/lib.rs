@@ -9,6 +9,8 @@ mod lifecycle;
 pub use lifecycle::*;
 mod mci;
 pub use mci::*;
+#[cfg(feature = "ocp-lock")]
+pub mod ocp_lock;
 pub mod otp;
 pub use otp::*;
 mod soc_manager;

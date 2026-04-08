@@ -25,6 +25,8 @@ pldm-lib.workspace = true
 zerocopy.workspace = true
 ocp-eat.workspace = true
 
+[features]
+ocp-lock = []
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 libtock_unittest.workspace = true

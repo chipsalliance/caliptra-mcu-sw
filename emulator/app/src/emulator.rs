@@ -907,6 +907,7 @@ impl Emulator {
                 log_dir: args_log_dir.clone(),
                 uart_output: None, // Network Coprocessor has separate UART output
                 uart_rx: None,
+                tap_device: None,
                 pic: network_pic.clone(),
                 clock: clock.clone(),
             };

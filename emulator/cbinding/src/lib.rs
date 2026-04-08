@@ -200,9 +200,25 @@ pub struct CEmulatorConfig {
     pub fuse_vendor_test_partition: *const c_char,        // Optional, can be null
 
     // External device callbacks (can be null)
+    /// Function pointer for external read callback, or null for none.
+    /// Must match the CExternalReadCallback signature when non-null.
     pub external_read_callback: *const std::ffi::c_void,
+    /// Function pointer for external write callback, or null for none.
+    /// Must match the CExternalWriteCallback signature when non-null.
     pub external_write_callback: *const std::ffi::c_void,
-    pub callback_context: *const std::ffi::c_void, // Context pointer for callbacks
+    /// Context pointer passed to external read/write callbacks.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the object pointed to by this pointer
+    /// remains valid for the entire lifetime of the emulator instance
+    /// (i.e., until emulator_destroy is called). The emulator stores
+    /// this pointer internally and will pass it to the registered
+    /// callbacks on every bus transaction that hits the external
+    /// address range. Freeing or invalidating the context object
+    /// while the emulator is still alive will result in undefined
+    /// behavior.
+    pub callback_context: *const std::ffi::c_void,
 }
 
 /// Get the size required to allocate memory for the emulator
@@ -233,6 +249,7 @@ pub extern "C" fn emulator_get_alignment() -> usize {
 /// * `emulator_memory` must be properly aligned (use `emulator_get_alignment()`)
 /// * `config` must be a valid pointer to a CEmulatorConfig structure
 /// * All string pointers in `config` must be valid null-terminated C strings
+/// * `config.callback_context` must remain valid until `emulator_destroy` is called
 #[no_mangle]
 pub unsafe extern "C" fn emulator_init(
     emulator_memory: *mut CEmulator,
@@ -357,19 +374,22 @@ pub unsafe extern "C" fn emulator_init(
     let read_callback = if config.external_read_callback.is_null() {
         None
     } else {
+        // Safety: caller guarantees non-null callback matches CExternalReadCallback signature
         let c_callback: CExternalReadCallback =
             unsafe { std::mem::transmute(config.external_read_callback) };
-        let context = config.callback_context;
-        Some(convert_c_read_callback(c_callback, context))
+        Some(convert_c_read_callback(c_callback, config.callback_context))
     };
 
     let write_callback = if config.external_write_callback.is_null() {
         None
     } else {
+        // Safety: caller guarantees non-null callback matches CExternalWriteCallback signature
         let c_callback: CExternalWriteCallback =
             unsafe { std::mem::transmute(config.external_write_callback) };
-        let context = config.callback_context;
-        Some(convert_c_write_callback(c_callback, context))
+        Some(convert_c_write_callback(
+            c_callback,
+            config.callback_context,
+        ))
     };
 
     // Create the emulator with callbacks
@@ -539,12 +559,16 @@ pub unsafe extern "C" fn emulator_send_uart_char(
     };
 
     if let Some(ref stdin_uart_arc) = stdin_uart {
-        let mut uart_rx = stdin_uart_arc.lock().unwrap();
-        if uart_rx.is_none() {
-            *uart_rx = Some(character as u8);
-            1
-        } else {
-            0 // Buffer full
+        match stdin_uart_arc.lock() {
+            Ok(mut uart_rx) => {
+                if uart_rx.is_none() {
+                    *uart_rx = Some(character as u8);
+                    1
+                } else {
+                    0 // Buffer full
+                }
+            }
+            Err(_) => -1, // Mutex poisoned
         }
     } else {
         -1 // UART RX not enabled
@@ -576,11 +600,15 @@ pub unsafe extern "C" fn emulator_uart_rx_ready(emulator_memory: *mut CEmulator)
     };
 
     if let Some(ref stdin_uart_arc) = stdin_uart {
-        let uart_rx = stdin_uart_arc.lock().unwrap();
-        if uart_rx.is_none() {
-            1
-        } else {
-            0
+        match stdin_uart_arc.lock() {
+            Ok(uart_rx) => {
+                if uart_rx.is_none() {
+                    1
+                } else {
+                    0
+                }
+            }
+            Err(_) => -1, // Mutex poisoned
         }
     } else {
         -1 // UART RX not enabled

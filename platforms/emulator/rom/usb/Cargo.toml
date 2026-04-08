@@ -1,0 +1,15 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "mcu-usb-emulator"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+ocp.workspace = true
+registers-generated.workspace = true
+romtime.workspace = true
+tock-registers.workspace = true
+zeroize.workspace = true
+zerocopy.workspace = true

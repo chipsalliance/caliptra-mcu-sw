@@ -238,6 +238,11 @@ impl McuError {
             "OTP pending check exceeded maximum iterations"
         ),
         (
+            ROM_OTP_OCP_LOCK_FAILURE,
+            0x3_000c,
+            "OTP failure in OCP LOCK"
+        ),
+        (
             ROM_OTP_FUSE_INVALID_PARTITION,
             0x3_0010,
             "OTP fuse provisioning: invalid partition"
@@ -431,6 +436,21 @@ impl McuError {
             ROM_COLD_BOOT_ENCRYPTED_FW_ACTIVATE_FINISH_ERROR,
             0x1_0015,
             "Cold boot encrypted firmware activate finish error"
+        ),
+        (
+            ROM_COLD_BOOT_ROM_DIGEST_MISMATCH,
+            0x1_0017,
+            "Cold boot ROM integrity check failed"
+        ),
+        (
+            ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR,
+            0x1_0018,
+            "Firmware manifest DOT command processing error"
+        ),
+        (
+            OCP_LOCK_ROM_MISSING_CONFIG,
+            0x1_0019,
+            "Missing OCP LOCK ROM Config"
         ),
         (
             ROM_SOC_WDT_CFG_OUT_OF_RANGE,
