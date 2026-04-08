@@ -9,7 +9,7 @@ edition.workspace = true
 [dependencies]
 capsules-core.workspace = true
 capsules-extra.workspace = true
-capsules-emulator.workspace = true
+caliptra-mcu-capsules-emulator.workspace = true
 capsules-runtime.workspace = true
 capsules-system.workspace = true
 components.workspace = true

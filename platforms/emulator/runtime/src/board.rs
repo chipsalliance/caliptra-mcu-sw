@@ -146,8 +146,9 @@ struct VeeR {
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
-    dma: &'static capsules_emulator::dma::Dma<'static>,
-    logging_flash: &'static capsules_emulator::logging::driver::LoggingFlashDriver<'static>,
+    dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
+    logging_flash:
+        &'static caliptra_mcu_capsules_emulator::logging::driver::LoggingFlashDriver<'static>,
     mci: &'static capsules_runtime::mci::Mci,
     mcu_mbox0: &'static capsules_runtime::mcu_mbox::McuMboxDriver<
         'static,
@@ -178,7 +179,7 @@ impl SyscallDriverLookup for VeeR {
             capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
             capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM => f(Some(self.doe_spdm)),
             capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
-            capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
+            caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
             capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
             mcu_config_emulator::flash::DRIVER_NUM_START
                 ..=mcu_config_emulator::flash::DRIVER_NUM_END => {
@@ -191,7 +192,7 @@ impl SyscallDriverLookup for VeeR {
                 }
                 return f(None);
             }
-            capsules_emulator::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
+            caliptra_mcu_capsules_emulator::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
                 f(Some(self.logging_flash))
             }
             capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => f(Some(self.mcu_mbox0)),
@@ -663,22 +664,24 @@ pub unsafe fn main() {
     // Logging capsule
     let logging_flash = runtime_components::logging::LoggingFlashComponent::new(
         board_kernel,
-        capsules_emulator::logging::driver::LOGGING_FLASH_DRIVER_NUM,
+        caliptra_mcu_capsules_emulator::logging::driver::LOGGING_FLASH_DRIVER_NUM,
         logging_fl_user,
         &LOG,
         true,
     )
     .finalize(crate::logging_flash_component_static!(
         virtual_flash::FlashUser<'static, flash_ctrl_emulator::EmulatedFlashCtrl>,
-        capsules_emulator::logging::driver::BUF_LEN
+        caliptra_mcu_capsules_emulator::logging::driver::BUF_LEN
     ));
 
     let dma = mcu_components::dma::DmaComponent::new(
         &emulator_peripherals.dma,
         board_kernel,
-        capsules_emulator::dma::DMA_CTRL_DRIVER_NUM,
+        caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM,
     )
-    .finalize(kernel::static_buf!(capsules_emulator::dma::Dma<'static>));
+    .finalize(kernel::static_buf!(
+        caliptra_mcu_capsules_emulator::dma::Dma<'static>
+    ));
 
     // MCU mailbox0 capsule
     let mcu_mbox0 = mcu_components::mcu_mbox::McuMboxComponent::new(

@@ -158,7 +158,7 @@ struct VeeR {
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
     system: &'static capsules_runtime::system::System<'static, FpgaExiter>,
-    dma: &'static capsules_emulator::dma::Dma<'static>,
+    dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -200,7 +200,7 @@ impl SyscallDriverLookup for VeeR {
                 f(Some(self.mcu_mbox1_staging_sram))
             }
             capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
-            capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
+            caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
             _ => f(None),
         }
     }
@@ -628,9 +628,11 @@ pub unsafe fn main() {
     let dma = mcu_components::dma::DmaComponent::new(
         &fpga_peripherals.dma,
         board_kernel,
-        capsules_emulator::dma::DMA_CTRL_DRIVER_NUM,
+        caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM,
     )
-    .finalize(kernel::static_buf!(capsules_emulator::dma::Dma<'static>));
+    .finalize(kernel::static_buf!(
+        caliptra_mcu_capsules_emulator::dma::Dma<'static>
+    ));
 
     let mcu_mbox0 = mcu_components::mcu_mbox::McuMboxComponent::new(
         board_kernel,

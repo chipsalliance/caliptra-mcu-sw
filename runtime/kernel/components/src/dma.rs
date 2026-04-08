@@ -29,14 +29,14 @@ impl DmaComponent {
 }
 
 impl Component for DmaComponent {
-    type StaticInput = &'static mut MaybeUninit<capsules_emulator::dma::Dma<'static>>;
+    type StaticInput = &'static mut MaybeUninit<caliptra_mcu_capsules_emulator::dma::Dma<'static>>;
 
-    type Output = &'static capsules_emulator::dma::Dma<'static>;
+    type Output = &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>;
 
     fn finalize(self, static_buffer: Self::StaticInput) -> Self::Output {
         let grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
-        let dma: &capsules_emulator::dma::Dma<'_> =
-            static_buffer.write(capsules_emulator::dma::Dma::new(
+        let dma: &caliptra_mcu_capsules_emulator::dma::Dma<'_> =
+            static_buffer.write(caliptra_mcu_capsules_emulator::dma::Dma::new(
                 self.driver,
                 self.board_kernel.create_grant(self.driver_num, &grant_cap),
             ));
