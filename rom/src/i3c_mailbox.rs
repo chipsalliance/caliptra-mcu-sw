@@ -2,7 +2,7 @@
 
 use mcu_error::McuError;
 use registers_generated::i3c;
-use registers_generated::i3c::bits::InterruptStatus;
+use registers_generated::i3c::bits::{InterruptStatus, Status};
 use romtime::StaticRef;
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -145,6 +145,8 @@ impl I3cMailboxHandler {
                 .extract()
                 .is_set(InterruptStatus::IbiDone)
             {
+                // Read LastIbiStatus to clear the IbiDone interrupt.
+                let _ = regs.tti_status.read(Status::LastIbiStatus);
                 break;
             }
         }
