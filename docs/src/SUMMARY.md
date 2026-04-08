@@ -28,5 +28,6 @@
 - [Running with an FPGA](./fpga.md)
 - [Caliptra Utility Host Library](./caliptra_util_host_library.md)
 - [Network Boot Recovery](./network_boot.md)
+- [Integrator's Guide](./integrator-guide.md)
 - [Testing](./testing.md)
     - [I3C Testing over TCP](./testing-i3c.md)

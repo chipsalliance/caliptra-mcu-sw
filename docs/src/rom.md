@@ -60,7 +60,18 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
 1. Set `SS_CONFIG_DONE_STICKY`, `SS_CONFIG_DONE` registers to lock MCI configuration.
 1. Verify PK hashes and MCU mailbox AXI users after locking (see [Security Configuration](#security-configuration) below).
 1. Poll on Caliptra `FLOW_STATUS` registers for Caliptra to deassert the Ready for Fuses state.
-1. Handle [device ownership transfer](./dot.md), if applicable.
+1. **Determine owner public key hash.** The ROM determines which owner public key hash to write to Caliptra's [`CPTRA_OWNER_PK_HASH`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.CPTRA_OWNER_PK_HASH) register. The source depends on whether [Device Ownership Transfer (DOT)](./dot.md) is configured and the current DOT state:
+    1. **DOT configured and DOT blob present**: The ROM runs the full DOT flow — derives the `DOT_EFFECTIVE_KEY`, verifies the DOT blob's HMAC, and determines the owner from the blob's state:
+        * **Locked state (ODD, blob has CAK)**: The Code Authentication Key (CAK) from the DOT blob is used as the owner PK hash.
+        * **Disabled state (ODD, no CAK)**: The DOT blob is authentic but contains no CAK. The ROM falls back to reading `CPTRA_SS_OWNER_PK_HASH` from OTP fuses.
+        * **EVEN state (Uninitialized/Volatile)**: DOT does not provide a persistent owner. The ROM falls back to reading `CPTRA_SS_OWNER_PK_HASH` from OTP fuses.
+    1. **DOT blob empty or corrupt in Locked (ODD) state**: The ROM attempts DOT recovery (challenge/response or backup blob, depending on the platform's recovery policy). If recovery fails, this is a fatal error.
+    1. **DOT not configured**: The ROM skips DOT entirely and reads the owner PK hash from `CPTRA_SS_OWNER_PK_HASH` in OTP.
+
+    In summary, `CPTRA_SS_OWNER_PK_HASH` in OTP serves as a **fallback** whenever DOT does not provide an owner. When DOT is in the Locked state, the CAK from the DOT blob **supersedes** the fuse value.
+
+    > **Note:** Revocation or rotation of the `CPTRA_SS_OWNER_PK_HASH` fuse value is outside the scope of DOT. DOT provides its own key lifecycle (install, lock, unlock, disable) through the DOT blob and fuse array. If an integrator needs to revoke or rotate the fuse-based owner key independently, that must be managed through a separate platform-specific mechanism.
+
 1. Send the `RI_DOWNLOAD_FIRMWARE` command to Caliptra to start the firmware loading process. Caliptra will:
    1. Follow all of the [steps](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#firmware-processor-stage) in the Caliptra ROM documentation for firmware loading in the ROM cold reset.
    1. Transition to Caliptra runtime firmware.
@@ -98,6 +109,8 @@ sequenceDiagram
     loop wait for NOT ready for fuses
     mcu->>caliptra: read flow status
     end
+    note right of mcu: determine owner PK hash (DOT or fuse fallback)
+    mcu->>caliptra: set owner PK hash
     mcu->>caliptra: RI_DOWNLOAD_FIRMWARE command
     note right of caliptra: authenticate FW header/TOC
     note right of caliptra: verify signatures
