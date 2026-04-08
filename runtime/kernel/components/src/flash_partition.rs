@@ -2,7 +2,7 @@
 
 // Component for flash partition driver.
 
-use capsules_runtime::flash_partition::FlashPartition;
+use caliptra_mcu_capsules_runtime::flash_partition::FlashPartition;
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
@@ -33,7 +33,7 @@ macro_rules! instantiate_flash_partitions {
                     )
                     .finalize(flash_partition_component_static!(
                         virtual_flash::FlashUser<'static, $flash_ctrl_ty>,
-                        capsules_runtime::flash_partition::BUF_LEN
+                        caliptra_mcu_capsules_runtime::flash_partition::BUF_LEN
                     )),
                 );
             };
@@ -50,7 +50,9 @@ macro_rules! flash_partition_component_static {
         let fs_to_pages = kernel::static_buf!(
             flash_driver::flash_storage_to_pages::FlashStorageToPages<'static, $F>
         );
-        let fs = kernel::static_buf!(capsules_runtime::flash_partition::FlashPartition<'static>);
+        let fs = kernel::static_buf!(
+            caliptra_mcu_capsules_runtime::flash_partition::FlashPartition<'static>
+        );
         let buffer = kernel::static_buf!([u8; $buf_len]);
 
         (page, fs_to_pages, fs, buffer)
@@ -113,7 +115,7 @@ impl<
             flash_driver::flash_storage_to_pages::FlashStorageToPages<'static, F>,
         >,
         &'static mut MaybeUninit<FlashPartition<'static>>,
-        &'static mut MaybeUninit<[u8; capsules_runtime::flash_partition::BUF_LEN]>,
+        &'static mut MaybeUninit<[u8; caliptra_mcu_capsules_runtime::flash_partition::BUF_LEN]>,
     );
 
     type Output = &'static FlashPartition<'static>;
@@ -123,7 +125,7 @@ impl<
 
         let buffer = static_buffer
             .3
-            .write([0; capsules_runtime::flash_partition::BUF_LEN]);
+            .write([0; caliptra_mcu_capsules_runtime::flash_partition::BUF_LEN]);
 
         let flash_pagebuffer = static_buffer
             .0
@@ -137,17 +139,16 @@ impl<
         );
         hil::flash::HasClient::set_client(self.flash, fs_to_pages);
 
-        let flash_partition =
-            static_buffer
-                .2
-                .write(capsules_runtime::flash_partition::FlashPartition::new(
-                    fs_to_pages,
-                    self.driver_num,
-                    self.board_kernel.create_grant(self.driver_num, &grant_cap),
-                    self.start_address,
-                    self.length,
-                    buffer,
-                ));
+        let flash_partition = static_buffer.2.write(
+            caliptra_mcu_capsules_runtime::flash_partition::FlashPartition::new(
+                fs_to_pages,
+                self.driver_num,
+                self.board_kernel.create_grant(self.driver_num, &grant_cap),
+                self.start_address,
+                self.length,
+                buffer,
+            ),
+        );
         flash_driver::hil::FlashStorage::set_client(fs_to_pages, flash_partition);
         flash_partition
     }

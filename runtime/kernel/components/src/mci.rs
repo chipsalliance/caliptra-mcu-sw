@@ -28,14 +28,14 @@ impl MciComponent {
 }
 
 impl Component for MciComponent {
-    type StaticInput = &'static mut MaybeUninit<capsules_runtime::mci::Mci>;
+    type StaticInput = &'static mut MaybeUninit<caliptra_mcu_capsules_runtime::mci::Mci>;
 
-    type Output = &'static capsules_runtime::mci::Mci;
+    type Output = &'static caliptra_mcu_capsules_runtime::mci::Mci;
 
     fn finalize(self, static_buffer: Self::StaticInput) -> Self::Output {
         let grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
-        let mci: &capsules_runtime::mci::Mci =
-            static_buffer.write(capsules_runtime::mci::Mci::new(
+        let mci: &caliptra_mcu_capsules_runtime::mci::Mci =
+            static_buffer.write(caliptra_mcu_capsules_runtime::mci::Mci::new(
                 self.driver,
                 self.board_kernel.create_grant(self.driver_num, &grant_cap),
             ));

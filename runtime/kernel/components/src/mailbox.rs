@@ -2,8 +2,8 @@
 
 // Component for mailbox capsule.
 
+use caliptra_mcu_capsules_runtime::mailbox::Mailbox;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
-use capsules_runtime::mailbox::Mailbox;
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
@@ -18,7 +18,7 @@ macro_rules! mailbox_component_static {
         let alarm = kernel::static_buf!(VirtualMuxAlarm<'static, $A>);
         let caliptra_soc = kernel::static_buf!(CaliptraSoC);
         let mbox = kernel::static_buf!(
-            capsules_runtime::mailbox::Mailbox<'static, VirtualMuxAlarm<'static, $A>>
+            caliptra_mcu_capsules_runtime::mailbox::Mailbox<'static, VirtualMuxAlarm<'static, $A>>
         );
         (alarm, mbox, caliptra_soc, $b, $c, $d)
     }};
@@ -69,7 +69,7 @@ impl<A: Alarm<'static>> Component for MailboxComponent<A> {
         let mailbox: &Mailbox<'_, VirtualMuxAlarm<'_, _>> =
             static_buffer
                 .1
-                .write(capsules_runtime::mailbox::Mailbox::new(
+                .write(caliptra_mcu_capsules_runtime::mailbox::Mailbox::new(
                     mux_alarm,
                     self.board_kernel.create_grant(self.driver_num, &grant_cap),
                     caliptra_soc,

@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_capsules_runtime::mctp::base_protocol::MessageType;
+use caliptra_mcu_capsules_runtime::mctp::driver::MCTP_MAX_MESSAGE_SIZE;
+use caliptra_mcu_capsules_runtime::mctp::mux::MuxMCTPDriver;
+use caliptra_mcu_capsules_runtime::mctp::recv::MCTPRxState;
+use caliptra_mcu_capsules_runtime::mctp::send::{MCTPSender, MCTPTxState};
+use caliptra_mcu_capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
+use caliptra_mcu_capsules_runtime::test::mctp::MockMctp;
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
-use capsules_runtime::mctp::base_protocol::MessageType;
-use capsules_runtime::mctp::driver::MCTP_MAX_MESSAGE_SIZE;
-use capsules_runtime::mctp::mux::MuxMCTPDriver;
-use capsules_runtime::mctp::recv::MCTPRxState;
-use capsules_runtime::mctp::send::{MCTPSender, MCTPTxState};
-use capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
-use capsules_runtime::test::mctp::MockMctp;
 use core::mem::MaybeUninit;
 use kernel::component::Component;
 use kernel::hil::time::Alarm;
@@ -16,12 +16,12 @@ use kernel::utilities::leasable_buffer::SubSliceMut;
 #[macro_export]
 macro_rules! mock_mctp_component_static {
     ($A:ty  $(,)?) => {{
-        use capsules_runtime::mctp::base_protocol::MessageType;
-        use capsules_runtime::mctp::driver::MCTP_MAX_MESSAGE_SIZE;
-        use capsules_runtime::mctp::recv::MCTPRxState;
-        use capsules_runtime::mctp::send::MCTPTxState;
-        use capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
-        use capsules_runtime::test::mctp::MockMctp;
+        use caliptra_mcu_capsules_runtime::mctp::base_protocol::MessageType;
+        use caliptra_mcu_capsules_runtime::mctp::driver::MCTP_MAX_MESSAGE_SIZE;
+        use caliptra_mcu_capsules_runtime::mctp::recv::MCTPRxState;
+        use caliptra_mcu_capsules_runtime::mctp::send::MCTPTxState;
+        use caliptra_mcu_capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
+        use caliptra_mcu_capsules_runtime::test::mctp::MockMctp;
 
         let tx_state = kernel::static_buf!(
             MCTPTxState<'static, VirtualMuxAlarm<'static, $A>, MCTPI3CBinding<'static>>

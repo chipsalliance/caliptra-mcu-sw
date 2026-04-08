@@ -16,12 +16,15 @@ impl<E: romtime::Exit> SystemComponent<E> {
 }
 
 impl<E: romtime::Exit> Component for SystemComponent<E> {
-    type StaticInput = &'static mut MaybeUninit<capsules_runtime::system::System<'static, E>>;
-    type Output = &'static capsules_runtime::system::System<'static, E>;
+    type StaticInput =
+        &'static mut MaybeUninit<caliptra_mcu_capsules_runtime::system::System<'static, E>>;
+    type Output = &'static caliptra_mcu_capsules_runtime::system::System<'static, E>;
 
     fn finalize(self, static_buffer: Self::StaticInput) -> Self::Output {
-        let system: &capsules_runtime::system::System<'static, E> =
-            static_buffer.write(capsules_runtime::system::System::new(self.exiter));
+        let system: &caliptra_mcu_capsules_runtime::system::System<'static, E> = static_buffer
+            .write(caliptra_mcu_capsules_runtime::system::System::new(
+                self.exiter,
+            ));
         system
     }
 }

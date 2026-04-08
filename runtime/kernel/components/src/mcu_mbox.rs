@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use capsules_runtime::mcu_mbox::McuMboxDriver;
+use caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver;
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;

@@ -4,12 +4,12 @@ use crate::components as runtime_components;
 use crate::interrupts::EmulatorPeripherals;
 use crate::{MCU_MEMORY_MAP, MCU_STRAPS};
 use arrayvec::ArrayVec;
+use caliptra_mcu_capsules_runtime::doe::driver::DoeDriver;
+use caliptra_mcu_capsules_runtime::flash_partition::FlashPartition;
+use caliptra_mcu_capsules_runtime::mctp::base_protocol::MessageType;
+use caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
-use capsules_runtime::doe::driver::DoeDriver;
-use capsules_runtime::flash_partition::FlashPartition;
-use capsules_runtime::mctp::base_protocol::MessageType;
-use capsules_runtime::mcu_mbox::McuMboxDriver;
 use core::ptr::{addr_of, addr_of_mut};
 use doe_mbox_driver::EmulatedDoeTransport;
 use kernel::capabilities;
@@ -132,33 +132,33 @@ struct VeeR {
     scheduler: &'static CooperativeSched<'static>,
     scheduler_timer:
         &'static VirtualSchedulerTimer<VirtualMuxAlarm<'static, InternalTimers<'static>>>,
-    mctp_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    // mctp_secure_spdm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    mctp_pldm: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    mctp_caliptra: &'static capsules_runtime::mctp::driver::MCTPDriver<'static>,
-    doe_spdm: &'static capsules_runtime::doe::driver::DoeDriver<
+    mctp_spdm: &'static caliptra_mcu_capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    // mctp_secure_spdm: &'static caliptra_mcu_capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    mctp_pldm: &'static caliptra_mcu_capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    mctp_caliptra: &'static caliptra_mcu_capsules_runtime::mctp::driver::MCTPDriver<'static>,
+    doe_spdm: &'static caliptra_mcu_capsules_runtime::doe::driver::DoeDriver<
         'static,
         EmulatedDoeTransport<'static, InternalTimers<'static>>,
     >,
     flash_partitions: [Option<&'static FlashPartition<'static>>;
         mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT],
-    mailbox: &'static capsules_runtime::mailbox::Mailbox<
+    mailbox: &'static caliptra_mcu_capsules_runtime::mailbox::Mailbox<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
     dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
     logging_flash:
         &'static caliptra_mcu_capsules_emulator::logging::driver::LoggingFlashDriver<'static>,
-    mci: &'static capsules_runtime::mci::Mci,
-    mcu_mbox0: &'static capsules_runtime::mcu_mbox::McuMboxDriver<
+    mci: &'static caliptra_mcu_capsules_runtime::mci::Mci,
+    mcu_mbox0: &'static caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver<
         'static,
         mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>,
     >,
-    mcu_mbox1_staging_sram: &'static capsules_runtime::mbox_sram::MboxSram<
+    mcu_mbox1_staging_sram: &'static caliptra_mcu_capsules_runtime::mbox_sram::MboxSram<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
-    system: &'static capsules_runtime::system::System<'static, EmulatorExiter>,
+    system: &'static caliptra_mcu_capsules_runtime::system::System<'static, EmulatorExiter>,
 }
 
 /// Mapping of integer syscalls to objects that implement syscalls.
@@ -171,16 +171,24 @@ impl SyscallDriverLookup for VeeR {
             capsules_core::alarm::DRIVER_NUM => f(Some(self.alarm)),
             capsules_core::console::DRIVER_NUM => f(Some(self.console)),
             capsules_core::low_level_debug::DRIVER_NUM => f(Some(self.lldb)),
-            capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM => f(Some(self.mctp_spdm)),
-            // capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM => {
+            caliptra_mcu_capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM => {
+                f(Some(self.mctp_spdm))
+            }
+            // caliptra_mcu_capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM => {
             //     f(Some(self.mctp_secure_spdm))
             // }
-            capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => f(Some(self.mctp_pldm)),
-            capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => f(Some(self.mctp_caliptra)),
-            capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM => f(Some(self.doe_spdm)),
-            capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
+            caliptra_mcu_capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM => {
+                f(Some(self.mctp_pldm))
+            }
+            caliptra_mcu_capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM => {
+                f(Some(self.mctp_caliptra))
+            }
+            caliptra_mcu_capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM => {
+                f(Some(self.doe_spdm))
+            }
+            caliptra_mcu_capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
-            capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
+            caliptra_mcu_capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
             mcu_config_emulator::flash::DRIVER_NUM_START
                 ..=mcu_config_emulator::flash::DRIVER_NUM_END => {
                 for index in 0..mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT {
@@ -195,11 +203,13 @@ impl SyscallDriverLookup for VeeR {
             caliptra_mcu_capsules_emulator::logging::driver::LOGGING_FLASH_DRIVER_NUM => {
                 f(Some(self.logging_flash))
             }
-            capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => f(Some(self.mcu_mbox0)),
-            capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
+            caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM => {
+                f(Some(self.mcu_mbox0))
+            }
+            caliptra_mcu_capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM => {
                 f(Some(self.mcu_mbox1_staging_sram))
             }
-            capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
+            caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
 
             _ => f(None),
         }
@@ -467,7 +477,7 @@ pub unsafe fn main() {
 
     let mailbox = mcu_components::mailbox::MailboxComponent::new(
         board_kernel,
-        capsules_runtime::mailbox::DRIVER_NUM,
+        caliptra_mcu_capsules_runtime::mailbox::DRIVER_NUM,
         mux_alarm,
     )
     .finalize(mailbox_component_static!(
@@ -492,15 +502,15 @@ pub unsafe fn main() {
 
     let mci = mcu_components::mci::MciComponent::new(
         board_kernel,
-        capsules_runtime::mci::DRIVER_NUM,
+        caliptra_mcu_capsules_runtime::mci::DRIVER_NUM,
         &peripherals.mci,
     )
-    .finalize(kernel::static_buf!(capsules_runtime::mci::Mci));
+    .finalize(kernel::static_buf!(caliptra_mcu_capsules_runtime::mci::Mci));
 
     let mcu_mbox1_staging_sram = mcu_components::mbox_sram::MboxSramComponent::new(
         peripherals.mci.registers.clone(),
         board_kernel,
-        capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
+        caliptra_mcu_capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
         core::slice::from_raw_parts_mut(
             (MCU_MEMORY_MAP.mci_offset + mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET) as *mut u32,
             1024 * 1024, // Allocate 1MB
@@ -578,7 +588,7 @@ pub unsafe fn main() {
 
     let mctp_spdm = mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
-        capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
+        caliptra_mcu_capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
         mux_mctp,
         MessageType::Spdm,
     )
@@ -586,7 +596,7 @@ pub unsafe fn main() {
 
     // let mctp_secure_spdm = mcu_components::mctp_driver::MCTPDriverComponent::new(
     //     board_kernel,
-    //     capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM,
+    //     caliptra_mcu_capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM,
     //     mux_mctp,
     //     MessageType::SecureSpdm,
     // )
@@ -594,7 +604,7 @@ pub unsafe fn main() {
 
     let mctp_pldm = mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
-        capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM,
+        caliptra_mcu_capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM,
         mux_mctp,
         MessageType::Pldm,
     )
@@ -603,7 +613,7 @@ pub unsafe fn main() {
     // Enable MCTP Caliptra VDM driver
     let mctp_caliptra = mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
-        capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM,
+        caliptra_mcu_capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM,
         mux_mctp,
         MessageType::Caliptra,
     )
@@ -613,7 +623,7 @@ pub unsafe fn main() {
     // Set up a SPDM over DOE capsule.
     let doe_spdm = mcu_components::doe::DoeComponent::new(
         board_kernel,
-        capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM,
+        caliptra_mcu_capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM,
         &emulator_peripherals.doe_transport,
     )
     .finalize(doe_component_static!(
@@ -686,7 +696,7 @@ pub unsafe fn main() {
     // MCU mailbox0 capsule
     let mcu_mbox0 = mcu_components::mcu_mbox::McuMboxComponent::new(
         board_kernel,
-        capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
+        caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
         &peripherals.mcu_mbox0,
     )
     .finalize(mcu_mbox_component_static!(
@@ -695,7 +705,7 @@ pub unsafe fn main() {
 
     #[allow(static_mut_refs)]
     let system = mcu_components::system::SystemComponent::new(&mut EMULATOR_EXITER).finalize(
-        kernel::static_buf!(capsules_runtime::system::System<'static, EmulatorExiter>),
+        kernel::static_buf!(caliptra_mcu_capsules_runtime::system::System<'static, EmulatorExiter>),
     );
 
     // Need to enable all interrupts for Tock Kernel
