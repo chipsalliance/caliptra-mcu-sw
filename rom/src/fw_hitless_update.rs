@@ -21,6 +21,11 @@ use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
 use core::fmt::Write;
 use mcu_error::McuError;
 use romtime::HexWord;
+#[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
+use zerocopy::FromBytes;
+
+#[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
+use crate::device_ownership_transfer;
 
 pub struct FwHitlessUpdate {}
 
@@ -58,7 +63,27 @@ impl BootFlow for FwHitlessUpdate {
 
         #[cfg(target_arch = "riscv32")]
         unsafe {
-            let firmware_entry = MCU_MEMORY_MAP.sram_offset + _params.mcu_image_header_size as u32;
+            let mut firmware_offset = _params.mcu_image_header_size as u32;
+
+            // Dynamically skip past DOT manifest section if present.
+            #[cfg(feature = "fw-manifest-dot")]
+            if _params.fw_manifest_dot_enabled {
+                let manifest_size =
+                    core::mem::size_of::<device_ownership_transfer::FwManifestDotSection>();
+                let sram = core::slice::from_raw_parts(
+                    MCU_MEMORY_MAP.sram_offset as *const u8,
+                    manifest_size,
+                );
+                if let Ok((section, _)) =
+                    device_ownership_transfer::FwManifestDotSection::ref_from_prefix(sram)
+                {
+                    if section.magic == device_ownership_transfer::FW_MANIFEST_DOT_MAGIC {
+                        firmware_offset += manifest_size as u32;
+                    }
+                }
+            }
+
+            let firmware_entry = MCU_MEMORY_MAP.sram_offset + firmware_offset;
             core::arch::asm!(
                 "jr {0}",
                 in(reg) firmware_entry,

@@ -2286,4 +2286,27 @@ mod test {
         );
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
+
+    /// Test: The runtime actually boots when a DOT manifest header (NOP) is
+    /// prepended to the firmware image.
+    #[test]
+    fn test_fw_manifest_dot_runtime_boots() {
+        let manifest = create_manifest_section(
+            &[mcu_rom_common::FW_MANIFEST_DOT_CMD_NOP],
+            0,
+            [0u32; 12],
+            [0u32; 12],
+        );
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let _hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            ..Default::default()
+        });
+
+        println!("[TEST] Runtime boots correctly with DOT manifest header prepended");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }
