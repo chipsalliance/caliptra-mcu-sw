@@ -43,27 +43,37 @@ pub(crate) fn test(args: TestArgs) -> Result<()> {
         std::env::set_var("CPTRA_EMULATOR_BUNDLE", emulator_bundle);
     }
 
-    if let Some(archive_file) = args.archive {
-        cargo_test_archive(archive_file)
-    } else {
-        cargo_test(args.shard, args.workspace_remap)
-    }
+    cargo_test(args.shard, args.workspace_remap, args.archive)
 }
 
-fn cargo_test(shard: Option<&str>, workspace_remap: Option<&str>) -> Result<()> {
+pub(crate) fn test_archive(archive_file: String) -> Result<()> {
+    cargo_test_archive(&archive_file)
+}
+
+fn cargo_test(
+    shard: Option<&str>,
+    workspace_remap: Option<&str>,
+    archive: Option<&str>,
+) -> Result<()> {
     // Run all tests with nextest for proper sequencing, excluding ROM packages that don't have tests
     println!("Running: cargo nextest run");
     let mut args = vec![
         "nextest",
         "run",
-        "--workspace",
         "--test-threads=1",
         "--profile=nightly-emulator",
     ];
 
-    for exclude in EXCLUDED_PACKAGES {
-        args.push("--exclude");
-        args.push(exclude);
+    if let Some(archive_path) = archive {
+        args.push("--archive-file");
+        args.push(archive_path);
+    } else {
+        // These arguments cannot be used with `--archive-file`
+        args.push("--workspace");
+        for exclude in EXCLUDED_PACKAGES {
+            args.push("--exclude");
+            args.push(exclude);
+        }
     }
 
     if let Some(shard) = shard {
