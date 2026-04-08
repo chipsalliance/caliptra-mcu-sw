@@ -440,12 +440,36 @@ fn is_64bit_granule(byte_addr: usize) -> bool {
             }
         }
         // Secret (scrambled) partitions use 64-bit granule for all data
-        if p.name.starts_with("secret_") || p.name == "sw_test_unlock_partition" {
+        if p.name.starts_with("secret_")
+            || p.name == "sw_test_unlock_partition"
+            || p.name == "vendor_secret_prod_partition"
+        {
             return true;
         }
         return false;
     }
     false
+}
+
+/// Returns the PRESENT scrambling key for a secret partition, or None if
+/// the address is in a non-secret partition.
+fn scramble_key_for_addr(byte_addr: usize) -> Option<u128> {
+    for (i, p) in fuses::OTP_PARTITIONS.iter().enumerate() {
+        if byte_addr < p.byte_offset || byte_addr >= p.byte_offset + p.byte_size {
+            continue;
+        }
+        return match i {
+            1 => Some(otp_digest::OTP_SCRAMBLE_KEYS[0]),
+            2 => Some(otp_digest::OTP_SCRAMBLE_KEYS[1]),
+            3 => Some(otp_digest::OTP_SCRAMBLE_KEYS[2]),
+            4 => Some(otp_digest::OTP_SCRAMBLE_KEYS[3]),
+            5 => Some(otp_digest::OTP_SCRAMBLE_KEYS[4]),
+            7 => Some(otp_digest::OTP_SCRAMBLE_KEYS[6]),
+            13 => Some(otp_digest::OTP_SCRAMBLE_KEYS[5]),
+            _ => None,
+        };
+    }
+    None
 }
 
 /// If `byte_addr` falls within a partition that has an ECC RAM, return the
@@ -729,8 +753,14 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
                         }
 
                         if !blank_error {
-                            let new_lo = current_lo | self.direct_access_buffer;
-                            let new_hi = current_hi | self.direct_access_buffer_hi;
+                            let mut new_lo = current_lo | self.direct_access_buffer;
+                            let mut new_hi = current_hi | self.direct_access_buffer_hi;
+                            if let Some(key) = scramble_key_for_addr(addr) {
+                                let plaintext = ((new_hi as u64) << 32) | new_lo as u64;
+                                let scrambled = otp_digest::otp_scramble(plaintext, key);
+                                new_lo = scrambled as u32;
+                                new_hi = (scrambled >> 32) as u32;
+                            }
                             partitions[addr..addr + 4].copy_from_slice(&new_lo.to_le_bytes());
                             partitions[addr + 4..addr + 8].copy_from_slice(&new_hi.to_le_bytes());
                         }
@@ -786,6 +816,13 @@ impl emulator_registers_generated::otp::OtpPeripheral for Otp {
                         self.direct_access_buffer_hi = u32::from_le_bytes(buf);
                     } else {
                         self.direct_access_buffer_hi = 0;
+                    }
+                    if let Some(key) = scramble_key_for_addr(addr) {
+                        let scrambled = ((self.direct_access_buffer_hi as u64) << 32)
+                            | self.direct_access_buffer as u64;
+                        let plaintext = otp_digest::otp_unscramble(scrambled, key);
+                        self.direct_access_buffer = plaintext as u32;
+                        self.direct_access_buffer_hi = (plaintext >> 32) as u32;
                     }
                 }
             }
@@ -1236,5 +1273,69 @@ mod test {
 
         // Original value should be preserved.
         assert_eq!(dai_read(&mut otp, addr), old_val as u32);
+    }
+
+    #[test]
+    fn test_secret_partition_scrambling() {
+        let clock = Clock::new();
+        let mut otp = Otp::new(&clock, OtpArgs::default()).unwrap();
+
+        // Write a known 64-bit value to the secret_manuf_partition via DAI
+        let addr = fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET;
+        let plaintext_lo: u32 = 0xDEADBEEF;
+        let plaintext_hi: u32 = 0xCAFEBABE;
+
+        // DAI 64-bit write
+        otp.write_dai_wdata_rf_direct_access_wdata_0(plaintext_lo);
+        otp.write_dai_wdata_rf_direct_access_wdata_1(plaintext_hi);
+        otp.write_direct_access_address((addr as u32).into());
+        otp.write_direct_access_cmd(2u32.into()); // write command
+        for _ in 0..1000 {
+            if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
+                break;
+            }
+            otp.poll();
+        }
+        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
+
+        // Read raw memory (bypassing DAI) to verify scrambled storage
+        let (raw_lo, raw_hi) = {
+            let raw = otp.partitions.borrow();
+            let lo = u32::from_le_bytes(raw[addr..addr + 4].try_into().unwrap());
+            let hi = u32::from_le_bytes(raw[addr + 4..addr + 8].try_into().unwrap());
+            (lo, hi)
+        };
+
+        // The raw data should NOT equal the plaintext (it should be scrambled)
+        let plaintext_u64 = ((plaintext_hi as u64) << 32) | plaintext_lo as u64;
+        let raw_u64 = ((raw_hi as u64) << 32) | raw_lo as u64;
+        assert_ne!(
+            raw_u64, plaintext_u64,
+            "Raw OTP data should be scrambled, not plaintext"
+        );
+
+        // Verify that otp_scramble produces the same result
+        let expected_scrambled =
+            otp_digest::otp_scramble(plaintext_u64, otp_digest::OTP_SCRAMBLE_KEYS[0]);
+        assert_eq!(
+            raw_u64, expected_scrambled,
+            "Raw OTP data should match otp_scramble output"
+        );
+
+        // Read back through DAI and verify we get plaintext
+        otp.write_direct_access_address((addr as u32).into());
+        otp.write_direct_access_cmd(1u32.into()); // read command
+        for _ in 0..1000 {
+            if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
+                break;
+            }
+            otp.poll();
+        }
+        assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
+
+        let read_lo = otp.read_dai_rdata_rf_direct_access_rdata_0();
+        let read_hi = otp.read_dai_rdata_rf_direct_access_rdata_1();
+        assert_eq!(read_lo, plaintext_lo, "DAI read lo should return plaintext");
+        assert_eq!(read_hi, plaintext_hi, "DAI read hi should return plaintext");
     }
 }

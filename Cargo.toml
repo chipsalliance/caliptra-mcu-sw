@@ -29,6 +29,7 @@ members = [
     "hw/model/test-fw/mailbox-responder",
     "hw/model/test-fw/otp-blank-check",
     "hw/model/test-fw/lc-ctrl",
+    "hw/model/test-fw/otp-scramble-check",
     "hw/model/test-fw/sw-digest-lock",
     "platforms/common",
     "platforms/emulator/config",
@@ -225,6 +226,7 @@ mcu-test-fw-hitless-update-flow = { path = "hw/model/test-fw/hitless-update-flow
 mcu-test-fw-mailbox-responder = { path = "hw/model/test-fw/mailbox-responder" }
 mcu-test-fw-otp-blank-check = { path = "hw/model/test-fw/otp-blank-check" }
 mcu-test-fw-lc-ctrl = { path = "hw/model/test-fw/lc-ctrl" }
+mcu-test-fw-otp-scramble-check = { path = "hw/model/test-fw/otp-scramble-check" }
 mcu-test-fw-sw-digest-lock = { path = "hw/model/test-fw/sw-digest-lock" }
 mcu-image-header = { path = "platforms/emulator/mcu-image-header" }
 mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }

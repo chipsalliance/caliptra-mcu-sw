@@ -35,6 +35,12 @@ pub mod hw_model_tests {
         features: &["emu"],
     };
 
+    pub const OTP_SCRAMBLE_CHECK: FwId = FwId {
+        crate_name: "mcu-test-fw-otp-scramble-check",
+        bin_name: "mcu-test-fw-otp-scramble-check",
+        features: &["emu"],
+    };
+
     pub const LC_CTRL: FwId = FwId {
         crate_name: "mcu-test-fw-lc-ctrl",
         bin_name: "mcu-test-fw-lc-ctrl",
@@ -48,6 +54,7 @@ pub const REGISTERED_FW: &[&FwId] = &[
     &hw_model_tests::EXCEPTION_HANDLER,
     &hw_model_tests::SW_DIGEST_LOCK,
     &hw_model_tests::OTP_BLANK_CHECK,
+    &hw_model_tests::OTP_SCRAMBLE_CHECK,
     &hw_model_tests::LC_CTRL,
 ];
 

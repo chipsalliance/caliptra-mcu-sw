@@ -24,7 +24,7 @@ mod lc_ctrl;
 mod mci;
 mod mcu_mbox0;
 mod otp;
-pub use otp_digest::{otp_digest, otp_scramble, otp_unscramble};
+pub use otp_digest::{otp_digest, otp_scramble, otp_unscramble, OTP_SCRAMBLE_KEYS};
 mod reset_reason;
 mod root_bus;
 mod uart;

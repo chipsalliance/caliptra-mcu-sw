@@ -42,6 +42,7 @@ default-filter = """
 (package(tests-integration) and test(test_i3c_simple)) |
 (package(tests-integration) and test(test_sw_digest_lock)) |
 (package(tests-integration) and test(test_otp_blank_check)) |
+(package(tests-integration) and test(test_otp_scramble_check)) |
 (package(tests-integration) and test(test_bootfsm_timeout)) |
 (package(tests-integration) and test(test_lc_ctrl)) |
 (package(tests-integration) and test(test_raw_lifecycle_boot))

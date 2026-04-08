@@ -3383,6 +3383,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcu-test-fw-otp-scramble-check"
+version = "0.1.0"
+dependencies = [
+ "mcu-error",
+ "mcu-rom-common",
+ "mcu-test-harness",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
 name = "mcu-test-fw-sw-digest-lock"
 version = "0.1.0"
 dependencies = [
@@ -4904,6 +4916,7 @@ dependencies = [
  "mcu-rom-common",
  "mcu-testing-common",
  "openssl",
+ "otp-digest",
  "p384",
  "pldm-common",
  "pldm-fw-pkg",
