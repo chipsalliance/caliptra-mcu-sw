@@ -32,6 +32,7 @@ const EXCLUDED_PACKAGES: &[&str] = &[
     "mcu-test-fw-lc-ctrl",
     "mcu-test-fw-mailbox-responder",
     "mcu-test-fw-otp-blank-check",
+    "mcu-test-fw-otp-scramble-check",
     "mcu-test-fw-sw-digest-lock",
 ];
 

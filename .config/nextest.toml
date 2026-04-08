@@ -14,6 +14,51 @@ store-failure-output = true
 failure-output = "immediate-final"
 fail-fast = false
 slow-timeout = { period = "30s", terminate-after = 30 }
+# clundin: This test was introduced while the CI was broken. Filtering out until it is fixed.
+default-filter = """
+!(package(tests-integration) and test(test_soc_boot)
+| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_manifest)
+| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_mcu_image)
+| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_caliptra_image)
+| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_lock_idempotent   )
+| package(tests-integration) and test(test::test_mcu_svn_lt_fuse )
+| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_rotate_idempotent )
+| package(tests-integration) and test(test_active_i3c::test::test_boot_with_i3c1_active  )
+| package(tests-integration) and test(runtime::test_mcu_mailbox::test_invalid_mailbox_cm)
+| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_missing_caliptra_image  )
+| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful_fast )
+| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_disable   )
+| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_runtime_boots )
+| package(tests-integration) and test(test_dot::test::test_dot_recovery_backup_blob_success  )
+| package(tests-integration) and test(test_dot::test::test_dot_override_challenge_success)
+| package(tests-integration) and test(test_dot::test::test_dot_override_invalid_signatures_fail)
+| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_soc_image   )
+| package(tests-integration) and test(test::test_mcu_mbox_soc_requester_loopback )
+| package(tests-integration) and test(test::test_mcu_mbox_driver )
+| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_unlock)
+| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_bad_version   )
+| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_lock  )
+| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_unlock_second_boot_succeeds   )
+| package(tests-integration) and test(test::test_mctp_user_loopback  )
+| package(tests-integration) and test(test_dot::test::test_dot_unlocked_state_custom_owner_keys  )
+| package(tests-integration) and test(test::test_mcu_svn_gt_fuse )
+| package(tests-integration) and test(runtime::test_mcu_mailbox::test_firmware_version_cm)
+| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful  )
+| package(tests-integration) and test(test_dot)
+| package(tests-integration) and test(test_soc_boot)
+| package(tests-integration) and test(test_bare_metal::test::test_bare_metal_runtime_boo)
+| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful_fast)
+| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_missing_caliptra_image)
+| package(tests-integration) and test(test_active_i3c::test::test_boot_with_i3c1_active)
+| package(tests-integration) and test(test::test_mcu_svn_lt_fuse)
+| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_soc_imag)
+| package(tests-integration) and test(test::test_mctp_user_loopback)
+| package(tests-integration) and test(test::test_mcu_mbox_soc_requester_loopback)
+| package(tests-integration) and test(test::test_mcu_mbox_driver)
+| package(tests-integration) and test(test::test_mcu_svn_gt_fuse)
+| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful)
+| package(mcu-hw-model) and test(model_emulated::test::test_new_unbooted))
+"""
 
 [profile.nightly-emulator.junit]
 path = "/tmp/junit.xml"

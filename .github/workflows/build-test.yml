@@ -292,14 +292,17 @@ jobs:
       #   cargo xtask test --firmware-bundle target/all-fw.zip --emulator-bundle target/emulators.zip
       - name: Run tests (shard ${{ matrix.shard }}/4)
         run: |
-          TEST_RESULT=$(cargo --config "$EXTRA_CARGO_CONFIG" xtask test \
+          cargo --config "$EXTRA_CARGO_CONFIG" xtask test \
             --archive /tmp/nextest-archive.tar.zst \
             --shard hash:${{ matrix.shard }}/4 \
             --firmware-bundle "${PWD}/target/all-fw.zip" \
             --emulator-bundle "${PWD}/target/emulators.zip" \
-            --workspace-remap .)
+            --workspace-remap .
+
+      - name: Move junit xml
+        if: success() || failure()
+        run: |
           sudo mv /tmp/junit.xml /tmp/junit-${{ matrix.shard }}.xml
-          $TEST_RESULT
 
       - name: 'Upload test results'
         uses: actions/upload-artifact@v4
