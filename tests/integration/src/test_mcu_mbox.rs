@@ -6,6 +6,7 @@ pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use aes_gcm::{aead::AeadMutInPlace, Aes256Gcm, Key, KeyInit};
     use caliptra_api::mailbox::CmHashAlgorithm;
+    use fips204::traits::SerDes;
     use hkdf::Hkdf;
     use hmac::{Hmac, Mac};
     use mcu_hw_model::mcu_mbox_transport::{
@@ -38,9 +39,9 @@ pub mod test {
         McuHmacReq, McuMailboxReq, McuMailboxResp, McuManufDebugUnlockTokenReq,
         McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq, McuRandomGenerateReq,
         McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq, McuShaInitResp,
-        McuShaUpdateReq, ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
-        CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE,
-        MAX_CMB_DATA_SIZE,
+        McuShaUpdateReq, ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
+        ProductionAuthDebugUnlockToken, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
+        CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
     };
     use mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
@@ -169,7 +170,7 @@ pub mod test {
                     &ecc_private_key,
                     &mldsa_private_key,
                     &ecc_pub_key_u32,
-                    &mldsa_pub_key_u32,
+                    <&[u32; 648]>::try_from(mldsa_pub_key_u32.as_slice()).unwrap(),
                 )
                 .is_err()
             {
