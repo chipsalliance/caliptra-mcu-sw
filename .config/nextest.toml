@@ -25,26 +25,5 @@ inherits = "nightly"
 default-filter = """
 (package(mcu-hw-model)
     - test(model_emulated::test::test_new_unbooted)) |
-(package(tests-integration) and test(test_jtag_taps)) |
-(package(tests-integration) and test(test_lc_transitions)) |
-(package(tests-integration) and test(test_manuf_debug_unlock)) |
-(package(tests-integration) and test(test_prod_debug_unlock)) |
-(package(tests-integration) and test(test_uds)) |
-(package(tests-integration) and test(test_imaginary_flash_controller)) |
-(package(tests-integration) and test(test_fw_update_e2e)) |
-(package(tests-integration) and test(test_mctp_capsule_loopback)) |
-(package(tests-integration) and test(test_mctp_vdm_cmds)) |
-(package(tests-integration) and test(test_mcu_mbox_usermode)) |
-(package(tests-integration) and test(test_mcu_mbox_cmds)) |
-(package(tests-integration) and test(test_mcu_mbox_fips_self_test)) |
-(package(tests-integration) and test(test_mcu_mbox_fips_periodic)) |
-(package(tests-integration) and test(test_i3c_constant_writes)) |
-(package(tests-integration) and test(test_i3c_simple)) |
-(package(tests-integration) and test(test_sw_digest_lock)) |
-(package(tests-integration) and test(test_otp_blank_check)) |
-(package(tests-integration) and test(test_bootfsm_timeout)) |
-(package(tests-integration) and test(test_lc_ctrl)) |
-(package(tests-integration) and test(test_raw_lifecycle_boot))
+(package(tests-integration) and test(test_mcu_mbox_cmds))
 """
-# disabled for now due to flakiness of firmware update
-# (package(tests-integration) and test(test_firmware_update_streaming_fpga)) |
