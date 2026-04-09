@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use emulator_consts::MCU_MAILBOX0_SRAM_SIZE;
+use caliptra_mcu_emulator_consts::MCU_MAILBOX0_SRAM_SIZE;
 use emulator_periph::McuMailbox0External;
 use registers_generated::mci::bits::MboxExecute;
 use tock_registers::interfaces::Readable;

@@ -26,10 +26,10 @@ use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_mcu_emulator_bmc::Bmc;
 use caliptra_mcu_emulator_caliptra::BytesOrPath;
 use caliptra_mcu_emulator_caliptra::{start_caliptra, StartCaliptraArgs};
+use caliptra_mcu_emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
-use emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
 #[allow(unused_imports)]
 use emulator_periph::MciMailboxRequester;
 use emulator_periph::{

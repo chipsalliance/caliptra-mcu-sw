@@ -3,7 +3,7 @@
 use caliptra_emu_bus::BusError;
 use caliptra_emu_bus::{Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
 use caliptra_emu_types::{RvAddr, RvSize};
-use emulator_consts::MCU_MAILBOX0_SRAM_SIZE;
+use caliptra_mcu_emulator_consts::MCU_MAILBOX0_SRAM_SIZE;
 use registers_generated::mci::bits::MboxExecute;
 use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{Readable, Writeable};

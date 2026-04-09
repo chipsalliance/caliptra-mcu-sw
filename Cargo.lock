@@ -860,6 +860,7 @@ dependencies = [
  "caliptra-mailbox-server",
  "caliptra-mcu-emulator-bmc",
  "caliptra-mcu-emulator-caliptra",
+ "caliptra-mcu-emulator-consts",
  "caliptra-registers",
  "caliptra-test",
  "caliptra-util-host-mailbox-test-config",
@@ -871,7 +872,6 @@ dependencies = [
  "ctrlc",
  "ecdsa",
  "elf",
- "emulator-consts",
  "emulator-mcu-mbox",
  "emulator-periph",
  "emulator-registers-generated",
@@ -923,15 +923,22 @@ dependencies = [
  "caliptra-emu-bus",
  "caliptra-emu-cpu",
  "caliptra-emu-periph",
+ "caliptra-mcu-emulator-consts",
  "caliptra-registers",
  "clap 4.5.51",
  "ctrlc",
  "elf",
- "emulator-consts",
  "gdbstub",
  "gdbstub_arch",
  "hex",
  "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-emulator-consts"
+version = "0.1.0"
+dependencies = [
+ "caliptra-emu-cpu",
 ]
 
 [[package]]
@@ -1338,8 +1345,8 @@ dependencies = [
  "caliptra-emu-bus",
  "caliptra-emu-cpu",
  "caliptra-emu-types",
+ "caliptra-mcu-emulator-consts",
  "clap 4.5.51",
- "emulator-consts",
  "getrandom 0.2.16",
 ]
 
@@ -1827,18 +1834,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "emulator-consts"
-version = "0.1.0"
-dependencies = [
- "caliptra-emu-cpu",
-]
-
-[[package]]
 name = "emulator-mcu-mbox"
 version = "0.1.0"
 dependencies = [
  "caliptra-emu-bus",
- "emulator-consts",
+ "caliptra-mcu-emulator-consts",
  "emulator-periph",
  "registers-generated",
  "tock-registers",
@@ -1855,8 +1855,8 @@ dependencies = [
  "caliptra-emu-periph",
  "caliptra-emu-types",
  "caliptra-image-types",
+ "caliptra-mcu-emulator-consts",
  "caliptra-registers",
- "emulator-consts",
  "emulator-registers-generated",
  "lazy_static",
  "mcu-config",
