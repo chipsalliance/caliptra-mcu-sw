@@ -4,7 +4,7 @@
 #[cfg(debug_assertions)]
 extern crate caliptra_mcu_libtock_debug_panic;
 #[cfg(not(debug_assertions))]
-extern crate libtock_small_panic;
+extern crate caliptra_mcu_libtock_small_panic;
 
 pub use caliptra_mcu_libtock_platform as platform;
 pub use caliptra_mcu_libtock_runtime as runtime;
