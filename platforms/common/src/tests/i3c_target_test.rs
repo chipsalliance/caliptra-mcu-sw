@@ -4,6 +4,8 @@ use caliptra_mcu_i3c_driver::{
     core::I3CCore,
     hil::{I3CTarget, RxClient},
 };
+use caliptra_mcu_tock_veer::chip::{VeeR, VeeRDefaultPeripherals};
+use caliptra_mcu_tock_veer::timers::InternalTimers;
 use core::cell::Cell;
 use core::fmt::Write;
 use kernel::{
@@ -12,8 +14,6 @@ use kernel::{
     static_buf, static_init,
     utilities::cells::{OptionalCell, TakeCell},
 };
-use mcu_tock_veer::chip::{VeeR, VeeRDefaultPeripherals};
-use mcu_tock_veer::timers::InternalTimers;
 use romtime::println;
 
 fn success() -> ! {

@@ -6,12 +6,12 @@ use caliptra_mcu_capsules_runtime::test::mctp::MockMctp;
 use caliptra_mcu_capsules_runtime::test::mctp::TestClient;
 use caliptra_mcu_components::mock_mctp::MockMctpComponent;
 use caliptra_mcu_components::mock_mctp_component_static;
+use caliptra_mcu_tock_veer::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use core::fmt::Write;
 use kernel::component::Component;
 use kernel::hil::time::Alarm;
 use kernel::static_init;
-use mcu_tock_veer::timers::InternalTimers;
 use romtime::println;
 
 pub fn test_mctp_capsule_loopback(

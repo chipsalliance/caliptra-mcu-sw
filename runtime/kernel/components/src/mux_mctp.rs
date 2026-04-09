@@ -9,7 +9,7 @@
 //! ```ignore
 //! use caliptra_mcu_components::mctp_mux_component_static;
 //! use kernel::component::Component;
-//! use mcu_tock_veer::timers::InternalTimers;
+//! use caliptra_mcu_tock_veer::timers::InternalTimers;
 //! let mux_mctp = caliptra_mcu_components::mux_mctp::MCTPMuxComponent::new(
 //!    i3c,
 //!    mux_alarm)

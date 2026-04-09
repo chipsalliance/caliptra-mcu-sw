@@ -20,6 +20,10 @@ use caliptra_mcu_config_emulator::flash::{
 use caliptra_mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
 use caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport;
 use caliptra_mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
+use caliptra_mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
+use caliptra_mcu_tock_veer::pic::Pic;
+use caliptra_mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
+use caliptra_mcu_tock_veer::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use core::ptr::{addr_of, addr_of_mut};
@@ -37,10 +41,6 @@ use kernel::storage_volume;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
-use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
-use mcu_tock_veer::pic::Pic;
-use mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
-use mcu_tock_veer::timers::InternalTimers;
 use registers_generated::mci;
 use romtime::CaliptraSoC;
 use romtime::McuBootMilestones;
@@ -84,7 +84,7 @@ pub const NUM_PROCS: usize = 4;
 pub static mut PROCESSES: [Option<&'static dyn kernel::process::Process>; NUM_PROCS] =
     [None; NUM_PROCS];
 
-pub type VeeRChip = mcu_tock_veer::chip::VeeR<'static, VeeRDefaultPeripherals<'static>>;
+pub type VeeRChip = caliptra_mcu_tock_veer::chip::VeeR<'static, VeeRDefaultPeripherals<'static>>;
 
 // Reference to the chip and peripherals for panic dumps and tests.
 pub static mut CHIP: Option<&'static VeeRChip> = None;
@@ -520,7 +520,10 @@ pub unsafe fn main() {
     )
     .finalize(mbox_sram_component_static!(InternalTimers<'static>));
 
-    let chip = static_init!(VeeRChip, mcu_tock_veer::chip::VeeR::new(peripherals, epmp));
+    let chip = static_init!(
+        VeeRChip,
+        caliptra_mcu_tock_veer::chip::VeeR::new(peripherals, epmp)
+    );
     chip.init(addr_of!(_pic_vector_table) as u32);
     CHIP = Some(chip);
 

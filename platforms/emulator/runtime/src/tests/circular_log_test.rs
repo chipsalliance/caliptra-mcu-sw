@@ -8,6 +8,7 @@
 use caliptra_mcu_capsules_emulator::logging::logging_flash as log;
 use caliptra_mcu_capsules_emulator::logging::logging_flash::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
 use caliptra_mcu_platforms_common::{read_volatile_at, read_volatile_slice};
+use caliptra_mcu_tock_veer::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use core::ptr::addr_of_mut;
@@ -19,7 +20,6 @@ use kernel::static_init;
 use kernel::storage_volume;
 use kernel::utilities::cells::{NumericCellExt, TakeCell};
 use kernel::ErrorCode;
-use mcu_tock_veer::timers::InternalTimers;
 
 // Allocate 1KB storage volume for the circular log test. It resides on flash.
 storage_volume!(CIRCULAR_TEST_LOG, 1);

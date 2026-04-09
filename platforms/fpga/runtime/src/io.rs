@@ -8,6 +8,7 @@
 use crate::CHIP;
 use crate::PROCESSES;
 use crate::PROCESS_PRINTER;
+use caliptra_mcu_tock_veer::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use core::fmt::Write;
@@ -20,7 +21,6 @@ use kernel::hil;
 use kernel::hil::time::{Alarm, AlarmClient, Ticks, Ticks64, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::ErrorCode;
-use mcu_tock_veer::timers::InternalTimers;
 
 pub(crate) static mut WRITER: Writer = Writer {};
 const FPGA_UART_OUTPUT: *mut u32 = 0xa401_1014 as *mut u32;

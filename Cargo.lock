@@ -866,12 +866,12 @@ dependencies = [
  "caliptra-mcu-i3c-driver",
  "caliptra-mcu-mbox-comm",
  "caliptra-mcu-mbox-driver",
+ "caliptra-mcu-tock-veer",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
  "kernel",
- "mcu-tock-veer",
  "registers-generated",
  "romtime",
  "tock-registers",
@@ -1278,8 +1278,8 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-tock-veer",
  "kernel",
- "mcu-tock-veer",
  "romtime",
  "rv32i",
 ]
@@ -1402,6 +1402,28 @@ dependencies = [
  "pldm-ua",
  "rand 0.8.5",
  "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-tock-veer"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-config",
+ "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-mbox-driver",
+ "capsules-core",
+ "capsules-extra",
+ "capsules-system",
+ "components",
+ "kernel",
+ "registers-generated",
+ "riscv 0.2.2",
+ "riscv-csr",
+ "romtime",
+ "rv32i",
+ "tock-registers",
 ]
 
 [[package]]
@@ -3380,12 +3402,12 @@ dependencies = [
  "caliptra-mcu-mbox-comm",
  "caliptra-mcu-mbox-driver",
  "caliptra-mcu-platforms-common",
+ "caliptra-mcu-tock-veer",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
  "kernel",
- "mcu-tock-veer",
  "registers-generated",
  "riscv 0.2.2",
  "riscv-csr",
@@ -3410,29 +3432,7 @@ dependencies = [
  "caliptra-mcu-i3c-driver",
  "caliptra-mcu-mbox-driver",
  "caliptra-mcu-platforms-common",
- "capsules-core",
- "capsules-extra",
- "capsules-system",
- "components",
- "kernel",
- "mcu-tock-veer",
- "registers-generated",
- "riscv 0.2.2",
- "riscv-csr",
- "romtime",
- "rv32i",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-tock-veer"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-capsules-runtime",
- "caliptra-mcu-config",
- "caliptra-mcu-flash-driver",
- "caliptra-mcu-i3c-driver",
- "caliptra-mcu-mbox-driver",
+ "caliptra-mcu-tock-veer",
  "capsules-core",
  "capsules-extra",
  "capsules-system",

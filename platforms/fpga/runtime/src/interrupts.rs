@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use crate::io::SemihostUart;
+use caliptra_mcu_tock_veer::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
 use kernel::platform::chip::InterruptService;
-use mcu_tock_veer::timers::InternalTimers;
 use registers_generated::mci;
 
 pub struct FpgaPeripherals<'a> {

@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_config::McuMemoryMap;
-use mcu_tock_veer::pmp::PMPRegionList;
+use caliptra_mcu_tock_veer::pmp::PMPRegionList;
 
 /// Input from platform: a memory region with its properties
 #[derive(Debug, Clone, Copy)]
@@ -195,7 +195,7 @@ fn convert_platform_regions_to_pmp(
             (false, _, true, false, true) => {
                 // TODO: Consider trying NAPOT format first for code regions (more efficient - 1 PMP entry vs 2)
                 //       and fall back to TOR if alignment/size requirements aren't met
-                use mcu_tock_veer::pmp::KernelTextRegion;
+                use caliptra_mcu_tock_veer::pmp::KernelTextRegion;
                 use rv32i::pmp::TORRegionSpec;
 
                 let tor_spec = TORRegionSpec::new(platform_region.start_addr, unsafe {
@@ -204,7 +204,7 @@ fn convert_platform_regions_to_pmp(
                 .ok_or(())?;
 
                 // Add the converted region to the list
-                pmp_list.add_region(mcu_tock_veer::pmp::PMPRegion::KernelText(
+                pmp_list.add_region(caliptra_mcu_tock_veer::pmp::PMPRegion::KernelText(
                     KernelTextRegion(tor_spec),
                 ))?;
             }
@@ -226,7 +226,7 @@ fn convert_platform_regions_to_pmp(
         ) {
             // Non-MMIO regions: Read + Write (Data)
             (false, _, true, true, false) => {
-                use mcu_tock_veer::pmp::DataRegion;
+                use caliptra_mcu_tock_veer::pmp::DataRegion;
                 use rv32i::pmp::TORRegionSpec;
 
                 let tor_spec = TORRegionSpec::new(platform_region.start_addr, unsafe {
@@ -234,12 +234,14 @@ fn convert_platform_regions_to_pmp(
                 })
                 .ok_or(())?;
 
-                Some(mcu_tock_veer::pmp::PMPRegion::Data(DataRegion(tor_spec)))
+                Some(caliptra_mcu_tock_veer::pmp::PMPRegion::Data(DataRegion(
+                    tor_spec,
+                )))
             }
 
             // Non-MMIO regions: Read only (ReadOnly)
             (false, _, true, false, false) => {
-                use mcu_tock_veer::pmp::ReadOnlyRegion;
+                use caliptra_mcu_tock_veer::pmp::ReadOnlyRegion;
                 use rv32i::pmp::TORRegionSpec;
 
                 let tor_spec = TORRegionSpec::new(platform_region.start_addr, unsafe {
@@ -247,9 +249,9 @@ fn convert_platform_regions_to_pmp(
                 })
                 .ok_or(())?;
 
-                Some(mcu_tock_veer::pmp::PMPRegion::ReadOnly(ReadOnlyRegion(
-                    tor_spec,
-                )))
+                Some(caliptra_mcu_tock_veer::pmp::PMPRegion::ReadOnly(
+                    ReadOnlyRegion(tor_spec),
+                ))
             }
 
             _ => None,
@@ -277,7 +279,7 @@ fn convert_platform_regions_to_pmp(
             (true, true, _, _, _) => {
                 // TODO: Consider adding TOR-based MMIO variants (UserMMIOTOR, MachineMMIOTOR)
                 //       to support MMIO regions that don't meet NAPOT alignment/size requirements
-                use mcu_tock_veer::pmp::MMIORegion;
+                use caliptra_mcu_tock_veer::pmp::MMIORegion;
                 use rv32i::pmp::NAPOTRegionSpec;
 
                 let napot_spec =
@@ -302,14 +304,14 @@ fn convert_platform_regions_to_pmp(
                             ()
                         })?;
 
-                Some(mcu_tock_veer::pmp::PMPRegion::UserMMIO(MMIORegion(
-                    napot_spec,
-                )))
+                Some(caliptra_mcu_tock_veer::pmp::PMPRegion::UserMMIO(
+                    MMIORegion(napot_spec),
+                ))
             }
 
             // MMIO regions: machine-only
             (true, false, _, _, _) => {
-                use mcu_tock_veer::pmp::MMIORegion;
+                use caliptra_mcu_tock_veer::pmp::MMIORegion;
                 use rv32i::pmp::NAPOTRegionSpec;
 
                 let napot_spec =
@@ -334,9 +336,9 @@ fn convert_platform_regions_to_pmp(
                             ()
                         })?;
 
-                Some(mcu_tock_veer::pmp::PMPRegion::MachineMMIO(MMIORegion(
-                    napot_spec,
-                )))
+                Some(caliptra_mcu_tock_veer::pmp::PMPRegion::MachineMMIO(
+                    MMIORegion(napot_spec),
+                ))
             }
 
             // already done:
