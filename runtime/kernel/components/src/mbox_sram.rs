@@ -3,13 +3,13 @@
 // Component for MCI driver.
 
 use caliptra_mcu_registers_generated::mci;
+use caliptra_mcu_romtime::StaticRef;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::create_capability;
 use kernel::hil::time::Alarm;
-use romtime::StaticRef;
 
 #[macro_export]
 macro_rules! mbox_sram_component_static {

@@ -16,5 +16,5 @@ caliptra-mcu-error.workspace = true
 caliptra-mcu-rom-common.workspace = true
 caliptra-mcu-test-harness.workspace = true
 caliptra-mcu-registers-generated.workspace = true
-romtime.workspace = true
+caliptra-mcu-romtime.workspace = true
 tock-registers.workspace = true

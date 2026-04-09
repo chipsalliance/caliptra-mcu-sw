@@ -10,6 +10,6 @@ edition.workspace = true
 capsules-core.workspace = true
 kernel.workspace = true
 caliptra-mcu-registers-generated.workspace = true
-romtime.workspace = true
+caliptra-mcu-romtime.workspace = true
 rv32i.workspace = true
 tock-registers.workspace = true

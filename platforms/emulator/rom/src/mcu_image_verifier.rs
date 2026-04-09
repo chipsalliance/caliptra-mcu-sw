@@ -13,7 +13,7 @@ impl ImageVerifier for McuImageVerifier {
             use caliptra_mcu_image_header::McuImageHeader;
             use zerocopy::FromBytes;
             let Ok((header, _)) = McuImageHeader::ref_from_prefix(_header) else {
-                romtime::println!("[mcu-rom] Invalid MCU image header");
+                caliptra_mcu_romtime::println!("[mcu-rom] Invalid MCU image header");
                 return false;
             };
 
@@ -21,7 +21,7 @@ impl ImageVerifier for McuImageVerifier {
             let mut fuse_vendor_svn: u16 = 0;
             for word_idx in 0..4 {
                 let Ok(word) = _otp.read_vendor_test_word(word_idx) else {
-                    romtime::println!("[mcu-rom] Error reading vendor test fuse");
+                    caliptra_mcu_romtime::println!("[mcu-rom] Error reading vendor test fuse");
                     return false;
                 };
                 // Process each byte in the word
@@ -41,7 +41,7 @@ impl ImageVerifier for McuImageVerifier {
             }
 
             if header.svn < fuse_vendor_svn {
-                romtime::println!(
+                caliptra_mcu_romtime::println!(
                     "[mcu-rom] Image SVN {} is less than fuse vendor test SVN {}",
                     header.svn,
                     fuse_vendor_svn

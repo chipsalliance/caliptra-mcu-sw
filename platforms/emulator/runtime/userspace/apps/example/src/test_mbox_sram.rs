@@ -1,11 +1,11 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_romtime::println;
 use core::fmt::Write;
 use libsyscall_caliptra::{
     mbox_sram::{MboxSram, DRIVER_NUM_MCU_MBOX1_SRAM},
     DefaultSyscalls,
 };
-use romtime::println;
 
 #[allow(unused)]
 pub(crate) async fn test_mem_reg_read_write() {

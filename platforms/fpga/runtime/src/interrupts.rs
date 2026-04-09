@@ -16,7 +16,7 @@ pub struct FpgaPeripherals<'a> {
 impl<'a> FpgaPeripherals<'a> {
     pub fn new(
         alarm: &'a MuxAlarm<'a, InternalTimers<'a>>,
-        mci_regs: romtime::StaticRef<mci::regs::Mci>,
+        mci_regs: caliptra_mcu_romtime::StaticRef<mci::regs::Mci>,
     ) -> Self {
         Self {
             uart: SemihostUart::new(alarm),

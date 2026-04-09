@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 caliptra-mcu-tock-veer.workspace = true
 caliptra-mcu-config.workspace = true
-romtime.workspace = true
+caliptra-mcu-romtime.workspace = true
 caliptra-mcu-i3c-driver.workspace = true
 kernel.workspace = true
 

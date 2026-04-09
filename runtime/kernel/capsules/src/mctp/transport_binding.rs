@@ -2,11 +2,11 @@
 
 use crate::mctp::base_protocol::{MCTP_BASELINE_TRANSMISSION_UNIT, MCTP_HDR_SIZE};
 use caliptra_mcu_i3c_driver::hil::{I3CTarget, RxClient, TxClient};
+use caliptra_mcu_romtime::println;
 use core::cell::Cell;
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::cells::TakeCell;
 use kernel::ErrorCode;
-use romtime::println;
 
 pub const MCTP_I3C_MAXBUF: usize = MCTP_HDR_SIZE + MCTP_BASELINE_TRANSMISSION_UNIT + 1;
 
@@ -100,10 +100,10 @@ impl<'a> MCTPI3CBinding<'a> {
     fn compute_pec(addr: u8, buf: &[u8], len: usize) -> u8 {
         let mut crc = 0u8;
 
-        crc = romtime::crc8(crc, addr);
+        crc = caliptra_mcu_romtime::crc8(crc, addr);
 
         for byte in buf.iter().take(len) {
-            crc = romtime::crc8(crc, *byte);
+            crc = caliptra_mcu_romtime::crc8(crc, *byte);
         }
         crc
     }

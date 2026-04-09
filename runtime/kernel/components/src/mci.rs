@@ -10,14 +10,14 @@ use kernel::create_capability;
 pub struct MciComponent {
     board_kernel: &'static kernel::Kernel,
     driver_num: usize,
-    driver: &'static romtime::Mci,
+    driver: &'static caliptra_mcu_romtime::Mci,
 }
 
 impl MciComponent {
     pub fn new(
         board_kernel: &'static kernel::Kernel,
         driver_num: usize,
-        driver: &'static romtime::Mci,
+        driver: &'static caliptra_mcu_romtime::Mci,
     ) -> Self {
         Self {
             board_kernel,

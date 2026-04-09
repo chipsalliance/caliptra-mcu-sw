@@ -201,7 +201,7 @@ name = "bare-metal-runtime"
 version = "0.1.0"
 dependencies = [
  "caliptra-drivers",
- "romtime",
+ "caliptra-mcu-romtime",
  "rv32i",
 ]
 
@@ -844,11 +844,11 @@ dependencies = [
  "caliptra-mcu-i3c-driver",
  "caliptra-mcu-mbox-comm",
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "caliptra-ureg",
  "capsules-core",
  "capsules-extra",
  "kernel",
- "romtime",
  "tock-registers",
  "zerocopy",
 ]
@@ -867,13 +867,13 @@ dependencies = [
  "caliptra-mcu-mbox-comm",
  "caliptra-mcu-mbox-driver",
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "caliptra-mcu-tock-veer",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
  "kernel",
- "romtime",
  "tock-registers",
 ]
 
@@ -904,9 +904,9 @@ name = "caliptra-mcu-dma-driver"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "capsules-core",
  "kernel",
- "romtime",
  "tock-registers",
 ]
 
@@ -1099,9 +1099,9 @@ name = "caliptra-mcu-flash-ctrl-emulator"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "capsules-core",
  "kernel",
- "romtime",
 ]
 
 [[package]]
@@ -1109,9 +1109,9 @@ name = "caliptra-mcu-flash-ctrl-fpga"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "capsules-core",
  "kernel",
- "romtime",
 ]
 
 [[package]]
@@ -1119,9 +1119,9 @@ name = "caliptra-mcu-flash-driver"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "capsules-core",
  "kernel",
- "romtime",
  "tock-registers",
 ]
 
@@ -1183,6 +1183,7 @@ dependencies = [
  "caliptra-mcu-poll-common",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
  "caliptra-mcu-testing-common",
  "caliptra-registers",
  "caliptra-test-harness-types",
@@ -1194,7 +1195,6 @@ dependencies = [
  "nix 0.26.4",
  "p384",
  "rand 0.8.5",
- "romtime",
  "semver",
  "sha2",
  "sha3",
@@ -1209,9 +1209,9 @@ name = "caliptra-mcu-i3c-driver"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "capsules-core",
  "kernel",
- "romtime",
  "rv32i",
  "tock-registers",
 ]
@@ -1260,9 +1260,9 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-mbox-comm",
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "capsules-core",
  "kernel",
- "romtime",
 ]
 
 [[package]]
@@ -1290,9 +1290,9 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-romtime",
  "caliptra-mcu-tock-veer",
  "kernel",
- "romtime",
  "rv32i",
 ]
 
@@ -1395,14 +1395,29 @@ dependencies = [
  "caliptra-mcu-otp-digest",
  "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "constant_time_eq 0.4.2",
  "riscv-csr",
- "romtime",
  "rv32i",
  "smlang",
  "tock-registers",
  "zerocopy",
  "zeroize",
+]
+
+[[package]]
+name = "caliptra-mcu-romtime"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.10.0",
+ "caliptra-api",
+ "caliptra-mcu-registers-generated",
+ "caliptra-registers",
+ "caliptra-ureg",
+ "riscv-csr",
+ "rv32i",
+ "tock-registers",
+ "zerocopy",
 ]
 
 [[package]]
@@ -1420,8 +1435,8 @@ dependencies = [
  "caliptra-mcu-error",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
  "caliptra-mcu-test-harness",
- "romtime",
  "tock-registers",
 ]
 
@@ -1430,8 +1445,8 @@ name = "caliptra-mcu-test-fw-lc-ctrl"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
  "caliptra-mcu-test-harness",
- "romtime",
  "tock-registers",
 ]
 
@@ -1441,8 +1456,8 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
  "caliptra-mcu-test-harness",
- "romtime",
  "tock-registers",
 ]
 
@@ -1453,8 +1468,8 @@ dependencies = [
  "caliptra-mcu-error",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
  "caliptra-mcu-test-harness",
- "romtime",
  "tock-registers",
 ]
 
@@ -1465,8 +1480,8 @@ dependencies = [
  "caliptra-mcu-error",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
  "caliptra-mcu-test-harness",
- "romtime",
  "tock-registers",
 ]
 
@@ -1480,8 +1495,8 @@ dependencies = [
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
  "caliptra-registers",
- "romtime",
  "tock-registers",
 ]
 
@@ -1510,6 +1525,7 @@ dependencies = [
  "caliptra-mcu-i3c-driver",
  "caliptra-mcu-mbox-driver",
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
@@ -1517,7 +1533,6 @@ dependencies = [
  "kernel",
  "riscv 0.2.2",
  "riscv-csr",
- "romtime",
  "rv32i",
  "tock-registers",
 ]
@@ -2457,6 +2472,7 @@ dependencies = [
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
+ "caliptra-mcu-romtime",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
@@ -2470,7 +2486,6 @@ dependencies = [
  "libtock_runtime",
  "libtock_unittest",
  "portable-atomic",
- "romtime",
  "zerocopy",
 ]
 
@@ -3438,8 +3453,8 @@ dependencies = [
  "caliptra-mcu-image-header",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
  "riscv-csr",
- "romtime",
  "rv32i",
  "tock-registers",
  "zerocopy",
@@ -3455,8 +3470,8 @@ dependencies = [
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
  "riscv-csr",
- "romtime",
  "rv32i",
  "tock-registers",
  "zeroize",
@@ -3482,6 +3497,7 @@ dependencies = [
  "caliptra-mcu-mbox-driver",
  "caliptra-mcu-platforms-common",
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "caliptra-mcu-tock-veer",
  "capsules-core",
  "capsules-extra",
@@ -3490,7 +3506,6 @@ dependencies = [
  "kernel",
  "riscv 0.2.2",
  "riscv-csr",
- "romtime",
  "rv32i",
  "tock-registers",
 ]
@@ -3512,6 +3527,7 @@ dependencies = [
  "caliptra-mcu-mbox-driver",
  "caliptra-mcu-platforms-common",
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "caliptra-mcu-tock-veer",
  "capsules-core",
  "capsules-extra",
@@ -3520,7 +3536,6 @@ dependencies = [
  "kernel",
  "riscv 0.2.2",
  "riscv-csr",
- "romtime",
  "rv32i",
  "tock-registers",
 ]
@@ -4281,21 +4296,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8188909339ccc0c68cfb5a04648313f09621e8b87dc03095454f1a11f6c5d436"
 
 [[package]]
-name = "romtime"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.10.0",
- "caliptra-api",
- "caliptra-mcu-registers-generated",
- "caliptra-registers",
- "caliptra-ureg",
- "riscv-csr",
- "rv32i",
- "tock-registers",
- "zerocopy",
-]
-
-[[package]]
 name = "rustc-hash"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4895,6 +4895,7 @@ dependencies = [
  "caliptra-mcu-pldm-ua",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
  "caliptra-mcu-testing-common",
  "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
@@ -4911,7 +4912,6 @@ dependencies = [
  "p384",
  "rand 0.8.5",
  "random-port",
- "romtime",
  "sha2",
  "simple_logger",
  "tempfile",
@@ -5417,6 +5417,7 @@ dependencies = [
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-pldm-common",
+ "caliptra-mcu-romtime",
  "caliptra-ocp-eat",
  "critical-section",
  "embassy-executor",
@@ -5436,7 +5437,6 @@ dependencies = [
  "mcu-mbox-lib",
  "pldm-lib",
  "portable-atomic",
- "romtime",
  "spdm-lib",
  "static_cell",
  "zerocopy",

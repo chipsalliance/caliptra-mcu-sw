@@ -15,7 +15,7 @@ caliptra-mcu-config.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-rom-common.workspace = true
 caliptra-mcu-registers-generated.workspace = true
-romtime.workspace = true
+caliptra-mcu-romtime.workspace = true
 tock-registers.workspace = true
 zeroize.workspace = true
 

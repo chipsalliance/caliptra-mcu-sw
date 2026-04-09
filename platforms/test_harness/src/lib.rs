@@ -75,10 +75,10 @@ mod platform {
     }
 }
 
-/// Must be called prior to using `romtime::println` or similar functions
+/// Must be called prior to using `caliptra_mcu_romtime::println` or similar functions
 pub fn set_printer() {
     unsafe {
         #[allow(static_mut_refs)]
-        romtime::set_printer(&mut WRITER);
+        caliptra_mcu_romtime::set_printer(&mut WRITER);
     }
 }

@@ -15,13 +15,13 @@ use caliptra_hw_model_types::{
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_mcu_mbox_common::messages::calc_checksum;
 pub use caliptra_mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
+use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_testing_common::MCU_RUNNING;
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
 use caliptra_ureg::MmioMut;
 pub use mcu_mgr::McuManager;
 pub use model_emulated::ModelEmulated;
 use rand::{rngs::StdRng, SeedableRng};
-use romtime::McuBootMilestones;
 use sha2::Digest;
 use std::io::Write;
 use std::io::{stdout, ErrorKind};

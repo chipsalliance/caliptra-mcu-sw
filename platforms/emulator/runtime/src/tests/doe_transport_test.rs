@@ -5,6 +5,7 @@
 use crate::EMULATOR_PERIPHERALS;
 use caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport;
 use caliptra_mcu_doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
+use caliptra_mcu_romtime::println;
 use caliptra_mcu_tock_veer::timers::InternalTimers;
 use core::cell::Cell;
 use core::cell::RefCell;
@@ -13,7 +14,6 @@ use kernel::debug;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::utilities::cells::TakeCell;
 use kernel::{static_buf, static_init};
-use romtime::println;
 
 pub const TEST_BUF_LEN: usize = 128 * 4; // 128 dwords, 512 bytes
 

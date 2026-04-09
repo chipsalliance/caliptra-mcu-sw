@@ -96,7 +96,9 @@ fn exception_handler() -> ! {
         )
     };
 
-    romtime::println!("EXCEPTION mcause={mcause:#08X} mepc={mepc:#08X} sp={sp:#08X} ra={ra:#08X}");
+    caliptra_mcu_romtime::println!(
+        "EXCEPTION mcause={mcause:#08X} mepc={mepc:#08X} sp={sp:#08X} ra={ra:#08X}"
+    );
     fatal_error(caliptra_mcu_error::McuError::GENERIC_EXCEPTION)
 }
 

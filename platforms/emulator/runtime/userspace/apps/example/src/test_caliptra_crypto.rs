@@ -13,7 +13,7 @@ use libapi_caliptra::crypto::import::Import;
 use libapi_caliptra::crypto::rng::Rng;
 use libapi_caliptra::mailbox_api::{MAX_RANDOM_NUM_SIZE, MAX_RANDOM_STIR_SIZE};
 
-use romtime::{println, test_exit, HexBytes};
+use caliptra_mcu_romtime::{println, test_exit, HexBytes};
 
 const EXPECTED_HASHES_384: [[u8; 48]; 1] = [[
     // data 1

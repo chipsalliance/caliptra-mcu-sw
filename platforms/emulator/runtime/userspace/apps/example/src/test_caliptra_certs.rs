@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_romtime::println;
+use caliptra_mcu_romtime::test_exit;
 use libapi_caliptra::certificate::{
     CertContext, IDEV_ECC_CSR_MAX_SIZE, KEY_LABEL_SIZE, MAX_ECC_CERT_SIZE,
 };
-use romtime::println;
-use romtime::test_exit;
 
 const TEST_KEY_LABEL: [u8; KEY_LABEL_SIZE] = [
     48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25,

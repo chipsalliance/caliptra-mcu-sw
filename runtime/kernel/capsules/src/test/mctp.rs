@@ -3,12 +3,12 @@
 use crate::mctp::base_protocol::{MessageType, MCTP_TAG_MASK, MCTP_TAG_OWNER, MCTP_TEST_MSG_TYPE};
 use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
+use caliptra_mcu_romtime::println;
 use core::cell::Cell;
 use core::fmt::Write;
 use kernel::utilities::cells::{MapCell, OptionalCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
-use romtime::println;
 
 pub const MCTP_TEST_REMOTE_EID: u8 = 0x20;
 pub const MCTP_TEST_MSG_SIZE: usize = 1000;

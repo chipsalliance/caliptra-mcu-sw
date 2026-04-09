@@ -19,8 +19,8 @@ use crate::MCU_MEMORY_MAP;
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters};
 use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
 use caliptra_mcu_error::McuError;
+use caliptra_mcu_romtime::HexWord;
 use core::fmt::Write;
-use romtime::HexWord;
 #[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
 use zerocopy::FromBytes;
 
@@ -31,7 +31,7 @@ pub struct FwHitlessUpdate {}
 
 impl BootFlow for FwHitlessUpdate {
     fn run(env: &mut RomEnv, _params: RomParameters) -> ! {
-        romtime::println!("[mcu-rom] Starting fw hitless update flow");
+        caliptra_mcu_romtime::println!("[mcu-rom] Starting fw hitless update flow");
 
         // Create local references to minimize code changes
         let soc_manager = &mut env.soc_manager;
@@ -44,13 +44,13 @@ impl BootFlow for FwHitlessUpdate {
         ) {
             match err {
                 CaliptraApiError::MailboxCmdFailed(code) => {
-                    romtime::println!(
+                    caliptra_mcu_romtime::println!(
                         "[mcu-rom] Error finishing mailbox command: {}",
                         HexWord(code)
                     );
                 }
                 _ => {
-                    romtime::println!("[mcu-rom] Error finishing mailbox command");
+                    caliptra_mcu_romtime::println!("[mcu-rom] Error finishing mailbox command");
                 }
             }
             fatal_error(McuError::ROM_FW_HITLESS_UPDATE_CLEAR_MB_ERROR);
@@ -59,7 +59,7 @@ impl BootFlow for FwHitlessUpdate {
         while !soc.fw_ready() {}
 
         // Jump to firmware
-        romtime::println!("[mcu-rom] Jumping to firmware");
+        caliptra_mcu_romtime::println!("[mcu-rom] Jumping to firmware");
 
         #[cfg(target_arch = "riscv32")]
         unsafe {

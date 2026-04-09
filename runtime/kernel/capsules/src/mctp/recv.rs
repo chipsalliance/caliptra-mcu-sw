@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::mctp::base_protocol::{MCTPHeader, MessageType, MCTP_TAG_MASK, MCTP_TAG_OWNER};
+use caliptra_mcu_romtime::println;
 use core::fmt::Write;
 use kernel::collections::list::{ListLink, ListNode};
 use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
-use romtime::println;
 
 /// This trait is implemented to get notified of the messages received
 /// on corresponding msg_type.

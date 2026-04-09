@@ -17,14 +17,14 @@ use caliptra_api::mailbox::{
     CmShaFinalResp, CmShaInitResp, CommandId, CMB_SHA_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
 };
 use caliptra_mcu_error::McuError;
-use romtime::{CaliptraSoC, HexWord};
+use caliptra_mcu_romtime::{CaliptraSoC, HexWord};
 
 /// Read mailbox response words into a u8 buffer.
 fn read_resp(soc_manager: &mut CaliptraSoC, resp_buf: &mut [u8], label: &str) {
     let resp_size = resp_buf.len();
     match soc_manager.finish_mailbox_resp(resp_size, resp_size) {
         Err(err) => {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[mcu-rom] {} finish error: {}",
                 label,
                 HexWord(err_code(&err))
@@ -43,7 +43,7 @@ fn read_resp(soc_manager: &mut CaliptraSoC, resp_buf: &mut [u8], label: &str) {
             }
         }
         Ok(None) => {
-            romtime::println!("[mcu-rom] {} no response", label);
+            caliptra_mcu_romtime::println!("[mcu-rom] {} no response", label);
             fatal_error(McuError::ROM_COLD_BOOT_ROM_DIGEST_MISMATCH);
         }
     }
@@ -130,7 +130,7 @@ fn cm_sha_init(soc_manager: &mut CaliptraSoC, chunk: &[u32]) -> [u8; CMB_SHA_CON
         .chain(core::iter::repeat(0u32).take(padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom] CM_SHA_INIT start error: {}",
             HexWord(err_code(&err))
         );
@@ -181,7 +181,7 @@ fn cm_sha_update(
         .chain(core::iter::repeat(0u32).take(padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom] CM_SHA_UPDATE start error: {}",
             HexWord(err_code(&err))
         );
@@ -230,7 +230,7 @@ fn cm_sha_final(
         .chain(core::iter::repeat(0u32).take(padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom] CM_SHA_FINAL start error: {}",
             HexWord(err_code(&err))
         );

@@ -9,8 +9,8 @@ use caliptra_mcu_registers_generated::primary_flash_ctrl::{
     regs::PrimaryFlashCtrl,
 };
 use caliptra_mcu_rom_common::flash::hil::{FlashDrvError, FlashStorage};
+use caliptra_mcu_romtime::StaticRef;
 use core::ops::{Index, IndexMut};
-use romtime::StaticRef;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 /// FPGA wrapper primary flash controller address

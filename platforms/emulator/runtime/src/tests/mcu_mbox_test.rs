@@ -4,6 +4,7 @@ use crate::run_kernel_op;
 use caliptra_mcu_mbox_comm::hil::{Mailbox, MailboxClient, MailboxStatus};
 use caliptra_mcu_mbox_driver::McuMailbox;
 use caliptra_mcu_registers_generated::mci;
+use caliptra_mcu_romtime::println;
 use caliptra_mcu_tock_veer::timers::InternalTimers;
 use core::cell::Cell;
 use kernel::debug;
@@ -13,7 +14,6 @@ use kernel::static_init;
 use kernel::utilities::cells::TakeCell;
 use kernel::utilities::registers::interfaces::{Readable, Writeable};
 use kernel::utilities::StaticRef;
-use romtime::println;
 
 const TEST_BUF_LEN: usize = 64;
 static mut MCU_MAILBOX_TESTER: Option<&'static McuMailboxTester> = None;
@@ -271,12 +271,12 @@ impl<'a> EmulatedMbxSender<'a> {
 pub fn test_mcu_mbox() -> Option<u32> {
     test_mcu_mbox_loopback();
     test_mcu_mbox_custom_response();
-    romtime::println!("MCU mailbox tests pass");
+    caliptra_mcu_romtime::println!("MCU mailbox tests pass");
     Some(0)
 }
 
 fn test_mcu_mbox_loopback() {
-    romtime::println!("Starting MCU mailbox test loopback");
+    caliptra_mcu_romtime::println!("Starting MCU mailbox test loopback");
     fn expected_resp(input: &[u32], output: &mut [u32]) -> usize {
         let n = input.len();
         output[..n].copy_from_slice(&input[..n]);
@@ -292,7 +292,7 @@ fn test_mcu_mbox_loopback() {
 }
 
 fn test_mcu_mbox_custom_response() {
-    romtime::println!("Starting MCU mailbox test custom response");
+    caliptra_mcu_romtime::println!("Starting MCU mailbox test custom response");
     run_mcu_mailbox_test(
         0x77,
         req_pattern,

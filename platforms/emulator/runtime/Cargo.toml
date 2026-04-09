@@ -29,7 +29,7 @@ caliptra-mcu-mbox-driver.workspace = true
 caliptra-mcu-platforms-common.workspace = true
 caliptra-mcu-tock-veer.workspace = true
 caliptra-mcu-registers-generated.workspace = true
-romtime.workspace = true
+caliptra-mcu-romtime.workspace = true
 tock-registers.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]

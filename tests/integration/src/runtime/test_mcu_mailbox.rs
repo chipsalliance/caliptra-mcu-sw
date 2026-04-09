@@ -4,7 +4,7 @@ use crate::test::{start_runtime_hw_model, TestParams};
 use anyhow::Result;
 use caliptra_mcu_hw_model::McuHwModel;
 use caliptra_mcu_mbox_common::messages::FirmwareVersionReq;
-use romtime::McuBootMilestones;
+use caliptra_mcu_romtime::McuBootMilestones;
 
 #[test]
 fn test_invalid_mailbox_cmd() -> Result<()> {

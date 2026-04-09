@@ -3,13 +3,13 @@
 // Component for mailbox capsule.
 
 use caliptra_mcu_capsules_runtime::mailbox::Mailbox;
+use caliptra_mcu_romtime::CaliptraSoC;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::create_capability;
 use kernel::hil::time::Alarm;
-use romtime::CaliptraSoC;
 
 #[macro_export]
 macro_rules! mailbox_component_static {

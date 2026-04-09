@@ -38,7 +38,7 @@ pub extern "C" fn rom_entry() -> ! {
     print_to_console("FPGA MCU ROM\n");
     unsafe {
         #[allow(static_mut_refs)]
-        romtime::set_printer(&mut FPGA_WRITER);
+        caliptra_mcu_romtime::set_printer(&mut FPGA_WRITER);
     }
     unsafe {
         #[allow(static_mut_refs)]
@@ -46,10 +46,10 @@ pub extern "C" fn rom_entry() -> ! {
     }
     unsafe {
         #[allow(static_mut_refs)]
-        romtime::set_exiter(&mut EXITER);
+        caliptra_mcu_romtime::set_exiter(&mut EXITER);
     }
 
-    romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
+    caliptra_mcu_romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
 
     // Initialize the primary flash controller
     let primary_flash_ctrl = FpgaFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
@@ -148,7 +148,7 @@ pub extern "C" fn rom_entry() -> ! {
     });
 
     let addr = MCU_MEMORY_MAP.sram_offset;
-    romtime::println!("[mcu-rom] Jumping to firmware at {:08x}", addr);
+    caliptra_mcu_romtime::println!("[mcu-rom] Jumping to firmware at {:08x}", addr);
     exit_rom(addr);
 }
 

@@ -25,7 +25,7 @@ caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-pldm-common.workspace = true
 portable-atomic.workspace = true
-romtime.workspace = true
+caliptra-mcu-romtime.workspace = true
 zerocopy.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]

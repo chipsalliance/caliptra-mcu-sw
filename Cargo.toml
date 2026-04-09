@@ -249,7 +249,7 @@ caliptra-mcu-registers-generated = { path = "registers/generated-firmware" }
 caliptra-mcu-registers-generator = { path = "registers/generator" }
 caliptra-mcu-registers-systemrdl = { path = "registers/systemrdl" }
 caliptra-mcu-registers-systemrdl-new = { path = "registers/systemrdl-new" }
-romtime = { path = "romtime" }
+caliptra-mcu-romtime = { path = "romtime" }
 
 # App related dependencies
 external-cmds-common = { path = "runtime/userspace/api/external-cmds-common" }

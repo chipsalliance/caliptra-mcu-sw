@@ -13,11 +13,11 @@ mod cmd {
     pub const EXIT: u32 = 1;
 }
 
-pub struct System<'a, E: romtime::Exit> {
+pub struct System<'a, E: caliptra_mcu_romtime::Exit> {
     exiter: RefCell<&'a mut E>,
 }
 
-impl<'a, E: romtime::Exit> System<'a, E> {
+impl<'a, E: caliptra_mcu_romtime::Exit> System<'a, E> {
     pub fn new(exiter: &'a mut E) -> System<'a, E> {
         System {
             exiter: RefCell::new(exiter),
@@ -26,7 +26,7 @@ impl<'a, E: romtime::Exit> System<'a, E> {
 }
 
 /// Provide an interface for userland.
-impl<E: romtime::Exit> SyscallDriver for System<'_, E> {
+impl<E: caliptra_mcu_romtime::Exit> SyscallDriver for System<'_, E> {
     fn command(
         &self,
         cmd: usize,

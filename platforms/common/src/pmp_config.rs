@@ -285,20 +285,20 @@ fn convert_platform_regions_to_pmp(
                 let napot_spec =
                     NAPOTRegionSpec::new(platform_region.start_addr, platform_region.size)
                         .ok_or_else(|| {
-                            romtime::println!(
+                            caliptra_mcu_romtime::println!(
                                 "Error: MMIO region cannot be converted to NAPOT format"
                             );
-                            romtime::println!(
+                            caliptra_mcu_romtime::println!(
                                 "  Region: {:p}+{:#x}",
                                 platform_region.start_addr,
                                 platform_region.size
                             );
-                            romtime::println!("  NAPOT requirements:");
-                            romtime::println!(
+                            caliptra_mcu_romtime::println!("  NAPOT requirements:");
+                            caliptra_mcu_romtime::println!(
                                 "    - Start address must be naturally aligned to the size"
                             );
-                            romtime::println!("    - Size must be a power of 2");
-                            romtime::println!(
+                            caliptra_mcu_romtime::println!("    - Size must be a power of 2");
+                            caliptra_mcu_romtime::println!(
                         "  Consider adjusting region boundaries or using separate smaller regions"
                     );
                             ()
@@ -317,20 +317,20 @@ fn convert_platform_regions_to_pmp(
                 let napot_spec =
                     NAPOTRegionSpec::new(platform_region.start_addr, platform_region.size)
                         .ok_or_else(|| {
-                            romtime::println!(
+                            caliptra_mcu_romtime::println!(
                                 "Error: MMIO region cannot be converted to NAPOT format"
                             );
-                            romtime::println!(
+                            caliptra_mcu_romtime::println!(
                                 "  Region: {:p}+{:#x}",
                                 platform_region.start_addr,
                                 platform_region.size
                             );
-                            romtime::println!("  NAPOT requirements:");
-                            romtime::println!(
+                            caliptra_mcu_romtime::println!("  NAPOT requirements:");
+                            caliptra_mcu_romtime::println!(
                                 "    - Start address must be naturally aligned to the size"
                             );
-                            romtime::println!("    - Size must be a power of 2");
-                            romtime::println!(
+                            caliptra_mcu_romtime::println!("    - Size must be a power of 2");
+                            caliptra_mcu_romtime::println!(
                         "  Consider adjusting region boundaries or using separate smaller regions"
                     );
                             ()
@@ -351,8 +351,10 @@ fn convert_platform_regions_to_pmp(
 
             // Invalid combinations (should never happen due to early validation)
             _ => {
-                romtime::println!("Internal Error: Invalid region combination passed validation");
-                romtime::println!(
+                caliptra_mcu_romtime::println!(
+                    "Internal Error: Invalid region combination passed validation"
+                );
+                caliptra_mcu_romtime::println!(
                     "  Region: {:p}+{:#x}, is_mmio={}, user_accessible={}, R={}, W={}, X={}",
                     platform_region.start_addr,
                     platform_region.size,
@@ -496,7 +498,7 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
             for i in 0..region_count {
                 let existing = &all_regions[i].unwrap();
                 if existing.is_mmio && regions_overlap(region, existing) {
-                    romtime::println!(
+                    caliptra_mcu_romtime::println!(
                         "[mcu-runtime-pmp] Region {:?} overlaps with {:?}",
                         region,
                         existing
@@ -507,16 +509,18 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
         } else {
             // For non-MMIO regions: must be machine-only (kernel regions have lock bit set)
             if region.user_accessible {
-                romtime::println!("Error: User-accessible non-MMIO regions are not supported");
-                romtime::println!(
+                caliptra_mcu_romtime::println!(
+                    "Error: User-accessible non-MMIO regions are not supported"
+                );
+                caliptra_mcu_romtime::println!(
                     "  Region: {:p}+{:#x}, user_accessible=true",
                     region.start_addr,
                     region.size
                 );
-                romtime::println!(
+                caliptra_mcu_romtime::println!(
                     "  Non-MMIO regions (KernelText, Data, ReadOnly) are always machine-only"
                 );
-                romtime::println!(
+                caliptra_mcu_romtime::println!(
                     "  For user access, use MMIO regions or configure userspace PMP separately"
                 );
                 return Err(());
@@ -528,8 +532,8 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
                 (region.read && !region.write && !region.execute); // R (ReadOnly)
 
             if !valid_permissions {
-                romtime::println!("Error: Invalid PMP region permission combination");
-                romtime::println!(
+                caliptra_mcu_romtime::println!("Error: Invalid PMP region permission combination");
+                caliptra_mcu_romtime::println!(
                     "  Region: {:p}+{:#x}, R={} W={} X={}",
                     region.start_addr,
                     region.size,
@@ -537,7 +541,7 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
                     region.write,
                     region.execute
                 );
-                romtime::println!(
+                caliptra_mcu_romtime::println!(
                     "  Supported combinations: R+X (KernelText), R+W (Data), R (ReadOnly)"
                 );
                 return Err(());
@@ -571,24 +575,28 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
                     let overlap_size = overlap_end - overlap_start;
 
                     // Issue warning using the same printing mechanism as platform code
-                    romtime::println!("Warning: PMP non-MMIO region overlap detected!");
-                    romtime::println!(
+                    caliptra_mcu_romtime::println!(
+                        "Warning: PMP non-MMIO region overlap detected!"
+                    );
+                    caliptra_mcu_romtime::println!(
                         "  Existing region (higher priority): {:p} + {:#x} bytes",
                         existing.start_addr,
                         existing.size
                     );
-                    romtime::println!(
+                    caliptra_mcu_romtime::println!(
                         "  New region (lower priority):       {:p} + {:#x} bytes",
                         region.start_addr,
                         region.size
                     );
-                    romtime::println!(
+                    caliptra_mcu_romtime::println!(
                         "  Overlap: {:#x}-{:#x} ({:#x} bytes)",
                         overlap_start,
                         overlap_end,
                         overlap_size
                     );
-                    romtime::println!("  → Earlier region takes precedence in overlapping area");
+                    caliptra_mcu_romtime::println!(
+                        "  → Earlier region takes precedence in overlapping area"
+                    );
                 }
             }
         }

@@ -14,7 +14,7 @@
 #![no_std]
 
 use caliptra_mcu_rom_common::{LifecycleControllerState, LifecycleToken, RomEnv};
-use romtime::McuBootMilestones;
+use caliptra_mcu_romtime::McuBootMilestones;
 use tock_registers::interfaces::Readable;
 
 const GO_BIT: u32 = 1 << 0;
@@ -53,9 +53,9 @@ fn run() -> ! {
     let result = env.lc.transition(target, &token);
 
     match (result.is_ok(), expect_error) {
-        (true, false) | (false, true) => romtime::println!("PASS"),
-        (true, true) => romtime::println!("FAIL: expected error but succeeded"),
-        (false, false) => romtime::println!("FAIL: unexpected transition error"),
+        (true, false) | (false, true) => caliptra_mcu_romtime::println!("PASS"),
+        (true, true) => caliptra_mcu_romtime::println!("FAIL: expected error but succeeded"),
+        (false, false) => caliptra_mcu_romtime::println!("FAIL: unexpected transition error"),
     }
 
     #[allow(clippy::empty_loop)]

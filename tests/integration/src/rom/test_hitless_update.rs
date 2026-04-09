@@ -3,7 +3,7 @@
 use crate::platform;
 use anyhow::Result;
 use caliptra_mcu_hw_model::{new, InitParams, McuHwModel};
-use romtime::McuBootMilestones;
+use caliptra_mcu_romtime::McuBootMilestones;
 
 // TODO(zhalvorsen): Enable this test for emulator when it is supported
 #[cfg_attr(not(feature = "fpga_realtime"), ignore)]

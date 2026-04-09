@@ -18,6 +18,6 @@ caliptra-mcu-i3c-driver.workspace = true
 caliptra-mcu-mbox-comm.workspace = true
 kernel.workspace = true
 caliptra-mcu-registers-generated.workspace = true
-romtime.workspace = true
+caliptra-mcu-romtime.workspace = true
 tock-registers.workspace = true
 zerocopy.workspace = true

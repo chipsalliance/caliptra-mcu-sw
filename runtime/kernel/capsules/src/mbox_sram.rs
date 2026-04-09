@@ -8,6 +8,7 @@ use kernel::hil::time::{Alarm, AlarmClient};
 
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_registers_generated::mci::bits::MboxExecute;
+use caliptra_mcu_romtime::StaticRef;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::processbuffer::{
     ReadableProcessBuffer, ReadableProcessSlice, WriteableProcessBuffer, WriteableProcessSlice,
@@ -16,7 +17,6 @@ use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{ErrorCode, ProcessId};
-use romtime::StaticRef;
 use tock_registers::interfaces::Readable;
 
 pub const DRIVER_NUM_MCU_MBOX0_SRAM: usize = 0x9000_3000;

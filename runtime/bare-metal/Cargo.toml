@@ -8,7 +8,7 @@ edition.workspace = true
 
 [dependencies]
 caliptra-drivers.workspace = true
-romtime.workspace = true
+caliptra-mcu-romtime.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 rv32i.workspace = true

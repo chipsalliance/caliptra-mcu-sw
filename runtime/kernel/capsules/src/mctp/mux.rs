@@ -7,6 +7,7 @@ use crate::mctp::control_msg::{MCTPCtrlCmd, MCTPCtrlMsgHdr, MCTP_CTRL_MSG_HEADER
 use crate::mctp::recv::MCTPRxState;
 use crate::mctp::send::MCTPTxState;
 use crate::mctp::transport_binding::{MCTPTransportBinding, TransportRxClient, TransportTxClient};
+use caliptra_mcu_romtime::println;
 use core::cell::Cell;
 use core::fmt::Write;
 use kernel::collections::list::List;
@@ -15,7 +16,6 @@ use kernel::hil::time::{Alarm, Ticks};
 use kernel::utilities::cells::TakeCell;
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
-use romtime::println;
 
 /// MUX struct that manages multiple MCTP driver users (clients).
 ///

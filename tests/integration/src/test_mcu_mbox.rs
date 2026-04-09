@@ -104,7 +104,8 @@ pub mod test {
             }
             // Wait for firmware to initialize
             sleep_emulator_ticks(5_000_000);
-            let mci_base = unsafe { romtime::StaticRef::new(mci_ptr as *const mci::regs::Mci) };
+            let mci_base =
+                unsafe { caliptra_mcu_romtime::StaticRef::new(mci_ptr as *const mci::regs::Mci) };
             let mbox_transport = McuMailboxTransport::new(mci_base);
             println!("MCU MBOX Test Thread Starting:");
             let mut test = RequestResponseTest::new(mbox_transport);

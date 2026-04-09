@@ -14,10 +14,10 @@ Abstract:
 
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
 use caliptra_mcu_error::McuError;
-use core::fmt::Write;
 #[cfg(feature = "fw-manifest-dot")]
-use romtime::HexWord;
-use romtime::{McuBootMilestones, McuRomBootStatus};
+use caliptra_mcu_romtime::HexWord;
+use caliptra_mcu_romtime::{McuBootMilestones, McuRomBootStatus};
+use core::fmt::Write;
 #[cfg(feature = "fw-manifest-dot")]
 use zerocopy::FromBytes;
 
@@ -28,7 +28,7 @@ pub struct FwBoot {}
 
 impl BootFlow for FwBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
-        romtime::println!("[mcu-rom] Starting fw boot reset flow");
+        caliptra_mcu_romtime::println!("[mcu-rom] Starting fw boot reset flow");
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::FirmwareBootFlowStarted.into());
 
@@ -62,7 +62,7 @@ impl BootFlow for FwBoot {
                         section,
                         params.dot_flash,
                     ) {
-                        romtime::println!(
+                        caliptra_mcu_romtime::println!(
                             "[mcu-rom] Error in firmware manifest DOT: {}",
                             HexWord(err.into())
                         );
@@ -79,12 +79,12 @@ impl BootFlow for FwBoot {
         let firmware_ptr = unsafe { (MCU_MEMORY_MAP.sram_offset + firmware_offset) as *const u32 };
         // Safety: this address is valid
         if unsafe { core::ptr::read_volatile(firmware_ptr) } == 0 {
-            romtime::println!("Invalid firmware detected; halting");
+            caliptra_mcu_romtime::println!("Invalid firmware detected; halting");
             fatal_error(McuError::ROM_FW_BOOT_INVALID_FIRMWARE);
         }
 
         // Jump to firmware
-        romtime::println!("[mcu-rom] Jumping to firmware");
+        caliptra_mcu_romtime::println!("[mcu-rom] Jumping to firmware");
         env.mci
             .set_flow_milestone(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE.into());
 

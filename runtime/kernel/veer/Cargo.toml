@@ -20,6 +20,6 @@ caliptra-mcu-mbox-driver.workspace = true
 caliptra-mcu-registers-generated.workspace = true
 riscv-csr.workspace = true
 riscv.workspace = true
-romtime.workspace = true
+caliptra-mcu-romtime.workspace = true
 rv32i.workspace = true
 tock-registers.workspace = true

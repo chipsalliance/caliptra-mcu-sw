@@ -5,13 +5,13 @@
 use caliptra_mcu_mbox_comm::hil::{Mailbox, MailboxClient, MailboxStatus};
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_registers_generated::mci::bits::{MboxCmdStatus, Notif0IntrEnT, Notif0IntrT};
+use caliptra_mcu_romtime::StaticRef;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::{debug, ErrorCode};
-use romtime::StaticRef;
 
 pub const MCU_MBOX0_SRAM_OFFSET: u32 = 0x40_0000;
 pub const MCU_MBOX1_SRAM_OFFSET: u32 = 0x80_0000;

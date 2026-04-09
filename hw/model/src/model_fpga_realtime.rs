@@ -14,12 +14,12 @@ use caliptra_hw_model::{
     SecurityState, SubsystemInitParams, XI3CWrapper,
 };
 use caliptra_mcu_rom_common::LifecycleControllerState;
+use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
 use caliptra_mcu_testing_common::{update_ticks, MCU_RUNNING, MCU_RUNTIME_STARTED};
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
-use romtime::McuBootMilestones;
 use std::collections::VecDeque;
 use std::io::Write;
 use std::marker::PhantomData;

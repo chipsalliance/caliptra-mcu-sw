@@ -138,7 +138,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
         alarm: &'static A,
         ops: &'static [TestOp],
     ) -> LogTest<A> {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "Log recovered from flash (Start and end entry IDs: {:?} to {:?})",
             log.log_start(),
             log.log_end()
@@ -160,7 +160,7 @@ impl<A: 'static + Alarm<'static>> LogTest<A> {
     fn run(&self) {
         let op_index = self.op_index.get();
         if self.finished() {
-            romtime::println!("Linear Log Storage test succeeded!");
+            caliptra_mcu_romtime::println!("Linear Log Storage test succeeded!");
             return;
         }
         match self.ops[op_index] {

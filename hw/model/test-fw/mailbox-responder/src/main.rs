@@ -7,7 +7,7 @@
 
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_rom_common::RomEnv;
-use romtime::McuBootMilestones;
+use caliptra_mcu_romtime::McuBootMilestones;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 fn run() -> ! {

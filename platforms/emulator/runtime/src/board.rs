@@ -21,6 +21,9 @@ use caliptra_mcu_config_emulator::{flash_partition_list_primary, flash_partition
 use caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport;
 use caliptra_mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use caliptra_mcu_registers_generated::mci;
+use caliptra_mcu_romtime::CaliptraSoC;
+use caliptra_mcu_romtime::McuBootMilestones;
+use caliptra_mcu_romtime::StaticRef;
 use caliptra_mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use caliptra_mcu_tock_veer::pic::Pic;
 use caliptra_mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
@@ -42,9 +45,6 @@ use kernel::storage_volume;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
-use romtime::CaliptraSoC;
-use romtime::McuBootMilestones;
-use romtime::StaticRef;
 use rv32i::csr;
 
 // These symbols are defined in the linker script.
@@ -225,7 +225,7 @@ impl SyscallFilter for Filter {
         _syscall: &syscall::Syscall,
     ) -> Result<(), errorcode::ErrorCode> {
         // Uncomment this to enable syscall logging
-        //romtime::println!("Syscall: {:?}", syscall);
+        //caliptra_mcu_romtime::println!("Syscall: {:?}", syscall);
         Ok(())
     }
 }
@@ -285,7 +285,7 @@ pub(crate) fn print_to_console(buf: &str) {
 
 pub(crate) struct EmulatorExiter {}
 pub(crate) static mut EMULATOR_EXITER: EmulatorExiter = EmulatorExiter {};
-impl romtime::Exit for EmulatorExiter {
+impl caliptra_mcu_romtime::Exit for EmulatorExiter {
     fn exit(&mut self, code: u32) {
         crate::io::exit_emulator(code);
     }
@@ -306,9 +306,9 @@ pub unsafe fn main() {
     // TODO: remove this when the emulator-specific pieces are moved to
     // platform/emulator/runtime
     #[allow(static_mut_refs)]
-    romtime::set_printer(&mut EMULATOR_WRITER);
+    caliptra_mcu_romtime::set_printer(&mut EMULATOR_WRITER);
     #[allow(static_mut_refs)]
-    romtime::set_exiter(&mut EMULATOR_EXITER);
+    caliptra_mcu_romtime::set_exiter(&mut EMULATOR_EXITER);
 
     // Set up memory protection immediately after setting the trap handler, to
     // ensure that much of the board initialization routine runs with ePMP
@@ -431,10 +431,10 @@ pub unsafe fn main() {
     let pmp_regions = caliptra_mcu_platforms_common::pmp_config::create_pmp_regions(config)
         .expect("Failed to create PMP regions");
 
-    romtime::println!("PMP Regions:");
-    romtime::println!("{}", pmp_regions);
+    caliptra_mcu_romtime::println!("PMP Regions:");
+    caliptra_mcu_romtime::println!("{}", pmp_regions);
     let epmp = VeeRProtectionMMLEPMP::new(pmp_regions).unwrap();
-    romtime::println!("Finished setting up PMP");
+    caliptra_mcu_romtime::println!("Finished setting up PMP");
 
     // initialize capabilities
     let process_mgmt_cap = create_capability!(capabilities::ProcessManagementCapability);
@@ -488,8 +488,9 @@ pub unsafe fn main() {
     ));
     mailbox.alarm.set_alarm_client(mailbox);
 
-    let mci_regs =
-        unsafe { romtime::StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
+    let mci_regs = unsafe {
+        caliptra_mcu_romtime::StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci)
+    };
     let emulator_peripherals =
         static_init!(EmulatorPeripherals, EmulatorPeripherals::new(mux_alarm));
     emulator_peripherals.init();
@@ -573,7 +574,7 @@ pub unsafe fn main() {
 
     // Select which I3C core to use for MCTP transport based on platform strap.
     if MCU_STRAPS.active_i3c > 1 {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-runtime] WARNING: invalid active_i3c value {}, falling back to 0",
             MCU_STRAPS.active_i3c
         );
@@ -583,7 +584,7 @@ pub unsafe fn main() {
     } else {
         &peripherals.i3c
     };
-    romtime::println!(
+    caliptra_mcu_romtime::println!(
         "[mcu-runtime] Active I3C core for MCTP: {}",
         MCU_STRAPS.active_i3c
     );
@@ -623,7 +624,7 @@ pub unsafe fn main() {
         MessageType::Caliptra,
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
-    romtime::println!("[mcu-runtime] MCTP Caliptra driver component initialized");
+    caliptra_mcu_romtime::println!("[mcu-runtime] MCTP Caliptra driver component initialized");
 
     // Set up a SPDM over DOE capsule.
     let doe_spdm = caliptra_mcu_components::doe::DoeComponent::new(
@@ -795,7 +796,7 @@ pub unsafe fn main() {
     // Disable WDT1 before running the loop or tests
     let mci: StaticRef<mci::regs::Mci> =
         unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
-    let mci_wdt = romtime::Mci::new(mci);
+    let mci_wdt = caliptra_mcu_romtime::Mci::new(mci);
     mci_wdt.disable_wdt();
 
     // Run any requested test
@@ -860,7 +861,7 @@ pub unsafe fn main() {
     // Disable WDT1 before running the loop
     let mci: StaticRef<mci::regs::Mci> =
         unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
-    let mci_wdt = romtime::Mci::new(mci);
+    let mci_wdt = caliptra_mcu_romtime::Mci::new(mci);
     mci_wdt.disable_wdt();
 
     // Enable MCI Interrupts

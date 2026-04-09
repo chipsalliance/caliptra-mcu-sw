@@ -14,8 +14,8 @@ use kernel::utilities::cells::TakeCell;
 ))]
 use crate::board::run_kernel_op;
 
+use caliptra_mcu_romtime::println;
 use core::fmt::Write;
-use romtime::println;
 
 pub(crate) fn test_flash_ctrl_init() -> Option<u32> {
     // Safety: this is run after the board has initialized the chip.

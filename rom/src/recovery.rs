@@ -10,7 +10,7 @@ use caliptra_mcu_registers_generated::i3c;
 use caliptra_mcu_registers_generated::i3c::bits::{
     IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess,
 };
-use romtime::StaticRef;
+use caliptra_mcu_romtime::StaticRef;
 use smlang::statemachine;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::{FromBytes, IntoBytes};
@@ -274,7 +274,7 @@ pub fn load_flash_image_to_recovery(
 
     while *state_machine.state() != States::Done {
         if prev_state != *state_machine.state() {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[mcu-rom] Transitioning from {:?} to {:?}",
                 prev_state,
                 state_machine.state()
@@ -304,7 +304,7 @@ pub fn load_flash_image_to_recovery(
                 if res.is_ok() {
                     state_machine.context_mut().recovery_image_index =
                         recovery_status.rec_img_index() as u8;
-                    romtime::println!(
+                    caliptra_mcu_romtime::println!(
                         "[mcu-rom] Starting recovery with image index {}",
                         state_machine.context().recovery_image_index
                     );
@@ -329,11 +329,11 @@ pub fn load_flash_image_to_recovery(
 
             States::TransferringImage => {
                 if start_cycle.is_none() {
-                    start_cycle = Some(romtime::mcycle());
+                    start_cycle = Some(caliptra_mcu_romtime::mcycle());
                 }
 
                 if state_machine.context().transfer_offset >= next_print_offset {
-                    romtime::println!(
+                    caliptra_mcu_romtime::println!(
                         "[mcu-rom] Transferring image data at offset {} out of {}",
                         state_machine.context().transfer_offset,
                         state_machine.context().image_size
@@ -350,9 +350,9 @@ pub fn load_flash_image_to_recovery(
 
                     // If the transfer is complete, we can move to the next state
                     let _ = state_machine.process_event(Events::TransferComplete);
-                    let end_cycle = romtime::mcycle();
+                    let end_cycle = caliptra_mcu_romtime::mcycle();
                     let cycles = (end_cycle - start_cycle.unwrap_or_default()).max(1);
-                    romtime::println!(
+                    caliptra_mcu_romtime::println!(
                         "[mcu-rom] Image transfer complete after {} cycles (≈{} bytes per 1,000 cycles)",
                         cycles,
                         (state_machine.context().image_size as u64 * 1000) / cycles,

@@ -18,8 +18,8 @@ mod test {
     use caliptra_mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries};
     use caliptra_mcu_error::McuError;
     use caliptra_mcu_hw_model::McuHwModel;
-    use romtime::McuBootMilestones;
-    use romtime::McuRomBootStatus;
+    use caliptra_mcu_romtime::McuBootMilestones;
+    use caliptra_mcu_romtime::McuRomBootStatus;
     use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
     /// Size of the DOT blob structure in bytes.
@@ -1649,7 +1649,7 @@ mod test {
     fn test_fw_manifest_dot_lock() {
         use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
-        use romtime::McuBootMilestones;
+        use caliptra_mcu_romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1716,7 +1716,7 @@ mod test {
     fn test_fw_manifest_dot_lock_idempotent() {
         use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
-        use romtime::McuBootMilestones;
+        use caliptra_mcu_romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -1777,7 +1777,7 @@ mod test {
     fn test_fw_manifest_dot_unlock() {
         use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
-        use romtime::McuBootMilestones;
+        use caliptra_mcu_romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -1831,7 +1831,7 @@ mod test {
     fn test_fw_manifest_dot_unlock_idempotent() {
         use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
-        use romtime::McuBootMilestones;
+        use caliptra_mcu_romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1885,7 +1885,7 @@ mod test {
     fn test_fw_manifest_dot_disable() {
         use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_DISABLE;
-        use romtime::McuBootMilestones;
+        use caliptra_mcu_romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1935,7 +1935,7 @@ mod test {
     #[test]
     fn test_fw_manifest_dot_no_magic_skipped() {
         use caliptra_mcu_registers_generated::fuses;
-        use romtime::McuBootMilestones;
+        use caliptra_mcu_romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -1990,7 +1990,7 @@ mod test {
     fn test_fw_manifest_dot_rotate() {
         use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
-        use romtime::McuBootMilestones;
+        use caliptra_mcu_romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
@@ -2041,7 +2041,7 @@ mod test {
     fn test_fw_manifest_dot_rotate_idempotent() {
         use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
-        use romtime::McuBootMilestones;
+        use caliptra_mcu_romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -2156,7 +2156,7 @@ mod test {
     #[test]
     fn test_fw_manifest_dot_unlock_second_boot_succeeds() {
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
-        use romtime::McuBootMilestones;
+        use caliptra_mcu_romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
@@ -2230,7 +2230,7 @@ mod test {
     /// future-version manifest is not silently accepted on an older ROM.
     #[test]
     fn test_fw_manifest_dot_unknown_command() {
-        use romtime::McuBootMilestones;
+        use caliptra_mcu_romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);

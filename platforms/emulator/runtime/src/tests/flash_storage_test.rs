@@ -3,13 +3,13 @@
 // Test flash storage driver read, write and erase on arbitrary length of data.
 
 use caliptra_mcu_flash_driver::{flash_storage_to_pages::FlashStorageToPages, hil::FlashStorage};
+use caliptra_mcu_romtime::println;
 use core::cell::RefCell;
 use core::cmp;
 use core::fmt::Write;
 use kernel::hil::flash::HasClient;
 use kernel::utilities::cells::TakeCell;
 use kernel::{static_buf, static_init};
-use romtime::println;
 
 #[cfg(any(
     feature = "test-flash-ctrl-erase-page",

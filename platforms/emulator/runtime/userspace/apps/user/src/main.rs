@@ -71,7 +71,7 @@ fn main() {
 async fn start() {
     unsafe {
         #[allow(static_mut_refs)]
-        romtime::set_printer(&mut EMULATOR_WRITER);
+        caliptra_mcu_romtime::set_printer(&mut EMULATOR_WRITER);
     }
     async_main().await;
 }

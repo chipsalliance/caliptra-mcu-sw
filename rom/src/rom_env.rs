@@ -14,8 +14,8 @@ Abstract:
 
 use crate::{Lifecycle, Otp, Soc};
 use caliptra_mcu_registers_generated::{i3c, lc_ctrl, mci, otp_ctrl, soc};
+use caliptra_mcu_romtime::{CaliptraSoC, Mci, StaticRef};
 use core::ptr::addr_of;
-use romtime::{CaliptraSoC, Mci, StaticRef};
 
 /// ROM Environment containing all peripherals and managers
 pub struct RomEnv {

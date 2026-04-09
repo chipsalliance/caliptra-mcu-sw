@@ -3,8 +3,8 @@
 use caliptra_mcu_error::{McuError, McuResult};
 use caliptra_mcu_registers_generated::fuses::{self, FuseEntryInfo, OtpPartitionInfo};
 use caliptra_mcu_registers_generated::otp_ctrl;
+use caliptra_mcu_romtime::{HexBytes, HexWord, StaticRef};
 use core::fmt::Write;
-use romtime::{HexBytes, HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 
 use crate::{FuseLayout, LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_OFFSET};
@@ -67,13 +67,15 @@ impl Otp {
                 return Ok(());
             }
         }
-        romtime::println!("[mcu-rom-otp] OTP pending check exceeded maximum iterations");
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom-otp] OTP pending check exceeded maximum iterations"
+        );
         Err(McuError::ROM_OTP_PENDING_TIMEOUT)
     }
 
     pub fn check_error_and_idle(&self) -> McuResult<()> {
         if self.registers.otp_status.get() & OTP_STATUS_ERROR_MASK != 0 {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[mcu-rom-otp] OTP error: {}",
                 self.registers.otp_status.get()
             );
@@ -86,7 +88,7 @@ impl Otp {
             .otp_status
             .is_set(otp_ctrl::bits::OtpStatus::DaiIdle)
         {
-            romtime::println!("[mcu-rom-otp] OTP not idle");
+            caliptra_mcu_romtime::println!("[mcu-rom-otp] OTP not idle");
             return Err(McuError::ROM_OTP_INIT_NOT_IDLE);
         }
 
@@ -99,31 +101,31 @@ impl Otp {
         enable_integrity_check: bool,
         check_timeout_override: Option<u32>,
     ) -> McuResult<()> {
-        romtime::println!("[mcu-rom-otp] Initializing OTP controller...");
+        caliptra_mcu_romtime::println!("[mcu-rom-otp] Initializing OTP controller...");
 
         self.wait_for_not_pending()?;
         self.check_error_and_idle()?;
 
         let check_timeout = check_timeout_override.unwrap_or(OTP_CHECK_TIMEOUT);
-        romtime::println!("[mcu-rom-otp] Setting check timeout to {}", check_timeout);
+        caliptra_mcu_romtime::println!("[mcu-rom-otp] Setting check timeout to {}", check_timeout);
         self.registers.check_timeout.set(check_timeout);
 
         // Enable periodic background checks
         if enable_consistency_check {
-            romtime::println!("[mcu-rom-otp] Enabling consistency check period");
+            caliptra_mcu_romtime::println!("[mcu-rom-otp] Enabling consistency check period");
             self.registers
                 .consistency_check_period
                 .set(OTP_CONSISTENCY_CHECK_PERIOD_MASK);
         }
         if enable_integrity_check {
-            romtime::println!("[mcu-rom-otp] Enabling integrity check period");
+            caliptra_mcu_romtime::println!("[mcu-rom-otp] Enabling integrity check period");
             self.registers
                 .integrity_check_period
                 .set(OTP_INTEGRITY_CHECK_PERIOD_MASK);
         }
 
         // Disable modifications to the background checks
-        romtime::println!("[mcu-rom-otp] Disabling check modifications");
+        caliptra_mcu_romtime::println!("[mcu-rom-otp] Disabling check modifications");
         self.registers
             .check_regwen
             .write(otp_ctrl::bits::CheckRegwen::Regwen::CLEAR);
@@ -131,7 +133,7 @@ impl Otp {
         self.wait_for_not_pending()?;
         self.check_error_and_idle()?;
 
-        romtime::println!("[mcu-rom-otp] Done init");
+        caliptra_mcu_romtime::println!("[mcu-rom-otp] Done init");
         Ok(())
     }
 
@@ -178,7 +180,7 @@ impl Otp {
         {}
 
         if let Some(err) = self.check_error() {
-            romtime::println!("Error reading fuses: {}", HexWord(err));
+            caliptra_mcu_romtime::println!("Error reading fuses: {}", HexWord(err));
             return Err(McuError::ROM_OTP_READ_ERROR);
         }
         Ok(self.registers.dai_rdata_rf_direct_access_rdata_0.get())
@@ -205,7 +207,7 @@ impl Otp {
         {}
 
         if let Some(err) = self.check_error() {
-            romtime::println!("Error reading fuses: {}", HexWord(err));
+            caliptra_mcu_romtime::println!("Error reading fuses: {}", HexWord(err));
             return Err(McuError::ROM_OTP_READ_ERROR);
         }
         let lo = self.registers.dai_rdata_rf_direct_access_rdata_0.get() as u64;
@@ -245,7 +247,7 @@ impl Otp {
         {}
 
         if let Some(err) = self.check_error() {
-            romtime::println!("Error writing fuses: {}", HexWord(err));
+            caliptra_mcu_romtime::println!("Error writing fuses: {}", HexWord(err));
             self.print_errors();
             return Err(McuError::ROM_OTP_WRITE_DWORD_ERROR);
         }
@@ -279,7 +281,7 @@ impl Otp {
         {}
 
         if let Some(err) = self.check_error() {
-            romtime::println!("[mcu-rom] Error writing fuses: {}", HexWord(err));
+            caliptra_mcu_romtime::println!("[mcu-rom] Error writing fuses: {}", HexWord(err));
             self.print_errors();
             return Err(McuError::ROM_OTP_WRITE_WORD_ERROR);
         }
@@ -289,7 +291,7 @@ impl Otp {
     /// Finalize a partition
     /// word_addr is in words
     pub fn finalize_digest(&self, partition_base_addr: usize) -> McuResult<()> {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom] Finalizing partition at base address: {}",
             HexWord(partition_base_addr as u32)
         );
@@ -315,7 +317,7 @@ impl Otp {
         {}
 
         if let Some(err) = self.check_error() {
-            romtime::println!("[mcu-rom] Error writing digest: {}", HexWord(err));
+            caliptra_mcu_romtime::println!("[mcu-rom] Error writing digest: {}", HexWord(err));
             self.print_errors();
             return Err(McuError::ROM_OTP_FINALIZE_DIGEST_ERROR);
         }
@@ -346,7 +348,7 @@ impl Otp {
                 _ => 0,
             };
             if err_code != 0 {
-                romtime::println!("[mcu] OTP error code {}: {}", i, err_code);
+                caliptra_mcu_romtime::println!("[mcu] OTP error code {}: {}", i, err_code);
             }
         }
     }
@@ -735,17 +737,19 @@ impl Otp {
         const DIGEST_SIZE: usize = 8;
 
         if !partition.sw_digest {
-            romtime::println!("[mcu-rom-otp] Partition does not support sw_digest");
+            caliptra_mcu_romtime::println!("[mcu-rom-otp] Partition does not support sw_digest");
             return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
         }
         if partition.byte_size <= DIGEST_SIZE {
-            romtime::println!("[mcu-rom-otp] Partition too small for digest");
+            caliptra_mcu_romtime::println!("[mcu-rom-otp] Partition too small for digest");
             return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
         }
 
         let data_size = partition.byte_size - DIGEST_SIZE;
         if data_size % 8 != 0 {
-            romtime::println!("[mcu-rom-otp] Partition data not 8-byte aligned for digest");
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom-otp] Partition data not 8-byte aligned for digest"
+            );
             return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
         }
 
@@ -803,7 +807,7 @@ impl Otp {
             .ok_or(McuError::ROM_OTP_INVALID_DATA_ERROR)?;
 
         let digest = self.compute_sw_digest(partition, iv, cnst)?;
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom-otp] Writing SW digest {:#x} for partition '{}' at offset {:#x}",
             digest,
             partition.name,
@@ -817,7 +821,7 @@ impl Otp {
         // Read back the digest using 64-bit granule (matching the write)
         let readback = self.read_dword(digest_offset / 8)?;
         if readback != digest {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[mcu-rom-otp] Digest verify failed: wrote {:#x}, read {:#x}",
                 digest,
                 readback
@@ -825,7 +829,7 @@ impl Otp {
             return Err(McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
         }
 
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom-otp] SW digest written and verified for '{}' - partition will lock on next reset",
             partition.name
         );
@@ -834,7 +838,7 @@ impl Otp {
 
     pub(crate) fn burn_lifecycle_tokens(&self, tokens: &LifecycleHashedTokens) -> McuResult<()> {
         for (i, tokeni) in tokens.test_unlock.iter().enumerate() {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[mcu-rom-otp] Burning test_unlock{} token: {}",
                 i,
                 HexBytes(&tokeni.0)
@@ -842,7 +846,7 @@ impl Otp {
             self.burn_lifecycle_token(LC_TOKENS_OFFSET + i * LC_TOKEN_SIZE, tokeni)?;
         }
 
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom-otp] Burning manuf token: {}",
             HexBytes(&tokens.manuf.0)
         );
@@ -851,7 +855,7 @@ impl Otp {
             &tokens.manuf,
         )?;
 
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom-otp] Burning manuf_to_prod token: {}",
             HexBytes(&tokens.manuf_to_prod.0)
         );
@@ -860,7 +864,7 @@ impl Otp {
             &tokens.manuf_to_prod,
         )?;
 
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom-otp] Burning prod_to_prod_end token: {}",
             HexBytes(&tokens.prod_to_prod_end.0)
         );
@@ -869,7 +873,7 @@ impl Otp {
             &tokens.prod_to_prod_end,
         )?;
 
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom-otp] Burning rma token: {}",
             HexBytes(&tokens.rma.0)
         );
@@ -878,7 +882,7 @@ impl Otp {
             &tokens.rma,
         )?;
 
-        romtime::println!("[mcu-rom] Finalizing digest");
+        caliptra_mcu_romtime::println!("[mcu-rom] Finalizing digest");
         self.finalize_digest(LC_TOKENS_OFFSET)?;
         Ok(())
     }

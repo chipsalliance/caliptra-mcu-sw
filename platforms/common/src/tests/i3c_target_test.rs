@@ -4,6 +4,7 @@ use caliptra_mcu_i3c_driver::{
     core::I3CCore,
     hil::{I3CTarget, RxClient},
 };
+use caliptra_mcu_romtime::println;
 use caliptra_mcu_tock_veer::chip::{VeeR, VeeRDefaultPeripherals};
 use caliptra_mcu_tock_veer::timers::InternalTimers;
 use core::cell::Cell;
@@ -14,17 +15,16 @@ use kernel::{
     static_buf, static_init,
     utilities::cells::{OptionalCell, TakeCell},
 };
-use romtime::println;
 
 fn success() -> ! {
     debug_flush_queue!();
-    romtime::test_exit(0);
+    caliptra_mcu_romtime::test_exit(0);
 }
 
 #[allow(dead_code)]
 fn fail() -> ! {
     debug_flush_queue!();
-    romtime::test_exit(1);
+    caliptra_mcu_romtime::test_exit(1);
 }
 
 /// A simple test that just enables and disables the I3C driver.
