@@ -7,13 +7,13 @@
 #![no_std]
 
 use caliptra_mcu_error::McuError;
-use mcu_rom_common::{fatal_error, RomEnv};
+use caliptra_mcu_rom_common::{fatal_error, RomEnv};
 use registers_generated::mci;
 use romtime::McuBootMilestones;
 use romtime::McuResetReason;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
-fn wait_for_firmware_ready(mci: &romtime::Mci, cptra: &mcu_rom_common::Soc) {
+fn wait_for_firmware_ready(mci: &romtime::Mci, cptra: &caliptra_mcu_rom_common::Soc) {
     let notif0 = &mci.registers.intr_block_rf_notif0_internal_intr_r;
     // Wait for a reset request from Caliptra
     while !notif0.is_set(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts) {

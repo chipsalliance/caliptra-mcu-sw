@@ -20,8 +20,8 @@ use core::fmt::Write;
 core::arch::global_asm!(include_str!("start.s"));
 
 use caliptra_mcu_config::{McuMemoryMap, McuStraps};
-use mcu_rom_common::flash::flash_partition::FlashPartition;
-use mcu_rom_common::{
+use caliptra_mcu_rom_common::flash::flash_partition::FlashPartition;
+use caliptra_mcu_rom_common::{
     LifecycleControllerState, LifecycleHashedToken, LifecycleToken, RomParameters,
 };
 
@@ -42,7 +42,7 @@ pub extern "C" fn rom_entry() -> ! {
     }
     unsafe {
         #[allow(static_mut_refs)]
-        mcu_rom_common::set_fatal_error_handler(&mut FATAL_ERROR_HANDLER);
+        caliptra_mcu_rom_common::set_fatal_error_handler(&mut FATAL_ERROR_HANDLER);
     }
     unsafe {
         #[allow(static_mut_refs)]
@@ -94,7 +94,7 @@ pub extern "C" fn rom_entry() -> ! {
 
     // For now, we use the same tokens for all lifecycle transitions.
     let burn_lifecycle_tokens = if burn_tokens {
-        Some(mcu_rom_common::LifecycleHashedTokens {
+        Some(caliptra_mcu_rom_common::LifecycleHashedTokens {
             test_unlock: [burn_hashed_token; 7],
             manuf: burn_hashed_token,
             manuf_to_prod: burn_hashed_token,
@@ -125,7 +125,7 @@ pub extern "C" fn rom_entry() -> ! {
     let axi_user1 = 2;
     let mbox_axi_users = [axi_user0, axi_user1, 0, 0, 0];
 
-    mcu_rom_common::rom_start(RomParameters {
+    caliptra_mcu_rom_common::rom_start(RomParameters {
         lifecycle_transition,
         burn_lifecycle_tokens,
         program_field_entropy: [program_field_entropy; 4],

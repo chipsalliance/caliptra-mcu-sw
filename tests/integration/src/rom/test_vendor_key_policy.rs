@@ -5,7 +5,7 @@ mod test {
     use anyhow::Result;
     use caliptra_mcu_error::McuError;
     use caliptra_mcu_hw_model::{new, DefaultHwModel, InitParams, McuHwModel, McuManager};
-    use mcu_rom_common::{
+    use caliptra_mcu_rom_common::{
         pqc_key_type_entry, vendor_ecc_revocation_entry, vendor_lms_revocation_entry,
         vendor_mldsa_revocation_entry, write_fuse_value, write_single_fuse_value, FuseLayout,
         PqcKeyType,

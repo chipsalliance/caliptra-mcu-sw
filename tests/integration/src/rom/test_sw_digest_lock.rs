@@ -12,7 +12,7 @@ mod test {
     use caliptra_hw_model::HwModel;
     use caliptra_mcu_builder::firmware;
     use caliptra_mcu_hw_model::{InitParams, McuHwModel};
-    use mcu_rom_common::LifecycleControllerState;
+    use caliptra_mcu_rom_common::LifecycleControllerState;
     use registers_generated::fuses;
 
     fn load_roms() -> (Vec<u8>, Vec<u8>) {

@@ -14,10 +14,10 @@ use caliptra_hw_model_types::{
 };
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_mcu_mbox_common::messages::calc_checksum;
+pub use caliptra_mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
 use caliptra_ureg::MmioMut;
 pub use mcu_mgr::McuManager;
-pub use mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
 use mcu_testing_common::MCU_RUNNING;
 pub use model_emulated::ModelEmulated;
 use rand::{rngs::StdRng, SeedableRng};

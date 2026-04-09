@@ -1613,7 +1613,7 @@ mod test {
         cak: [u32; 12],
         lak: [u32; 12],
     ) -> Vec<u8> {
-        use mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
+        use caliptra_mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
         use zerocopy::IntoBytes;
 
         let mut cmd_array = [0u8; 8];
@@ -1647,7 +1647,7 @@ mod test {
     /// Expected: The manifest LOCK command burns the lock fuse (EVEN → ODD).
     #[test]
     fn test_fw_manifest_dot_lock() {
-        use mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
         use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
@@ -1714,7 +1714,7 @@ mod test {
     /// Expected: No additional fuses burned (idempotent).
     #[test]
     fn test_fw_manifest_dot_lock_idempotent() {
-        use mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
         use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
@@ -1775,7 +1775,7 @@ mod test {
     /// Expected: One additional fuse burned (ODD → EVEN), total 2.
     #[test]
     fn test_fw_manifest_dot_unlock() {
-        use mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
         use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
@@ -1829,7 +1829,7 @@ mod test {
     /// Test: UNLOCK command is idempotent when device is already in EVEN (unlocked) state.
     #[test]
     fn test_fw_manifest_dot_unlock_idempotent() {
-        use mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
         use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
@@ -1883,7 +1883,7 @@ mod test {
     /// Test: DISABLE command burns a fuse when in EVEN (unlocked) state.
     #[test]
     fn test_fw_manifest_dot_disable() {
-        use mcu_rom_common::FW_MANIFEST_DOT_CMD_DISABLE;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_DISABLE;
         use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
@@ -1988,7 +1988,7 @@ mod test {
     /// Test: ROTATE command burns 2 fuses when below min_fuse_count threshold.
     #[test]
     fn test_fw_manifest_dot_rotate() {
-        use mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
         use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
@@ -2039,7 +2039,7 @@ mod test {
     /// Test: ROTATE command is idempotent when burned count already meets min_fuse_count.
     #[test]
     fn test_fw_manifest_dot_rotate_idempotent() {
-        use mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
         use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
@@ -2101,7 +2101,7 @@ mod test {
     /// Expected: ROM halts with ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR.
     #[test]
     fn test_fw_manifest_dot_bad_version() {
-        use mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
+        use caliptra_mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
         use zerocopy::IntoBytes;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -2155,7 +2155,7 @@ mod test {
     /// Test: After UNLOCK command, the device boots successfully on the next cold boot.
     #[test]
     fn test_fw_manifest_dot_unlock_second_boot_succeeds() {
-        use mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
         use romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -2280,7 +2280,7 @@ mod test {
     #[test]
     fn test_fw_manifest_dot_runtime_boots() {
         let manifest = create_manifest_section(
-            &[mcu_rom_common::FW_MANIFEST_DOT_CMD_NOP],
+            &[caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_NOP],
             0,
             [0u32; 12],
             [0u32; 12],

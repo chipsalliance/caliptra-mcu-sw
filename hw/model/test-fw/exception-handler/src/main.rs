@@ -5,7 +5,7 @@
 #![no_main]
 #![no_std]
 
-extern crate mcu_rom_common;
+extern crate caliptra_mcu_rom_common;
 
 #[no_mangle]
 pub extern "C" fn main() {

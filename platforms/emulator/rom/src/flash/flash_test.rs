@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use mcu_rom_common::flash::flash_partition::FlashPartition;
+use caliptra_mcu_rom_common::flash::flash_partition::FlashPartition;
 use romtime::{println, test_exit};
 
 pub fn test_rom_flash_access(partition: &FlashPartition) {

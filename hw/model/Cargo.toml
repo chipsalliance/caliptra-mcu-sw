@@ -40,7 +40,7 @@ caliptra-mcu-builder.workspace = true
 caliptra-mcu-config-fpga = { workspace = true, optional = true }
 caliptra-mcu-config.workspace = true
 caliptra-mcu-mbox-common.workspace = true
-mcu-rom-common.workspace = true
+caliptra-mcu-rom-common.workspace = true
 mcu-testing-common.workspace = true
 caliptra-mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
 p384.workspace = true

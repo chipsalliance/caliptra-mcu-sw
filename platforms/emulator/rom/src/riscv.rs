@@ -32,11 +32,11 @@ use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     PARTITION_TABLE,
 };
-use mcu_rom_common::flash::flash_partition::FlashPartition;
-use mcu_rom_common::hil::FlashStorage;
-use mcu_rom_common::memory::SimpleFlash;
-use mcu_rom_common::{fatal_error, RomParameters};
-use mcu_rom_common::{DotRecoveryHandler, DOT_BLOB_SIZE};
+use caliptra_mcu_rom_common::flash::flash_partition::FlashPartition;
+use caliptra_mcu_rom_common::hil::FlashStorage;
+use caliptra_mcu_rom_common::memory::SimpleFlash;
+use caliptra_mcu_rom_common::{fatal_error, RomParameters};
+use caliptra_mcu_rom_common::{DotRecoveryHandler, DOT_BLOB_SIZE};
 use romtime::HexWord;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
@@ -68,7 +68,7 @@ pub extern "C" fn rom_entry() -> ! {
     }
     unsafe {
         #[allow(static_mut_refs)]
-        mcu_rom_common::set_fatal_error_handler(&mut FATAL_ERROR_HANDLER);
+        caliptra_mcu_rom_common::set_fatal_error_handler(&mut FATAL_ERROR_HANDLER);
     }
     unsafe {
         #[allow(static_mut_refs)]
@@ -134,7 +134,7 @@ pub extern "C" fn rom_entry() -> ! {
             _ => fatal_error(EmulatorError::InvalidPartitionId.into()),
         };
 
-        mcu_rom_common::rom_start(RomParameters {
+        caliptra_mcu_rom_common::rom_start(RomParameters {
             flash_partition_driver: Some(&mut flash_image_partition_driver),
             dot_flash: Some(dot_flash),
             request_flash_boot: true,
@@ -167,9 +167,9 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         };
-        mcu_rom_common::rom_start(rom_parameters);
+        caliptra_mcu_rom_common::rom_start(rom_parameters);
     } else if cfg!(feature = "test-fw-manifest-dot") {
-        mcu_rom_common::rom_start(RomParameters {
+        caliptra_mcu_rom_common::rom_start(RomParameters {
             dot_flash: Some(dot_flash),
             fw_manifest_dot_enabled: true,
             otp_enable_integrity_check: true,
@@ -198,7 +198,7 @@ pub extern "C" fn rom_entry() -> ! {
 
         romtime::println!("[mcu-rom] Booting from flash");
 
-        mcu_rom_common::rom_start(RomParameters {
+        caliptra_mcu_rom_common::rom_start(RomParameters {
             flash_partition_driver: Some(&mut flash_partition),
             dot_flash: Some(dot_flash),
             // Let the generic wire (bit 29 of mci_reg_generic_input_wires[1]) control flash boot
@@ -234,10 +234,10 @@ pub extern "C" fn rom_entry() -> ! {
                     MCU_MEMORY_MAP.mci_offset as *const registers_generated::mci::regs::Mci,
                 )
             };
-            mcu_rom_common::Mbox0RecoveryTransport::new(mci_base)
+            caliptra_mcu_rom_common::Mbox0RecoveryTransport::new(mci_base)
         };
 
-        mcu_rom_common::rom_start(RomParameters {
+        caliptra_mcu_rom_common::rom_start(RomParameters {
             dot_flash: Some(dot_flash),
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,

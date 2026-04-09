@@ -4,7 +4,7 @@ use caliptra_mcu_config::boot::{
     BootConfig, BootConfigError, PartitionId, PartitionStatus, RollbackEnable,
 };
 use caliptra_mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator};
-use mcu_rom_common::flash::flash_partition::FlashPartition;
+use caliptra_mcu_rom_common::flash::flash_partition::FlashPartition;
 use zerocopy::{FromBytes, IntoBytes};
 pub struct FlashBootCfg<'a> {
     flash_driver: &'a mut FlashPartition<'a>,

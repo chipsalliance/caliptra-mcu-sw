@@ -2,9 +2,9 @@
 
 // Emulated flash controller driver for MCU ROM.
 
+use caliptra_mcu_rom_common::flash::hil::{FlashDrvError, FlashStorage};
 use core::fmt::Write;
 use core::ops::{Index, IndexMut};
-use mcu_rom_common::flash::hil::{FlashDrvError, FlashStorage};
 use registers_generated::primary_flash_ctrl::{
     self,
     bits::{CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus},

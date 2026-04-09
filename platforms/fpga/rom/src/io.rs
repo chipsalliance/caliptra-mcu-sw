@@ -2,7 +2,7 @@
 
 use core::fmt::Write;
 
-use mcu_rom_common::{FatalErrorHandler, RomEnv};
+use caliptra_mcu_rom_common::{FatalErrorHandler, RomEnv};
 use romtime::{Exit, HexWord};
 
 pub(crate) struct FpgaWriter {}

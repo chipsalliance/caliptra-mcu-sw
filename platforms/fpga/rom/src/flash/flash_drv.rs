@@ -4,8 +4,8 @@
 // This is a simplified version of the emulator's flash driver, but contains
 // only the parts that the FPGA model implements.
 
+use caliptra_mcu_rom_common::flash::hil::{FlashDrvError, FlashStorage};
 use core::ops::{Index, IndexMut};
-use mcu_rom_common::flash::hil::{FlashDrvError, FlashStorage};
 use registers_generated::primary_flash_ctrl::{
     bits::{FlControl, OpStatus},
     regs::PrimaryFlashCtrl,

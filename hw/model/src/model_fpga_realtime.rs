@@ -13,8 +13,8 @@ use caliptra_hw_model::{
     DeviceLifecycle, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem, Output,
     SecurityState, SubsystemInitParams, XI3CWrapper,
 };
+use caliptra_mcu_rom_common::LifecycleControllerState;
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
-use mcu_rom_common::LifecycleControllerState;
 use mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };

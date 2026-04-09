@@ -14,7 +14,7 @@
 #![no_main]
 #![no_std]
 
-use mcu_rom_common::{fatal_error, RomEnv};
+use caliptra_mcu_rom_common::{fatal_error, RomEnv};
 use registers_generated::fuses;
 use tock_registers::interfaces::Readable;
 
