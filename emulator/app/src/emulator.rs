@@ -24,11 +24,11 @@ use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::MailboxRequester;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_mcu_emulator_bmc::Bmc;
+use caliptra_mcu_emulator_caliptra::BytesOrPath;
+use caliptra_mcu_emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
-use emulator_caliptra::BytesOrPath;
-use emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
 #[allow(unused_imports)]
 use emulator_periph::MciMailboxRequester;

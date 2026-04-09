@@ -859,6 +859,7 @@ dependencies = [
  "caliptra-image-types",
  "caliptra-mailbox-server",
  "caliptra-mcu-emulator-bmc",
+ "caliptra-mcu-emulator-caliptra",
  "caliptra-registers",
  "caliptra-test",
  "caliptra-util-host-mailbox-test-config",
@@ -870,7 +871,6 @@ dependencies = [
  "ctrlc",
  "ecdsa",
  "elf",
- "emulator-caliptra",
  "emulator-consts",
  "emulator-mcu-mbox",
  "emulator-periph",
@@ -912,6 +912,25 @@ dependencies = [
  "caliptra-emu-cpu",
  "caliptra-emu-periph",
  "smlang",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-emulator-caliptra"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api-types",
+ "caliptra-emu-bus",
+ "caliptra-emu-cpu",
+ "caliptra-emu-periph",
+ "caliptra-registers",
+ "clap 4.5.51",
+ "ctrlc",
+ "elf",
+ "emulator-consts",
+ "gdbstub",
+ "gdbstub_arch",
+ "hex",
  "tock-registers",
 ]
 
@@ -1789,25 +1808,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ff09972d4073aa8c299395be75161d582e7629cd663171d62af73c8d50dba3f"
 dependencies = [
  "embedded-io",
-]
-
-[[package]]
-name = "emulator-caliptra"
-version = "0.1.0"
-dependencies = [
- "caliptra-api-types",
- "caliptra-emu-bus",
- "caliptra-emu-cpu",
- "caliptra-emu-periph",
- "caliptra-registers",
- "clap 4.5.51",
- "ctrlc",
- "elf",
- "emulator-consts",
- "gdbstub",
- "gdbstub_arch",
- "hex",
- "tock-registers",
 ]
 
 [[package]]
@@ -3093,11 +3093,11 @@ dependencies = [
  "caliptra-hw-model-types",
  "caliptra-image-types",
  "caliptra-mcu-emulator-bmc",
+ "caliptra-mcu-emulator-caliptra",
  "caliptra-registers",
  "caliptra-test-harness-types",
  "caliptra-ureg",
  "ecdsa",
- "emulator-caliptra",
  "emulator-periph",
  "emulator-registers-generated",
  "fips204",
