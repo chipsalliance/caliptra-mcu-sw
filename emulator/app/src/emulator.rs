@@ -27,15 +27,15 @@ use caliptra_mcu_emulator_bmc::Bmc;
 use caliptra_mcu_emulator_caliptra::BytesOrPath;
 use caliptra_mcu_emulator_caliptra::{start_caliptra, StartCaliptraArgs};
 use caliptra_mcu_emulator_consts::{DEFAULT_CPU_ARGS, RAM_ORG, ROM_SIZE};
-use clap::{ArgAction, Parser};
-use clap_num::maybe_hex;
-use crossterm::event::{Event, KeyCode, KeyEvent};
 #[allow(unused_imports)]
-use emulator_periph::MciMailboxRequester;
-use emulator_periph::{
+use caliptra_mcu_emulator_periph::MciMailboxRequester;
+use caliptra_mcu_emulator_periph::{
     CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
     McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp, OtpArgs,
 };
+use clap::{ArgAction, Parser};
+use clap_num::maybe_hex;
+use crossterm::event::{Event, KeyCode, KeyEvent};
 use emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
 use mcu_testing_common::i3c_socket;
@@ -817,7 +817,7 @@ impl Emulator {
             None,
         );
 
-        let mut dma_ctrl = emulator_periph::AxiCDMA::new(
+        let mut dma_ctrl = caliptra_mcu_emulator_periph::AxiCDMA::new(
             &clock.clone(),
             pic.register_irq(McuRootBus::DMA_ERROR_IRQ),
             pic.register_irq(McuRootBus::DMA_EVENT_IRQ),
@@ -827,7 +827,7 @@ impl Emulator {
         )
         .unwrap();
 
-        emulator_periph::AxiCDMA::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
+        caliptra_mcu_emulator_periph::AxiCDMA::set_dma_ram(&mut dma_ctrl, dma_ram.clone());
         let mci_irq = root_bus.mci_irq.clone();
 
         let mcu_mailbox0 = root_bus.mcu_mailbox0.clone();
@@ -904,7 +904,7 @@ impl Emulator {
             delegates,
             Some(auto_root_bus_offsets),
             Some(Box::new(i3c)),
-            Some(Box::new(emulator_periph::StubI3c1::new())),
+            Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
             Some(Box::new(secondary_flash_controller)),
             Some(Box::new(mci)),

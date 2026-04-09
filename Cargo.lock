@@ -862,6 +862,7 @@ dependencies = [
  "caliptra-mcu-emulator-caliptra",
  "caliptra-mcu-emulator-consts",
  "caliptra-mcu-emulator-mcu-mbox",
+ "caliptra-mcu-emulator-periph",
  "caliptra-registers",
  "caliptra-test",
  "caliptra-util-host-mailbox-test-config",
@@ -873,7 +874,6 @@ dependencies = [
  "ctrlc",
  "ecdsa",
  "elf",
- "emulator-periph",
  "emulator-registers-generated",
  "gdbstub",
  "gdbstub_arch",
@@ -947,9 +947,38 @@ version = "0.1.0"
 dependencies = [
  "caliptra-emu-bus",
  "caliptra-mcu-emulator-consts",
- "emulator-periph",
+ "caliptra-mcu-emulator-periph",
  "registers-generated",
  "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-emulator-periph"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "caliptra-emu-bus",
+ "caliptra-emu-cpu",
+ "caliptra-emu-derive",
+ "caliptra-emu-periph",
+ "caliptra-emu-types",
+ "caliptra-image-types",
+ "caliptra-mcu-emulator-consts",
+ "caliptra-registers",
+ "emulator-registers-generated",
+ "lazy_static",
+ "mcu-config",
+ "mcu-otp-lifecycle",
+ "mcu-testing-common",
+ "num_enum",
+ "otp-digest",
+ "registers-generated",
+ "semver",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tock-registers",
+ "zerocopy",
 ]
 
 [[package]]
@@ -1842,35 +1871,6 @@ dependencies = [
  "libc",
  "mcu-testing-common",
  "semver",
-]
-
-[[package]]
-name = "emulator-periph"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "caliptra-emu-bus",
- "caliptra-emu-cpu",
- "caliptra-emu-derive",
- "caliptra-emu-periph",
- "caliptra-emu-types",
- "caliptra-image-types",
- "caliptra-mcu-emulator-consts",
- "caliptra-registers",
- "emulator-registers-generated",
- "lazy_static",
- "mcu-config",
- "mcu-otp-lifecycle",
- "mcu-testing-common",
- "num_enum",
- "otp-digest",
- "registers-generated",
- "semver",
- "serde",
- "serde_json",
- "tempfile",
- "tock-registers",
- "zerocopy",
 ]
 
 [[package]]
@@ -3094,11 +3094,11 @@ dependencies = [
  "caliptra-image-types",
  "caliptra-mcu-emulator-bmc",
  "caliptra-mcu-emulator-caliptra",
+ "caliptra-mcu-emulator-periph",
  "caliptra-registers",
  "caliptra-test-harness-types",
  "caliptra-ureg",
  "ecdsa",
- "emulator-periph",
  "emulator-registers-generated",
  "fips204",
  "hex",

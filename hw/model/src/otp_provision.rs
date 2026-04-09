@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Result};
-use emulator_periph::{otp_digest, otp_scramble, otp_unscramble};
+use caliptra_mcu_emulator_periph::{otp_digest, otp_scramble, otp_unscramble};
 use mcu_otp_lifecycle::hash_lc_token;
 use mcu_rom_common::LifecycleControllerState;
 
