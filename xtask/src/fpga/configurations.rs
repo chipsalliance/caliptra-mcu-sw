@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Context, Result};
+use caliptra_mcu_builder::{AllBuildArgs, ImageCfg, PROJECT_ROOT};
 use clap::ValueEnum;
-use mcu_builder::{AllBuildArgs, ImageCfg, PROJECT_ROOT};
 
 use super::{
     run_command, run_command_with_output,
@@ -201,7 +201,7 @@ impl<'a> ActionHandler<'a> for Subsystem {
     }
 
     fn build(&self, _: &'a BuildArgs<'a>) -> Result<()> {
-        // TODO(clundin): Modify `mcu_builder::all_build` to return the zip instead of writing it?
+        // TODO(clundin): Modify `caliptra_mcu_builder::all_build` to return the zip instead of writing it?
         // TODO(clundin): Place FPGA xtask artifacts in a specific folder?
         let mcu_cfgs = Some(vec![ImageCfg {
             path: "mcu".into(),
@@ -219,7 +219,7 @@ impl<'a> ActionHandler<'a> for Subsystem {
             separate_runtimes: true,
             ..Default::default()
         };
-        mcu_builder::all_build(args)?;
+        caliptra_mcu_builder::all_build(args)?;
         if let Some(target_host) = &self.target_host {
             rsync_file(target_host, "all-fw.zip", ".", false)?;
         }
@@ -318,7 +318,7 @@ impl<'a> ActionHandler<'a> for CoreOnSubsystem {
     }
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
         let caliptra_sw = caliptra_sw_workspace_root();
-        let rom_path = mcu_builder::rom_build(&mcu_builder::CaliptraBuildArgs {
+        let rom_path = caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
             platform: Some("fpga"),
             features: Some("core_test"),
             ..Default::default()

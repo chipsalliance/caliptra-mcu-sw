@@ -787,6 +787,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-builder"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "caliptra-auth-man-gen",
+ "caliptra-auth-man-types",
+ "caliptra-builder",
+ "caliptra-image-crypto",
+ "caliptra-image-fake-keys",
+ "caliptra-image-gen",
+ "caliptra-image-types",
+ "caliptra-mcu-flash-image",
+ "cargo_metadata",
+ "cfg-if",
+ "chrono",
+ "elf",
+ "hex",
+ "mcu-config",
+ "mcu-config-emulator",
+ "mcu-config-fpga",
+ "mcu-firmware-bundler",
+ "pldm-fw-pkg",
+ "rayon",
+ "semver",
+ "serde",
+ "subst",
+ "tbf-header",
+ "tempfile",
+ "uuid",
+ "walkdir",
+ "zerocopy",
+ "zip",
+]
+
+[[package]]
 name = "caliptra-mcu-capsules-emulator"
 version = "0.1.0"
 dependencies = [
@@ -2961,41 +2996,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-builder"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "caliptra-auth-man-gen",
- "caliptra-auth-man-types",
- "caliptra-builder",
- "caliptra-image-crypto",
- "caliptra-image-fake-keys",
- "caliptra-image-gen",
- "caliptra-image-types",
- "caliptra-mcu-flash-image",
- "cargo_metadata",
- "cfg-if",
- "chrono",
- "elf",
- "hex",
- "mcu-config",
- "mcu-config-emulator",
- "mcu-config-fpga",
- "mcu-firmware-bundler",
- "pldm-fw-pkg",
- "rayon",
- "semver",
- "serde",
- "subst",
- "tbf-header",
- "tempfile",
- "uuid",
- "walkdir",
- "zerocopy",
- "zip",
-]
-
-[[package]]
 name = "mcu-components"
 version = "0.1.0"
 dependencies = [
@@ -3092,6 +3092,7 @@ dependencies = [
  "caliptra-hw-model",
  "caliptra-hw-model-types",
  "caliptra-image-types",
+ "caliptra-mcu-builder",
  "caliptra-mcu-emulator-bmc",
  "caliptra-mcu-emulator-caliptra",
  "caliptra-mcu-emulator-periph",
@@ -3103,7 +3104,6 @@ dependencies = [
  "fips204",
  "hex",
  "int-enum",
- "mcu-builder",
  "mcu-config",
  "mcu-config-fpga",
  "mcu-mbox-common",
@@ -3235,7 +3235,7 @@ name = "mcu-rom-emulator"
 version = "0.1.0"
 dependencies = [
  "bitfield",
- "mcu-builder",
+ "caliptra-mcu-builder",
  "mcu-config",
  "mcu-config-emulator",
  "mcu-error",
@@ -3254,7 +3254,7 @@ dependencies = [
 name = "mcu-rom-fpga"
 version = "0.1.0"
 dependencies = [
- "mcu-builder",
+ "caliptra-mcu-builder",
  "mcu-config",
  "mcu-config-fpga",
  "mcu-rom-common",
@@ -4891,6 +4891,7 @@ dependencies = [
  "caliptra-image-gen",
  "caliptra-image-types",
  "caliptra-mctp-vdm-client",
+ "caliptra-mcu-builder",
  "caliptra-mcu-flash-image",
  "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
@@ -4904,7 +4905,6 @@ dependencies = [
  "lazy_static",
  "log",
  "mctp-vdm-common",
- "mcu-builder",
  "mcu-config",
  "mcu-config-emulator",
  "mcu-config-fpga",
@@ -5910,6 +5910,7 @@ dependencies = [
  "caliptra-hw-model",
  "caliptra-image-gen",
  "caliptra-image-types",
+ "caliptra-mcu-builder",
  "caliptra-mcu-fusegen",
  "cargo_metadata",
  "cc",
@@ -5918,7 +5919,6 @@ dependencies = [
  "ecdsa",
  "elf",
  "hex",
- "mcu-builder",
  "mcu-config-emulator",
  "mcu-config-fpga",
  "mcu-firmware-bundler",

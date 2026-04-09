@@ -212,7 +212,7 @@ caliptra-mcu-flash-image = { path = "common/flash-image" }
 caliptra-mcu-fusegen = { path = "provisioning/fuses/fusegen" }
 caliptra-mcu-i3c-driver = { path = "runtime/kernel/drivers/i3c" }
 caliptra-mcu-libtockasync = { path = "runtime/userspace/libtockasync" }
-mcu-builder = { path = "builder" }
+caliptra-mcu-builder = { path = "builder" }
 mcu-components = { path = "runtime/kernel/components" }
 mcu-config = { path = "common/config" }
 mcu-config-emulator = { path = "platforms/emulator/config" }

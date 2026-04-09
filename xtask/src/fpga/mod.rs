@@ -3,10 +3,10 @@
 use anyhow::{anyhow, bail, Result};
 use caliptra_image_gen::to_hw_format;
 use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
+use caliptra_mcu_builder::FirmwareBinaries;
 use clap::Subcommand;
 use configurations::Configuration;
-use mcu_builder::flash_image::build_flash_image_bytes;
-use mcu_builder::FirmwareBinaries;
 use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
 use mcu_rom_common::LifecycleControllerState;
 use std::path::{Path, PathBuf};

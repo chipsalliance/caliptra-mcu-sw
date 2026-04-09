@@ -5,7 +5,7 @@
 #[cfg(test)]
 mod test {
     use crate::{platform, test::TEST_LOCK};
-    use mcu_builder::firmware;
+    use caliptra_mcu_builder::firmware;
     use mcu_error::McuError;
     use mcu_hw_model::{InitParams, McuHwModel};
 
@@ -14,17 +14,18 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let mcu_rom = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+        let mcu_rom = if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
             binaries
                 .test_rom(&firmware::hw_model_tests::EXCEPTION_HANDLER)
                 .unwrap()
         } else {
-            let rom_file = mcu_builder::test_rom_build(&mcu_builder::CaliptraBuildArgs {
-                platform: Some(platform()),
-                fwid: Some(&firmware::hw_model_tests::EXCEPTION_HANDLER),
-                ..Default::default()
-            })
-            .unwrap();
+            let rom_file =
+                caliptra_mcu_builder::test_rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
+                    platform: Some(platform()),
+                    fwid: Some(&firmware::hw_model_tests::EXCEPTION_HANDLER),
+                    ..Default::default()
+                })
+                .unwrap();
             std::fs::read(&rom_file).unwrap()
         };
 

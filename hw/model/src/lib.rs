@@ -33,7 +33,7 @@ pub use vmem::read_otp_vmem_data;
 use zerocopy::FromBytes;
 
 // Re-export flash image builder for creating flash images from firmware bytes
-pub use mcu_builder::flash_image::build_flash_image_bytes;
+pub use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
 
 mod bus_logger;
 #[cfg(feature = "fpga_realtime")]
@@ -855,7 +855,7 @@ fn mbox_read_fifo(mbox: caliptra_registers::mbox::RegisterBlock<impl MmioMut>) -
 #[ignore]
 #[test]
 fn reg_access_test() {
-    let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
+    let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env().unwrap();
 
     // Build flash image from firmware binaries
     let flash_image = build_flash_image_bytes(
@@ -925,7 +925,7 @@ fn reg_access_test() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mcu_builder::firmware;
+    use caliptra_mcu_builder::firmware;
 
     fn platform() -> &'static str {
         if cfg!(feature = "fpga_realtime") {
@@ -937,14 +937,15 @@ mod tests {
 
     #[test]
     pub fn test_mailbox_execute() -> Result<()> {
-        let mcu_rom = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+        let mcu_rom = if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
             binaries.test_rom(&firmware::hw_model_tests::MAILBOX_RESPONDER)?
         } else {
-            let rom_file = mcu_builder::test_rom_build(&mcu_builder::CaliptraBuildArgs {
-                platform: Some(platform()),
-                fwid: Some(&firmware::hw_model_tests::MAILBOX_RESPONDER),
-                ..Default::default()
-            })?;
+            let rom_file =
+                caliptra_mcu_builder::test_rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
+                    platform: Some(platform()),
+                    fwid: Some(&firmware::hw_model_tests::MAILBOX_RESPONDER),
+                    ..Default::default()
+                })?;
             std::fs::read(&rom_file)?
         };
 

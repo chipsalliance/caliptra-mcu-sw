@@ -10,7 +10,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use mcu_builder::PROJECT_ROOT;
+use caliptra_mcu_builder::PROJECT_ROOT;
 
 const BUILDER_IMAGE: &str = "ghcr.io/chipsalliance/caliptra-builder:latest";
 

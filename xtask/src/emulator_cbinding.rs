@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::Result;
-use mcu_builder::{target_dir, PROJECT_ROOT};
+use caliptra_mcu_builder::{target_dir, PROJECT_ROOT};
 use std::process::Command;
 
 const CBINDING_DIR: &str = "emulator/cbinding";

@@ -15,7 +15,7 @@ mod test {
     use caliptra_auth_man_types::{AuthManifestPrivKeysConfig, AuthManifestPubKeysConfig};
     use caliptra_image_gen::ImageGeneratorOwnerConfig;
     use caliptra_image_types::{ImageManifest, ImageOwnerPrivKeys, OwnerPubKeyConfig};
-    use mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries};
+    use caliptra_mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries};
     use mcu_error::McuError;
     use mcu_hw_model::McuHwModel;
     use romtime::McuBootMilestones;
@@ -102,7 +102,7 @@ mod test {
         }
 
         // Fall back to computing from compiled FW bundle
-        let mut builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+        let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
             fpga: cfg!(feature = "fpga_realtime"),
             ..Default::default()
         });
@@ -366,7 +366,7 @@ mod test {
             temp_path
         };
 
-        let mut builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+        let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
             fpga: cfg!(feature = "fpga_realtime"),
             mcu_firmware: Some(mcu_runtime_path),
             ..Default::default()

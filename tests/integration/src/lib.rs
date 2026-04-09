@@ -36,8 +36,10 @@ pub fn platform() -> &'static str {
 #[cfg(test)]
 mod test {
     use caliptra_image_types::FwVerificationPqcKeyType;
-    use mcu_builder::flash_image::build_flash_image_bytes;
-    use mcu_builder::{CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET};
+    use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
+    use caliptra_mcu_builder::{
+        CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET,
+    };
     use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
     use mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
     use random_port::PortPicker;
@@ -170,12 +172,13 @@ mod test {
         } else {
             feature.to_string()
         };
-        let output: PathBuf = mcu_builder::rom_build(&mcu_builder::CaliptraBuildArgs {
-            platform: Some(platform()),
-            features: Some(&feature),
-            ..Default::default()
-        })
-        .expect("ROM build failed");
+        let output: PathBuf =
+            caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
+                platform: Some(platform()),
+                features: Some(&feature),
+                ..Default::default()
+            })
+            .expect("ROM build failed");
         assert!(output.exists());
         output
     }
@@ -188,20 +191,23 @@ mod test {
         };
         let name = format!("runtime{}-{}.bin", feature_name, platform);
 
-        let output = mcu_builder::runtime_build_with_apps(&mcu_builder::CaliptraBuildArgs {
-            features: feature,
-            output_name: Some(name),
-            example_app,
-            platform: Some(platform),
-            ..Default::default()
-        })
+        let output = caliptra_mcu_builder::runtime_build_with_apps(
+            &caliptra_mcu_builder::CaliptraBuildArgs {
+                features: feature,
+                output_name: Some(name),
+                example_app,
+                platform: Some(platform),
+                ..Default::default()
+            },
+        )
         .expect("Runtime failed to compile");
         assert!(output.exists());
         output
     }
 
     pub fn compile_bare_metal_runtime() -> PathBuf {
-        let output = mcu_builder::bare_metal_build().expect("Bare-metal runtime failed to compile");
+        let output =
+            caliptra_mcu_builder::bare_metal_build().expect("Bare-metal runtime failed to compile");
         assert!(output.exists());
         output
     }
@@ -275,7 +281,7 @@ mod test {
                 (mcu_runtime_path, bytes)
             };
 
-        let mut builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+        let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
             fpga: cfg!(feature = "fpga_realtime"),
             mcu_firmware: Some(mcu_runtime_for_builder),
             ..Default::default()
@@ -553,7 +559,7 @@ mod test {
         let mut caliptra_builder = if let Some(caliptra_builder) = caliptra_builder {
             caliptra_builder
         } else {
-            CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+            CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
                 fpga: cfg!(feature = "fpga_realtime"),
                 mcu_firmware: Some(runtime_path.clone()),
                 soc_images,
@@ -744,15 +750,17 @@ mod test {
 
         let vendor_pk_hash = binaries.vendor_pk_hash().map(|h| hex::encode(h));
 
-        Some(CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
-            fpga: cfg!(feature = "fpga_realtime"),
-            caliptra_rom: Some(caliptra_rom_path),
-            caliptra_firmware: Some(caliptra_fw_path),
-            soc_manifest: Some(soc_manifest_path),
-            vendor_pk_hash,
-            mcu_firmware: Some(runtime_path),
-            ..Default::default()
-        }))
+        Some(CaliptraBuilder::new(
+            &caliptra_mcu_builder::CaliptraBuildArgs {
+                fpga: cfg!(feature = "fpga_realtime"),
+                caliptra_rom: Some(caliptra_rom_path),
+                caliptra_firmware: Some(caliptra_fw_path),
+                soc_manifest: Some(soc_manifest_path),
+                vendor_pk_hash,
+                mcu_firmware: Some(runtime_path),
+                ..Default::default()
+            },
+        ))
     }
 
     fn run_test(feature: &str, example_app: bool) {
@@ -937,7 +945,7 @@ mod test {
         let test_runtime = target_binary(&name);
 
         println!("Compiling test firmware {}", &feature);
-        mcu_builder::runtime_build_with_apps(&mcu_builder::CaliptraBuildArgs {
+        caliptra_mcu_builder::runtime_build_with_apps(&caliptra_mcu_builder::CaliptraBuildArgs {
             features: Some(feature),
             output_name: Some(name),
             example_app: true,

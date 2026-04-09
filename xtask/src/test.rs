@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use mcu_builder::{rom_build, PROJECT_ROOT, TARGET};
+use caliptra_mcu_builder::{rom_build, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
 use crate::emulator_cbinding;
@@ -236,11 +236,11 @@ pub(crate) fn test_panic_missing() -> Result<()> {
         .join("mcu-rom-emulator");
 
     // Check default build
-    rom_build(&mcu_builder::CaliptraBuildArgs::default())?;
+    rom_build(&caliptra_mcu_builder::CaliptraBuildArgs::default())?;
     check_no_panic(&rom_elf_path, "default")?;
 
     // Check test-flash-based-boot build
-    rom_build(&mcu_builder::CaliptraBuildArgs {
+    rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
         features: Some("test-flash-based-boot"),
         ..Default::default()
     })?;

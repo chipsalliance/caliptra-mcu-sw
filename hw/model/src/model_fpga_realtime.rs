@@ -704,11 +704,11 @@ mod tests {
     #[cfg(feature = "fpga_realtime")]
     #[test]
     fn test_mctp() {
-        use mcu_builder::flash_image::build_flash_image_bytes;
+        use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
 
         use crate::DefaultHwModel;
 
-        let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
+        let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env().unwrap();
 
         // Build flash image from firmware binaries
         let flash_image = build_flash_image_bytes(

@@ -9,24 +9,26 @@ use romtime::McuBootMilestones;
 #[cfg_attr(not(feature = "fpga_realtime"), ignore)]
 #[test]
 fn test_hitless_update_flow() -> Result<()> {
-    let mcu_rom_id = &mcu_builder::firmware::hw_model_tests::HITLESS_UPDATE_FLOW;
+    let mcu_rom_id = &caliptra_mcu_builder::firmware::hw_model_tests::HITLESS_UPDATE_FLOW;
     let cptra_rom_id = &caliptra_builder::firmware::hw_model_tests::MCU_HITLESS_UPDATE_FLOW;
-    let (caliptra_rom, mcu_rom) = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
-        (
-            binaries.caliptra_test_rom(cptra_rom_id)?,
-            binaries.test_rom(mcu_rom_id)?,
-        )
-    } else {
-        let rom_file = mcu_builder::test_rom_build(&mcu_builder::CaliptraBuildArgs {
-            platform: Some(platform()),
-            fwid: Some(mcu_rom_id),
-            ..Default::default()
-        })?;
-        (
-            caliptra_builder::build_firmware_rom(cptra_rom_id).unwrap(),
-            std::fs::read(&rom_file)?,
-        )
-    };
+    let (caliptra_rom, mcu_rom) =
+        if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
+            (
+                binaries.caliptra_test_rom(cptra_rom_id)?,
+                binaries.test_rom(mcu_rom_id)?,
+            )
+        } else {
+            let rom_file =
+                caliptra_mcu_builder::test_rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
+                    platform: Some(platform()),
+                    fwid: Some(mcu_rom_id),
+                    ..Default::default()
+                })?;
+            (
+                caliptra_builder::build_firmware_rom(cptra_rom_id).unwrap(),
+                std::fs::read(&rom_file)?,
+            )
+        };
     let mut hw = new(InitParams {
         caliptra_rom: &caliptra_rom,
         mcu_rom: &mcu_rom,

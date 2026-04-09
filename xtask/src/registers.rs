@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
+use caliptra_mcu_builder::PROJECT_ROOT;
 use caliptra_mcu_fusegen::{HEADER_PREFIX, HEADER_SUFFIX};
-use mcu_builder::PROJECT_ROOT;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use registers_generator::{

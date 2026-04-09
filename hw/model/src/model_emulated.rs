@@ -722,13 +722,15 @@ mod test {
 
     #[test]
     fn test_new_unbooted() {
-        let mcu_rom = mcu_builder::rom_build(&mcu_builder::CaliptraBuildArgs::default())
-            .expect("Could not build MCU ROM");
-        let mcu_runtime =
-            &mcu_builder::runtime_build_with_apps(&mcu_builder::CaliptraBuildArgs::default())
-                .expect("Could not build MCU runtime");
+        let mcu_rom =
+            caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs::default())
+                .expect("Could not build MCU ROM");
+        let mcu_runtime = &caliptra_mcu_builder::runtime_build_with_apps(
+            &caliptra_mcu_builder::CaliptraBuildArgs::default(),
+        )
+        .expect("Could not build MCU runtime");
         let mut caliptra_builder =
-            mcu_builder::CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+            caliptra_mcu_builder::CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
                 mcu_firmware: Some(mcu_runtime.clone()),
                 ..Default::default()
             });

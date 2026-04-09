@@ -8,7 +8,7 @@ mod test {
 
     #[test]
     fn test_bootfsm_timeout() {
-        let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
+        let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env().unwrap();
 
         let mut hw = mcu_hw_model::new(InitParams {
             caliptra_rom: &binaries.caliptra_rom,

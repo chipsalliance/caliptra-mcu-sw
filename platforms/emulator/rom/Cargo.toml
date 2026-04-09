@@ -7,7 +7,7 @@ authors.workspace = true
 edition.workspace = true
 
 [build-dependencies]
-mcu-builder.workspace = true
+caliptra-mcu-builder.workspace = true
 mcu-config-emulator.workspace = true
 
 [dependencies]

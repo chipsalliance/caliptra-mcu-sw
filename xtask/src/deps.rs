@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Result};
-use mcu_builder::PROJECT_ROOT;
+use caliptra_mcu_builder::PROJECT_ROOT;
 use std::path::{Path, PathBuf};
 use toml::Table;
 

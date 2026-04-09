@@ -10,8 +10,10 @@ pub(crate) fn precheckin() -> Result<()> {
     crate::deps::check()?;
     crate::docs::check_docs()?;
     crate::registers::autogen(true, &[], &[], None, None)?;
-    mcu_builder::runtime_build_with_apps(&mcu_builder::CaliptraBuildArgs::default())?;
-    mcu_builder::runtime_build_with_apps(&mcu_builder::CaliptraBuildArgs {
+    caliptra_mcu_builder::runtime_build_with_apps(
+        &caliptra_mcu_builder::CaliptraBuildArgs::default(),
+    )?;
+    caliptra_mcu_builder::runtime_build_with_apps(&caliptra_mcu_builder::CaliptraBuildArgs {
         platform: Some("fpga"),
         ..Default::default()
     })?;

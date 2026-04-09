@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-parallel-build = ["mcu-builder/parallel-build"]
+parallel-build = ["caliptra-mcu-builder/parallel-build"]
 fpga_realtime = [
 	"mcu-hw-model/fpga_realtime",
 	"dep:caliptra-hw-model",
@@ -30,7 +30,7 @@ clap-num.workspace = true
 ecdsa.workspace = true
 elf.workspace = true
 hex.workspace = true
-mcu-builder.workspace = true
+caliptra-mcu-builder.workspace = true
 mcu-config-emulator.workspace = true
 mcu-config-fpga.workspace = true
 mcu-firmware-bundler.workspace = true

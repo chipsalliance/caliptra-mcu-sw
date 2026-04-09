@@ -6,10 +6,10 @@ mod test {
         compile_runtime, get_rom_with_feature, has_prebuilt_binaries, run_runtime, TEST_LOCK,
     };
     use caliptra_image_types::ImageManifest;
+    use caliptra_mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
     use caliptra_mcu_flash_image::{MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER};
     use chrono::{TimeZone, Utc};
     use hex::ToHex;
-    use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
     use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
@@ -79,24 +79,26 @@ mod test {
             .path()
             .to_path_buf();
 
-        mcu_builder::flash_image::flash_image_create(&mcu_builder::CaliptraBuildArgs {
-            caliptra_firmware: caliptra_fw_path,
-            soc_manifest: soc_manifest_path,
-            mcu_firmware: mcu_runtime_path,
-            soc_image_paths: Some(
-                soc_images_paths
-                    .iter()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .collect(),
-            ),
-            offset: 0,
-            output_path: Some(flash_image_path.to_string_lossy().to_string()),
-            ..Default::default()
-        })
+        caliptra_mcu_builder::flash_image::flash_image_create(
+            &caliptra_mcu_builder::CaliptraBuildArgs {
+                caliptra_firmware: caliptra_fw_path,
+                soc_manifest: soc_manifest_path,
+                mcu_firmware: mcu_runtime_path,
+                soc_image_paths: Some(
+                    soc_images_paths
+                        .iter()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .collect(),
+                ),
+                offset: 0,
+                output_path: Some(flash_image_path.to_string_lossy().to_string()),
+                ..Default::default()
+            },
+        )
         .expect("Failed to create flash image");
 
         if let Some(partition_table) = partition_table {
-            mcu_builder::flash_image::write_partition_table(
+            caliptra_mcu_builder::flash_image::write_partition_table(
                 &partition_table,
                 0,
                 flash_image_path.to_str().unwrap(),
@@ -248,7 +250,7 @@ mod test {
             feature: feature.to_string(),
         };
 
-        let mut update_builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+        let mut update_builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
             mcu_firmware: Some(update_runtime_firmware.clone()),
             soc_images: Some(update_soc_images.clone()),
             mcu_image_cfg: Some(mcu_cfg.clone()),
@@ -638,7 +640,7 @@ mod test {
         };
 
         // Build the Caliptra builder with prebuilt paths
-        let builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+        let builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
             caliptra_rom: Some(caliptra_rom_path),
             caliptra_firmware: Some(caliptra_fw_path.clone()),
             soc_manifest: Some(soc_manifest_path.clone()),
@@ -753,7 +755,7 @@ mod test {
         };
 
         // Build the Runtime image
-        let mut builder = CaliptraBuilder::new(&mcu_builder::CaliptraBuildArgs {
+        let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
             mcu_firmware: Some(test_runtime.clone()),
             soc_images: Some(soc_images.clone()),
             mcu_image_cfg: Some(mcu_cfg.clone()),
@@ -888,7 +890,7 @@ mod test {
     #[test]
     fn test_firmware_update_streaming_fpga() {
         if env::var("PLDM_FW_PKG").is_err() {
-            if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+            if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
                 // If PLDM_FW_PKG is not specified, we will use the PLDM firmware package
                 // for test-fpga-flash-ctrl that was built during the FPGA build.
                 // We choose this package since it is small enough to fit in the
