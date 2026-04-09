@@ -7,7 +7,7 @@
 
 use anyhow::{Context, Result};
 use caliptra_mailbox_server::{MailboxServer, ServerConfig};
-use caliptra_util_host_mailbox_test_config::TestConfig;
+use caliptra_mcu_core_util_host_mailbox_test_config::TestConfig;
 use clap::Parser;
 use std::net::SocketAddr;
 

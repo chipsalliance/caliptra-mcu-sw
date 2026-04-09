@@ -186,7 +186,7 @@ zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_de
 zip = { version = "4.3.0", default-features = false, features = ["chrono", "deflate"] }
 
 # local dependencies
-caliptra-util-host-mailbox-test-config = { path = "caliptra-util-host/apps/mailbox/config" }
+caliptra-mcu-core-util-host-mailbox-test-config = { path = "caliptra-util-host/apps/mailbox/config" }
 caliptra-util-host-mctp-vdm-test-config = { path = "caliptra-util-host/apps/mctp-vdm/config" }
 caliptra-mctp-vdm-client = { path = "caliptra-util-host/apps/mctp-vdm/client" }
 caliptra-util-host-transport = { path = "caliptra-util-host/transport" }

@@ -767,7 +767,7 @@ name = "caliptra-mailbox-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "caliptra-util-host-mailbox-test-config",
+ "caliptra-mcu-core-util-host-mailbox-test-config",
  "clap 4.5.51",
  "zerocopy",
 ]
@@ -900,6 +900,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-core-util-host-mailbox-test-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "caliptra-mcu-dma-driver"
 version = "0.1.0"
 dependencies = [
@@ -941,6 +950,7 @@ dependencies = [
  "caliptra-mailbox-server",
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
+ "caliptra-mcu-core-util-host-mailbox-test-config",
  "caliptra-mcu-emulator-bmc",
  "caliptra-mcu-emulator-caliptra",
  "caliptra-mcu-emulator-consts",
@@ -956,7 +966,6 @@ dependencies = [
  "caliptra-mcu-testing-common",
  "caliptra-registers",
  "caliptra-test",
- "caliptra-util-host-mailbox-test-config",
  "chrono",
  "clap 4.5.51",
  "clap-num",
@@ -1877,15 +1886,6 @@ name = "caliptra-util-host-command-types"
 version = "0.1.0"
 dependencies = [
  "zerocopy",
-]
-
-[[package]]
-name = "caliptra-util-host-mailbox-test-config"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "toml 0.8.23",
 ]
 
 [[package]]

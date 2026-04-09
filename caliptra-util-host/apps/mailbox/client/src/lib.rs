@@ -13,7 +13,7 @@ pub use network_driver::UdpTransportDriver;
 pub use validator::{run_basic_validation, run_verbose_validation, ValidationResult, Validator};
 
 // Re-export config from the shared library
-pub use caliptra_util_host_mailbox_test_config::*;
+pub use caliptra_mcu_core_util_host_mailbox_test_config::*;
 
 use anyhow::Result;
 use caliptra_util_host_command_types::crypto_aes::{

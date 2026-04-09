@@ -6,7 +6,7 @@
 //! and passes them to a handler function for processing.
 
 use anyhow::{Context, Result};
-use caliptra_util_host_mailbox_test_config::TestConfig;
+use caliptra_mcu_core_util_host_mailbox_test_config::TestConfig;
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
 
