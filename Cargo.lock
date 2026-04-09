@@ -1291,8 +1291,8 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libtock_alarm",
  "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_debug_panic",
  "embedded-hal",
- "libtock_debug_panic",
  "libtock_low_level_debug",
  "libtock_platform",
  "libtock_rng",
@@ -1317,15 +1317,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-libtock_debug_panic"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_console",
+ "libtock_low_level_debug",
+ "libtock_platform",
+ "libtock_runtime",
+]
+
+[[package]]
 name = "caliptra-mcu-libtockasync"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libtock",
  "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_debug_panic",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
- "libtock_debug_panic",
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
@@ -2642,13 +2652,13 @@ dependencies = [
  "caliptra-mcu-libtock",
  "caliptra-mcu-libtock_alarm",
  "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_debug_panic",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-romtime",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
- "libtock_debug_panic",
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
@@ -3342,16 +3352,6 @@ name = "libc"
 version = "0.2.177"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2874a2af47a2325c2001a6e6fad9b16a53b802102b528163885171cf92b15976"
-
-[[package]]
-name = "libtock_debug_panic"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-libtock_console",
- "libtock_low_level_debug",
- "libtock_platform",
- "libtock_runtime",
-]
 
 [[package]]
 name = "libtock_low_level_debug"
@@ -5419,6 +5419,7 @@ dependencies = [
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock",
  "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_debug_panic",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-mbox-lib",
@@ -5433,7 +5434,6 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "libtock_debug_panic",
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",

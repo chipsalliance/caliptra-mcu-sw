@@ -2,7 +2,7 @@
 #![no_std]
 
 #[cfg(debug_assertions)]
-extern crate libtock_debug_panic;
+extern crate caliptra_mcu_libtock_debug_panic;
 #[cfg(not(debug_assertions))]
 extern crate libtock_small_panic;
 

@@ -1,5 +1,5 @@
 [package]
-name = "libtock_debug_panic"
+name = "caliptra-mcu-libtock_debug_panic"
 authors = ["Tock Project Developers <tock-dev@googlegroups.com>"]
 version = "0.1.0"
 description = """Debug panic handler for libtock. Prints panic info to console and terminates."""
