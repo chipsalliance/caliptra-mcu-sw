@@ -10,7 +10,7 @@ name = "emulator_cbinding"
 crate-type = ["staticlib"]
 
 [dependencies]
-emulator.workspace = true
+caliptra-mcu-emulator.workspace = true
 libc.workspace = true
 caliptra-emu-bus.workspace = true
 caliptra-emu-cpu.workspace = true

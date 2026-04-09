@@ -13,8 +13,8 @@ Abstract:
 --*/
 
 use caliptra_emu_cpu::StepAction;
+use caliptra_mcu_emulator::{gdb, Emulator, EmulatorArgs};
 use clap::Parser;
-use emulator::{gdb, Emulator, EmulatorArgs};
 use mcu_testing_common::MCU_RUNNING;
 use std::cell::RefCell;
 use std::io;
