@@ -701,7 +701,7 @@ pub const FUSE_ENTRY_TABLE: &[FuseEntryInfo] = &[
         name: "vendor_pk_hash_valid",
         layout: FuseLayoutType::LinearMajorityVote {
             bits: 16,
-            duplication: 8,
+            duplication: 3,
         },
     },
     FuseEntryInfo {
@@ -2193,7 +2193,7 @@ pub const OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID: &FuseEntryInfo = &FuseEntryInfo {
     name: "vendor_pk_hash_valid",
     layout: FuseLayoutType::LinearMajorityVote {
         bits: 16,
-        duplication: 8,
+        duplication: 3,
     },
 };
 /// OTP item entry for `CPTRA_SS_OWNER_ECC_REVOCATION`.

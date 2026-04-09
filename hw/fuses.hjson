@@ -80,7 +80,7 @@
         description: "Bitmask of valid vendor PK hash slots.",
         partition: "VENDOR_HASHES_PROD_PARTITION",
         otp_item: "CPTRA_CORE_VENDOR_PK_HASH_VALID",
-        layout: {type: "LinearMajorityVote", duplication: 8},
+        layout: {type: "LinearMajorityVote", duplication: 3},
     },
     {
         name: "vendor_ecc_revocation_0",

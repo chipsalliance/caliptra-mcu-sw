@@ -58,7 +58,7 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   `CPTRA_I_TRNG_ENTROPY_CONFIG_1`: `Single{bits:32}` raw u32.
 
 - **`CPTRA_CORE_VENDOR_PK_HASH_VALID`** (all slots) — slot selection only, not written to any
-  register. `LinearMajorityVote{bits:16, dupe:8}` → decoded u16 bitmask.
+  register. `LinearMajorityVote{bits:16, dupe:3}` → decoded u16 bitmask.
 
 - **`dot_initialized`** — MCU
   internal use only, not written to any register. `LinearMajorityVote{bits:1, dupe:3}` → logical
@@ -103,7 +103,7 @@ fault tolerance without causing ECC integrity issues.
 | `CPTRA_CORE_ECC_REVOCATION_{0..N}` | ❌ | `LinearMajorityVote{bits:4, dupe:3}` |
 | `CPTRA_CORE_LMS_REVOCATION_{0..N}` | ❌ | `LinearMajorityVote{bits:16, dupe:2}` |
 | `CPTRA_CORE_MLDSA_REVOCATION_{0..N}` | ❌ | `LinearMajorityVote{bits:4, dupe:3}` |
-| `CPTRA_CORE_VENDOR_PK_HASH_VALID` | ❌ | `LinearMajorityVote{bits:16, dupe:8}` |
+| `CPTRA_CORE_VENDOR_PK_HASH_VALID` | ❌ | `LinearMajorityVote{bits:16, dupe:3}` |
 | `CPTRA_CORE_SOC_STEPPING_ID` | ✅ | `Single{bits:16}` |
 | `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` | ✅ | `Single{bits:1}` |
 | `CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR` | ✅ | `Single{bits:768}` |
@@ -121,7 +121,6 @@ fault tolerance without causing ECC integrity issues.
 
 TODO: there are only 32 LMS revocation bits specificed in the reference fuse map, but with redundant encoding, we would get 16 or fewer bits, unless  they are backed with HW redundancy.
 
-TODO: the vendor_pk_hash_valid is inconsistent with the HW subsystem specification. Tracking in https://github.com/chipsalliance/caliptra-mcu-sw/issues/1186
 
 
 ## Vendor PK Hash Fuse Encoding Example

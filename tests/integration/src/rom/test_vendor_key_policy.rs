@@ -24,10 +24,10 @@ mod test {
         let otp_size = fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE;
         let mut otp = vec![0u8; otp_size];
 
-        // 1. Populate VENDOR_PK_HASH_VALID (LinearMajorityVote { bits: 16, duplication: 8 })
+        // 1. Populate VENDOR_PK_HASH_VALID (LinearMajorityVote { bits: 16, duplication: 3 })
         let valid_entry = fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID;
         let layout = FuseLayout::from_generated(&valid_entry.layout).unwrap();
-        let raw_valid: [u32; 4] = write_fuse_value::<1, 4>(layout, &[valid_mask as u32]).unwrap();
+        let raw_valid: [u32; 2] = write_fuse_value::<1, 2>(layout, &[valid_mask as u32]).unwrap();
         for (i, &word) in raw_valid.iter().enumerate() {
             otp[valid_entry.byte_offset + i * 4..valid_entry.byte_offset + (i + 1) * 4]
                 .copy_from_slice(&word.to_le_bytes());
