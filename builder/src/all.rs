@@ -612,6 +612,14 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     // will fall back to the generic MCU ROM.
     // Include both runtime features (which may have matching ROM features) and
     // ROM-only test features that don't have a corresponding runtime feature.
+    //
+    // Preserve the base ROM binary: feature ROM builds reuse the same bundler
+    // output path (`mcu-rom-<platform>.bin`) and rename it to the feature-specific
+    // name, which would delete the base ROM that `mcu_rom` still references.
+    let mcu_rom_preserved = tempfile::NamedTempFile::new()?;
+    std::fs::copy(&mcu_rom, mcu_rom_preserved.path())?;
+    let mcu_rom = mcu_rom_preserved.path().to_path_buf();
+
     let rom_features_to_build: Vec<&str> = separate_features
         .iter()
         .copied()
