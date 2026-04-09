@@ -39,7 +39,7 @@ caliptra-mcu-rom-common = { workspace = true, optional = true }
 caliptra-mcu-hw-model = { workspace = true, optional = true }
 caliptra-mcu-fuses-generator.workspace = true
 p384.workspace = true
-pldm-fw-pkg.workspace = true
+caliptra-mcu-pldm-fw-pkg.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
 registers-generator.workspace = true

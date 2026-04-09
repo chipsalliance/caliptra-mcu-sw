@@ -13,14 +13,14 @@ mod test {
     };
     use caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP;
     use caliptra_mcu_flash_image::{MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER};
-    use caliptra_mcu_testing_common::DeviceLifecycle;
-    use chrono::{TimeZone, Utc};
-    use hex::ToHex;
-    use pldm_fw_pkg::manifest::{
+    use caliptra_mcu_pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     };
-    use pldm_fw_pkg::FirmwareManifest;
+    use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
+    use caliptra_mcu_testing_common::DeviceLifecycle;
+    use chrono::{TimeZone, Utc};
+    use hex::ToHex;
     use random_port::PortPicker;
     use std::env;
     use std::path::PathBuf;

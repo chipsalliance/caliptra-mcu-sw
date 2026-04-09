@@ -23,7 +23,7 @@ caliptra-mcu-config.workspace = true
 caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-firmware-bundler.workspace = true
-pldm-fw-pkg.workspace = true
+caliptra-mcu-pldm-fw-pkg.workspace = true
 rayon = { workspace = true, optional = true }
 serde.workspace = true
 semver.workspace = true

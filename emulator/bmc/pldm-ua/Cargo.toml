@@ -9,7 +9,7 @@ authors.workspace = true
 [dependencies]
 log.workspace = true
 caliptra-mcu-pldm-common.workspace = true
-pldm-fw-pkg.workspace = true
+caliptra-mcu-pldm-fw-pkg.workspace = true
 smlang.workspace = true
 
 [dev-dependencies]

@@ -9,6 +9,13 @@ pub mod test {
     use crate::test_fpga_flash_ctrl::test::run_imaginary_flash_controller_service;
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_pldm_common::protocol::firmware_update::*;
+    use caliptra_mcu_pldm_fw_pkg::{
+        manifest::{
+            ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
+            PackageHeaderInformation, StringType,
+        },
+        FirmwareManifest,
+    };
     use caliptra_mcu_testing_common::mctp_transport::{MctpPldmSocket, MctpTransport};
     use caliptra_mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
@@ -17,13 +24,6 @@ pub mod test {
     use chrono::{TimeZone, Utc};
     use lazy_static::lazy_static;
     use log::{error, LevelFilter};
-    use pldm_fw_pkg::{
-        manifest::{
-            ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
-            PackageHeaderInformation, StringType,
-        },
-        FirmwareManifest,
-    };
     use pldm_ua::daemon::Options;
     use pldm_ua::daemon::PldmDaemon;
     use pldm_ua::transport::{EndpointId, PldmSocket, PldmTransport};
@@ -182,7 +182,9 @@ pub mod test {
             // Initialize log level to info (only once)
             let _ = SimpleLogger::new().with_level(debug_level).init();
 
-            let pldm_fw_pkg = if let Ok(pldm_fw_pkg_path) = std::env::var("PLDM_FW_PKG") {
+            let caliptra_mcu_pldm_fw_pkg = if let Ok(pldm_fw_pkg_path) =
+                std::env::var("PLDM_FW_PKG")
+            {
                 FirmwareManifest::decode_firmware_package(&pldm_fw_pkg_path, None).map_err(|e| {
                     error!(
                         "Failed to decode PLDM FW package from {}: {:?}",
@@ -198,7 +200,7 @@ pub mod test {
                 PldmDaemon::run(
                     self.socket.clone(),
                     Options {
-                        pldm_fw_pkg: Some(pldm_fw_pkg),
+                        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg),
                         discovery_sm_actions: discovery_sm::DefaultActions {},
                         update_sm_actions: update_sm::DefaultActions {},
                         fd_tid: 0x01,

@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
 
-use chrono::Utc;
-use pldm_fw_pkg::{
+use caliptra_mcu_pldm_fw_pkg::{
     manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     },
     FirmwareManifest,
 };
+use chrono::Utc;
 use uuid::Uuid;
 
 #[test]

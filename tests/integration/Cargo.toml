@@ -52,7 +52,7 @@ caliptra-mcu-rom-common.workspace = true
 caliptra-mcu-testing-common.workspace = true
 p384 = { workspace = true, features = ["ecdsa"] }
 caliptra-mcu-pldm-common.workspace = true
-pldm-fw-pkg.workspace = true
+caliptra-mcu-pldm-fw-pkg.workspace = true
 pldm-ua.workspace = true
 rand.workspace = true
 random-port.workspace = true

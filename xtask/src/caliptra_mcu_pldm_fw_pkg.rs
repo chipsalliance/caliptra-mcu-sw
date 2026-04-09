@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Result};
-use pldm_fw_pkg::manifest::*;
+use caliptra_mcu_pldm_fw_pkg::manifest::*;
 
 pub(crate) fn create(manifest_path: &str, output_path: &str) -> Result<()> {
     let firmware_manifest = FirmwareManifest::parse_manifest_file(&manifest_path.to_string());

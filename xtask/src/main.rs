@@ -8,6 +8,7 @@ use clap_num::maybe_hex;
 use std::path::PathBuf;
 
 mod auth_manifest;
+mod caliptra_mcu_pldm_fw_pkg;
 mod cargo_lock;
 mod clippy;
 mod corim;
@@ -19,7 +20,6 @@ mod format;
 mod fpga;
 mod fuses;
 mod header;
-mod pldm_fw_pkg;
 mod precheckin;
 mod registers;
 mod rom;
@@ -570,8 +570,12 @@ fn main() {
         #[cfg(feature = "fpga_realtime")]
         Commands::FpgaRun { .. } => fpga::fpga_run(cli.xtask),
         Commands::PldmFirmware { subcommand } => match subcommand {
-            PldmFirmwareCommands::Create { manifest, file } => pldm_fw_pkg::create(manifest, file),
-            PldmFirmwareCommands::Decode { package, dir } => pldm_fw_pkg::decode(package, dir),
+            PldmFirmwareCommands::Create { manifest, file } => {
+                caliptra_mcu_pldm_fw_pkg::create(manifest, file)
+            }
+            PldmFirmwareCommands::Decode { package, dir } => {
+                caliptra_mcu_pldm_fw_pkg::decode(package, dir)
+            }
         },
         Commands::EmulatorCbinding { subcommand } => match subcommand {
             EmulatorCbindingCommands::Build { release } => emulator_cbinding::build_all(*release),

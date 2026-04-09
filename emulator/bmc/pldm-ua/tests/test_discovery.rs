@@ -16,7 +16,7 @@ use pldm_ua::events::PldmEvents;
 use pldm_ua::{discovery_sm, update_sm};
 
 use caliptra_mcu_pldm_common::message::control::*;
-use pldm_fw_pkg::FirmwareManifest;
+use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::daemon::Options;
 use pldm_ua::transport::PldmSocket;
 
@@ -56,7 +56,7 @@ impl update_sm::StateMachineActions for UpdateSmStopAfterRequest {
 #[test]
 fn test_discovery() {
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(FirmwareManifest::default()),
+        caliptra_mcu_pldm_fw_pkg: Some(FirmwareManifest::default()),
         discovery_sm_actions: discovery_sm::DefaultActions {},
         update_sm_actions: UpdateSmStopAfterRequest {
             is_fw_update_started: false,
@@ -207,7 +207,7 @@ fn test_discovery() {
 #[test]
 fn test_discovery_with_retry() {
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(FirmwareManifest::default()),
+        caliptra_mcu_pldm_fw_pkg: Some(FirmwareManifest::default()),
         discovery_sm_actions: discovery_sm::DefaultActions {},
         update_sm_actions: UpdateSmStopAfterRequest {
             is_fw_update_started: false,

@@ -803,12 +803,12 @@ dependencies = [
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-flash-image",
+ "caliptra-mcu-pldm-fw-pkg",
  "cargo_metadata",
  "cfg-if",
  "chrono",
  "elf",
  "hex",
- "pldm-fw-pkg",
  "rayon",
  "semver",
  "serde",
@@ -950,6 +950,7 @@ dependencies = [
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-fw-pkg",
  "caliptra-mcu-testing-common",
  "caliptra-registers",
  "caliptra-test",
@@ -968,7 +969,6 @@ dependencies = [
  "lazy_static",
  "log",
  "p384",
- "pldm-fw-pkg",
  "pldm-ua",
  "rand 0.8.5",
  "registers-generated",
@@ -1302,6 +1302,21 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-pldm-fw-pkg"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clap 4.5.51",
+ "crc",
+ "num-derive",
+ "num-traits",
+ "serde",
+ "tempfile",
+ "toml 0.8.23",
+ "uuid",
 ]
 
 [[package]]
@@ -3786,21 +3801,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pldm-fw-pkg"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "clap 4.5.51",
- "crc",
- "num-derive",
- "num-traits",
- "serde",
- "tempfile",
- "toml 0.8.23",
- "uuid",
-]
-
-[[package]]
 name = "pldm-lib"
 version = "0.1.0"
 dependencies = [
@@ -3823,9 +3823,9 @@ name = "pldm-ua"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-fw-pkg",
  "chrono",
  "log",
- "pldm-fw-pkg",
  "simple_logger",
  "smlang",
  "uuid",
@@ -4891,6 +4891,7 @@ dependencies = [
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-fw-pkg",
  "caliptra-mcu-rom-common",
  "caliptra-mcu-testing-common",
  "caliptra-util-host-mctp-vdm-test-config",
@@ -4906,7 +4907,6 @@ dependencies = [
  "log",
  "openssl",
  "p384",
- "pldm-fw-pkg",
  "pldm-ua",
  "rand 0.8.5",
  "random-port",
@@ -5904,6 +5904,7 @@ dependencies = [
  "caliptra-mcu-fusegen",
  "caliptra-mcu-fuses-generator",
  "caliptra-mcu-hw-model",
+ "caliptra-mcu-pldm-fw-pkg",
  "caliptra-mcu-rom-common",
  "cargo_metadata",
  "cc",
@@ -5913,7 +5914,6 @@ dependencies = [
  "elf",
  "hex",
  "p384",
- "pldm-fw-pkg",
  "proc-macro2",
  "quote",
  "registers-generator",

@@ -4,9 +4,9 @@ use caliptra_mcu_pldm_common::message::firmware_update::query_devid::{
     QueryDeviceIdentifiersRequest, QueryDeviceIdentifiersResponse,
 };
 use caliptra_mcu_pldm_common::protocol::base::PldmMsgHeader;
+use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
 use core::time::Duration;
 use log::{error, LevelFilter};
-use pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::events::PldmEvents;
 use pldm_ua::transport::{
     EndpointId, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket, TxPacket,
@@ -317,7 +317,7 @@ impl discovery_sm::StateMachineActions for CustomDiscoverySm {
 #[test]
 fn test_pldm_daemon_setup() {
     let setup = setup(Options {
-        pldm_fw_pkg: Some(FirmwareManifest::default()),
+        caliptra_mcu_pldm_fw_pkg: Some(FirmwareManifest::default()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: update_sm::DefaultActions {},
         fd_tid: 0x02,

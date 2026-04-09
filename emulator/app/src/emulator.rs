@@ -35,6 +35,7 @@ use caliptra_mcu_emulator_periph::{
 };
 use caliptra_mcu_emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
+use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
 use caliptra_mcu_testing_common::i3c_socket;
 use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use caliptra_mcu_testing_common::mctp_transport::MctpTransport;
@@ -44,7 +45,6 @@ use caliptra_mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, T
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
-use pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::daemon::PldmDaemon;
 use pldm_ua::transport::{EndpointId, PldmTransport};
 use std::cell::RefCell;
@@ -1029,11 +1029,11 @@ impl Emulator {
             );
 
             // Parse PLDM Firmware Package
-            let pldm_fw_pkg = FirmwareManifest::decode_firmware_package(
+            let caliptra_mcu_pldm_fw_pkg = FirmwareManifest::decode_firmware_package(
                 &pldm_fw_pkg_path.to_str().unwrap().to_string(),
                 None,
             );
-            if pldm_fw_pkg.is_err() {
+            if caliptra_mcu_pldm_fw_pkg.is_err() {
                 println!("Failed to parse PLDM firmware package");
                 exit(-1);
             }
@@ -1050,7 +1050,7 @@ impl Emulator {
                 let _ = PldmDaemon::run(
                     pldm_socket,
                     pldm_ua::daemon::Options {
-                        pldm_fw_pkg: Some(pldm_fw_pkg.unwrap()),
+                        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.unwrap()),
                         discovery_sm_actions: pldm_ua::discovery_sm::DefaultActions {},
                         update_sm_actions: pldm_ua::update_sm::DefaultActionsExitOnError {},
                         fd_tid: 0x01,
@@ -1060,7 +1060,7 @@ impl Emulator {
                 let _ = PldmDaemon::run(
                     pldm_socket,
                     pldm_ua::daemon::Options {
-                        pldm_fw_pkg: Some(pldm_fw_pkg.unwrap()),
+                        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.unwrap()),
                         discovery_sm_actions: pldm_ua::discovery_sm::DefaultActions {},
                         update_sm_actions: pldm_ua::update_sm::DefaultActions {},
                         fd_tid: 0x01,

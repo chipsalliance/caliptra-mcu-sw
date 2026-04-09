@@ -11,14 +11,14 @@ mod test {
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
-    use caliptra_mcu_testing_common::DeviceLifecycle;
-    use chrono::{TimeZone, Utc};
-    use hex::ToHex;
-    use pldm_fw_pkg::manifest::{
+    use caliptra_mcu_pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     };
-    use pldm_fw_pkg::FirmwareManifest;
+    use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
+    use caliptra_mcu_testing_common::DeviceLifecycle;
+    use chrono::{TimeZone, Utc};
+    use hex::ToHex;
     use random_port::PortPicker;
     use std::env;
     use std::path::PathBuf;
