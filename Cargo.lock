@@ -1294,8 +1294,8 @@ dependencies = [
  "caliptra-mcu-libtock_debug_panic",
  "caliptra-mcu-libtock_low_level_debug",
  "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_rng",
  "embedded-hal",
- "libtock_rng",
  "libtock_runtime",
  "libtock_small_panic",
 ]
@@ -1339,6 +1339,14 @@ name = "caliptra-mcu-libtock_platform"
 version = "0.1.0"
 dependencies = [
  "embedded-hal",
+]
+
+[[package]]
+name = "caliptra-mcu-libtock_rng"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_platform",
+ "libtock_unittest",
 ]
 
 [[package]]
@@ -3367,14 +3375,6 @@ name = "libc"
 version = "0.2.177"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2874a2af47a2325c2001a6e6fad9b16a53b802102b528163885171cf92b15976"
-
-[[package]]
-name = "libtock_rng"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-libtock_platform",
- "libtock_unittest",
-]
 
 [[package]]
 name = "libtock_runtime"

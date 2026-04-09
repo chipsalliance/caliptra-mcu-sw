@@ -1,5 +1,5 @@
 [package]
-name = "libtock_rng"
+name = "caliptra-mcu-libtock_rng"
 version = "0.1.0"
 authors = [
     "Tock Project Developers <tock-dev@googlegroups.com>",

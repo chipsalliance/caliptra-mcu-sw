@@ -25,7 +25,7 @@ pub mod low_level_debug {
     pub use lldb::AlertCode;
 }
 pub mod rng {
-    use libtock_rng as rng;
+    use caliptra_mcu_libtock_rng as rng;
     pub type Rng = rng::Rng<super::runtime::TockSyscalls>;
     pub use rng::RngListener;
 }
