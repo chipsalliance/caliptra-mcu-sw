@@ -5,9 +5,9 @@
 use crate::codec::{encode_u8_slice, Codec, CodecError, MessageBuf};
 use crate::context::MAX_SPDM_RESPONDER_BUF_SIZE;
 use crate::transport::common::SpdmTransport;
+use caliptra_mcu_libapi_caliptra::crypto::aes_gcm::Aes256GcmTag;
+use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
 use core::mem::size_of;
-use libapi_caliptra::crypto::aes_gcm::Aes256GcmTag;
-use libapi_caliptra::error::CaliptraApiError;
 
 pub mod info;
 pub mod key_schedule;

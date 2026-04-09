@@ -5,7 +5,7 @@ use crate::error_response;
 use crate::vdm_handler::pci_sig::tdisp::protocol::*;
 use crate::vdm_handler::pci_sig::tdisp::{TdispCmdResult, TdispResponder};
 use crate::vdm_handler::{VdmError, VdmResult};
-use libapi_caliptra::crypto::rng::Rng;
+use caliptra_mcu_libapi_caliptra::crypto::rng::Rng;
 
 pub(crate) async fn handle_lock_interface(
     tdisp_responder: &mut TdispResponder<'_>,

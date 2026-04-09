@@ -5,6 +5,7 @@ use caliptra_api::mailbox::{CommandId as CaliptraCommandId, MailboxReqHeader};
 use caliptra_mcu_external_cmds_common::{
     DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, UnifiedCommandHandler, MAX_UID_LEN,
 };
+use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use caliptra_mcu_mbox_common::messages::{
@@ -33,7 +34,6 @@ use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicStatusResp,
 };
 use core::sync::atomic::{AtomicBool, Ordering};
-use libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use zerocopy::{FromBytes, IntoBytes};
 
 #[derive(Debug)]

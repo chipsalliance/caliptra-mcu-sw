@@ -2,16 +2,16 @@
 
 use caliptra_api::mailbox::CmKeyUsage;
 use caliptra_api::mailbox::Cmk;
-use libapi_caliptra::certificate::{CertContext, KEY_LABEL_SIZE};
-use libapi_caliptra::crypto::aes_gcm::AesGcm;
-use libapi_caliptra::crypto::asym::{
+use caliptra_mcu_libapi_caliptra::certificate::{CertContext, KEY_LABEL_SIZE};
+use caliptra_mcu_libapi_caliptra::crypto::aes_gcm::AesGcm;
+use caliptra_mcu_libapi_caliptra::crypto::asym::{
     ecdh::Ecdh, ecdsa::Ecdsa, ECC_P384_PARAM_X_SIZE, ECC_P384_PARAM_Y_SIZE, ECC_P384_SIGNATURE_SIZE,
 };
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
-use libapi_caliptra::crypto::hmac::{HkdfSalt, Hmac};
-use libapi_caliptra::crypto::import::Import;
-use libapi_caliptra::crypto::rng::Rng;
-use libapi_caliptra::mailbox_api::{MAX_RANDOM_NUM_SIZE, MAX_RANDOM_STIR_SIZE};
+use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
+use caliptra_mcu_libapi_caliptra::crypto::hmac::{HkdfSalt, Hmac};
+use caliptra_mcu_libapi_caliptra::crypto::import::Import;
+use caliptra_mcu_libapi_caliptra::crypto::rng::Rng;
+use caliptra_mcu_libapi_caliptra::mailbox_api::{MAX_RANDOM_NUM_SIZE, MAX_RANDOM_STIR_SIZE};
 
 use caliptra_mcu_romtime::{println, test_exit, HexBytes};
 

@@ -1232,6 +1232,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-libapi-caliptra"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-api",
+ "caliptra-auth-man-types",
+ "caliptra-error",
+ "caliptra-mcu-flash-image",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtockasync",
+ "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-lib",
+ "caliptra-ocp-eat",
+ "dpe",
+ "embassy-executor",
+ "embassy-sync",
+ "embedded-alloc",
+ "futures",
+ "libtock_console",
+ "libtock_platform",
+ "libtock_runtime",
+ "libtock_unittest",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-libsyscall-caliptra"
 version = "0.1.0"
 dependencies = [
@@ -1293,12 +1319,12 @@ version = "0.1.0"
 dependencies = [
  "caliptra-api",
  "caliptra-mcu-external-cmds-common",
+ "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
  "embassy-executor",
  "embassy-sync",
- "libapi-caliptra",
  "libtock_alarm",
  "libtock_console",
  "libtock_platform",
@@ -1507,9 +1533,9 @@ dependencies = [
  "async-trait",
  "bitfield",
  "caliptra-api",
+ "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "constant_time_eq 0.4.2",
- "libapi-caliptra",
  "libtock_console",
  "libtock_platform",
  "rand 0.8.5",
@@ -2566,6 +2592,7 @@ dependencies = [
  "caliptra-error",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
@@ -2573,7 +2600,6 @@ dependencies = [
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
- "libapi-caliptra",
  "libtock",
  "libtock_alarm",
  "libtock_console",
@@ -3265,32 +3291,6 @@ name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
-
-[[package]]
-name = "libapi-caliptra"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "caliptra-api",
- "caliptra-auth-man-types",
- "caliptra-error",
- "caliptra-mcu-flash-image",
- "caliptra-mcu-libsyscall-caliptra",
- "caliptra-mcu-libtockasync",
- "caliptra-mcu-pldm-common",
- "caliptra-mcu-pldm-lib",
- "caliptra-ocp-eat",
- "dpe",
- "embassy-executor",
- "embassy-sync",
- "embedded-alloc",
- "futures",
- "libtock_console",
- "libtock_platform",
- "libtock_runtime",
- "libtock_unittest",
- "zerocopy",
-]
 
 [[package]]
 name = "libapi-emulated-caliptra"
@@ -5414,6 +5414,7 @@ dependencies = [
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-external-cmds-common",
+ "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
@@ -5429,7 +5430,6 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "libapi-caliptra",
  "libapi-emulated-caliptra",
  "libtock",
  "libtock_console",

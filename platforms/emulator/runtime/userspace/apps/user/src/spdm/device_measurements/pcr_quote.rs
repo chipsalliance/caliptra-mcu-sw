@@ -7,11 +7,11 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
+use caliptra_mcu_libapi_caliptra::evidence::pcr_quote::PcrQuote;
 use caliptra_mcu_spdm_lib::measurements::{
     MeasurementValueInfo, MeasurementsError, MeasurementsResult, SpdmMeasurementValue,
 };
-use libapi_caliptra::crypto::asym::AsymAlgo;
-use libapi_caliptra::evidence::pcr_quote::PcrQuote;
 
 pub const NUM_PCR_QUOTE_MEASUREMENTS: usize = 1;
 

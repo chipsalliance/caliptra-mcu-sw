@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use crate::protocol::*;
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
-use libapi_caliptra::error::CaliptraApiError;
+use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
+use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
 
 pub const REQUESTER_CONTEXT_LEN: usize = 8;
 

@@ -13,7 +13,7 @@ use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::{Transcript, TranscriptContext};
 use bitfield::bitfield;
-use libapi_caliptra::crypto::asym::AsymAlgo;
+use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 const CERTIFICATE_RESP_HEADER_SIZE: usize = size_of::<CertificateRespHdr>();

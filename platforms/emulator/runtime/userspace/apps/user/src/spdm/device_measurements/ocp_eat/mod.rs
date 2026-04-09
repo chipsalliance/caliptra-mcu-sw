@@ -8,12 +8,12 @@ pub use claims::init_target_env_claims;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use caliptra_mcu_libapi_caliptra::certificate::KEY_LABEL_SIZE;
+use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
+use caliptra_mcu_libapi_caliptra::signed_eat::SignedEat;
 use caliptra_mcu_spdm_lib::measurements::{
     MeasurementValueInfo, MeasurementsError, MeasurementsResult, SpdmMeasurementValue,
 };
-use libapi_caliptra::certificate::KEY_LABEL_SIZE;
-use libapi_caliptra::crypto::asym::AsymAlgo;
-use libapi_caliptra::signed_eat::SignedEat;
 
 const DPE_EAT_AK_LEAF_CERT_LABEL: [u8; KEY_LABEL_SIZE] = [
     0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,

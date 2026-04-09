@@ -20,10 +20,10 @@ use crate::state::{ConnectionState, State};
 use crate::transcript::{Transcript, TranscriptContext};
 use crate::transport::common::SpdmTransport;
 use crate::vdm_handler::VdmHandler;
+use caliptra_mcu_libapi_caliptra::crypto::aes_gcm::Aes256GcmTag;
+use caliptra_mcu_libapi_caliptra::crypto::asym::*;
+use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use core::mem::size_of;
-use libapi_caliptra::crypto::aes_gcm::Aes256GcmTag;
-use libapi_caliptra::crypto::asym::*;
-use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 
 // Maximum SPDM responder buffer size
 pub const MAX_SPDM_RESPONDER_BUF_SIZE: usize = 1024;

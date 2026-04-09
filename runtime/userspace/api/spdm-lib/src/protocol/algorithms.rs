@@ -2,7 +2,7 @@
 
 use crate::error::SpdmError;
 use bitfield::bitfield;
-use libapi_caliptra::crypto::hash::HashAlgoType;
+use caliptra_mcu_libapi_caliptra::crypto::hash::HashAlgoType;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 // Caliptra Hash Priority table

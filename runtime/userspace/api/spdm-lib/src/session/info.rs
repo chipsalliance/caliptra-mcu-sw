@@ -4,10 +4,10 @@ use super::{KeySchedule, SessionError, SessionKeyType, SessionResult};
 use crate::protocol::SpdmVersion;
 use crate::transcript::SessionTranscript;
 use bitfield::bitfield;
-use libapi_caliptra::crypto::aes_gcm::Aes256GcmTag;
-use libapi_caliptra::crypto::asym::ecdh::CMB_ECDH_EXCHANGE_DATA_MAX_SIZE;
-use libapi_caliptra::crypto::asym::AsymAlgo;
-use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use caliptra_mcu_libapi_caliptra::crypto::aes_gcm::Aes256GcmTag;
+use caliptra_mcu_libapi_caliptra::crypto::asym::ecdh::CMB_ECDH_EXCHANGE_DATA_MAX_SIZE;
+use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
+use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 bitfield! {

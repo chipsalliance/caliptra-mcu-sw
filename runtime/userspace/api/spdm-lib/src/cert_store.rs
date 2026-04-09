@@ -6,9 +6,9 @@ use crate::error::{SpdmError, SpdmResult};
 use crate::protocol::*;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
-use libapi_caliptra::error::CaliptraApiError;
+use caliptra_mcu_libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
+use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
+use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
 use zerocopy::IntoBytes;
 
 pub const MAX_CERT_SLOTS_SUPPORTED: u8 = 2;

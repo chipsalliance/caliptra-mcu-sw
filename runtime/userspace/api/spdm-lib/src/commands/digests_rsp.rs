@@ -8,9 +8,9 @@ use crate::error::{CommandError, CommandResult};
 use crate::protocol::*;
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
+use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
+use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use core::mem::size_of;
-use libapi_caliptra::crypto::asym::AsymAlgo;
-use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[derive(IntoBytes, FromBytes, Immutable, Default)]

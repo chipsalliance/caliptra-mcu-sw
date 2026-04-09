@@ -18,7 +18,7 @@ use crate::EXECUTOR;
     feature = "test-firmware-update-streaming",
     feature = "test-firmware-update-flash"
 ))]
-use libapi_caliptra::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
+use caliptra_mcu_libapi_caliptra::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
 
 use libtock_platform::ErrorCode;
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
@@ -90,11 +90,11 @@ mod external_memory {
     extern crate alloc;
     use alloc::boxed::Box;
     use async_trait::async_trait;
+    use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
     use caliptra_mcu_libsyscall_caliptra::dma::{
         DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
     };
     use core::fmt::Debug;
-    use libapi_caliptra::firmware_update::StagingMemory;
     use libtock_platform::ErrorCode;
 
     use crate::image_loader::EMULATED_DMA_MAPPING;
@@ -173,9 +173,9 @@ mod dummy_flash {
     use alloc::boxed::Box;
     use async_trait::async_trait;
     use caliptra_mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL;
+    use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
     use caliptra_mcu_libsyscall_caliptra::flash::{FlashCapacity, SpiFlash as FlashSyscall};
     use core::fmt::Debug;
-    use libapi_caliptra::firmware_update::StagingMemory;
     use libtock_platform::ErrorCode;
 
     pub struct ExternalFlash {
@@ -226,12 +226,12 @@ mod flash_memory {
     use async_trait::async_trait;
     use caliptra_mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
     use caliptra_mcu_config_emulator::flash::STAGING_PARTITION;
+    use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
     use caliptra_mcu_libsyscall_caliptra::{
         flash::{FlashCapacity, SpiFlash as FlashSyscall},
         DefaultSyscalls,
     };
     use core::fmt::Debug;
-    use libapi_caliptra::firmware_update::StagingMemory;
     use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
     use libtock_platform::ErrorCode;
 

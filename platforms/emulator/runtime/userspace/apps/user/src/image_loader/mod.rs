@@ -38,15 +38,15 @@ use libtock_platform::ErrorCode;
 
 #[allow(unused)]
 use crate::EXECUTOR;
+#[allow(unused)]
+use caliptra_mcu_libapi_caliptra::image_loading::{
+    FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams, PldmImageLoader,
+};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
-#[allow(unused)]
-use libapi_caliptra::image_loading::{
-    FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams, PldmImageLoader,
-};
 #[allow(unused)]
 use zerocopy::{FromBytes, IntoBytes};
 
