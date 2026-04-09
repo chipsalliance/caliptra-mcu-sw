@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_error::{McuError, McuResult};
 use core::fmt::Write;
-use mcu_error::{McuError, McuResult};
 use registers_generated::fuses::{self, FuseEntryInfo, OtpPartitionInfo};
 use registers_generated::otp_ctrl;
 use romtime::{HexBytes, HexWord, StaticRef};

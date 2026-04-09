@@ -28,7 +28,7 @@ fn populate_vendor_test_partition(otp: &Otp) {
         let val = (i as u32).wrapping_mul(0x0101_0101);
         if let Err(_e) = otp.write_word(base_word + i, val) {
             romtime::println!("[sw-digest-lock] Failed to write OTP word {}", i);
-            fatal_error(mcu_error::McuError::ROM_OTP_WRITE_WORD_ERROR);
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_WRITE_WORD_ERROR);
         }
     }
 }
@@ -46,7 +46,7 @@ fn write_phase(env: &RomEnv) -> ! {
         }
         Err(_e) => {
             romtime::println!("[sw-digest-lock] write_sw_digest_and_lock failed");
-            fatal_error(mcu_error::McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
         }
     }
 
@@ -65,17 +65,17 @@ fn verify_phase(env: &RomEnv) -> ! {
         Ok(d) => d,
         Err(_e) => {
             romtime::println!("[sw-digest-lock] compute_sw_digest failed");
-            fatal_error(mcu_error::McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
         }
     };
 
     let digest_offset = match partition.digest_offset {
         Some(off) => off,
-        None => fatal_error(mcu_error::McuError::ROM_OTP_INVALID_DATA_ERROR),
+        None => fatal_error(caliptra_mcu_error::McuError::ROM_OTP_INVALID_DATA_ERROR),
     };
     let stored = match otp.read_dword(digest_offset / 8) {
         Ok(v) => v,
-        Err(_e) => fatal_error(mcu_error::McuError::ROM_OTP_READ_ERROR),
+        Err(_e) => fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR),
     };
 
     romtime::println!(
@@ -86,7 +86,7 @@ fn verify_phase(env: &RomEnv) -> ! {
 
     if stored != computed {
         romtime::println!("[sw-digest-lock] MISMATCH!");
-        fatal_error(mcu_error::McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
+        fatal_error(caliptra_mcu_error::McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
     }
 
     romtime::println!("[sw-digest-lock] PASS");
@@ -108,11 +108,11 @@ fn run() -> ! {
     let partition = fuses::VENDOR_TEST_PARTITION;
     let digest_offset = match partition.digest_offset {
         Some(off) => off,
-        None => fatal_error(mcu_error::McuError::ROM_OTP_INVALID_DATA_ERROR),
+        None => fatal_error(caliptra_mcu_error::McuError::ROM_OTP_INVALID_DATA_ERROR),
     };
     let stored = match env.otp.read_dword(digest_offset / 8) {
         Ok(v) => v,
-        Err(_e) => fatal_error(mcu_error::McuError::ROM_OTP_READ_ERROR),
+        Err(_e) => fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR),
     };
 
     if stored == 0 {

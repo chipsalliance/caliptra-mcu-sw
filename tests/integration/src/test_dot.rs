@@ -16,7 +16,7 @@ mod test {
     use caliptra_image_gen::ImageGeneratorOwnerConfig;
     use caliptra_image_types::{ImageManifest, ImageOwnerPrivKeys, OwnerPubKeyConfig};
     use caliptra_mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries};
-    use mcu_error::McuError;
+    use caliptra_mcu_error::McuError;
     use mcu_hw_model::McuHwModel;
     use romtime::McuBootMilestones;
     use romtime::McuRomBootStatus;
@@ -2143,7 +2143,7 @@ mod test {
         );
         assert_eq!(
             fatal_error.unwrap(),
-            u32::from(mcu_error::McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR),
+            u32::from(caliptra_mcu_error::McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR),
             "Expected ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR, got 0x{:x}",
             fatal_error.unwrap()
         );
@@ -2264,7 +2264,7 @@ mod test {
         );
         assert_eq!(
             fatal_error.unwrap(),
-            u32::from(mcu_error::McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR),
+            u32::from(caliptra_mcu_error::McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR),
             "Expected ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR for unknown command, got 0x{:x}",
             fatal_error.unwrap()
         );

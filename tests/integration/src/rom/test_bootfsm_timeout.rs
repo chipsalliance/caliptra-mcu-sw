@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod test {
-    use mcu_error::McuError;
+    use caliptra_mcu_error::McuError;
     use mcu_hw_model::{InitParams, McuHwModel};
     use mcu_rom_common::LifecycleControllerState;
 

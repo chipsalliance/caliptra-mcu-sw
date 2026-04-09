@@ -6,7 +6,7 @@
 #![no_main]
 #![no_std]
 
-use mcu_error::McuError;
+use caliptra_mcu_error::McuError;
 use mcu_rom_common::{fatal_error, RomEnv};
 use registers_generated::mci;
 use romtime::McuBootMilestones;
@@ -113,7 +113,7 @@ enum HitlessUpdateError {
     InvalidAfterValue,
 }
 
-impl From<HitlessUpdateError> for mcu_error::McuError {
+impl From<HitlessUpdateError> for caliptra_mcu_error::McuError {
     fn from(err: HitlessUpdateError) -> Self {
         McuError::new_vendor(err as u32)
     }

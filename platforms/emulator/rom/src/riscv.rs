@@ -47,7 +47,7 @@ struct TestDotRecoveryHandler {
 }
 
 impl DotRecoveryHandler for TestDotRecoveryHandler {
-    fn read_recovery_blob(&self) -> mcu_error::McuResult<[u8; DOT_BLOB_SIZE]> {
+    fn read_recovery_blob(&self) -> caliptra_mcu_error::McuResult<[u8; DOT_BLOB_SIZE]> {
         Ok(self.blob)
     }
 }
@@ -318,7 +318,7 @@ enum EmulatorError {
     InvalidPartitionId,
 }
 
-impl From<EmulatorError> for mcu_error::McuError {
+impl From<EmulatorError> for caliptra_mcu_error::McuError {
     fn from(err: EmulatorError) -> Self {
         Self::new_vendor(err as u32)
     }

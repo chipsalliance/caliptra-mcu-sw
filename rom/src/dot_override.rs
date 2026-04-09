@@ -19,7 +19,7 @@ Abstract:
 
 --*/
 
-use mcu_error::{McuError, McuResult};
+use caliptra_mcu_error::{McuError, McuResult};
 
 use crate::{
     EccP384PublicKey, RecoveryTransport, MLDSA87_PUB_KEY_SIZE_DWORDS, MLDSA87_SIGNATURE_SIZE_DWORDS,

@@ -19,8 +19,8 @@ use crate::{
     RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
+use caliptra_mcu_error::McuError;
 use core::{fmt::Write, ops::Deref};
-use mcu_error::McuError;
 use romtime::{McuBootMilestones, McuRomBootStatus};
 
 pub struct WarmBoot {}

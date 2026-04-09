@@ -6,8 +6,8 @@
 
 use crate::otp::Otp;
 use crate::{Bits, Duplication, FuseLayout, PqcKeyType};
+use caliptra_mcu_error::{McuError, McuResult};
 use core::num::NonZero;
-use mcu_error::{McuError, McuResult};
 use registers_generated::fuses as generated_fuses;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 

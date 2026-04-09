@@ -20,7 +20,7 @@ use caliptra_api::mailbox::{
     CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacResp, CmShaReqHdr,
     CmShaResp, CmStableKeyType, CommandId, EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader,
 };
-use mcu_error::{McuError, McuResult};
+use caliptra_mcu_error::{McuError, McuResult};
 use romtime::McuRomBootStatus;
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 

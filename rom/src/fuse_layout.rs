@@ -4,8 +4,8 @@
 #![allow(dead_code)]
 #![allow(unused)]
 
+use caliptra_mcu_error::{McuError, McuResult};
 use core::num::NonZero;
-use mcu_error::{McuError, McuResult};
 
 #[derive(Copy, Clone)]
 pub struct Bits(pub NonZero<usize>);

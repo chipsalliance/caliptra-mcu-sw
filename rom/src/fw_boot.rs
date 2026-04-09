@@ -13,8 +13,8 @@ Abstract:
 --*/
 
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters, MCU_MEMORY_MAP};
+use caliptra_mcu_error::McuError;
 use core::fmt::Write;
-use mcu_error::McuError;
 #[cfg(feature = "fw-manifest-dot")]
 use romtime::HexWord;
 use romtime::{McuBootMilestones, McuRomBootStatus};

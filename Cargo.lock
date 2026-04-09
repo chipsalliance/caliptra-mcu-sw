@@ -1073,6 +1073,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-error"
+version = "0.1.0"
+
+[[package]]
 name = "caliptra-mcu-flash-ctrl-emulator"
 version = "0.1.0"
 dependencies = [
@@ -3042,10 +3046,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-error"
-version = "0.1.0"
-
-[[package]]
 name = "mcu-firmware-bundler"
 version = "0.0.0"
 dependencies = [
@@ -3215,9 +3215,9 @@ dependencies = [
  "caliptra-api-types",
  "caliptra-drivers",
  "caliptra-mcu-config",
+ "caliptra-mcu-error",
  "caliptra-mcu-flash-image",
  "constant_time_eq 0.4.2",
- "mcu-error",
  "mcu-otp-lifecycle",
  "otp-digest",
  "registers-generated",
@@ -3238,7 +3238,7 @@ dependencies = [
  "caliptra-mcu-builder",
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
- "mcu-error",
+ "caliptra-mcu-error",
  "mcu-image-header",
  "mcu-rom-common",
  "registers-generated",
@@ -3341,7 +3341,7 @@ dependencies = [
 name = "mcu-test-fw-hitless-update-flow"
 version = "0.1.0"
 dependencies = [
- "mcu-error",
+ "caliptra-mcu-error",
  "mcu-rom-common",
  "mcu-test-harness",
  "registers-generated",
@@ -3374,7 +3374,7 @@ dependencies = [
 name = "mcu-test-fw-otp-blank-check"
 version = "0.1.0"
 dependencies = [
- "mcu-error",
+ "caliptra-mcu-error",
  "mcu-rom-common",
  "mcu-test-harness",
  "registers-generated",
@@ -3398,7 +3398,7 @@ dependencies = [
 name = "mcu-test-fw-sw-digest-lock"
 version = "0.1.0"
 dependencies = [
- "mcu-error",
+ "caliptra-mcu-error",
  "mcu-rom-common",
  "mcu-test-harness",
  "registers-generated",
@@ -4895,6 +4895,7 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-error",
  "caliptra-mcu-flash-image",
  "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
@@ -4908,7 +4909,6 @@ dependencies = [
  "lazy_static",
  "log",
  "mctp-vdm-common",
- "mcu-error",
  "mcu-firmware-bundler",
  "mcu-hw-model",
  "mcu-image-header",

@@ -16,7 +16,7 @@ use crate::{err_code, fatal_error};
 use caliptra_api::mailbox::{
     CmShaFinalResp, CmShaInitResp, CommandId, CMB_SHA_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
 };
-use mcu_error::McuError;
+use caliptra_mcu_error::McuError;
 use romtime::{CaliptraSoC, HexWord};
 
 /// Read mailbox response words into a u8 buffer.

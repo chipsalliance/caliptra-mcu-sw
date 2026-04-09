@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod test {
     use anyhow::Result;
-    use mcu_error::McuError;
+    use caliptra_mcu_error::McuError;
     use mcu_hw_model::{new, DefaultHwModel, InitParams, McuHwModel, McuManager};
     use mcu_rom_common::{
         pqc_key_type_entry, vendor_ecc_revocation_entry, vendor_lms_revocation_entry,

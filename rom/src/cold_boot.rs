@@ -27,9 +27,9 @@ use caliptra_api::mailbox::{
 use caliptra_api::CaliptraApiError;
 use caliptra_api::SocManager;
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
+use caliptra_mcu_error::McuError;
 use core::fmt::Write;
 use core::ops::Deref;
-use mcu_error::McuError;
 use registers_generated::fuses;
 use registers_generated::i3c::bits::RecIntfCfg;
 use romtime::{CaliptraSoC, HexBytes, HexWord, McuBootMilestones, McuRomBootStatus};

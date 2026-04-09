@@ -6,7 +6,7 @@
 mod test {
     use crate::{platform, test::TEST_LOCK};
     use caliptra_mcu_builder::firmware;
-    use mcu_error::McuError;
+    use caliptra_mcu_error::McuError;
     use mcu_hw_model::{InitParams, McuHwModel};
 
     #[test]

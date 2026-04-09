@@ -12,7 +12,7 @@ emu = []
 fpga_realtime = ["mcu-test-harness/fpga_realtime"]
 
 [dependencies]
-mcu-error.workspace = true
+caliptra-mcu-error.workspace = true
 mcu-rom-common.workspace = true
 mcu-test-harness.workspace = true
 registers-generated.workspace = true

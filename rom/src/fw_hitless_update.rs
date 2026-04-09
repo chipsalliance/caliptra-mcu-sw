@@ -18,8 +18,8 @@ Abstract:
 use crate::MCU_MEMORY_MAP;
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters};
 use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
+use caliptra_mcu_error::McuError;
 use core::fmt::Write;
-use mcu_error::McuError;
 use romtime::HexWord;
 #[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
 use zerocopy::FromBytes;

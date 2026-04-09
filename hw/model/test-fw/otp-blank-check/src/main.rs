@@ -36,7 +36,7 @@ fn run() -> ! {
         Ok(_) => {}
         Err(_) => {
             romtime::println!("[otp-blank-check] First write unexpectedly failed");
-            fatal_error(mcu_error::McuError::ROM_OTP_WRITE_WORD_ERROR);
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_WRITE_WORD_ERROR);
         }
     }
 
@@ -45,12 +45,12 @@ fn run() -> ! {
         Ok(val) => {
             if val != 0x0000_000F {
                 romtime::println!("[otp-blank-check] Read back wrong value after first write");
-                fatal_error(mcu_error::McuError::ROM_OTP_READ_ERROR);
+                fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR);
             }
         }
         Err(_) => {
             romtime::println!("[otp-blank-check] Read after first write failed");
-            fatal_error(mcu_error::McuError::ROM_OTP_READ_ERROR);
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR);
         }
     }
     romtime::println!("[otp-blank-check] First write verified OK");
@@ -60,7 +60,7 @@ fn run() -> ! {
     match otp.write_word(base_word, 0x0000_0001) {
         Ok(_) => {
             romtime::println!("[otp-blank-check] Second write succeeded but should have failed");
-            fatal_error(mcu_error::McuError::ROM_OTP_WRITE_WORD_ERROR);
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_WRITE_WORD_ERROR);
         }
         Err(_) => {
             romtime::println!("[otp-blank-check] Second write correctly failed");
@@ -75,12 +75,12 @@ fn run() -> ! {
                     "[otp-blank-check] Original value not preserved, got {:#010x}",
                     val
                 );
-                fatal_error(mcu_error::McuError::ROM_OTP_READ_ERROR);
+                fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR);
             }
         }
         Err(_) => {
             romtime::println!("[otp-blank-check] Final readback failed");
-            fatal_error(mcu_error::McuError::ROM_OTP_READ_ERROR);
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR);
         }
     }
 
