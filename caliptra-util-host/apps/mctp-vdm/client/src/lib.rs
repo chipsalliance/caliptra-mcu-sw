@@ -14,7 +14,7 @@ pub use network_driver::MctpVdmSocketDriver;
 pub use validator::{ValidationResult, Validator};
 
 // Re-export shared config.
-pub use caliptra_util_host_mctp_vdm_test_config::*;
+pub use caliptra_mcu_core_util_host_mctp_vdm_test_config::*;
 
 // Re-export the I3C address type so callers don't need a direct dep.
 pub use caliptra_mcu_testing_common::i3c::DynamicI3cAddress;

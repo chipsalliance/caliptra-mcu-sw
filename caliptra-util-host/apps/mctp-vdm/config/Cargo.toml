@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-util-host-mctp-vdm-test-config"
+name = "caliptra-mcu-core-util-host-mctp-vdm-test-config"
 version.workspace = true
 edition.workspace = true
 description = "Shared configuration for MCTP VDM test client and server"

@@ -777,10 +777,10 @@ name = "caliptra-mctp-vdm-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "caliptra-mcu-core-util-host-mctp-vdm-test-config",
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-testing-common",
  "caliptra-util-host-command-types",
- "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
  "clap 4.5.51",
  "zerocopy",
@@ -901,6 +901,15 @@ dependencies = [
 
 [[package]]
 name = "caliptra-mcu-core-util-host-mailbox-test-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "caliptra-mcu-core-util-host-mctp-vdm-test-config"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1886,15 +1895,6 @@ name = "caliptra-util-host-command-types"
 version = "0.1.0"
 dependencies = [
  "zerocopy",
-]
-
-[[package]]
-name = "caliptra-util-host-mctp-vdm-test-config"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "toml 0.8.23",
 ]
 
 [[package]]
@@ -4883,6 +4883,7 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-core-util-host-mctp-vdm-test-config",
  "caliptra-mcu-error",
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-flash-image",
@@ -4897,7 +4898,6 @@ dependencies = [
  "caliptra-mcu-rom-common",
  "caliptra-mcu-romtime",
  "caliptra-mcu-testing-common",
- "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
  "chrono",
  "crc",
