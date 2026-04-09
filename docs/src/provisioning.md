@@ -116,6 +116,24 @@ Below is a summary of the provisioning flow required to bring a Caliptra Subsyst
 10. \[Optional\] Tester program IDevID certificate into integration-specific non-volatile storage.
 11. Tester drives a lifecycle transition via JTAG: Manuf → Prod\[End\]
 
+# Post-Production In-Field Fuse Programming
+
+Caliptra Subsystem provides an in-field fuse programming (IFP) mechanism to allow owners to update fuse partitions after a device has left the manufacturing facility and entered a production (Prod/ProdEnd) lifecycle state. For details, see this [docs/src/fuses.md](./fuses.md). This enables actuating various security features of a chip, e.g., performing key invalidations/rotations. The in-field fuse programming ability is constrained by the following:
+
+- Only fuse partitions explicitly designated as in-field programmable by the Caliptra specification may be modified in-field.
+- Each fuse word remains one-time programmable and cannot be erased once written.
+- Partition lock fuses; once a partition is locked, the hardware ensures no further writes are possible to any fuses within said partition, with the exception of partitions that support zeroization.
+
+As part of this process, the LDevID certificate is derived and endorsed using the IDevID as the signing identity. Initially, the LDevID can be derived using default Field Entropy (typically all zeros). During IFP, the field entropy fuse is programmed, and the LDevID certificate is updated to reflect the device identity.
+
+After FE injection and LDevID update, the device may receive a short-lived endorsement (e.g., 1–2 months), renewed periodically during production to limit exposure of compromised devices. The method to support this is outlined in the [Device Identity Provisioning flow](https://opencomputeproject.github.io/Security/device-identity-provisioning/HEAD/#sec:establishing-trust-in-identity) which requires non-self-signed CSR support. Limiting the endorsement duration reduces the risk of stolen or compromised devices being misused, while the underlying device identity remains constant.
+
+Caliptra Subsystem supports three in-field programming scenarios that are outside the scope of this document:
+1- Programming in-field entropy to support LDevID certificate generation and endorsement.
+2- Invalidating / rotating secure boot keys.
+3- Partition zeroization.
+
+
 # Provisioning Responsibilities
 
 Provisioning responsibilities vary depending on whether the SoC containing Caliptra Subsystem follows one of two integration scenarios (labeled 1 and 2 below). Below, we provide details on how the IDevID Certificate Signing Requests (CSRs) are authenticated and endorsed in each product integration scenario. We define two different roles to aid this discussion: "vendor/manufacturer" and "owner".
@@ -164,6 +182,11 @@ In this option, the owner is trusting the vendor's CA keys, and therefore their 
 ### Option 2
 
 If option 2 is selected, the vendor may only need to deploy a Device Registry Database, while the owner will need to deploy both an HSM and a Device Registry Database. The vendor then performs steps 1 and 2 in option 1 during silicon manufacturing, and stores the CSRs and their corresponding HMACs in a database to share with the owner. Later, during platform manufacturing, the owner validates each CSR HMAC and endorses each certificate with their HSM.
+
+## Scenario 3: Vendor builds a Caliptra device for the open market
+
+**A vendor is building a device to be sold on the open market.** The UDS is fully provisioned and the IDevID certificates are already endorsed and provisioned by the vendor's PKI. Devices are delivered fully provisioned, except for field entropy programming. CSR and certificates are harvested and stored in a Device Registry Database via an out-of-band mechanism for later ownership transfer.
+
 
 # Lifecycle and Debug Unlock Token Requirements
 
