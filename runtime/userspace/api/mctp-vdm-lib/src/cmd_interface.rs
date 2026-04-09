@@ -2,6 +2,10 @@
 
 use crate::error::VdmLibError;
 use crate::transport::MctpVdmTransport;
+use caliptra_mcu_external_cmds_common::{
+    AttestedCsrData, CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
+    UnifiedCommandHandler, MAX_ATTESTED_CSR_DATA_LEN, MAX_UID_LEN,
+};
 use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
 use caliptra_mcu_mctp_vdm_common::message::{
     AsymAlgorithm, DeviceCapabilitiesResponse, DeviceIdResponse, DeviceInfoRequest,
@@ -15,10 +19,6 @@ use caliptra_mcu_mctp_vdm_common::util::mctp_transport::{
     construct_mctp_vdm_msg, extract_vdm_msg, VDM_MSG_OFFSET,
 };
 use core::convert::TryFrom;
-use external_cmds_common::{
-    AttestedCsrData, CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
-    UnifiedCommandHandler, MAX_ATTESTED_CSR_DATA_LEN, MAX_UID_LEN,
-};
 use zerocopy::IntoBytes;
 
 /// Command interface for handling VDM commands.

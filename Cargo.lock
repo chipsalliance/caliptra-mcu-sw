@@ -1077,6 +1077,14 @@ name = "caliptra-mcu-error"
 version = "0.1.0"
 
 [[package]]
+name = "caliptra-mcu-external-cmds-common"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-firmware-bundler"
 version = "0.0.0"
 dependencies = [
@@ -2490,14 +2498,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "external-cmds-common"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "zerocopy",
-]
-
-[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3407,12 +3407,12 @@ name = "mctp-vdm-lib"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "caliptra-mcu-external-cmds-common",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mctp-vdm-common",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "external-cmds-common",
  "libsyscall-caliptra",
  "libtock_alarm",
  "libtock_console",
@@ -3427,11 +3427,11 @@ name = "mcu-mbox-lib"
 version = "0.1.0"
 dependencies = [
  "caliptra-api",
+ "caliptra-mcu-external-cmds-common",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
  "embassy-executor",
  "embassy-sync",
- "external-cmds-common",
  "libapi-caliptra",
  "libsyscall-caliptra",
  "libtock_alarm",
@@ -5413,6 +5413,7 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-external-cmds-common",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-mctp-vdm-common",
@@ -5423,7 +5424,6 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "external-cmds-common",
  "libapi-caliptra",
  "libapi-emulated-caliptra",
  "libsyscall-caliptra",

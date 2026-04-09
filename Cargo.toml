@@ -252,7 +252,7 @@ caliptra-mcu-registers-systemrdl-new = { path = "registers/systemrdl-new" }
 caliptra-mcu-romtime = { path = "romtime" }
 
 # App related dependencies
-external-cmds-common = { path = "runtime/userspace/api/external-cmds-common" }
+caliptra-mcu-external-cmds-common = { path = "runtime/userspace/api/external-cmds-common" }
 mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
 mctp-vdm-lib = { path = "runtime/userspace/api/mctp-vdm-lib" }
 pldm-lib = { path = "runtime/userspace/api/pldm-lib" }

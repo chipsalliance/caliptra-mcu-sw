@@ -2,6 +2,9 @@
 
 use crate::transport::McuMboxTransport;
 use caliptra_api::mailbox::{CommandId as CaliptraCommandId, MailboxReqHeader};
+use caliptra_mcu_external_cmds_common::{
+    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, UnifiedCommandHandler, MAX_UID_LEN,
+};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
     DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, MailboxRespHeader,
@@ -28,9 +31,6 @@ use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicStatusResp,
 };
 use core::sync::atomic::{AtomicBool, Ordering};
-use external_cmds_common::{
-    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, UnifiedCommandHandler, MAX_UID_LEN,
-};
 use libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use libsyscall_caliptra::mailbox::Mailbox;
 use libsyscall_caliptra::mcu_mbox::MbxCmdStatus;

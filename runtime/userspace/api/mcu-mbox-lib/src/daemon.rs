@@ -2,10 +2,10 @@
 
 use crate::cmd_interface::CmdInterface;
 use crate::transport::McuMboxTransport;
+use caliptra_mcu_external_cmds_common::UnifiedCommandHandler;
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
-use external_cmds_common::UnifiedCommandHandler;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 
