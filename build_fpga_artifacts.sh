@@ -92,15 +92,19 @@ mksquashfs /tmp/caliptra-test-binaries /tmp/caliptra-test-binaries.sqsh -comp zs
 echo "==> Test binaries built."
 
 # ---------- Download bitstream ----------
-echo "==> Downloading bitstream..."
-cargo install --git https://github.com/chipsalliance/caliptra-infra \
-    caliptra-bitstream-downloader \
-    --root /tmp/bitstream-downloader \
-    --rev 3db904cf9cd704fcf890da32fd61dd30bfce8d11
-/tmp/bitstream-downloader/bin/caliptra-bitstream-downloader \
-    --bitstream-manifest hw/fpga/bitstream_manifests/subsystem.toml
-mv subsystem.pdi /tmp/caliptra-bitstream.pdi
-echo "==> Bitstream downloaded."
+if [[ -f /tmp/caliptra-bitstream.pdi ]]; then
+    echo "==> Bitstream already cached at /tmp/caliptra-bitstream.pdi"
+else
+    echo "==> Downloading bitstream..."
+    cargo install --git https://github.com/chipsalliance/caliptra-infra \
+        caliptra-bitstream-downloader \
+        --root /tmp/bitstream-downloader \
+        --rev 3db904cf9cd704fcf890da32fd61dd30bfce8d11
+    /tmp/bitstream-downloader/bin/caliptra-bitstream-downloader \
+        --bitstream-manifest hw/fpga/bitstream_manifests/subsystem.toml
+    mv subsystem.pdi /tmp/caliptra-bitstream.pdi
+    echo "==> Bitstream downloaded."
+fi
 
 # ---------- Upload to fork release ----------
 FORK_REPO="mlvisaya/caliptra-mcu-sw"
