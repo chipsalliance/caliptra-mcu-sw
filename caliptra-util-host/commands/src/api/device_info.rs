@@ -5,7 +5,7 @@
 //! High-level functions for retrieving device information from Caliptra.
 
 use crate::api::{CaliptraApiError, CaliptraResult};
-use caliptra_util_host_command_types::{
+use caliptra_mcu_core_util_host_command_types::{
     device_info::{
         GetDeviceCapabilitiesRequest, GetDeviceCapabilitiesResponse, GetDeviceIdRequest,
         GetDeviceIdResponse, GetDeviceInfoRequest, GetDeviceInfoResponse,

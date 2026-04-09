@@ -5,12 +5,12 @@
 //! These tests verify the ECDSA and ECDH API functions and types work correctly.
 
 use crate::common::{test_constants::*, MockMailbox};
-use caliptra_util_host_command_types::crypto_asymmetric::{
+use caliptra_mcu_core_util_host_command_types::crypto_asymmetric::{
     EcdhFinishRequest, EcdhGenerateRequest, EcdsaPublicKeyRequest, EcdsaSignRequest,
     EcdsaVerifyRequest, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
     ECC384_SCALAR_BYTE_SIZE, MAX_CMB_DATA_SIZE,
 };
-use caliptra_util_host_command_types::crypto_hmac::{CmKeyUsage, Cmk, CMK_SIZE};
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::{CmKeyUsage, Cmk, CMK_SIZE};
 use caliptra_util_host_commands::api::crypto_asymmetric::{
     caliptra_cmd_ecdh_generate, caliptra_cmd_ecdsa_public_key, caliptra_cmd_ecdsa_sign,
 };

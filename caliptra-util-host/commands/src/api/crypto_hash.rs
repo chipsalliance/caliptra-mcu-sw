@@ -12,11 +12,11 @@
 //! For convenience, `caliptra_cmd_sha_hash` performs all three steps in one call.
 
 use crate::api::{CaliptraApiError, CaliptraResult};
-use caliptra_util_host_command_types::crypto_hash::{
+use caliptra_mcu_core_util_host_command_types::crypto_hash::{
     ShaAlgorithm, ShaFinalRequest, ShaFinalResponse, ShaInitRequest, ShaInitResponse,
     ShaUpdateRequest, ShaUpdateResponse, SHA_CONTEXT_SIZE,
 };
-use caliptra_util_host_command_types::CaliptraCommandId;
+use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 use caliptra_util_host_session::CaliptraSession;
 
 /// Initialize a SHA hash operation

@@ -8,9 +8,9 @@
 //! - `caliptra_cmd_import` - Import a raw key and get an encrypted CMK
 
 use crate::api::{CaliptraApiError, CaliptraResult};
-use caliptra_util_host_command_types::crypto_hmac::CmKeyUsage;
-use caliptra_util_host_command_types::crypto_import::{ImportRequest, ImportResponse};
-use caliptra_util_host_command_types::CaliptraCommandId;
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::CmKeyUsage;
+use caliptra_mcu_core_util_host_command_types::crypto_import::{ImportRequest, ImportResponse};
+use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 use caliptra_util_host_session::CaliptraSession;
 
 /// Import a raw key and get an encrypted CMK handle

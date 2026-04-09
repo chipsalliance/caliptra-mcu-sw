@@ -7,7 +7,7 @@
 #![no_std]
 
 // Re-export command types for convenience
-pub use caliptra_util_host_command_types::*;
+pub use caliptra_mcu_core_util_host_command_types::*;
 
 pub mod api;
 pub mod packing;

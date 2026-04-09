@@ -89,13 +89,13 @@
 //! ```
 
 // Re-export main public APIs for convenience
-pub use caliptra_util_host_command_types::{
+pub use caliptra_mcu_core_util_host_command_types::{
     CaliptraCommandId, GetDeviceCapabilitiesRequest, GetDeviceCapabilitiesResponse,
     GetDeviceIdRequest, GetDeviceIdResponse, GetDeviceInfoRequest, GetDeviceInfoResponse,
     GetFirmwareVersionRequest, GetFirmwareVersionResponse,
 };
 // Re-export SHA types
-pub use caliptra_util_host_command_types::crypto_hash::{
+pub use caliptra_mcu_core_util_host_command_types::crypto_hash::{
     ShaAlgorithm, ShaFinalRequest, ShaFinalResponse, ShaInitRequest, ShaInitResponse,
     ShaUpdateRequest, ShaUpdateResponse, MAX_HASH_SIZE, MAX_SHA_INPUT_SIZE, SHA_CONTEXT_SIZE,
 };

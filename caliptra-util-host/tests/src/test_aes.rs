@@ -5,10 +5,10 @@
 //! These tests verify the AES API functions work correctly with the mock mailbox.
 
 use crate::common::{test_constants::*, MockMailbox};
-use caliptra_util_host_command_types::crypto_aes::{
+use caliptra_mcu_core_util_host_command_types::crypto_aes::{
     AesMode, AES_CONTEXT_SIZE, AES_GCM_CONTEXT_SIZE, AES_GCM_IV_SIZE, AES_IV_SIZE,
 };
-use caliptra_util_host_command_types::crypto_hmac::Cmk;
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::Cmk;
 use caliptra_util_host_commands::api::crypto_aes::{
     caliptra_cmd_aes_decrypt_init, caliptra_cmd_aes_encrypt_init,
     caliptra_cmd_aes_gcm_decrypt_init, caliptra_cmd_aes_gcm_encrypt_init,

@@ -14,6 +14,7 @@
 
 use super::transport::MctpVdmError;
 use crate::TransportError;
+use caliptra_mcu_core_util_host_command_types::*;
 use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
 use caliptra_mcu_mctp_vdm_common::message::{
     DeviceCapabilitiesRequest, DeviceCapabilitiesResponse, DeviceIdRequest, DeviceIdResponse,
@@ -21,7 +22,6 @@ use caliptra_mcu_mctp_vdm_common::message::{
     MAX_FW_VERSION_LEN,
 };
 use caliptra_mcu_mctp_vdm_common::protocol::{VdmCompletionCode, VdmMsgHeader, VDM_MSG_HEADER_LEN};
-use caliptra_util_host_command_types::*;
 
 /// Maximum buffer for encoding a VDM request.
 const MAX_VDM_REQ_BUF: usize = 128;

@@ -9,7 +9,7 @@ parse_deps = true
 include = [
     "caliptra-util-host-cbinding",
     "caliptra-util-host-commands", 
-    "caliptra-util-host-command-types",
+    "caliptra-mcu-core-util-host-command-types",
     "caliptra-util-host-session",
     "caliptra-mcu-core-util-host-transport"
 ]

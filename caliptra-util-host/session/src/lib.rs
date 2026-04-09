@@ -6,7 +6,7 @@
 
 #![no_std]
 
-use caliptra_util_host_command_types::{CaliptraCommandId, CommandRequest, CommandResponse};
+use caliptra_mcu_core_util_host_command_types::{CaliptraCommandId, CommandRequest, CommandResponse};
 use caliptra_util_host_osal::time::{sleep, Duration, Instant};
 use caliptra_mcu_core_util_host_transport::Transport;
 use zerocopy::{FromBytes, Immutable, IntoBytes};

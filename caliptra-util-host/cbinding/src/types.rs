@@ -2,7 +2,7 @@
 
 //! C-compatible type definitions
 
-use caliptra_util_host_command_types::device_info::GetDeviceIdResponse;
+use caliptra_mcu_core_util_host_command_types::device_info::GetDeviceIdResponse;
 
 /// Device ID information structure
 ///

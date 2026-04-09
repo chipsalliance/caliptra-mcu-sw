@@ -9,5 +9,5 @@ description = "Command layer for Caliptra Utility Host Library"
 [dependencies]
 caliptra-util-host-osal.workspace = true
 caliptra-util-host-session.workspace = true
-caliptra-util-host-command-types.workspace = true
+caliptra-mcu-core-util-host-command-types.workspace = true
 zerocopy.workspace = true

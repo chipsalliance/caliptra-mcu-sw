@@ -14,11 +14,11 @@ use super::checksum::calc_checksum;
 use super::command_traits::{
     ExternalCommandMetadata, FromInternalRequest, ToInternalResponse, VariableSizeBytes,
 };
-use caliptra_util_host_command_types::crypto_hmac::{CmKeyUsage, Cmk, CMK_SIZE};
-use caliptra_util_host_command_types::crypto_import::{
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::{CmKeyUsage, Cmk, CMK_SIZE};
+use caliptra_mcu_core_util_host_command_types::crypto_import::{
     ImportRequest, ImportResponse, MAX_IMPORT_KEY_SIZE,
 };
-use caliptra_util_host_command_types::CommonResponse;
+use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 use crate::define_command;

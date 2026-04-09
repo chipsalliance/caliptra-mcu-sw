@@ -52,8 +52,8 @@ impl From<caliptra_util_host_osal::OsalError> for CaliptraApiError {
     }
 }
 
-impl From<caliptra_util_host_command_types::CommandError> for CaliptraApiError {
-    fn from(_err: caliptra_util_host_command_types::CommandError) -> Self {
+impl From<caliptra_mcu_core_util_host_command_types::CommandError> for CaliptraApiError {
+    fn from(_err: caliptra_mcu_core_util_host_command_types::CommandError) -> Self {
         CaliptraApiError::CommandFailed("Command execution failed")
     }
 }

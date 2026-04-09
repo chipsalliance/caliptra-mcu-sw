@@ -10,7 +10,7 @@
 
 use super::checksum::calc_checksum;
 use super::command_traits::*;
-use caliptra_util_host_command_types::*;
+use caliptra_mcu_core_util_host_command_types::*;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 // Re-export the common functions and traits for use by transport module

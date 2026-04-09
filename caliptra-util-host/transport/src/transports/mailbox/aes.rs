@@ -23,7 +23,7 @@ use alloc::vec::Vec;
 
 use super::checksum::calc_checksum;
 use super::command_traits::*;
-use caliptra_util_host_command_types::crypto_aes::{
+use caliptra_mcu_core_util_host_command_types::crypto_aes::{
     AesDecryptInitRequest, AesDecryptInitResponse, AesDecryptUpdateRequest,
     AesDecryptUpdateResponse, AesEncryptInitRequest, AesEncryptInitResponse,
     AesEncryptUpdateRequest, AesEncryptUpdateResponse, AesGcmDecryptFinalRequest,
@@ -34,8 +34,8 @@ use caliptra_util_host_command_types::crypto_aes::{
     AES_GCM_CONTEXT_SIZE, AES_GCM_IV_SIZE, AES_GCM_TAG_SIZE, AES_IV_SIZE, MAX_AES_DATA_SIZE,
     MAX_AES_GCM_OUTPUT_SIZE,
 };
-use caliptra_util_host_command_types::crypto_hmac::CMK_SIZE;
-use caliptra_util_host_command_types::CommonResponse;
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::CMK_SIZE;
+use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[repr(C)]

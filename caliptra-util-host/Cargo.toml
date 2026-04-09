@@ -25,7 +25,7 @@ authors = ["Caliptra contributors"]
 [workspace.dependencies]
 # Internal workspace dependencies
 caliptra-util-host-osal = { path = "osal" }
-caliptra-util-host-command-types = { path = "command-types" }
+caliptra-mcu-core-util-host-command-types = { path = "command-types" }
 caliptra-util-host-commands = { path = "commands" }
 caliptra-util-host-session = { path = "session" }
 caliptra-mcu-core-util-host-transport = { path = "transport" }
@@ -69,7 +69,7 @@ description = "Caliptra Utility Host Library - A flexible framework for communic
 caliptra-util-host-session.workspace = true
 caliptra-mcu-core-util-host-transport.workspace = true
 caliptra-util-host-commands.workspace = true
-caliptra-util-host-command-types.workspace = true
+caliptra-mcu-core-util-host-command-types.workspace = true
 zerocopy.workspace = true
 
 [dev-dependencies]
@@ -77,7 +77,7 @@ zerocopy.workspace = true
 caliptra-util-host-session.workspace = true
 caliptra-mcu-core-util-host-transport.workspace = true
 caliptra-util-host-commands.workspace = true
-caliptra-util-host-command-types.workspace = true
+caliptra-mcu-core-util-host-command-types.workspace = true
 zerocopy.workspace = true
 
 [features]

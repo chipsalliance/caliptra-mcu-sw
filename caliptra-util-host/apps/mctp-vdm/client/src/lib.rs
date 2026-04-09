@@ -20,8 +20,8 @@ pub use caliptra_mcu_core_util_host_mctp_vdm_test_config::*;
 pub use caliptra_mcu_testing_common::i3c::DynamicI3cAddress;
 
 use anyhow::Result;
+use caliptra_mcu_core_util_host_command_types::*;
 use caliptra_mcu_core_util_host_transport::{MctpVdmTransport, Transport};
-use caliptra_util_host_command_types::*;
 
 /// High-level MCTP VDM client.
 pub struct VdmClient<'a> {

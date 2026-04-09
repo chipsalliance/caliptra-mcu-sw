@@ -13,7 +13,7 @@ crate-type = ["cdylib", "staticlib"]
 caliptra-util-host-commands.workspace = true
 caliptra-util-host-session.workspace = true
 caliptra-mcu-core-util-host-transport.workspace = true
-caliptra-util-host-command-types.workspace = true
+caliptra-mcu-core-util-host-command-types.workspace = true
 caliptra-util-host-osal.workspace = true
 
 [build-dependencies]

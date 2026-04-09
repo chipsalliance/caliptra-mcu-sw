@@ -4,7 +4,7 @@
 //!
 //! Zerocopy-based serialization and deserialization of command arguments
 
-use caliptra_util_host_command_types::{
+use caliptra_mcu_core_util_host_command_types::{
     CommandError, CommandRequest, CommandResponse, CommandResult,
 };
 use zerocopy::{FromBytes, IntoBytes};

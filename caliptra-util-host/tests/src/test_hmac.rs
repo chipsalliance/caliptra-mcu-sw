@@ -5,7 +5,7 @@
 //! These tests verify the HMAC API functions and types work correctly.
 
 use crate::common::{test_constants::*, MockMailbox};
-use caliptra_util_host_command_types::crypto_hmac::{
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::{
     CmKeyUsage, Cmk, HmacAlgorithm, HmacKdfCounterRequest, HmacRequest, CMK_SIZE,
     MAX_HMAC_INPUT_SIZE,
 };

@@ -16,22 +16,22 @@ pub use validator::{run_basic_validation, run_verbose_validation, ValidationResu
 pub use caliptra_mcu_core_util_host_mailbox_test_config::*;
 
 use anyhow::Result;
-use caliptra_util_host_command_types::crypto_aes::{
+use caliptra_mcu_core_util_host_command_types::crypto_aes::{
     AesMode, AES_GCM_IV_SIZE, AES_GCM_TAG_SIZE, AES_IV_SIZE,
 };
-use caliptra_util_host_command_types::crypto_asymmetric::{
+use caliptra_mcu_core_util_host_command_types::crypto_asymmetric::{
     EcdhFinishResponse, EcdhGenerateResponse, EcdsaPublicKeyResponse, EcdsaSignResponse,
     CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, ECC384_SCALAR_BYTE_SIZE,
 };
-use caliptra_util_host_command_types::crypto_delete::DeleteResponse;
-use caliptra_util_host_command_types::crypto_hash::{
+use caliptra_mcu_core_util_host_command_types::crypto_delete::DeleteResponse;
+use caliptra_mcu_core_util_host_command_types::crypto_hash::{
     ShaAlgorithm, ShaFinalResponse, ShaInitResponse, ShaUpdateResponse, SHA_CONTEXT_SIZE,
 };
-use caliptra_util_host_command_types::crypto_hmac::{
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::{
     CmKeyUsage, Cmk, HmacAlgorithm, HmacKdfCounterResponse, HmacResponse,
 };
-use caliptra_util_host_command_types::crypto_import::ImportResponse;
-use caliptra_util_host_command_types::{
+use caliptra_mcu_core_util_host_command_types::crypto_import::ImportResponse;
+use caliptra_mcu_core_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
     GetFirmwareVersionResponse,
 };
