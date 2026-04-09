@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::cmd_interface::CmdInterface;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
-use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 
 /// Maximum size of VDM message buffer (implementation-defined limit).

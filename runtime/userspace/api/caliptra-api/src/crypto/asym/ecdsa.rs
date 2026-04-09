@@ -5,7 +5,7 @@ use crate::crypto::hash::SHA384_HASH_SIZE;
 use crate::error::CaliptraApiResult;
 use crate::mailbox_api::execute_mailbox_cmd;
 use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, Request};
-use libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::IntoBytes;
 
 pub struct Ecdsa;

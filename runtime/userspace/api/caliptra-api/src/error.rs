@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_libsyscall_caliptra::mailbox::MailboxError;
 use caliptra_ocp_eat::EatError;
-use libsyscall_caliptra::mailbox::MailboxError;
 use libtock_platform::ErrorCode;
 
 pub type CaliptraApiResult<T> = Result<T, CaliptraApiError>;

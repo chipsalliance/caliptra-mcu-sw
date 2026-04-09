@@ -8,8 +8,8 @@ use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     PARTITION_TABLE,
 };
-use libsyscall_caliptra::flash::SpiFlash;
-use libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use libtock_platform::ErrorCode;
 use zerocopy::{FromBytes, IntoBytes};
 

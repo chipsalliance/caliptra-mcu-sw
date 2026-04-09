@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
+use caliptra_mcu_libsyscall_caliptra::system::System;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_romtime::println;
 use core::fmt::Write;
-use libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
-use libsyscall_caliptra::system::System;
-use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 
 const MCU_SRAM_HI_OFFSET: u64 = 0x0000_0000;

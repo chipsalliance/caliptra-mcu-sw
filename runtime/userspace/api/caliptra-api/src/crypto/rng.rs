@@ -9,8 +9,8 @@ use caliptra_api::mailbox::{
     CmRandomGenerateReq, CmRandomStirReq, MailboxReqHeader, MailboxRespHeader,
     MailboxRespHeaderVarSize, Request,
 };
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use core::mem::size_of;
-use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
 
 pub struct Rng;

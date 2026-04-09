@@ -21,23 +21,24 @@ use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     PARTITION_TABLE,
 };
+use caliptra_mcu_libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
+#[allow(unused)]
+use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
+use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
+use caliptra_mcu_libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
+#[allow(unused)]
+use caliptra_mcu_libsyscall_caliptra::system::System;
 #[allow(unused)]
 use caliptra_mcu_pldm_lib::daemon::PldmService;
 use core::fmt::Write;
 #[allow(unused)]
 use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
-use libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
-#[allow(unused)]
-use libsyscall_caliptra::flash::SpiFlash;
-use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
-use libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
-#[allow(unused)]
-use libsyscall_caliptra::system::System;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
 
 #[allow(unused)]
 use crate::EXECUTOR;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
@@ -46,7 +47,6 @@ use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
 use libapi_caliptra::image_loading::{
     FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams, PldmImageLoader,
 };
-use libsyscall_caliptra::DefaultSyscalls;
 #[allow(unused)]
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -54,8 +54,8 @@ const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 
 #[embassy_executor::task]
 pub async fn image_loading_task() {
-    let mbox_sram = libsyscall_caliptra::mbox_sram::MboxSram::<DefaultSyscalls>::new(
-        libsyscall_caliptra::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
+    let mbox_sram = caliptra_mcu_libsyscall_caliptra::mbox_sram::MboxSram::<DefaultSyscalls>::new(
+        caliptra_mcu_libsyscall_caliptra::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
     );
     let mci = MciSyscall::<DefaultSyscalls>::new();
     let reset_reason = mci.read(RESET_REASON, 0).unwrap();

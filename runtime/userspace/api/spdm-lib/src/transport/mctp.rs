@@ -9,7 +9,7 @@ use crate::transport::common::{SpdmTransport, TransportError, TransportResult};
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use bitfield::bitfield;
-use libsyscall_caliptra::mctp::{Mctp, MessageInfo};
+use caliptra_mcu_libsyscall_caliptra::mctp::{Mctp, MessageInfo};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 const MCTP_MSG_HEADER_SIZE: usize = 1;

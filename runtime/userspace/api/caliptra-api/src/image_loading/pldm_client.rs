@@ -7,9 +7,9 @@ use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
+use caliptra_mcu_libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
-use libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
 
 use libtock_platform::ErrorCode;
 

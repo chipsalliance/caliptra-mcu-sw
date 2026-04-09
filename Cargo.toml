@@ -257,7 +257,7 @@ caliptra-mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
 caliptra-mcu-mctp-vdm-lib = { path = "runtime/userspace/api/mctp-vdm-lib" }
 caliptra-mcu-pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
 caliptra-mcu-spdm-lib = { path = "runtime/userspace/api/spdm-lib", default-features = false }
-libsyscall-caliptra = { path = "runtime/userspace/syscall" }
+caliptra-mcu-libsyscall-caliptra = { path = "runtime/userspace/syscall" }
 libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }
 libapi-emulated-caliptra = { path = "platforms/emulator/runtime/userspace/api/caliptra-api" }
 

@@ -21,6 +21,12 @@ use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
     SOC_MANIFEST_IDENTIFIER,
 };
+use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
+use caliptra_mcu_libsyscall_caliptra::dma::{
+    DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
+};
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
 use caliptra_mcu_libtockasync::TockExecutor;
 use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
@@ -28,16 +34,12 @@ use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyR
 use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
 use caliptra_mcu_pldm_lib::daemon::PldmService;
 use embassy_executor::Spawner;
-use libsyscall_caliptra::dma::AXIAddr;
-use libsyscall_caliptra::dma::{DMAMapping, DMASource, DMATransaction, DMA as DMASyscall};
-use libsyscall_caliptra::mailbox::Mailbox;
-use libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
 use libtock_platform::ErrorCode;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use core::fmt::Write;
 use core::mem::offset_of;
-use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 
 use crate::crypto::hash::{HashAlgoType, HashContext};

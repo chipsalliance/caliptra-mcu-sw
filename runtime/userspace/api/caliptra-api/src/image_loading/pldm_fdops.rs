@@ -8,6 +8,9 @@ use crate::MAX_PLDM_TRANSFER_SIZE;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
+use caliptra_mcu_libsyscall_caliptra::dma::{
+    AXIAddr, DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
+};
 use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
@@ -18,7 +21,6 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::{
 };
 use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
 use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
-use libsyscall_caliptra::dma::{AXIAddr, DMAMapping, DMASource, DMATransaction, DMA as DMASyscall};
 
 pub struct StreamingFdOps<'a, D: DMAMapping> {
     descriptors: &'a [Descriptor],

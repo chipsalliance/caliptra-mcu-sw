@@ -7,13 +7,13 @@ use caliptra_api::mailbox::{
     GetLdevEcc384CertReq, GetRtAliasEcc384CertReq, InvokeDpeReq, InvokeDpeResp, MailboxRespHeader,
     PopulateIdevEcc384CertReq, Request, VarSizeDataResp,
 };
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use dpe::commands::{
     CertifyKeyCmd, CertifyKeyFlags, Command, CommandHdr, GetCertificateChainCmd, SignCmd, SignFlags,
 };
 use dpe::context::ContextHandle;
 use dpe::response::SignResp;
 use dpe::DPE_PROFILE;
-use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, FromZeros, IntoBytes};
 
 pub const IDEV_ECC_CSR_MAX_SIZE: usize = GetIdevCsrResp::DATA_MAX_SIZE;

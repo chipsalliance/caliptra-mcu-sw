@@ -3,10 +3,10 @@
 use crate::cmd_interface::CmdInterface;
 use crate::transport::McuMboxTransport;
 use caliptra_mcu_external_cmds_common::UnifiedCommandHandler;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
-use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 
 const MAX_MCU_MBOX_MSG_SIZE: usize = 4096;

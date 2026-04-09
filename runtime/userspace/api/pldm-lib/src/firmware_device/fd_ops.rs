@@ -3,6 +3,7 @@
 extern crate alloc;
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
 use caliptra_mcu_pldm_common::message::firmware_update::request_cancel::{
@@ -15,7 +16,6 @@ use caliptra_mcu_pldm_common::{
     message::firmware_update::get_fw_params::FirmwareParameters,
     protocol::firmware_update::{ComponentResponseCode, Descriptor, PldmFdTime},
 };
-use libsyscall_caliptra::DefaultSyscalls;
 
 use crate::timer::AsyncAlarm;
 

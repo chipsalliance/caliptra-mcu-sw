@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use libsyscall_caliptra::doe::{driver_num, Doe};
+use caliptra_mcu_libsyscall_caliptra::doe::{driver_num, Doe};
 
 pub async fn test_doe_loopback() {
     let doe_spdm: Doe = Doe::new(driver_num::DOE_SPDM);

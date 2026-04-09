@@ -5,8 +5,8 @@ use crate::mailbox_api::execute_mailbox_cmd;
 use caliptra_api::mailbox::{
     CommandId, FipsVersionResp, FwInfoResp, GetImageInfoReq, GetImageInfoResp, MailboxReqHeader,
 };
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use core::mem::size_of;
-use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
 
 pub struct DeviceState;

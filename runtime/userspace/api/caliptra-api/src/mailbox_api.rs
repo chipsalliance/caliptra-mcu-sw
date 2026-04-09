@@ -36,11 +36,11 @@ use caliptra_api::mailbox::{
     CmRandomStirReq, MailboxReqHeader, MailboxRespHeaderVarSize, CMB_SHA_CONTEXT_SIZE,
     MAX_CMB_DATA_SIZE,
 };
+use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use core::mem::size_of;
 use dpe::context::ContextHandle;
 use dpe::response::{GetCertificateChainResp, ResponseHdr};
 use dpe::DPE_PROFILE;
-use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use libtock_platform::ErrorCode;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 

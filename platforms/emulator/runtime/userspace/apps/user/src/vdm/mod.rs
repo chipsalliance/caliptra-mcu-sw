@@ -6,13 +6,13 @@
 ))]
 mod cmd_handler_mock;
 
+use caliptra_mcu_libsyscall_caliptra::system::System;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use core::fmt::Write;
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::signal::Signal;
-use libsyscall_caliptra::system::System;
-use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
 #[cfg(any(

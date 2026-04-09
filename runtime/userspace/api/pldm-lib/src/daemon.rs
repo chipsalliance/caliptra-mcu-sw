@@ -7,6 +7,8 @@ use crate::firmware_device::fd_ops::FdOps;
 use crate::firmware_device::transfer_session::TransferSession;
 use crate::timer::AsyncAlarm;
 use crate::transport::MctpTransport;
+use caliptra_mcu_libsyscall_caliptra::mctp::driver_num;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_pldm_common::codec::PldmCodec;
 use caliptra_mcu_pldm_common::message::firmware_update::request_fw_data::{
     RequestFirmwareDataRequest, RequestFirmwareDataResponseFixed,
@@ -22,8 +24,6 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
-use libsyscall_caliptra::mctp::driver_num;
-use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 const YIELD_EVERY_ITERATIONS: u32 = 32;
 

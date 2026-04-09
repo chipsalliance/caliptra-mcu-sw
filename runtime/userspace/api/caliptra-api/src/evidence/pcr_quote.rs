@@ -8,8 +8,8 @@ use caliptra_api::mailbox::{
     MailboxReqHeader, MailboxRespHeader, QuotePcrsEcc384Req, QuotePcrsEcc384Resp,
     QuotePcrsMldsa87Req, QuotePcrsMldsa87Resp, Request,
 };
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use core::mem::size_of;
-use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
 
 const PCR_QUOTE_RSP_START: usize = size_of::<MailboxRespHeader>();

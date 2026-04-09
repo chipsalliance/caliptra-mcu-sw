@@ -3,7 +3,7 @@
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::mailbox_api::execute_mailbox_cmd;
 use caliptra_api::mailbox::{CmImportReq, CmImportResp, Request};
-use libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::IntoBytes;
 
 // re-export

@@ -8,13 +8,13 @@
 ))]
 mod cmd_handler_mock;
 
+use caliptra_mcu_libsyscall_caliptra::system::System;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use core::fmt::Write;
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::signal::Signal;
-use libsyscall_caliptra::system::System;
-use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
 
@@ -41,7 +41,7 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
     {
         let handler = cmd_handler_mock::NonCryptoCmdHandlerMock::default();
         let mut transport = caliptra_mcu_mbox_lib::transport::McuMboxTransport::new(
-            libsyscall_caliptra::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
+            caliptra_mcu_libsyscall_caliptra::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
         );
         let mut mcu_mbox_service = caliptra_mcu_mbox_lib::daemon::McuMboxService::init(
             &handler,

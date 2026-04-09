@@ -5,6 +5,8 @@ use caliptra_api::mailbox::{CommandId as CaliptraCommandId, MailboxReqHeader};
 use caliptra_mcu_external_cmds_common::{
     DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, UnifiedCommandHandler, MAX_UID_LEN,
 };
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
     DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, MailboxRespHeader,
@@ -32,8 +34,6 @@ use caliptra_mcu_mbox_common::messages::{
 };
 use core::sync::atomic::{AtomicBool, Ordering};
 use libapi_caliptra::mailbox_api::execute_mailbox_cmd;
-use libsyscall_caliptra::mailbox::Mailbox;
-use libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use zerocopy::{FromBytes, IntoBytes};
 
 #[derive(Debug)]
@@ -49,7 +49,7 @@ pub enum MsgHandlerError {
 pub struct CmdInterface<'a> {
     transport: &'a mut McuMboxTransport,
     non_crypto_cmds_handler: &'a dyn UnifiedCommandHandler,
-    caliptra_mbox: libsyscall_caliptra::mailbox::Mailbox, // Handle crypto commands via caliptra mailbox
+    caliptra_mbox: caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox, // Handle crypto commands via caliptra mailbox
     busy: AtomicBool,
 }
 

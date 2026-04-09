@@ -4,9 +4,9 @@
 #![cfg_attr(target_arch = "riscv32", no_main)]
 #![allow(static_mut_refs)]
 
+use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libtockasync::TockSubscribe;
 use core::fmt::Write;
-use libsyscall_caliptra::system::System;
 use libtock::alarm::*;
 use libtock_console::Console;
 use libtock_platform::{self as platform};
@@ -247,7 +247,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
 #[allow(dead_code)]
 async fn test_mctp_loopback() {
-    use libsyscall_caliptra::mctp::{driver_num, Mctp};
+    use caliptra_mcu_libsyscall_caliptra::mctp::{driver_num, Mctp};
     let mctp_caliptra: Mctp = Mctp::new(driver_num::MCTP_CALIPTRA);
     loop {
         let mut msg_buffer: [u8; 1024] = [0; 1024];
