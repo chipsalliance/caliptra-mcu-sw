@@ -6,9 +6,9 @@
 
 use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libtock::alarm::*;
+use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtockasync::TockSubscribe;
 use core::fmt::Write;
-use libtock_console::Console;
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 

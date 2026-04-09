@@ -1,6 +1,6 @@
 #![no_std]
+use caliptra_mcu_libtock_console::Console;
 use core::fmt::Write;
-use libtock_console::Console;
 use libtock_low_level_debug::{AlertCode, LowLevelDebug};
 use libtock_platform::{ErrorCode, Syscalls};
 use libtock_runtime::TockSyscalls;

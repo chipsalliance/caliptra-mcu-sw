@@ -5,8 +5,8 @@ extern crate alloc;
 use caliptra_mcu_libsyscall_caliptra::dma::DMAMapping;
 use caliptra_mcu_libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_console::Console;
 use core::fmt::Write;
-use libtock_console::Console;
 
 #[cfg(any(
     feature = "test-firmware-update-streaming",
@@ -235,8 +235,8 @@ mod flash_memory {
     use core::fmt::Debug;
     use libtock_platform::ErrorCode;
 
+    use caliptra_mcu_libtock_console::Console;
     use core::fmt::Write;
-    use libtock_console::Console;
 
     pub struct ExternalFlash {
         flash_syscall: FlashSyscall,

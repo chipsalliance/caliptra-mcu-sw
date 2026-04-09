@@ -30,10 +30,10 @@ use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
 #[allow(unused)]
 use caliptra_mcu_libsyscall_caliptra::system::System;
+use caliptra_mcu_libtock_console::Console;
 #[allow(unused)]
 use caliptra_mcu_pldm_lib::daemon::PldmService;
 use core::fmt::Write;
-use libtock_console::Console;
 use libtock_platform::ErrorCode;
 
 #[allow(unused)]

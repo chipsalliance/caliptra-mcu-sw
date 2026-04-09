@@ -15,7 +15,7 @@ pub mod alarm {
     pub use alarm::{Convert, Hz, Milliseconds, Ticks};
 }
 pub mod console {
-    use libtock_console as console;
+    use caliptra_mcu_libtock_console as console;
     pub type Console = console::Console<super::runtime::TockSyscalls>;
     pub use console::ConsoleWriter;
 }

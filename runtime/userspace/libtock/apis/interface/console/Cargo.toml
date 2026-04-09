@@ -1,5 +1,5 @@
 [package]
-name = "libtock_console"
+name = "caliptra-mcu-libtock_console"
 version = "0.1.0"
 authors = [
     "Tock Project Developers <tock-dev@googlegroups.com>",

@@ -38,9 +38,9 @@ use libtock_platform::ErrorCode;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_console::Console;
 use core::fmt::Write;
 use core::mem::offset_of;
-use libtock_console::Console;
 
 use crate::crypto::hash::{HashAlgoType, HashContext};
 

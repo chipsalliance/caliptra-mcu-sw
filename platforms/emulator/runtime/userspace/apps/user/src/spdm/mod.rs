@@ -11,6 +11,7 @@ use crate::spdm::device_measurements::ocp_eat::init_target_env_claims;
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_spdm_lib::codec::MessageBuf;
 use caliptra_mcu_spdm_lib::context::{SpdmContext, MAX_SPDM_RESPONDER_BUF_SIZE};
 use caliptra_mcu_spdm_lib::error::SpdmError;
@@ -23,7 +24,6 @@ use caliptra_mcu_spdm_lib::transport::mctp::MctpTransport;
 use core::fmt::Write;
 use device_cert_store::{initialize_cert_store, SharedCertStore};
 use embassy_executor::Spawner;
-use libtock_console::Console;
 use libtock_platform::ErrorCode;
 
 // Caliptra supported SPDM and Secure SPDM versions

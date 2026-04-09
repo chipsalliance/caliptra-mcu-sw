@@ -1241,6 +1241,7 @@ dependencies = [
  "caliptra-error",
  "caliptra-mcu-flash-image",
  "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
@@ -1250,7 +1251,6 @@ dependencies = [
  "embassy-sync",
  "embedded-alloc",
  "futures",
- "libtock_console",
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
@@ -1277,9 +1277,9 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "caliptra-api",
+ "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtockasync",
  "embassy-sync",
- "libtock_console",
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
@@ -1290,8 +1290,8 @@ name = "caliptra-mcu-libtock"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libtock_alarm",
+ "caliptra-mcu-libtock_console",
  "embedded-hal",
- "libtock_console",
  "libtock_debug_panic",
  "libtock_low_level_debug",
  "libtock_platform",
@@ -1309,14 +1309,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-libtock_console"
+version = "0.1.0"
+dependencies = [
+ "libtock_platform",
+ "libtock_unittest",
+]
+
+[[package]]
 name = "caliptra-mcu-libtockasync"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libtock",
+ "caliptra-mcu-libtock_console",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
- "libtock_console",
  "libtock_debug_panic",
  "libtock_platform",
  "libtock_runtime",
@@ -1359,11 +1367,11 @@ dependencies = [
  "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_alarm",
+ "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
  "embassy-executor",
  "embassy-sync",
- "libtock_console",
  "libtock_platform",
  "libtock_runtime",
  "zerocopy",
@@ -1385,12 +1393,12 @@ dependencies = [
  "caliptra-mcu-external-cmds-common",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_alarm",
+ "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mctp-vdm-common",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "libtock_console",
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
@@ -1450,12 +1458,12 @@ dependencies = [
  "async-trait",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_alarm",
+ "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "libtock_console",
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
@@ -1572,8 +1580,8 @@ dependencies = [
  "caliptra-api",
  "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_console",
  "constant_time_eq 0.4.2",
- "libtock_console",
  "libtock_platform",
  "rand 0.8.5",
  "zerocopy",
@@ -2633,13 +2641,13 @@ dependencies = [
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock",
  "caliptra-mcu-libtock_alarm",
+ "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-romtime",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
- "libtock_console",
  "libtock_debug_panic",
  "libtock_platform",
  "libtock_runtime",
@@ -3336,18 +3344,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2874a2af47a2325c2001a6e6fad9b16a53b802102b528163885171cf92b15976"
 
 [[package]]
-name = "libtock_console"
-version = "0.1.0"
-dependencies = [
- "libtock_platform",
- "libtock_unittest",
-]
-
-[[package]]
 name = "libtock_debug_panic"
 version = "0.1.0"
 dependencies = [
- "libtock_console",
+ "caliptra-mcu-libtock_console",
  "libtock_low_level_debug",
  "libtock_platform",
  "libtock_runtime",
@@ -5418,6 +5418,7 @@ dependencies = [
  "caliptra-mcu-libapi-emulated-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock",
+ "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-mbox-lib",
@@ -5432,7 +5433,6 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "libtock_console",
  "libtock_debug_panic",
  "libtock_platform",
  "libtock_runtime",
