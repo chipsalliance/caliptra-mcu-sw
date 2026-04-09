@@ -248,7 +248,7 @@ caliptra-mcu-provisioning-fuses = { path = "provisioning/fuses/lib" }
 caliptra-mcu-registers-generated = { path = "registers/generated-firmware" }
 caliptra-mcu-registers-generator = { path = "registers/generator" }
 caliptra-mcu-registers-systemrdl = { path = "registers/systemrdl" }
-registers-systemrdl-new = { path = "registers/systemrdl-new" }
+caliptra-mcu-registers-systemrdl-new = { path = "registers/systemrdl-new" }
 romtime = { path = "romtime" }
 
 # App related dependencies

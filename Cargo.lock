@@ -1372,6 +1372,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-registers-systemrdl-new"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "same-file",
+ "winnow 0.7.13",
+]
+
+[[package]]
 name = "caliptra-mcu-rom-common"
 version = "0.1.0"
 dependencies = [
@@ -3415,15 +3424,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "zerocopy",
-]
-
-[[package]]
-name = "mcu-registers-systemrdl-new"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "same-file",
- "winnow 0.7.13",
 ]
 
 [[package]]
