@@ -1258,6 +1258,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-libapi-emulated-caliptra"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-libsyscall-caliptra",
+ "embassy-executor",
+ "embedded-alloc",
+ "libtock_platform",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-libsyscall-caliptra"
 version = "0.1.0"
 dependencies = [
@@ -3291,20 +3305,6 @@ name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
-
-[[package]]
-name = "libapi-emulated-caliptra"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "caliptra-mcu-config",
- "caliptra-mcu-config-emulator",
- "caliptra-mcu-libsyscall-caliptra",
- "embassy-executor",
- "embedded-alloc",
- "libtock_platform",
- "zerocopy",
-]
 
 [[package]]
 name = "libc"
@@ -5415,6 +5415,7 @@ dependencies = [
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-external-cmds-common",
  "caliptra-mcu-libapi-caliptra",
+ "caliptra-mcu-libapi-emulated-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
@@ -5430,7 +5431,6 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "libapi-emulated-caliptra",
  "libtock",
  "libtock_console",
  "libtock_debug_panic",

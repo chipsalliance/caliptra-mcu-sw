@@ -227,12 +227,12 @@ mod flash_memory {
     use caliptra_mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
     use caliptra_mcu_config_emulator::flash::STAGING_PARTITION;
     use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
+    use caliptra_mcu_libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
     use caliptra_mcu_libsyscall_caliptra::{
         flash::{FlashCapacity, SpiFlash as FlashSyscall},
         DefaultSyscalls,
     };
     use core::fmt::Debug;
-    use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
     use libtock_platform::ErrorCode;
 
     use core::fmt::Write;

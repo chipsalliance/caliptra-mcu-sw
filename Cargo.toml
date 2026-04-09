@@ -259,7 +259,7 @@ caliptra-mcu-pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
 caliptra-mcu-spdm-lib = { path = "runtime/userspace/api/spdm-lib", default-features = false }
 caliptra-mcu-libsyscall-caliptra = { path = "runtime/userspace/syscall" }
 caliptra-mcu-libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }
-libapi-emulated-caliptra = { path = "platforms/emulator/runtime/userspace/api/caliptra-api" }
+caliptra-mcu-libapi-emulated-caliptra = { path = "platforms/emulator/runtime/userspace/api/caliptra-api" }
 
 # libtock dependencies
 libtock = { path = "runtime/userspace/libtock" }
