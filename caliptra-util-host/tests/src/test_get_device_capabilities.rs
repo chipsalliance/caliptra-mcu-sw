@@ -8,7 +8,7 @@
 use crate::common::{test_constants::*, MockMailbox};
 use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_capabilities;
 use caliptra_util_host_session::CaliptraSession;
-use caliptra_util_host_transport::Mailbox;
+use caliptra_mcu_core_util_host_transport::Mailbox;
 
 /// Test GetDeviceCapabilities command with basic configuration
 #[test]
@@ -25,13 +25,13 @@ fn test_get_device_capabilities_basic() {
     let mut mock_mailbox = MockMailbox::new(expected_device_id);
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     // Create and connect session
     let mut session = CaliptraSession::new(
         1,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 
@@ -81,13 +81,13 @@ fn test_get_device_capabilities_session_not_connected() {
     let mut mock_mailbox = MockMailbox::new(expected_device_id);
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     // Create session but don't connect it
     let mut session = CaliptraSession::new(
         1,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 

@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_util_host_transport::{MailboxDriver, MailboxError};
+use caliptra_mcu_core_util_host_transport::{MailboxDriver, MailboxError};
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
 

@@ -4,7 +4,7 @@
 
 use crate::error::CaliptraError::{self, Success};
 use crate::transport::CaliptraTransport;
-use caliptra_util_host_transport::{Transport, TransportError, TransportResult};
+use caliptra_mcu_core_util_host_transport::{Transport, TransportError, TransportResult};
 use std::ffi::c_void;
 
 /// C function pointer types for custom transport implementation

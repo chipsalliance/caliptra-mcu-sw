@@ -11,7 +11,7 @@ include = [
     "caliptra-util-host-commands", 
     "caliptra-util-host-command-types",
     "caliptra-util-host-session",
-    "caliptra-util-host-transport"
+    "caliptra-mcu-core-util-host-transport"
 ]
 
 # Export only the real caliptra-util-host library API  

@@ -8,6 +8,6 @@ description = "Session management for Caliptra Utility Host Library"
 
 [dependencies]
 caliptra-util-host-osal = { workspace = true, features = ["alloc"] }
-caliptra-util-host-transport.workspace = true
+caliptra-mcu-core-util-host-transport.workspace = true
 caliptra-util-host-command-types.workspace = true
 zerocopy.workspace = true

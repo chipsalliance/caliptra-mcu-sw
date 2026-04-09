@@ -891,10 +891,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "caliptra-mcu-core-util-host-mctp-vdm-test-config",
+ "caliptra-mcu-core-util-host-transport",
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-testing-common",
  "caliptra-util-host-command-types",
- "caliptra-util-host-transport",
  "clap 4.5.51",
  "zerocopy",
 ]
@@ -915,6 +915,16 @@ dependencies = [
  "anyhow",
  "serde",
  "toml 0.8.23",
+]
+
+[[package]]
+name = "caliptra-mcu-core-util-host-transport"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-mctp-vdm-common",
+ "caliptra-util-host-command-types",
+ "caliptra-util-host-osal",
+ "zerocopy",
 ]
 
 [[package]]
@@ -1900,16 +1910,6 @@ dependencies = [
 [[package]]
 name = "caliptra-util-host-osal"
 version = "0.1.0"
-
-[[package]]
-name = "caliptra-util-host-transport"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-mctp-vdm-common",
- "caliptra-util-host-command-types",
- "caliptra-util-host-osal",
- "zerocopy",
-]
 
 [[package]]
 name = "caliptra-x509"
@@ -4884,6 +4884,7 @@ dependencies = [
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-core-mctp-vdm-client",
  "caliptra-mcu-core-util-host-mctp-vdm-test-config",
+ "caliptra-mcu-core-util-host-transport",
  "caliptra-mcu-error",
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-flash-image",
@@ -4898,7 +4899,6 @@ dependencies = [
  "caliptra-mcu-rom-common",
  "caliptra-mcu-romtime",
  "caliptra-mcu-testing-common",
- "caliptra-util-host-transport",
  "chrono",
  "crc",
  "ecdsa",

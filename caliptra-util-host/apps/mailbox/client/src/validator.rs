@@ -96,7 +96,7 @@ impl Validator {
 
         // Create UDP transport driver and connect
         let mut udp_driver = UdpTransportDriver::new(self.server_addr);
-        use caliptra_util_host_transport::MailboxDriver;
+        use caliptra_mcu_core_util_host_transport::MailboxDriver;
         udp_driver
             .connect()
             .map_err(|e| anyhow::anyhow!("Failed to connect UDP driver: {:?}", e))?;

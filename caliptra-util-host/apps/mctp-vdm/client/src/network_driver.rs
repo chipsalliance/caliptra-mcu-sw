@@ -7,11 +7,11 @@
 //! I3C controller socket and performs real MCTP framing. This adapter simply
 //! bridges that existing transport into the caliptra-util-host command framework.
 
+use caliptra_mcu_core_util_host_transport::{MctpVdmDriver, MctpVdmError};
 use caliptra_mcu_testing_common::i3c::DynamicI3cAddress;
 use caliptra_mcu_testing_common::mctp_vdm_transport::{
     MctpVdmSocket, MctpVdmTransport, VdmTransportError,
 };
-use caliptra_util_host_transport::{MctpVdmDriver, MctpVdmError};
 
 const DRIVER_BUF_SIZE: usize = 4 * 1024;
 

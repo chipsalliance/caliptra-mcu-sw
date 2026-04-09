@@ -56,7 +56,7 @@ use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_firmware_version,
 };
 use caliptra_util_host_session::CaliptraSession;
-use caliptra_util_host_transport::Mailbox;
+use caliptra_mcu_core_util_host_transport::Mailbox;
 
 /// High-level Mailbox Client for communicating with Caliptra devices
 pub struct MailboxClient<'a> {
@@ -65,7 +65,7 @@ pub struct MailboxClient<'a> {
 
 impl<'a> MailboxClient<'a> {
     /// Create a new MailboxClient with the provided mailbox driver
-    pub fn new(mailbox_driver: &'a mut dyn caliptra_util_host_transport::MailboxDriver) -> Self {
+    pub fn new(mailbox_driver: &'a mut dyn caliptra_mcu_core_util_host_transport::MailboxDriver) -> Self {
         let transport = Mailbox::new(mailbox_driver);
         Self { transport }
     }
@@ -73,7 +73,7 @@ impl<'a> MailboxClient<'a> {
     /// Create a new MailboxClient with UDP transport
     pub fn with_udp_driver(udp_driver: &'a mut UdpTransportDriver) -> Self {
         let transport =
-            Mailbox::new(udp_driver as &mut dyn caliptra_util_host_transport::MailboxDriver);
+            Mailbox::new(udp_driver as &mut dyn caliptra_mcu_core_util_host_transport::MailboxDriver);
         Self { transport }
     }
 
@@ -84,7 +84,7 @@ impl<'a> MailboxClient<'a> {
         // Create session with Mailbox transport
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -153,7 +153,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -187,7 +187,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -221,7 +221,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -265,7 +265,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -297,7 +297,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -332,7 +332,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -384,7 +384,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -427,7 +427,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -467,7 +467,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -496,7 +496,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -533,7 +533,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -574,7 +574,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -614,7 +614,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -656,7 +656,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -688,7 +688,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -716,7 +716,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -753,7 +753,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -781,7 +781,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 
@@ -817,7 +817,7 @@ impl<'a> MailboxClient<'a> {
 
         let mut session = CaliptraSession::new(
             1,
-            &mut self.transport as &mut dyn caliptra_util_host_transport::Transport,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
         )
         .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
 

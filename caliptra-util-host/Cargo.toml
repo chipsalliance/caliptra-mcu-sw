@@ -28,7 +28,7 @@ caliptra-util-host-osal = { path = "osal" }
 caliptra-util-host-command-types = { path = "command-types" }
 caliptra-util-host-commands = { path = "commands" }
 caliptra-util-host-session = { path = "session" }
-caliptra-util-host-transport = { path = "transport" }
+caliptra-mcu-core-util-host-transport = { path = "transport" }
 caliptra-util-host-cbinding = { path = "cbinding" }
 caliptra-mcu-core-util-host-mailbox-test-config = { path = "apps/mailbox/config" }
 caliptra-mailbox-client = { path = "apps/mailbox/client" }
@@ -67,7 +67,7 @@ description = "Caliptra Utility Host Library - A flexible framework for communic
 [dependencies]
 # Test dependencies to allow running tests from workspace root
 caliptra-util-host-session.workspace = true
-caliptra-util-host-transport.workspace = true
+caliptra-mcu-core-util-host-transport.workspace = true
 caliptra-util-host-commands.workspace = true
 caliptra-util-host-command-types.workspace = true
 zerocopy.workspace = true
@@ -75,7 +75,7 @@ zerocopy.workspace = true
 [dev-dependencies]
 # Same dependencies for test builds  
 caliptra-util-host-session.workspace = true
-caliptra-util-host-transport.workspace = true
+caliptra-mcu-core-util-host-transport.workspace = true
 caliptra-util-host-commands.workspace = true
 caliptra-util-host-command-types.workspace = true
 zerocopy.workspace = true

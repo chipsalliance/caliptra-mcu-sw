@@ -20,8 +20,8 @@ pub use caliptra_mcu_core_util_host_mctp_vdm_test_config::*;
 pub use caliptra_mcu_testing_common::i3c::DynamicI3cAddress;
 
 use anyhow::Result;
+use caliptra_mcu_core_util_host_transport::{MctpVdmTransport, Transport};
 use caliptra_util_host_command_types::*;
-use caliptra_util_host_transport::{MctpVdmTransport, Transport};
 
 /// High-level MCTP VDM client.
 pub struct VdmClient<'a> {
@@ -30,15 +30,16 @@ pub struct VdmClient<'a> {
 
 impl<'a> VdmClient<'a> {
     /// Create a new `VdmClient` over any `MctpVdmDriver` implementation.
-    pub fn new(driver: &'a mut dyn caliptra_util_host_transport::MctpVdmDriver) -> Self {
+    pub fn new(driver: &'a mut dyn caliptra_mcu_core_util_host_transport::MctpVdmDriver) -> Self {
         let transport = MctpVdmTransport::new(driver);
         Self { transport }
     }
 
     /// Create a `VdmClient` backed by the common/testing MCTP VDM socket driver.
     pub fn with_socket_driver(driver: &'a mut MctpVdmSocketDriver) -> Self {
-        let transport =
-            MctpVdmTransport::new(driver as &mut dyn caliptra_util_host_transport::MctpVdmDriver);
+        let transport = MctpVdmTransport::new(
+            driver as &mut dyn caliptra_mcu_core_util_host_transport::MctpVdmDriver,
+        );
         Self { transport }
     }
 

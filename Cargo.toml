@@ -189,7 +189,7 @@ zip = { version = "4.3.0", default-features = false, features = ["chrono", "defl
 caliptra-mcu-core-util-host-mailbox-test-config = { path = "caliptra-util-host/apps/mailbox/config" }
 caliptra-mcu-core-util-host-mctp-vdm-test-config = { path = "caliptra-util-host/apps/mctp-vdm/config" }
 caliptra-mcu-core-mctp-vdm-client = { path = "caliptra-util-host/apps/mctp-vdm/client" }
-caliptra-util-host-transport = { path = "caliptra-util-host/transport" }
+caliptra-mcu-core-util-host-transport = { path = "caliptra-util-host/transport" }
 caliptra-util-host-command-types = { path = "caliptra-util-host/command-types" }
 caliptra-util-host-osal = { path = "caliptra-util-host/osal" }
 caliptra-mailbox-server = { path = "caliptra-util-host/apps/mailbox/server" }
