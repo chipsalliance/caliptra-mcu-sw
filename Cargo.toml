@@ -246,7 +246,7 @@ caliptra-mcu-pldm-ua = { path = "emulator/bmc/pldm-ua"}
 caliptra-mcu-poll-common = { path = "common/poll"}
 caliptra-mcu-provisioning-fuses = { path = "provisioning/fuses/lib" }
 caliptra-mcu-registers-generated = { path = "registers/generated-firmware" }
-registers-generator = { path = "registers/generator" }
+caliptra-mcu-registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }
 registers-systemrdl-new = { path = "registers/systemrdl-new" }
 romtime = { path = "romtime" }
