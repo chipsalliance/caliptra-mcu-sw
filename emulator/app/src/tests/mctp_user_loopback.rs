@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use mcu_testing_common::i3c_socket::{BufferedStream, MctpTestState, MctpTransportTest};
-use mcu_testing_common::mctp_util::common::MctpUtil;
-use mcu_testing_common::MCU_RUNNING;
+use caliptra_mcu_testing_common::i3c_socket::{BufferedStream, MctpTestState, MctpTransportTest};
+use caliptra_mcu_testing_common::mctp_util::common::MctpUtil;
+use caliptra_mcu_testing_common::MCU_RUNNING;
 use std::sync::atomic::Ordering;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;

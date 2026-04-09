@@ -37,12 +37,12 @@ pub mod test {
         McuShaInitResp, McuShaUpdateReq, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
         CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
     };
-    use hkdf::Hkdf;
-    use hmac::{Hmac, Mac};
-    use mcu_testing_common::{
+    use caliptra_mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
         MCU_RUNNING,
     };
+    use hkdf::Hkdf;
+    use hmac::{Hmac, Mac};
     use p384::ecdsa::signature::hazmat::PrehashSigner;
     use p384::ecdsa::{Signature, SigningKey};
     use rand::prelude::*;

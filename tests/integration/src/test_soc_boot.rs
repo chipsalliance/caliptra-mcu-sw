@@ -11,9 +11,9 @@ mod test {
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
+    use caliptra_mcu_testing_common::DeviceLifecycle;
     use chrono::{TimeZone, Utc};
     use hex::ToHex;
-    use mcu_testing_common::DeviceLifecycle;
     use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,

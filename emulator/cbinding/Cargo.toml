@@ -17,7 +17,7 @@ caliptra-emu-cpu.workspace = true
 caliptra-emu-types.workspace = true
 caliptra-image-types.workspace = true
 caliptra-api-types.workspace = true
-mcu-testing-common.workspace = true
+caliptra-mcu-testing-common.workspace = true
 semver.workspace = true
 
 [build-dependencies]

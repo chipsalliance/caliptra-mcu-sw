@@ -14,11 +14,11 @@ use caliptra_hw_model::{
     SecurityState, SubsystemInitParams, XI3CWrapper,
 };
 use caliptra_mcu_rom_common::LifecycleControllerState;
-use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
-use mcu_testing_common::i3c::{
+use caliptra_mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
-use mcu_testing_common::{update_ticks, MCU_RUNNING, MCU_RUNTIME_STARTED};
+use caliptra_mcu_testing_common::{update_ticks, MCU_RUNNING, MCU_RUNTIME_STARTED};
+use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
 use romtime::McuBootMilestones;
 use std::collections::VecDeque;
 use std::io::Write;
@@ -333,8 +333,10 @@ impl McuHwModel for ModelFpgaRealtime {
                 "Starting I3C socket on port {} and connected to hardware",
                 i3c_port
             );
-            let (rx, tx) =
-                mcu_testing_common::i3c_socket_server::start_i3c_socket(&MCU_RUNNING, i3c_port);
+            let (rx, tx) = caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket(
+                &MCU_RUNNING,
+                i3c_port,
+            );
 
             (Some(rx), Some(tx))
         } else {

@@ -35,15 +35,15 @@ use caliptra_mcu_emulator_periph::{
 };
 use caliptra_mcu_emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
+use caliptra_mcu_testing_common::i3c_socket;
+use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
+use caliptra_mcu_testing_common::mctp_transport::MctpTransport;
+use caliptra_mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
+use caliptra_mcu_testing_common::spdm_responder_validator::SpdmTestType;
+use caliptra_mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND};
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
-use mcu_testing_common::i3c_socket;
-use mcu_testing_common::i3c_socket_server::start_i3c_socket;
-use mcu_testing_common::mctp_transport::MctpTransport;
-use mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
-use mcu_testing_common::spdm_responder_validator::SpdmTestType;
-use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, TICK_COND};
 use pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::daemon::PldmDaemon;
 use pldm_ua::transport::{EndpointId, PldmTransport};
@@ -680,7 +680,7 @@ impl Emulator {
             );
 
             let spdm_loopback_tests = tests::mctp_user_loopback::MctpUserAppTests::generate_tests(
-                mcu_testing_common::mctp_util::base_protocol::MctpMsgType::Caliptra as u8,
+                caliptra_mcu_testing_common::mctp_util::base_protocol::MctpMsgType::Caliptra as u8,
             );
 
             i3c_socket::run_tests(
@@ -696,7 +696,7 @@ impl Emulator {
                 exit(0);
             }
             let (test_rx, test_tx) = doe_mbox_fsm.start();
-            mcu_testing_common::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
+            caliptra_mcu_testing_common::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
                 test_tx,
                 test_rx,
                 SpdmTestType::SpdmResponderConformance,
@@ -709,7 +709,7 @@ impl Emulator {
                 exit(0);
             }
             let (test_rx, test_tx) = doe_mbox_fsm.start();
-            mcu_testing_common::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
+            caliptra_mcu_testing_common::spdm_responder_validator::doe::run_doe_spdm_conformance_test(
                 test_tx,
                 test_rx,
                 SpdmTestType::SpdmTeeIoValidator,

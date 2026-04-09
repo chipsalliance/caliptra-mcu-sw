@@ -13,7 +13,7 @@ use caliptra_emu_bus::{Device, Event, EventData};
 use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
 use caliptra_mcu_emulator_registers_generated::i3c::{I3cGenerated, I3cPeripheral};
-use mcu_testing_common::i3c::{
+use caliptra_mcu_testing_common::i3c::{
     DynamicI3cAddress, I3cTcriCommand, I3cTcriResponseXfer, IbiDescriptor, ResponseDescriptor,
 };
 use registers_generated::i3c::bits::{
@@ -1063,7 +1063,7 @@ mod tests {
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::{RvAddr, RvSize};
     use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
-    use mcu_testing_common::i3c::{
+    use caliptra_mcu_testing_common::i3c::{
         DynamicI3cAddress, I3cTcriCommand, I3cTcriCommandXfer, ImmediateDataTransferCommand,
     };
 

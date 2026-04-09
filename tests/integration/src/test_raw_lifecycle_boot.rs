@@ -6,7 +6,7 @@ mod test {
     use caliptra_mcu_hw_model::{
         DeviceLifecycle, LifecycleControllerState, McuHwModel, McuManager,
     };
-    use mcu_testing_common::MCU_RUNNING;
+    use caliptra_mcu_testing_common::MCU_RUNNING;
     use std::sync::atomic::Ordering;
 
     #[test]

@@ -777,12 +777,12 @@ name = "caliptra-mctp-vdm-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "caliptra-mcu-testing-common",
  "caliptra-util-host-command-types",
  "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
  "clap 4.5.51",
  "mctp-vdm-common",
- "mcu-testing-common",
  "zerocopy",
 ]
 
@@ -949,6 +949,7 @@ dependencies = [
  "caliptra-mcu-emulator-registers-generated",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-otp-lifecycle",
+ "caliptra-mcu-testing-common",
  "caliptra-registers",
  "caliptra-test",
  "caliptra-util-host-mailbox-test-config",
@@ -965,7 +966,6 @@ dependencies = [
  "hex",
  "lazy_static",
  "log",
- "mcu-testing-common",
  "p384",
  "pldm-common",
  "pldm-fw-pkg",
@@ -1048,9 +1048,9 @@ dependencies = [
  "caliptra-mcu-emulator-consts",
  "caliptra-mcu-emulator-registers-generated",
  "caliptra-mcu-otp-lifecycle",
+ "caliptra-mcu-testing-common",
  "caliptra-registers",
  "lazy_static",
- "mcu-testing-common",
  "num_enum",
  "otp-digest",
  "registers-generated",
@@ -1181,6 +1181,7 @@ dependencies = [
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-rom-common",
+ "caliptra-mcu-testing-common",
  "caliptra-registers",
  "caliptra-test-harness-types",
  "caliptra-ureg",
@@ -1188,7 +1189,6 @@ dependencies = [
  "fips204",
  "hex",
  "int-enum",
- "mcu-testing-common",
  "nix 0.26.4",
  "p384",
  "poll-common",
@@ -1387,6 +1387,21 @@ dependencies = [
  "registers-generated",
  "romtime",
  "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-testing-common"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "caliptra-api-types",
+ "crc",
+ "hex",
+ "mctp-vdm-common",
+ "pldm-common",
+ "pldm-ua",
+ "rand 0.8.5",
+ "zerocopy",
 ]
 
 [[package]]
@@ -2275,9 +2290,9 @@ dependencies = [
  "caliptra-emu-types",
  "caliptra-image-types",
  "caliptra-mcu-emulator",
+ "caliptra-mcu-testing-common",
  "cbindgen",
  "libc",
- "mcu-testing-common",
  "semver",
 ]
 
@@ -3407,21 +3422,6 @@ dependencies = [
  "romtime",
  "rv32i",
  "tock-registers",
-]
-
-[[package]]
-name = "mcu-testing-common"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "caliptra-api-types",
- "crc",
- "hex",
- "mctp-vdm-common",
- "pldm-common",
- "pldm-ua",
- "rand 0.8.5",
- "zerocopy",
 ]
 
 [[package]]
@@ -4890,6 +4890,7 @@ dependencies = [
  "caliptra-mcu-image-header",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-rom-common",
+ "caliptra-mcu-testing-common",
  "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
  "chrono",
@@ -4902,7 +4903,6 @@ dependencies = [
  "lazy_static",
  "log",
  "mctp-vdm-common",
- "mcu-testing-common",
  "openssl",
  "p384",
  "pldm-common",

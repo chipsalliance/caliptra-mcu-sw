@@ -10,7 +10,7 @@ pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_mctp_vdm_client::{DynamicI3cAddress, TestConfig, Validator};
     use caliptra_mcu_hw_model::McuHwModel;
-    use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+    use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
     use random_port::PortPicker;
     use std::process::exit;
     use std::sync::atomic::Ordering;

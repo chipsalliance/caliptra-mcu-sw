@@ -41,8 +41,8 @@ use caliptra_mcu_emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use caliptra_mcu_emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
 use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
 use caliptra_mcu_rom_common::LifecycleControllerState;
-use mcu_testing_common::i3c_socket_server::start_i3c_socket;
-use mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
+use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
+use caliptra_mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED};
 use registers_generated::fuses;
 use romtime::McuBootMilestones;
 use semver::Version;
@@ -524,8 +524,8 @@ impl McuHwModel for ModelEmulated {
         }
         let events = self.events_from_caliptra.try_iter().collect::<Vec<_>>();
         self.collected_events_from_caliptra.extend(events);
-        if self.cycle_count() % mcu_testing_common::TICK_NOTIFY_TICKS == 0 {
-            mcu_testing_common::update_ticks(self.cycle_count());
+        if self.cycle_count() % caliptra_mcu_testing_common::TICK_NOTIFY_TICKS == 0 {
+            caliptra_mcu_testing_common::update_ticks(self.cycle_count());
         }
     }
 

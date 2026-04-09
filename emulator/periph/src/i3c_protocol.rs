@@ -12,7 +12,7 @@ Abstract:
 
 --*/
 
-use mcu_testing_common::i3c::{
+use caliptra_mcu_testing_common::i3c::{
     DynamicI3cAddress, I3cBusCommand, I3cBusResponse, I3cError, I3cTcriCommandXfer,
     I3cTcriResponseXfer,
 };
@@ -275,7 +275,7 @@ pub struct I3cTargetDevice {
 #[cfg(test)]
 mod test {
     use super::*;
-    use mcu_testing_common::i3c::{I3cTcriCommand, ImmediateDataTransferCommand};
+    use caliptra_mcu_testing_common::i3c::{I3cTcriCommand, ImmediateDataTransferCommand};
     use std::sync::mpsc::channel;
     use zerocopy::FromBytes;
 

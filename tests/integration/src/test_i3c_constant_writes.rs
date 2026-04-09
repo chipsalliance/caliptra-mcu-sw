@@ -6,8 +6,8 @@
 mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_mcu_hw_model::McuHwModel;
-    use mcu_testing_common::i3c_socket::BufferedStream;
-    use mcu_testing_common::{sleep_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
+    use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
+    use caliptra_mcu_testing_common::{sleep_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
     use random_port::PortPicker;
     use std::net::{SocketAddr, TcpStream};
     use std::sync::atomic::Ordering;

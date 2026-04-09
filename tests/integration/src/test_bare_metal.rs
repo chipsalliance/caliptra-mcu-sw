@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod test {
     use crate::test::{compile_bare_metal_runtime, run_runtime, ROM, TEST_LOCK};
-    use mcu_testing_common::DeviceLifecycle;
+    use caliptra_mcu_testing_common::DeviceLifecycle;
     use random_port::PortPicker;
 
     #[test]

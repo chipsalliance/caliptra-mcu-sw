@@ -41,7 +41,7 @@ mod test {
         CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET,
     };
     use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
-    use mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
+    use caliptra_mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
     use random_port::PortPicker;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Mutex;
