@@ -613,17 +613,19 @@ pub unsafe fn main() {
     .finalize(mbox_sram_component_static!(InternalTimers<'static>));
     romtime::println!("[mcu-runtime] MCU Mbox1 SRAM component initialized");
 
-    let mux_mcu_mbox_flash =
-        components::flash::FlashMuxComponent::new(&fpga_peripherals.flash_ctrl).finalize(
-            components::flash_mux_component_static!(flash_ctrl_fpga::EmulatedFlashCtrl),
-        );
+    let mux_mcu_mbox_flash = components::flash::FlashMuxComponent::new(
+        &fpga_peripherals.flash_ctrl,
+    )
+    .finalize(components::flash_mux_component_static!(
+        caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl
+    ));
     let mut staging_partition: [Option<&'static FlashPartition<'static>>; 1] = [None; 1];
     instantiate_flash_partitions!(
         flash_partition_list_imaginary_flash,
         staging_partition,
         board_kernel,
         mux_mcu_mbox_flash,
-        flash_ctrl_fpga::EmulatedFlashCtrl
+        caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl
     );
     romtime::println!("[mcu-runtime] Flash partition component initialized");
 

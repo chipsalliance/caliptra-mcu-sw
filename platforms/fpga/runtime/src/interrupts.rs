@@ -10,7 +10,7 @@ pub struct FpgaPeripherals<'a> {
     pub uart: SemihostUart<'a>,
     //    pub dma: caliptra_mcu_dma_driver::axicdma::AxiCDMA<'a, InternalTimers<'a>>,
     pub dma: caliptra_mcu_dma_driver::nodma::NoDMA<'a, InternalTimers<'a>>,
-    pub flash_ctrl: flash_ctrl_fpga::EmulatedFlashCtrl<'a>,
+    pub flash_ctrl: caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl<'a>,
 }
 
 impl<'a> FpgaPeripherals<'a> {
@@ -22,7 +22,7 @@ impl<'a> FpgaPeripherals<'a> {
             uart: SemihostUart::new(alarm),
             //            dma: caliptra_mcu_dma_driver::axicdma::AxiCDMA::new(caliptra_mcu_dma_driver::axicdma::DMA_CTRL_BASE, false, alarm),
             dma: caliptra_mcu_dma_driver::nodma::NoDMA::new(alarm),
-            flash_ctrl: flash_ctrl_fpga::EmulatedFlashCtrl::new(mci_regs),
+            flash_ctrl: caliptra_mcu_flash_ctrl_fpga::EmulatedFlashCtrl::new(mci_regs),
         }
     }
 
