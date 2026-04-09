@@ -20,7 +20,7 @@ pub mod console {
     pub use console::ConsoleWriter;
 }
 pub mod low_level_debug {
-    use libtock_low_level_debug as lldb;
+    use caliptra_mcu_libtock_low_level_debug as lldb;
     pub type LowLevelDebug = lldb::LowLevelDebug<super::runtime::TockSyscalls>;
     pub use lldb::AlertCode;
 }

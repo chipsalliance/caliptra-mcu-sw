@@ -20,7 +20,7 @@ embedded-hal = { workspace = true, optional = true }
 caliptra-mcu-libtock_alarm.workspace = true
 caliptra-mcu-libtock_console.workspace = true
 caliptra-mcu-libtock_debug_panic.workspace = true
-libtock_low_level_debug.workspace = true
+caliptra-mcu-libtock_low_level_debug.workspace = true
 libtock_platform.workspace = true
 libtock_rng.workspace = true
 libtock_runtime.workspace = true

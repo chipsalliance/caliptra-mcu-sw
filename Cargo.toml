@@ -266,7 +266,7 @@ caliptra-mcu-libtock = { path = "runtime/userspace/libtock" }
 caliptra-mcu-libtock_alarm = { path = "runtime/userspace/libtock/apis/peripherals/alarm" }
 caliptra-mcu-libtock_console = { path = "runtime/userspace/libtock/apis/interface/console" }
 caliptra-mcu-libtock_debug_panic = { path = "runtime/userspace/libtock/panic_handlers/debug_panic" }
-libtock_low_level_debug = { path = "runtime/userspace/libtock/apis/kernel/low_level_debug" }
+caliptra-mcu-libtock_low_level_debug = { path = "runtime/userspace/libtock/apis/kernel/low_level_debug" }
 libtock_platform = { path = "runtime/userspace/libtock/platform" }
 libtock_rng = { path = "runtime/userspace/libtock/apis/peripherals/rng" }
 libtock_runtime = { path = "runtime/userspace/libtock/runtime" }

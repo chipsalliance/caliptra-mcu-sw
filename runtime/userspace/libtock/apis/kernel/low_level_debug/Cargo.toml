@@ -1,5 +1,5 @@
 [package]
-name = "libtock_low_level_debug"
+name = "caliptra-mcu-libtock_low_level_debug"
 version = "0.1.0"
 authors = ["Tock Project Developers <tock-dev@googlegroups.com>"]
 license = "Apache-2.0 OR MIT"
