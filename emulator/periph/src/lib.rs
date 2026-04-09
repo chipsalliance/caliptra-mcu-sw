@@ -47,11 +47,11 @@ pub use uart::Uart;
 /// Stub I3C1 peripheral backed by generated register defaults so that
 /// firmware accesses to the i3c1 address range see realistic reset
 /// values (e.g. TTI capability bits) instead of causing a bus fault.
-pub struct StubI3c1(emulator_registers_generated::i3c1::I3c1Generated);
+pub struct StubI3c1(caliptra_mcu_emulator_registers_generated::i3c1::I3c1Generated);
 
 impl StubI3c1 {
     pub fn new() -> Self {
-        Self(emulator_registers_generated::i3c1::I3c1Generated::default())
+        Self(caliptra_mcu_emulator_registers_generated::i3c1::I3c1Generated::default())
     }
 }
 
@@ -61,8 +61,10 @@ impl Default for StubI3c1 {
     }
 }
 
-impl emulator_registers_generated::i3c1::I3c1Peripheral for StubI3c1 {
-    fn generated(&mut self) -> Option<&mut emulator_registers_generated::i3c1::I3c1Generated> {
+impl caliptra_mcu_emulator_registers_generated::i3c1::I3c1Peripheral for StubI3c1 {
+    fn generated(
+        &mut self,
+    ) -> Option<&mut caliptra_mcu_emulator_registers_generated::i3c1::I3c1Generated> {
         Some(&mut self.0)
     }
 }

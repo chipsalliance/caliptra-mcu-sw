@@ -18,11 +18,13 @@ use caliptra_emu_types::{RvData, RvSize};
 use caliptra_mcu_emulator_consts::{
     RAM_ORG, RAM_SIZE, ROM_DEDICATED_RAM_ORG, ROM_DEDICATED_RAM_SIZE,
 };
-use core::convert::TryInto;
-use emulator_registers_generated::primary_flash::{PrimaryFlashGenerated, PrimaryFlashPeripheral};
-use emulator_registers_generated::secondary_flash::{
+use caliptra_mcu_emulator_registers_generated::primary_flash::{
+    PrimaryFlashGenerated, PrimaryFlashPeripheral,
+};
+use caliptra_mcu_emulator_registers_generated::secondary_flash::{
     SecondaryFlashGenerated, SecondaryFlashPeripheral,
 };
+use core::convert::TryInto;
 use registers_generated::primary_flash_ctrl;
 use registers_generated::primary_flash_ctrl::bits::{
     CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
@@ -790,8 +792,8 @@ mod test {
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
     use caliptra_mcu_emulator_consts::{RAM_ORG, RAM_SIZE};
+    use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
     use core::panic;
-    use emulator_registers_generated::root_bus::AutoRootBus;
     use registers_generated::primary_flash_ctrl::bits::{
         FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
     };

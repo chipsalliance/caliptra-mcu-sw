@@ -7,7 +7,7 @@ use crate::McuMailbox0Internal;
 use caliptra_emu_bus::{ActionHandle, Clock, Ram, ReadWriteRegister, Timer};
 use caliptra_emu_cpu::Irq;
 use caliptra_mcu_emulator_consts::{RAM_ORG, RAM_SIZE};
-use emulator_registers_generated::axicdma::{AxicdmaGenerated, AxicdmaPeripheral};
+use caliptra_mcu_emulator_registers_generated::axicdma::{AxicdmaGenerated, AxicdmaPeripheral};
 use registers_generated::axicdma::bits::{AxicdmaBytesToTransfer, AxicdmaControl, AxicdmaStatus};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
@@ -405,7 +405,7 @@ mod test {
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
     use caliptra_mcu_emulator_consts::{EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE};
-    use emulator_registers_generated::root_bus::AutoRootBus;
+    use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
     use registers_generated::axicdma::bits::{AxicdmaControl, AxicdmaStatus};
     use registers_generated::axicdma::AXICDMA_ADDR;
 

@@ -6,8 +6,8 @@ use caliptra_emu_bus::{ActionHandle, BusMmio, Clock, ReadWriteRegister, Timer, T
 use caliptra_emu_cpu::Irq;
 use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_types::RvData;
+use caliptra_mcu_emulator_registers_generated::mci::{MciGenerated, MciPeripheral};
 use caliptra_registers::soc_ifc::RegisterBlock;
-use emulator_registers_generated::mci::{MciGenerated, MciPeripheral};
 use registers_generated::mci::bits::{
     Error0IntrT, Error0IntrTrigT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest,
     SecurityState, WdtStatus, WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
@@ -1378,7 +1378,7 @@ mod tests {
     use crate::mcu_mbox0::IrqEventToMcu;
     use caliptra_emu_bus::Bus;
     use caliptra_emu_types::RvSize;
-    use emulator_registers_generated::mci::MciBus;
+    use caliptra_mcu_emulator_registers_generated::mci::MciBus;
     use tock_registers::registers::InMemoryRegister;
 
     pub const CPTRA_WDT_TIMER1_EN_START: u32 = 0xb0;

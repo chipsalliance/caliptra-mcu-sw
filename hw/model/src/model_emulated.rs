@@ -36,9 +36,9 @@ use caliptra_mcu_emulator_periph::McuRootBusOffsets;
 use caliptra_mcu_emulator_periph::{
     I3c, I3cController, Mci, McuRootBus, McuRootBusArgs, Otp, OtpArgs,
 };
-use emulator_registers_generated::axicdma::AxicdmaPeripheral;
-use emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
-use emulator_registers_generated::root_bus::AutoRootBus;
+use caliptra_mcu_emulator_registers_generated::axicdma::AxicdmaPeripheral;
+use caliptra_mcu_emulator_registers_generated::primary_flash::PrimaryFlashPeripheral;
+use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
 use mcu_config::McuMemoryMap;
 use mcu_rom_common::LifecycleControllerState;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;

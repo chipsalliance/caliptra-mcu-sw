@@ -33,11 +33,11 @@ use caliptra_mcu_emulator_periph::{
     CaliptraToExtBus, DoeMboxPeriph, DummyDoeMbox, DummyFlashCtrl, I3c, I3cController, LcCtrl, Mci,
     McuRootBus, McuRootBusArgs, McuRootBusOffsets, Otp, OtpArgs,
 };
+use caliptra_mcu_emulator_registers_generated::axicdma::AxicdmaPeripheral;
+use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
-use emulator_registers_generated::axicdma::AxicdmaPeripheral;
-use emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
 use mcu_testing_common::i3c_socket;
 use mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use mcu_testing_common::mctp_transport::MctpTransport;
@@ -337,7 +337,9 @@ impl Emulator {
         let is_flash_based_boot = cli.flash_based_boot || test_feature == "test-flash-based-boot";
 
         // Configure stub warnings based on CLI flag
-        emulator_registers_generated::stub_warnings::set_stub_warnings(cli.stub_warnings);
+        caliptra_mcu_emulator_registers_generated::stub_warnings::set_stub_warnings(
+            cli.stub_warnings,
+        );
 
         let args_rom = &cli.rom;
         let args_log_dir = &cli.log_dir.unwrap_or_else(|| PathBuf::from("/tmp"));

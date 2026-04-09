@@ -18,7 +18,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use caliptra_emu_bus::ReadWriteRegister;
-use emulator_registers_generated::lc::LcGenerated;
+use caliptra_mcu_emulator_registers_generated::lc::LcGenerated;
 use registers_generated::lc_ctrl;
 use tock_registers::interfaces::Readable;
 
@@ -324,7 +324,7 @@ impl LcCtrl {
     }
 }
 
-impl emulator_registers_generated::lc::LcPeripheral for LcCtrl {
+impl caliptra_mcu_emulator_registers_generated::lc::LcPeripheral for LcCtrl {
     fn generated(&mut self) -> Option<&mut LcGenerated> {
         Some(&mut self.generated)
     }
@@ -461,7 +461,7 @@ mod tests {
 
     /// Helper: perform a full transition protocol on an LcCtrl.
     fn do_transition(lc: &mut LcCtrl, target_state: u32, token_words: [u32; 4]) -> u32 {
-        use emulator_registers_generated::lc::LcPeripheral;
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
 
         // Claim mutex
         lc.write_claim_transition_if(ReadWriteRegister::new(MUTEX_TRUE));
@@ -601,7 +601,7 @@ mod tests {
 
     #[test]
     fn test_mutex_required() {
-        use emulator_registers_generated::lc::LcPeripheral;
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
 
         let mut lc = make_lc_ctrl(TEST_UNLOCKED0, 1, &TEST_RAW_TOKEN);
 
@@ -672,7 +672,7 @@ mod tests {
 
     #[test]
     fn test_warm_reset_loads_new_state() {
-        use emulator_registers_generated::lc::LcPeripheral;
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
 
         let mut lc = make_lc_ctrl(RAW, 1, &TEST_RAW_TOKEN);
 
@@ -698,7 +698,7 @@ mod tests {
 
     #[test]
     fn test_warm_reset_clears_mutex_and_token() {
-        use emulator_registers_generated::lc::LcPeripheral;
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
 
         let mut lc = make_lc_ctrl(RAW, 1, &TEST_RAW_TOKEN);
 
@@ -716,7 +716,7 @@ mod tests {
 
     #[test]
     fn test_transition_then_reset_then_transition() {
-        use emulator_registers_generated::lc::LcPeripheral;
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
 
         let raw_token = TEST_RAW_TOKEN;
         let token_words = token_to_words(&raw_token);

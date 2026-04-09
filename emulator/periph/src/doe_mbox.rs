@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_cpu::Irq;
-use emulator_registers_generated::doe_mbox::{DoeMboxGenerated, DoeMboxPeripheral};
+use caliptra_mcu_emulator_registers_generated::doe_mbox::{DoeMboxGenerated, DoeMboxPeripheral};
 use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
 use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{Readable, Writeable};
@@ -361,7 +361,7 @@ mod tests {
     use caliptra_emu_bus::{Bus, Clock};
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
-    use emulator_registers_generated::root_bus::AutoRootBus;
+    use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
     use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
     use registers_generated::doe_mbox::DOE_MBOX_ADDR;
 

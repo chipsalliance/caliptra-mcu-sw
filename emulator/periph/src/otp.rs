@@ -17,7 +17,7 @@ use crate::ecc_ram::EccRam;
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_types::{RvAddr, RvData};
 use caliptra_image_types::FwVerificationPqcKeyType;
-use emulator_registers_generated::otp::OtpGenerated;
+use caliptra_mcu_emulator_registers_generated::otp::OtpGenerated;
 use registers_generated::fuses::{self};
 use registers_generated::otp_ctrl::bits::{DirectAccessCmd, OtpStatus};
 use serde::{Deserialize, Serialize};
@@ -486,7 +486,7 @@ fn ecc_partition_for_addr(byte_addr: usize, ecc_rams: &[Option<EccRam>]) -> Opti
     None
 }
 
-impl emulator_registers_generated::otp::OtpPeripheral for Otp {
+impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
     fn generated(&mut self) -> Option<&mut OtpGenerated> {
         Some(&mut self.generated)
     }
@@ -869,7 +869,7 @@ fn swap_endianness(value: &mut [u8]) {
 #[cfg(test)]
 mod test {
     use super::*;
-    use emulator_registers_generated::otp::OtpPeripheral;
+    use caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral;
     #[allow(unused_imports)]
     use tock_registers::interfaces::{Readable, Writeable};
 

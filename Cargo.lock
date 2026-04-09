@@ -863,6 +863,7 @@ dependencies = [
  "caliptra-mcu-emulator-consts",
  "caliptra-mcu-emulator-mcu-mbox",
  "caliptra-mcu-emulator-periph",
+ "caliptra-mcu-emulator-registers-generated",
  "caliptra-registers",
  "caliptra-test",
  "caliptra-util-host-mailbox-test-config",
@@ -874,7 +875,6 @@ dependencies = [
  "ctrlc",
  "ecdsa",
  "elf",
- "emulator-registers-generated",
  "gdbstub",
  "gdbstub_arch",
  "hex",
@@ -964,8 +964,8 @@ dependencies = [
  "caliptra-emu-types",
  "caliptra-image-types",
  "caliptra-mcu-emulator-consts",
+ "caliptra-mcu-emulator-registers-generated",
  "caliptra-registers",
- "emulator-registers-generated",
  "lazy_static",
  "mcu-config",
  "mcu-otp-lifecycle",
@@ -979,6 +979,16 @@ dependencies = [
  "tempfile",
  "tock-registers",
  "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-emulator-registers-generated"
+version = "0.1.0"
+dependencies = [
+ "caliptra-emu-bus",
+ "caliptra-emu-types",
+ "registers-generated",
+ "tock-registers",
 ]
 
 [[package]]
@@ -1871,16 +1881,6 @@ dependencies = [
  "libc",
  "mcu-testing-common",
  "semver",
-]
-
-[[package]]
-name = "emulator-registers-generated"
-version = "0.1.0"
-dependencies = [
- "caliptra-emu-bus",
- "caliptra-emu-types",
- "registers-generated",
- "tock-registers",
 ]
 
 [[package]]
@@ -3095,11 +3095,11 @@ dependencies = [
  "caliptra-mcu-emulator-bmc",
  "caliptra-mcu-emulator-caliptra",
  "caliptra-mcu-emulator-periph",
+ "caliptra-mcu-emulator-registers-generated",
  "caliptra-registers",
  "caliptra-test-harness-types",
  "caliptra-ureg",
  "ecdsa",
- "emulator-registers-generated",
  "fips204",
  "hex",
  "int-enum",

@@ -471,7 +471,7 @@ mod tests {
     use caliptra_emu_bus::{Bus, Clock};
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
-    use emulator_registers_generated::root_bus::AutoRootBus;
+    use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
     use registers_generated::mci::bits::{
         MboxCmdStatus, MboxExecute, MboxTargetStatus, Notif0IntrEnT, Notif0IntrT,
     };
