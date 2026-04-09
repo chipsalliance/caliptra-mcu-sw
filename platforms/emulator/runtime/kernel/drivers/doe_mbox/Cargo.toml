@@ -8,6 +8,6 @@ edition.workspace = true
 
 [dependencies]
 capsules-core.workspace = true
-doe-transport.workspace = true
+caliptra-mcu-doe-transport.workspace = true
 kernel.workspace = true
 registers-generated.workspace = true

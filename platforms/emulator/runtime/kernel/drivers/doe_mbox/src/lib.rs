@@ -2,7 +2,7 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
-use doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
+use caliptra_mcu_doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
 
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;

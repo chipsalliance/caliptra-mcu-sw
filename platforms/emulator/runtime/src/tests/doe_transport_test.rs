@@ -4,10 +4,10 @@
 
 use crate::EMULATOR_PERIPHERALS;
 use caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport;
+use caliptra_mcu_doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
 use core::cell::Cell;
 use core::cell::RefCell;
 use core::fmt::Write;
-use doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
 use kernel::debug;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::utilities::cells::TakeCell;

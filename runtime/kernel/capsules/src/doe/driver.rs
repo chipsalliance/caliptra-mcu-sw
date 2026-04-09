@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe::protocol::*;
+use caliptra_mcu_doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
 use core::cell::Cell;
-use doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, GrantKernelData, UpcallCount};
 use kernel::processbuffer::{ReadableProcessBuffer, ReadableProcessSlice, WriteableProcessBuffer};
 use kernel::syscall::{CommandReturn, SyscallDriver};

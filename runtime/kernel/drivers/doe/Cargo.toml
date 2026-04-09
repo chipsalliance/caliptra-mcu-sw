@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "doe-transport"
+name = "caliptra-mcu-doe-transport"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

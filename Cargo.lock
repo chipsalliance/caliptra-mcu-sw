@@ -804,10 +804,10 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "caliptra-api",
+ "caliptra-mcu-doe-transport",
  "caliptra-ureg",
  "capsules-core",
  "capsules-extra",
- "doe-transport",
  "flash-driver",
  "i3c-driver",
  "kernel",
@@ -833,10 +833,17 @@ dependencies = [
 name = "caliptra-mcu-doe-mbox-driver"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-doe-transport",
  "capsules-core",
- "doe-transport",
  "kernel",
  "registers-generated",
+]
+
+[[package]]
+name = "caliptra-mcu-doe-transport"
+version = "0.1.0"
+dependencies = [
+ "kernel",
 ]
 
 [[package]]
@@ -1574,13 +1581,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
 dependencies = [
  "litrs",
-]
-
-[[package]]
-name = "doe-transport"
-version = "0.1.0"
-dependencies = [
- "kernel",
 ]
 
 [[package]]
@@ -3002,11 +3002,11 @@ dependencies = [
  "caliptra-mcu-capsules-emulator",
  "caliptra-mcu-capsules-runtime",
  "caliptra-mcu-dma-driver",
+ "caliptra-mcu-doe-transport",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "doe-transport",
  "flash-driver",
  "i3c-driver",
  "kernel",
@@ -3275,11 +3275,11 @@ dependencies = [
  "caliptra-mcu-capsules-runtime",
  "caliptra-mcu-dma-driver",
  "caliptra-mcu-doe-mbox-driver",
+ "caliptra-mcu-doe-transport",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "doe-transport",
  "flash-ctrl-emulator",
  "flash-driver",
  "i3c-driver",
