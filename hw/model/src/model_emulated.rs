@@ -26,7 +26,7 @@ use caliptra_emu_types::RvData;
 use caliptra_emu_types::RvSize;
 use caliptra_hw_model::Output;
 use caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE;
-use emulator_bmc::Bmc;
+use caliptra_mcu_emulator_bmc::Bmc;
 use emulator_caliptra::start_caliptra;
 use emulator_caliptra::BytesOrPath;
 use emulator_caliptra::StartCaliptraArgs;

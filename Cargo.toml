@@ -199,7 +199,7 @@ caliptra-mcu-dma-driver = { path = "platforms/emulator/runtime/kernel/drivers/dm
 caliptra-mcu-doe-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/doe_mbox" }
 caliptra-mcu-doe-transport = { path = "runtime/kernel/drivers/doe"}
 caliptra-mcu-emulator = { path = "emulator/app" }
-emulator-bmc = { path = "emulator/bmc" }
+caliptra-mcu-emulator-bmc = { path = "emulator/bmc" }
 emulator-caliptra = { "path" = "emulator/caliptra" }
 emulator-consts = { "path" = "emulator/consts" }
 emulator-mcu-mbox = { path = "emulator/app/mcu-mbox"}
