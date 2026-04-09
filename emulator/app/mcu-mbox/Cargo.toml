@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "emulator-mcu-mbox"
+name = "caliptra-mcu-emulator-mcu-mbox"
 version.workspace = true
 edition.workspace = true
 

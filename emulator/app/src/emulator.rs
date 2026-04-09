@@ -1001,14 +1001,14 @@ impl Emulator {
             || test_feature == "test-mcu-mbox-usermode"
             || test_feature == "test-mcu-mbox-cmds"
         {
-            use emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;
+            use caliptra_mcu_emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;
             let transport = McuMailboxTransport::new(ext_mcu_mailbox0.clone());
             let test = crate::tests::emulator_mcu_mailbox_test::RequestResponseTest::new(transport);
             test.run(test_feature.to_string());
         }
 
         if test_feature == "test-caliptra-util-host-validator" {
-            use emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;
+            use caliptra_mcu_emulator_mcu_mbox::mcu_mailbox_transport::McuMailboxTransport;
             let transport = McuMailboxTransport::new(ext_mcu_mailbox0.clone());
             crate::tests::caliptra_util_host_validator::run_mbox_responder(transport);
             crate::tests::caliptra_util_host_validator::run_caliptra_util_host_validator();

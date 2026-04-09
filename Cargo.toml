@@ -202,7 +202,7 @@ caliptra-mcu-emulator = { path = "emulator/app" }
 caliptra-mcu-emulator-bmc = { path = "emulator/bmc" }
 caliptra-mcu-emulator-caliptra = { "path" = "emulator/caliptra" }
 caliptra-mcu-emulator-consts = { "path" = "emulator/consts" }
-emulator-mcu-mbox = { path = "emulator/app/mcu-mbox"}
+caliptra-mcu-emulator-mcu-mbox = { path = "emulator/app/mcu-mbox"}
 emulator-periph = { path = "emulator/periph" }
 emulator-registers-generated = { path = "registers/generated-emulator" }
 flash-ctrl-emulator = { path = "platforms/emulator/runtime/kernel/drivers/flash_ctrl"}

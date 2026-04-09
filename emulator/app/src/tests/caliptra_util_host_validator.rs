@@ -6,11 +6,11 @@ use std::sync::atomic::Ordering;
 use std::thread::{self, sleep};
 
 use caliptra_mailbox_server::ServerConfig;
+use caliptra_mcu_emulator_mcu_mbox::mcu_mailbox_transport::{McuMailboxError, McuMailboxTransport};
 use caliptra_util_host_mailbox_test_config::{
     DeviceCapabilitiesConfig, DeviceConfig, DeviceInfoConfig, FirmwareVersionConfig, NetworkConfig,
     ServerConfig as ConfigServerConfig, TestConfig, ValidationConfig,
 };
-use emulator_mcu_mbox::mcu_mailbox_transport::{McuMailboxError, McuMailboxTransport};
 use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
 use tempfile::NamedTempFile;
 
