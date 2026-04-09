@@ -1359,9 +1359,16 @@ dependencies = [
 name = "caliptra-mcu-registers-generator"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-registers-systemrdl",
  "proc-macro2",
  "quote",
- "registers-systemrdl",
+]
+
+[[package]]
+name = "caliptra-mcu-registers-systemrdl"
+version = "0.1.0"
+dependencies = [
+ "same-file",
 ]
 
 [[package]]
@@ -4162,13 +4169,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 
 [[package]]
-name = "registers-systemrdl"
-version = "0.1.0"
-dependencies = [
- "same-file",
-]
-
-[[package]]
 name = "reqwest"
 version = "0.12.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5906,6 +5906,7 @@ dependencies = [
  "caliptra-mcu-hw-model",
  "caliptra-mcu-pldm-fw-pkg",
  "caliptra-mcu-registers-generator",
+ "caliptra-mcu-registers-systemrdl",
  "caliptra-mcu-rom-common",
  "cargo_metadata",
  "cc",
@@ -5917,7 +5918,6 @@ dependencies = [
  "p384",
  "proc-macro2",
  "quote",
- "registers-systemrdl",
  "semver",
  "serde",
  "serde-hjson",

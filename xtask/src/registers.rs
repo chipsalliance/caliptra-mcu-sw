@@ -7,9 +7,9 @@ use caliptra_mcu_registers_generator::{
     camel_case, has_single_32_bit_field, hex_const, snake_case, FieldType, Register, RegisterBlock,
     RegisterBlockInstance, RegisterWidth, ValidatedRegisterBlock,
 };
+use caliptra_mcu_registers_systemrdl::ParentScope;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
-use registers_systemrdl::ParentScope;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::io::Write as _;
@@ -177,11 +177,11 @@ pub(crate) fn autogen(
     }
     header.push_str(HEADER_SUFFIX);
 
-    let file_source = registers_systemrdl::FsFileSource::new();
+    let file_source = caliptra_mcu_registers_systemrdl::FsFileSource::new();
     for patch in patches {
         file_source.add_patch(&patch.0, patch.1, patch.2);
     }
-    let scope = registers_systemrdl::Scope::parse_root(&file_source, &rdl_files)
+    let scope = caliptra_mcu_registers_systemrdl::Scope::parse_root(&file_source, &rdl_files)
         .map_err(|s| anyhow!(s.to_string()))?;
     let scope = scope.as_parent();
 

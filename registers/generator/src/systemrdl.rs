@@ -3,8 +3,8 @@ Licensed under the Apache-2.0 license.
 --*/
 use crate::schema::{RegisterBlock, RegisterBlockInstance, RegisterSubBlock, RegisterType};
 use crate::{Enum, EnumVariant, FieldType, Register, RegisterField, RegisterWidth};
-use registers_systemrdl::{self as systemrdl, Value};
-use registers_systemrdl::{ComponentType, ScopeType};
+use caliptra_mcu_registers_systemrdl::{self as systemrdl, Value};
+use caliptra_mcu_registers_systemrdl::{ComponentType, ScopeType};
 use std::fmt::Display;
 use std::rc::Rc;
 use systemrdl::{AccessType, InstanceRef, ParentScope, RdlError};
