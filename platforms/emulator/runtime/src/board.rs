@@ -19,6 +19,7 @@ use caliptra_mcu_config_emulator::flash::{
 };
 use caliptra_mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
 use caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport;
+use caliptra_mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use core::ptr::{addr_of, addr_of_mut};
@@ -36,7 +37,6 @@ use kernel::storage_volume;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
-use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
 use mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
@@ -428,7 +428,7 @@ pub unsafe fn main() {
     };
 
     // Generate PMP region list using the shared infrastructure
-    let pmp_regions = mcu_platforms_common::pmp_config::create_pmp_regions(config)
+    let pmp_regions = caliptra_mcu_platforms_common::pmp_config::create_pmp_regions(config)
         .expect("Failed to create PMP regions");
 
     romtime::println!("PMP Regions:");

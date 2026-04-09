@@ -10,6 +10,6 @@ edition.workspace = true
 bitfield.workspace = true
 caliptra-mcu-dma-driver.workspace = true
 caliptra-mcu-flash-driver.workspace = true
-mcu-platforms-common.workspace = true
+caliptra-mcu-platforms-common.workspace = true
 kernel.workspace = true
 registers-generated.workspace = true

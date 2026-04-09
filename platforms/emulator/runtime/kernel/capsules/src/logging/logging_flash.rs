@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
+use caliptra_mcu_platforms_common::{read_volatile_at, read_volatile_slice};
 use core::cell::Cell;
 use core::mem::size_of;
 use core::unreachable;
@@ -13,7 +14,6 @@ use kernel::hil::flash::{self, Flash};
 use kernel::hil::log::{LogRead, LogReadClient, LogWrite, LogWriteClient};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::ErrorCode;
-use mcu_platforms_common::{read_volatile_at, read_volatile_slice};
 
 /// Globally declare entry ID type.
 type EntryID = usize;

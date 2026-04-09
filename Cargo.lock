@@ -828,8 +828,8 @@ dependencies = [
  "bitfield",
  "caliptra-mcu-dma-driver",
  "caliptra-mcu-flash-driver",
+ "caliptra-mcu-platforms-common",
  "kernel",
- "mcu-platforms-common",
  "registers-generated",
 ]
 
@@ -1270,6 +1270,18 @@ name = "caliptra-mcu-otp-lifecycle"
 version = "0.1.0"
 dependencies = [
  "sha3",
+]
+
+[[package]]
+name = "caliptra-mcu-platforms-common"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-config",
+ "caliptra-mcu-i3c-driver",
+ "kernel",
+ "mcu-tock-veer",
+ "romtime",
+ "rv32i",
 ]
 
 [[package]]
@@ -3216,18 +3228,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-platforms-common"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-config",
- "caliptra-mcu-i3c-driver",
- "kernel",
- "mcu-tock-veer",
- "romtime",
- "rv32i",
-]
-
-[[package]]
 name = "mcu-registers-systemrdl-new"
 version = "0.1.0"
 dependencies = [
@@ -3315,12 +3315,12 @@ dependencies = [
  "caliptra-mcu-i3c-driver",
  "caliptra-mcu-mbox-comm",
  "caliptra-mcu-mbox-driver",
+ "caliptra-mcu-platforms-common",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
  "kernel",
- "mcu-platforms-common",
  "mcu-tock-veer",
  "registers-generated",
  "riscv 0.2.2",
@@ -3345,12 +3345,12 @@ dependencies = [
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
  "caliptra-mcu-mbox-driver",
+ "caliptra-mcu-platforms-common",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
  "kernel",
- "mcu-platforms-common",
  "mcu-tock-veer",
  "registers-generated",
  "riscv 0.2.2",

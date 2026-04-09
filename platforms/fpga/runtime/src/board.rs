@@ -13,6 +13,7 @@ use caliptra_mcu_components::mcu_mbox_component_static;
 use caliptra_mcu_components::{flash_partition_component_static, instantiate_flash_partitions};
 use caliptra_mcu_config_fpga::flash::STAGING_PARTITION;
 use caliptra_mcu_config_fpga::flash_partition_list_imaginary_flash;
+use caliptra_mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use core::ptr::{addr_of, addr_of_mut};
@@ -29,7 +30,6 @@ use kernel::scheduler::cooperative::CooperativeSched;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
-use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
 use mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
@@ -411,7 +411,7 @@ pub unsafe fn main() {
 
     romtime::println!("[mcu-runtime] Set PMP");
     // Generate PMP region list using the shared infrastructure
-    let pmp_regions = mcu_platforms_common::pmp_config::create_pmp_regions(config)
+    let pmp_regions = caliptra_mcu_platforms_common::pmp_config::create_pmp_regions(config)
         .expect("Failed to create PMP regions");
 
     romtime::println!("[mcu-runtime] Enabling PMP");
