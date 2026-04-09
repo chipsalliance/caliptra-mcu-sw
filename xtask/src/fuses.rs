@@ -2,7 +2,7 @@
 
 use crate::registers::{file_check_contents, rustfmt, write_file};
 use anyhow::Result;
-use fusegen::{OtpMmap, HEADER_PREFIX, HEADER_SUFFIX, OTP_CTRL_MMAP_DEFAULT_PATH};
+use caliptra_mcu_fusegen::{OtpMmap, HEADER_PREFIX, HEADER_SUFFIX, OTP_CTRL_MMAP_DEFAULT_PATH};
 use mcu_builder::PROJECT_ROOT;
 use registers_generator::snake_case;
 use std::fmt::Write;

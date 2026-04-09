@@ -1030,6 +1030,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-fusegen"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hex",
+ "serde",
+ "serde-hjson",
+]
+
+[[package]]
 name = "caliptra-ocp-eat"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=294bcacbd34aca6e23ce7b652885e3236f7e7afe#294bcacbd34aca6e23ce7b652885e3236f7e7afe"
@@ -2082,16 +2092,6 @@ checksum = "04412b8935272e3a9bae6f48c7bfff74c2911f60525404edfdd28e49884c3bfb"
 dependencies = [
  "libc",
  "winapi",
-]
-
-[[package]]
-name = "fusegen"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "hex",
- "serde",
- "serde-hjson",
 ]
 
 [[package]]
@@ -3955,7 +3955,7 @@ name = "provisioning-fuses"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "fusegen",
+ "caliptra-mcu-fusegen",
  "registers-generated",
 ]
 
@@ -5910,13 +5910,13 @@ dependencies = [
  "caliptra-hw-model",
  "caliptra-image-gen",
  "caliptra-image-types",
+ "caliptra-mcu-fusegen",
  "cargo_metadata",
  "cc",
  "clap 4.5.51",
  "clap-num",
  "ecdsa",
  "elf",
- "fusegen",
  "hex",
  "mcu-builder",
  "mcu-config-emulator",

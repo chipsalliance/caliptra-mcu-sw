@@ -209,7 +209,7 @@ caliptra-mcu-flash-ctrl-emulator = { path = "platforms/emulator/runtime/kernel/d
 caliptra-mcu-flash-ctrl-fpga = { path = "platforms/fpga/runtime/drivers/flash_ctrl"}
 caliptra-mcu-flash-driver = { path = "runtime/kernel/drivers/flash" }
 caliptra-mcu-flash-image = { path = "common/flash-image" }
-fusegen = { path = "provisioning/fuses/fusegen" }
+caliptra-mcu-fusegen = { path = "provisioning/fuses/fusegen" }
 i3c-driver = { path = "runtime/kernel/drivers/i3c" }
 libtockasync = { path = "runtime/userspace/libtockasync" }
 mcu-builder = { path = "builder" }
