@@ -865,12 +865,12 @@ dependencies = [
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
  "caliptra-mcu-mbox-comm",
+ "caliptra-mcu-mbox-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
  "kernel",
- "mcu-mbox-driver",
  "mcu-tock-veer",
  "registers-generated",
  "romtime",
@@ -1252,6 +1252,17 @@ version = "0.1.0"
 dependencies = [
  "caliptra-api",
  "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-mbox-driver"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-mbox-comm",
+ "capsules-core",
+ "kernel",
+ "registers-generated",
+ "romtime",
 ]
 
 [[package]]
@@ -3179,17 +3190,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-mbox-driver"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-mbox-comm",
- "capsules-core",
- "kernel",
- "registers-generated",
- "romtime",
-]
-
-[[package]]
 name = "mcu-mbox-lib"
 version = "0.1.0"
 dependencies = [
@@ -3314,12 +3314,12 @@ dependencies = [
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
  "caliptra-mcu-mbox-comm",
+ "caliptra-mcu-mbox-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
  "kernel",
- "mcu-mbox-driver",
  "mcu-platforms-common",
  "mcu-tock-veer",
  "registers-generated",
@@ -3344,12 +3344,12 @@ dependencies = [
  "caliptra-mcu-flash-ctrl-fpga",
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-mbox-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
  "kernel",
- "mcu-mbox-driver",
  "mcu-platforms-common",
  "mcu-tock-veer",
  "registers-generated",
@@ -3444,12 +3444,12 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-mbox-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
  "kernel",
- "mcu-mbox-driver",
  "registers-generated",
  "riscv 0.2.2",
  "riscv-csr",

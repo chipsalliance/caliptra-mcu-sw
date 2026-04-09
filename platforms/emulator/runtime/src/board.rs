@@ -152,7 +152,7 @@ struct VeeR {
     mci: &'static caliptra_mcu_capsules_runtime::mci::Mci,
     mcu_mbox0: &'static caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver<
         'static,
-        mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>,
+        caliptra_mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>,
     >,
     mcu_mbox1_staging_sram: &'static caliptra_mcu_capsules_runtime::mbox_sram::MboxSram<
         'static,
@@ -512,7 +512,8 @@ pub unsafe fn main() {
         board_kernel,
         caliptra_mcu_capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
         core::slice::from_raw_parts_mut(
-            (MCU_MEMORY_MAP.mci_offset + mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET) as *mut u32,
+            (MCU_MEMORY_MAP.mci_offset + caliptra_mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET)
+                as *mut u32,
             1024 * 1024, // Allocate 1MB
         ),
         mux_alarm,
@@ -703,7 +704,7 @@ pub unsafe fn main() {
         &peripherals.mcu_mbox0,
     )
     .finalize(mcu_mbox_component_static!(
-        mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>
+        caliptra_mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>
     ));
 
     #[allow(static_mut_refs)]

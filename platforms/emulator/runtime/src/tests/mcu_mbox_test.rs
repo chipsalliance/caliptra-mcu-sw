@@ -2,6 +2,7 @@
 
 use crate::run_kernel_op;
 use caliptra_mcu_mbox_comm::hil::{Mailbox, MailboxClient, MailboxStatus};
+use caliptra_mcu_mbox_driver::McuMailbox;
 use core::cell::Cell;
 use kernel::debug;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
@@ -10,7 +11,6 @@ use kernel::static_init;
 use kernel::utilities::cells::TakeCell;
 use kernel::utilities::registers::interfaces::{Readable, Writeable};
 use kernel::utilities::StaticRef;
-use mcu_mbox_driver::McuMailbox;
 use mcu_tock_veer::timers::InternalTimers;
 use registers_generated::mci;
 use romtime::println;

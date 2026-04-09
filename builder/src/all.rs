@@ -131,7 +131,7 @@ pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
 }
 
 /// MCU MBOX SRAM1 offset from MCI base.
-/// Matches mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET (0x80_0000).
+/// Matches caliptra_mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET (0x80_0000).
 const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
 
 /// Creates default SoC images for tests that require them.

@@ -48,7 +48,7 @@ pub struct VeeRDefaultPeripherals<'a> {
     pub i3c: caliptra_mcu_i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
     pub i3c1: caliptra_mcu_i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
     pub mci: romtime::Mci,
-    pub mcu_mbox0: mcu_mbox_driver::McuMailbox<'a, InternalTimers<'a>>,
+    pub mcu_mbox0: caliptra_mcu_mbox_driver::McuMailbox<'a, InternalTimers<'a>>,
     pub additional_interrupt_handler: &'static dyn InterruptService,
 }
 
@@ -70,9 +70,9 @@ impl<'a> VeeRDefaultPeripherals<'a> {
                 alarm,
             ),
             mci: mci_driver,
-            mcu_mbox0: mcu_mbox_driver::McuMailbox::new(
+            mcu_mbox0: caliptra_mcu_mbox_driver::McuMailbox::new(
                 mci_regs,
-                memory_map.mci_offset + mcu_mbox_driver::MCU_MBOX0_SRAM_OFFSET,
+                memory_map.mci_offset + caliptra_mcu_mbox_driver::MCU_MBOX0_SRAM_OFFSET,
                 alarm,
             ),
             additional_interrupt_handler,
