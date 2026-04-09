@@ -4,15 +4,15 @@ use crate::control_context::{ControlContext, CtrlCmdResponder, ProtocolCapabilit
 use crate::error::MsgHandlerError;
 use crate::firmware_device::fd_context::FirmwareDeviceContext;
 use crate::transport::MctpTransport;
-use core::sync::atomic::{AtomicBool, Ordering};
-use pldm_common::codec::PldmCodec;
-use pldm_common::protocol::base::{
+use caliptra_mcu_pldm_common::codec::PldmCodec;
+use caliptra_mcu_pldm_common::protocol::base::{
     PldmBaseCompletionCode, PldmControlCmd, PldmFailureResponse, PldmMsgHeader, PldmSupportedType,
 };
-use pldm_common::protocol::firmware_update::FwUpdateCmd;
-use pldm_common::util::mctp_transport::{
+use caliptra_mcu_pldm_common::protocol::firmware_update::FwUpdateCmd;
+use caliptra_mcu_pldm_common::util::mctp_transport::{
     construct_mctp_pldm_msg, extract_pldm_msg, MCTP_PLDM_MSG_HDR_LEN,
 };
+use core::sync::atomic::{AtomicBool, Ordering};
 
 pub type PldmCompletionErrorCode = u8;
 
@@ -136,7 +136,7 @@ impl<'a> CmdInterface<'a> {
     }
 
     /// Get current timestamp.
-    pub fn now(&self) -> pldm_common::protocol::firmware_update::PldmFdTime {
+    pub fn now(&self) -> caliptra_mcu_pldm_common::protocol::firmware_update::PldmFdTime {
         self.fd_ctx.now()
     }
 

@@ -14,15 +14,15 @@ use caliptra_api::mailbox::{
 };
 use caliptra_mcu_flash_image::{FlashHeader, SOC_MANIFEST_IDENTIFIER};
 use caliptra_mcu_libtockasync::TockExecutor;
+use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
+use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
+use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
 use embassy_executor::Spawner;
 use libsyscall_caliptra::dma::DMAMapping;
 use libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
 use libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
 use libsyscall_caliptra::{dma::AXIAddr, mailbox::Mailbox};
 use libtock_platform::ErrorCode;
-use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
-use pldm_common::message::firmware_update::verify_complete::VerifyResult;
-use pldm_common::protocol::firmware_update::Descriptor;
 use pldm_lib::daemon::PldmService;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 

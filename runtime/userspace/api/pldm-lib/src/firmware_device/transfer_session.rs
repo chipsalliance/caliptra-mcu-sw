@@ -7,10 +7,10 @@
 //! The session captures state at the start of a transfer and only requires
 //! mutex access at boundaries (start, end, cancellation check).
 
+use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult;
+use caliptra_mcu_pldm_common::protocol::firmware_update::{PldmFdTime, PLDM_FWUP_MAX_PADDING_SIZE};
+use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
 use core::sync::atomic::{AtomicBool, Ordering};
-use pldm_common::message::firmware_update::transfer_complete::TransferResult;
-use pldm_common::protocol::firmware_update::{PldmFdTime, PLDM_FWUP_MAX_PADDING_SIZE};
-use pldm_common::util::fw_component::FirmwareComponent;
 
 use super::fd_internal::FdReqState;
 

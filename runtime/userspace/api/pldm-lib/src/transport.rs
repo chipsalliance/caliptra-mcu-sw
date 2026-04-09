@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use libsyscall_caliptra::mctp::{Mctp, MessageInfo};
-use pldm_common::util::mctp_transport::{
+use caliptra_mcu_pldm_common::util::mctp_transport::{
     MctpCommonHeader, MCTP_COMMON_HEADER_OFFSET, MCTP_PLDM_MSG_TYPE,
 };
+use libsyscall_caliptra::mctp::{Mctp, MessageInfo};
 
 pub enum PldmTransportType {
     Mctp,

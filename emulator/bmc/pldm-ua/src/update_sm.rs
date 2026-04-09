@@ -3,22 +3,22 @@
 use crate::events::PldmEvents;
 use crate::timer::Timer;
 use crate::transport::{PldmSocket, RxPacket, MAX_PLDM_PAYLOAD_SIZE};
-use log::{debug, error, info};
-use pldm_common::codec::PldmCodec;
-use pldm_common::message::firmware_update as pldm_packet;
-use pldm_common::message::firmware_update::activate_fw::SelfContainedActivationRequest;
-use pldm_common::message::firmware_update::request_update::REQUEST_UPDATE_REQUEST_FIXED_HEADER_LEN;
-use pldm_common::message::firmware_update::transfer_complete::TransferResult;
-use pldm_common::message::firmware_update::verify_complete::VerifyResult;
-use pldm_common::protocol::base::{
+use caliptra_mcu_pldm_common::codec::PldmCodec;
+use caliptra_mcu_pldm_common::message::firmware_update as pldm_packet;
+use caliptra_mcu_pldm_common::message::firmware_update::activate_fw::SelfContainedActivationRequest;
+use caliptra_mcu_pldm_common::message::firmware_update::request_update::REQUEST_UPDATE_REQUEST_FIXED_HEADER_LEN;
+use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult;
+use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
+use caliptra_mcu_pldm_common::protocol::base::{
     InstanceId, PldmBaseCompletionCode, PldmMsgHeader, PldmMsgType, PldmSupportedType,
     TransferRespFlag,
 };
-use pldm_common::protocol::firmware_update::{
+use caliptra_mcu_pldm_common::protocol::firmware_update::{
     ComponentClassification, ComponentCompatibilityResponse, ComponentParameterEntry,
     ComponentResponseCode, FirmwareDeviceState, FwUpdateCmd, FwUpdateCompletionCode,
     PldmFirmwareString, UpdateOptionFlags, VersionStringType, PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN,
 };
+use log::{debug, error, info};
 use pldm_fw_pkg::manifest::{ComponentImageInformation, FirmwareDeviceIdRecord};
 use pldm_fw_pkg::FirmwareManifest;
 use smlang::statemachine;
@@ -127,7 +127,7 @@ fn send_message_helper<P: PldmCodec>(
 
 fn is_pkg_descriptor_in_response_descriptor(
     pkg_descriptor: &pldm_fw_pkg::manifest::Descriptor,
-    response_descriptor: &pldm_common::protocol::firmware_update::Descriptor,
+    response_descriptor: &caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor,
 ) -> bool {
     if response_descriptor.descriptor_type != pkg_descriptor.descriptor_type as u16 {
         return false;

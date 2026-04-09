@@ -5,13 +5,17 @@ mod common;
 use std::thread::sleep;
 use std::time::Duration;
 
-use pldm_common::protocol::base::{PldmControlCmd, PldmSupportedType, TransferRespFlag};
-use pldm_common::protocol::firmware_update::FwUpdateCmd;
-use pldm_common::protocol::version::{PLDM_BASE_PROTOCOL_VERSION, PLDM_FW_UPDATE_PROTOCOL_VERSION};
+use caliptra_mcu_pldm_common::protocol::base::{
+    PldmControlCmd, PldmSupportedType, TransferRespFlag,
+};
+use caliptra_mcu_pldm_common::protocol::firmware_update::FwUpdateCmd;
+use caliptra_mcu_pldm_common::protocol::version::{
+    PLDM_BASE_PROTOCOL_VERSION, PLDM_FW_UPDATE_PROTOCOL_VERSION,
+};
 use pldm_ua::events::PldmEvents;
 use pldm_ua::{discovery_sm, update_sm};
 
-use pldm_common::message::control::*;
+use caliptra_mcu_pldm_common::message::control::*;
 use pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::daemon::Options;
 use pldm_ua::transport::PldmSocket;

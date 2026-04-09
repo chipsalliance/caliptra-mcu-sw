@@ -1,11 +1,11 @@
 // Licensed under the Apache-2.0 license
 #![allow(clippy::result_unit_err)]
-use core::time::Duration;
-use log::{error, LevelFilter};
-use pldm_common::message::firmware_update::query_devid::{
+use caliptra_mcu_pldm_common::message::firmware_update::query_devid::{
     QueryDeviceIdentifiersRequest, QueryDeviceIdentifiersResponse,
 };
-use pldm_common::protocol::base::PldmMsgHeader;
+use caliptra_mcu_pldm_common::protocol::base::PldmMsgHeader;
+use core::time::Duration;
+use log::{error, LevelFilter};
 use pldm_fw_pkg::FirmwareManifest;
 use pldm_ua::events::PldmEvents;
 use pldm_ua::transport::{
@@ -18,7 +18,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use pldm_common::codec::PldmCodec;
+use caliptra_mcu_pldm_common::codec::PldmCodec;
 use pldm_ua::daemon::{Options, PldmDaemon};
 use pldm_ua::{discovery_sm, update_sm};
 

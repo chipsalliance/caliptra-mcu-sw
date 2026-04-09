@@ -2,8 +2,7 @@
 
 #[cfg(test)]
 mod common;
-use common::CustomDiscoverySm;
-use pldm_common::{
+use caliptra_mcu_pldm_common::{
     message::firmware_update::{
         activate_fw::{ActivateFirmwareRequest, ActivateFirmwareResponse},
         apply_complete::{ApplyCompleteRequest, ApplyCompleteResponse, ApplyResult},
@@ -28,6 +27,7 @@ use pldm_common::{
         },
     },
 };
+use common::CustomDiscoverySm;
 use pldm_fw_pkg::{
     manifest::{ComponentImageInformation, FirmwareDeviceIdRecord, PackageHeaderInformation},
     FirmwareManifest,
@@ -92,7 +92,7 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
     fn on_get_firmware_parameters_response(
         &mut self,
         ctx: &mut update_sm::InnerContext<impl PldmSocket>,
-        _response: pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
+        _response: caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
     ) -> Result<(), ()> {
         ctx.event_queue
             .send(PldmEvents::Update(update_sm::Events::SendRequestUpdate))

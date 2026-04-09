@@ -8,8 +8,8 @@
 use crate::i3c::DynamicI3cAddress;
 use crate::i3c_socket::BufferedStream;
 use crate::mctp_util::common::MctpUtil;
+use caliptra_mcu_pldm_common::util::mctp_transport::{MctpCommonHeader, MCTP_PLDM_MSG_TYPE};
 use core::time::Duration;
-use pldm_common::util::mctp_transport::{MctpCommonHeader, MCTP_PLDM_MSG_TYPE};
 use pldm_ua::transport::{
     EndpointId, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket,
     MAX_PLDM_PAYLOAD_SIZE,

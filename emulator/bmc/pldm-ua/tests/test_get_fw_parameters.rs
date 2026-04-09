@@ -6,17 +6,17 @@ mod common;
 use std::thread::sleep;
 use std::time::Duration;
 
-use common::CustomDiscoverySm;
-use pldm_common::message::firmware_update::get_fw_params::{
+use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::{
     FirmwareParameters, GetFirmwareParametersRequest, GetFirmwareParametersResponse,
 };
-use pldm_common::message::firmware_update::query_devid::QueryDeviceIdentifiersResponse;
-use pldm_common::protocol::base::PldmBaseCompletionCode;
-use pldm_common::protocol::firmware_update::{
+use caliptra_mcu_pldm_common::message::firmware_update::query_devid::QueryDeviceIdentifiersResponse;
+use caliptra_mcu_pldm_common::protocol::base::PldmBaseCompletionCode;
+use caliptra_mcu_pldm_common::protocol::firmware_update::{
     ComponentActivationMethods, ComponentClassification, ComponentParameterEntry,
     ComponentParameterEntryFixed, FirmwareDeviceCapability, FwUpdateCmd, PldmFirmwareString,
     VersionStringType, PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN,
 };
+use common::CustomDiscoverySm;
 use pldm_fw_pkg::manifest::{
     ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
 };

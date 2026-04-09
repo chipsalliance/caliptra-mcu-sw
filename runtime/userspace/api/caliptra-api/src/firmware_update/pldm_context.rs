@@ -2,12 +2,12 @@
 
 use core::cell::RefCell;
 
+use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
+use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
+use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
-use pldm_common::message::firmware_update::apply_complete::ApplyResult;
-use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
-use pldm_common::message::firmware_update::verify_complete::VerifyResult;
-use pldm_common::protocol::firmware_update::Descriptor;
 
 use super::StagingMemory;
 

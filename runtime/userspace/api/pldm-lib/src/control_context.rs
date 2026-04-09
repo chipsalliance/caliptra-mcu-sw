@@ -2,19 +2,19 @@
 
 use crate::cmd_interface::generate_failure_response;
 use crate::error::MsgHandlerError;
-use core::sync::atomic::{AtomicUsize, Ordering};
-use pldm_common::codec::PldmCodec;
-use pldm_common::error::PldmError;
-use pldm_common::message::control::{
+use caliptra_mcu_pldm_common::codec::PldmCodec;
+use caliptra_mcu_pldm_common::error::PldmError;
+use caliptra_mcu_pldm_common::message::control::{
     GetPldmCommandsRequest, GetPldmCommandsResponse, GetPldmTypeRequest, GetPldmTypeResponse,
     GetPldmVersionRequest, GetPldmVersionResponse, GetTidRequest, GetTidResponse, SetTidRequest,
     SetTidResponse,
 };
-use pldm_common::protocol::base::{
+use caliptra_mcu_pldm_common::protocol::base::{
     PldmBaseCompletionCode, PldmControlCompletionCode, PldmSupportedType, TransferOperationFlag,
     TransferRespFlag,
 };
-use pldm_common::protocol::version::{PldmVersion, ProtocolVersionStr, Ver32};
+use caliptra_mcu_pldm_common::protocol::version::{PldmVersion, ProtocolVersionStr, Ver32};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub type Tid = u8;
 pub type CmdOpCode = u8;
@@ -311,11 +311,11 @@ impl CtrlCmdResponder for ControlContext<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use pldm_common::protocol::base::PldmFailureResponse;
-    use pldm_common::protocol::base::{
+    use caliptra_mcu_pldm_common::protocol::base::PldmFailureResponse;
+    use caliptra_mcu_pldm_common::protocol::base::{
         PldmControlCmd, PldmMsgType, PldmSupportedType, PLDM_FAILURE_RESP_LEN,
     };
-    use pldm_common::protocol::firmware_update::FwUpdateCmd;
+    use caliptra_mcu_pldm_common::protocol::firmware_update::FwUpdateCmd;
 
     const PAY_LOAD_BUFFER_LEN: usize = 256;
     const SUPPORTED_CTRL_CMDS: [u8; 5] = [

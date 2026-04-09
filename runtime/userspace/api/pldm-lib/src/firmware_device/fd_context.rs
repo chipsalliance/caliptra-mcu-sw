@@ -4,54 +4,58 @@ use crate::cmd_interface::generate_failure_response;
 use crate::error::MsgHandlerError;
 use crate::firmware_device::fd_internal::{FdInternal, FdReqState};
 use crate::firmware_device::fd_ops::{ComponentOperation, FdOps};
-use pldm_common::codec::PldmCodec;
-use pldm_common::message::firmware_update::activate_fw::{
+use caliptra_mcu_pldm_common::codec::PldmCodec;
+use caliptra_mcu_pldm_common::message::firmware_update::activate_fw::{
     ActivateFirmwareRequest, ActivateFirmwareResponse,
 };
-use pldm_common::message::firmware_update::get_fw_params::{
+use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::{
     FirmwareParameters, GetFirmwareParametersRequest, GetFirmwareParametersResponse,
 };
-use pldm_common::message::firmware_update::get_status::ProgressPercent;
-use pldm_common::message::firmware_update::pass_component::{
+use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
+use caliptra_mcu_pldm_common::message::firmware_update::pass_component::{
     PassComponentTableRequest, PassComponentTableResponse,
 };
-use pldm_common::message::firmware_update::query_devid::{
+use caliptra_mcu_pldm_common::message::firmware_update::query_devid::{
     QueryDeviceIdentifiersRequest, QueryDeviceIdentifiersResponse,
 };
-use pldm_common::message::firmware_update::request_cancel::{
+use caliptra_mcu_pldm_common::message::firmware_update::request_cancel::{
     CancelUpdateComponentRequest, CancelUpdateComponentResponse, CancelUpdateRequest,
     CancelUpdateResponse,
 };
-use pldm_common::message::firmware_update::request_update::{
+use caliptra_mcu_pldm_common::message::firmware_update::request_update::{
     RequestUpdateRequest, RequestUpdateResponse,
 };
-use pldm_common::message::firmware_update::transfer_complete::{
+use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::{
     TransferCompleteRequest, TransferResult,
 };
-use pldm_common::message::firmware_update::update_component::{
+use caliptra_mcu_pldm_common::message::firmware_update::update_component::{
     UpdateComponentRequest, UpdateComponentResponse,
 };
 
-use pldm_common::codec::PldmCodecError;
-use pldm_common::message::firmware_update::apply_complete::{ApplyCompleteRequest, ApplyResult};
-use pldm_common::message::firmware_update::get_status::{
+use caliptra_mcu_pldm_common::codec::PldmCodecError;
+use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::{
+    ApplyCompleteRequest, ApplyResult,
+};
+use caliptra_mcu_pldm_common::message::firmware_update::get_status::{
     AuxState, AuxStateStatus, GetStatusReasonCode, GetStatusRequest, GetStatusResponse,
     UpdateOptionResp,
 };
-use pldm_common::message::firmware_update::request_fw_data::{
+use caliptra_mcu_pldm_common::message::firmware_update::request_fw_data::{
     RequestFirmwareDataRequest, RequestFirmwareDataResponseFixed,
 };
-use pldm_common::message::firmware_update::verify_complete::{VerifyCompleteRequest, VerifyResult};
-use pldm_common::protocol::base::{
+use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::{
+    VerifyCompleteRequest, VerifyResult,
+};
+use caliptra_mcu_pldm_common::protocol::base::{
     PldmBaseCompletionCode, PldmMsgHeader, PldmMsgType, TransferRespFlag,
 };
-use pldm_common::protocol::firmware_update::{
+use caliptra_mcu_pldm_common::protocol::firmware_update::{
     ComponentActivationMethods, ComponentCompatibilityResponse, ComponentCompatibilityResponseCode,
     ComponentResponse, ComponentResponseCode, Descriptor, FirmwareDeviceState, FwUpdateCmd,
     FwUpdateCompletionCode, PldmFirmwareString, UpdateOptionFlags, MAX_DESCRIPTORS_COUNT,
     PLDM_FWUP_BASELINE_TRANSFER_SIZE,
 };
-use pldm_common::util::fw_component::FirmwareComponent;
+use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
 
 use crate::firmware_device::fd_internal::{
     ApplyState, DownloadState, InitiatorModeState, VerifyState,
@@ -1117,7 +1121,7 @@ impl<'a> FirmwareDeviceContext<'a> {
     }
 
     /// Get current timestamp from ops.
-    pub fn now(&self) -> pldm_common::protocol::firmware_update::PldmFdTime {
+    pub fn now(&self) -> caliptra_mcu_pldm_common::protocol::firmware_update::PldmFdTime {
         self.ops.now()
     }
 

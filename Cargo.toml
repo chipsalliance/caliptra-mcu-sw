@@ -240,7 +240,7 @@ caliptra-mcu-testing-common = { path = "common/testing" }
 caliptra-mcu-tock-veer = { path = "runtime/kernel/veer" }
 caliptra-mcu-mctp-vdm-common = { path = "common/mctp-vdm" }
 caliptra-mcu-otp-digest = { path = "common/otp-digest" }
-pldm-common = { path = "common/pldm"}
+caliptra-mcu-pldm-common = { path = "common/pldm"}
 pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
 pldm-ua = { path = "emulator/bmc/pldm-ua"}
 poll-common = { path = "common/poll"}

@@ -8,6 +8,7 @@ pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use crate::test_fpga_flash_ctrl::test::run_imaginary_flash_controller_service;
     use caliptra_mcu_hw_model::McuHwModel;
+    use caliptra_mcu_pldm_common::protocol::firmware_update::*;
     use caliptra_mcu_testing_common::mctp_transport::{MctpPldmSocket, MctpTransport};
     use caliptra_mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
@@ -16,7 +17,6 @@ pub mod test {
     use chrono::{TimeZone, Utc};
     use lazy_static::lazy_static;
     use log::{error, LevelFilter};
-    use pldm_common::protocol::firmware_update::*;
     use pldm_fw_pkg::{
         manifest::{
             ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,

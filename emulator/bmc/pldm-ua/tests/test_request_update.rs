@@ -3,14 +3,14 @@
 #[cfg(test)]
 mod common;
 
-use common::CustomDiscoverySm;
-use pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse;
-use pldm_common::message::firmware_update::query_devid::QueryDeviceIdentifiersResponse;
-use pldm_common::message::firmware_update::request_update::{
+use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse;
+use caliptra_mcu_pldm_common::message::firmware_update::query_devid::QueryDeviceIdentifiersResponse;
+use caliptra_mcu_pldm_common::message::firmware_update::request_update::{
     RequestUpdateRequest, RequestUpdateResponse,
 };
-use pldm_common::protocol::base::PldmBaseCompletionCode;
-use pldm_common::protocol::firmware_update::{ComponentClassification, FwUpdateCmd};
+use caliptra_mcu_pldm_common::protocol::base::PldmBaseCompletionCode;
+use caliptra_mcu_pldm_common::protocol::firmware_update::{ComponentClassification, FwUpdateCmd};
+use common::CustomDiscoverySm;
 use pldm_fw_pkg::manifest::{
     ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
 };
@@ -71,7 +71,7 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
     fn on_get_firmware_parameters_response(
         &mut self,
         ctx: &mut update_sm::InnerContext<impl PldmSocket>,
-        _response: pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
+        _response: caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
     ) -> Result<(), ()> {
         ctx.event_queue
             .send(PldmEvents::Update(update_sm::Events::SendRequestUpdate))

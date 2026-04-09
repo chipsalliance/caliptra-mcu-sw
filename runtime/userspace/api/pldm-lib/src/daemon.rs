@@ -7,6 +7,16 @@ use crate::firmware_device::fd_ops::FdOps;
 use crate::firmware_device::transfer_session::TransferSession;
 use crate::timer::AsyncAlarm;
 use crate::transport::MctpTransport;
+use caliptra_mcu_pldm_common::codec::PldmCodec;
+use caliptra_mcu_pldm_common::message::firmware_update::request_fw_data::{
+    RequestFirmwareDataRequest, RequestFirmwareDataResponseFixed,
+};
+use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult;
+use caliptra_mcu_pldm_common::protocol::base::{PldmBaseCompletionCode, PldmMsgType};
+use caliptra_mcu_pldm_common::protocol::firmware_update::{FwUpdateCmd, FwUpdateCompletionCode};
+use caliptra_mcu_pldm_common::util::mctp_transport::{
+    construct_mctp_pldm_msg, extract_pldm_msg, MAX_MCTP_PLDM_MSG_SIZE, MCTP_PLDM_MSG_HDR_LEN,
+};
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
@@ -15,16 +25,6 @@ use embassy_sync::signal::Signal;
 use libsyscall_caliptra::mctp::driver_num;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
-use pldm_common::codec::PldmCodec;
-use pldm_common::message::firmware_update::request_fw_data::{
-    RequestFirmwareDataRequest, RequestFirmwareDataResponseFixed,
-};
-use pldm_common::message::firmware_update::transfer_complete::TransferResult;
-use pldm_common::protocol::base::{PldmBaseCompletionCode, PldmMsgType};
-use pldm_common::protocol::firmware_update::{FwUpdateCmd, FwUpdateCompletionCode};
-use pldm_common::util::mctp_transport::{
-    construct_mctp_pldm_msg, extract_pldm_msg, MAX_MCTP_PLDM_MSG_SIZE, MCTP_PLDM_MSG_HDR_LEN,
-};
 const YIELD_EVERY_ITERATIONS: u32 = 32;
 
 #[derive(Debug)]
@@ -352,7 +352,7 @@ async fn run_optimized_download(
             let fw_data = &resp_payload[core::mem::size_of::<RequestFirmwareDataResponseFixed>()..]
                 .get(..chunk_length as usize)
                 .ok_or(crate::error::MsgHandlerError::Codec(
-                    pldm_common::codec::PldmCodecError::BufferTooShort,
+                    caliptra_mcu_pldm_common::codec::PldmCodecError::BufferTooShort,
                 ))?;
 
             let result = ops

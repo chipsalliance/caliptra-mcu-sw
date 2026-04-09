@@ -3,19 +3,19 @@
 #[cfg(test)]
 mod common;
 
-use common::CustomDiscoverySm;
-use pldm_common::message::firmware_update::{
+use caliptra_mcu_pldm_common::message::firmware_update::{
     get_fw_params::GetFirmwareParametersResponse,
     pass_component::{PassComponentTableRequest, PassComponentTableResponse},
     query_devid::QueryDeviceIdentifiersResponse,
     request_update::RequestUpdateResponse,
 };
-use pldm_common::protocol::{
+use caliptra_mcu_pldm_common::protocol::{
     base::{PldmBaseCompletionCode, TransferRespFlag},
     firmware_update::{
         ComponentClassification, ComponentResponse, ComponentResponseCode, FwUpdateCmd,
     },
 };
+use common::CustomDiscoverySm;
 use pldm_fw_pkg::manifest::{
     ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
 };
@@ -72,7 +72,7 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
     fn on_get_firmware_parameters_response(
         &mut self,
         ctx: &mut update_sm::InnerContext<impl PldmSocket>,
-        _response: pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
+        _response: caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
     ) -> Result<(), ()> {
         ctx.event_queue
             .send(PldmEvents::Update(update_sm::Events::SendRequestUpdate))

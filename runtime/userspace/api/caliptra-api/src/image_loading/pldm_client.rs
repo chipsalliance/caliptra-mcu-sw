@@ -13,9 +13,9 @@ use libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
 
 use libtock_platform::ErrorCode;
 
-use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
-use pldm_common::message::firmware_update::verify_complete::VerifyResult;
-use pldm_common::protocol::firmware_update::Descriptor;
+use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
+use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
+use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
 use pldm_lib::daemon::PldmService;
 use pldm_lib::firmware_device::fd_ops::FdOps;
 

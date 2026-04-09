@@ -4,15 +4,19 @@ use crate::events::PldmEvents;
 use crate::timer::Timer;
 use crate::transport::{PldmSocket, RxPacket, MAX_PLDM_PAYLOAD_SIZE};
 use crate::update_sm;
-use log::{debug, error, info};
-use pldm_common::codec::PldmCodec;
-use pldm_common::message::control::{self as pldm_packet, is_bit_set, GetPldmCommandsRequest};
-use pldm_common::protocol::base::{
+use caliptra_mcu_pldm_common::codec::PldmCodec;
+use caliptra_mcu_pldm_common::message::control::{
+    self as pldm_packet, is_bit_set, GetPldmCommandsRequest,
+};
+use caliptra_mcu_pldm_common::protocol::base::{
     InstanceId, PldmBaseCompletionCode, PldmControlCmd, PldmMsgHeader, PldmMsgType,
     PldmSupportedType, TransferOperationFlag, TransferRespFlag,
 };
-use pldm_common::protocol::firmware_update::FwUpdateCmd;
-use pldm_common::protocol::version::{PLDM_BASE_PROTOCOL_VERSION, PLDM_FW_UPDATE_PROTOCOL_VERSION};
+use caliptra_mcu_pldm_common::protocol::firmware_update::FwUpdateCmd;
+use caliptra_mcu_pldm_common::protocol::version::{
+    PLDM_BASE_PROTOCOL_VERSION, PLDM_FW_UPDATE_PROTOCOL_VERSION,
+};
+use log::{debug, error, info};
 use smlang::statemachine;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};

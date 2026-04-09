@@ -949,6 +949,7 @@ dependencies = [
  "caliptra-mcu-emulator-registers-generated",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-otp-lifecycle",
+ "caliptra-mcu-pldm-common",
  "caliptra-mcu-testing-common",
  "caliptra-registers",
  "caliptra-test",
@@ -967,7 +968,6 @@ dependencies = [
  "lazy_static",
  "log",
  "p384",
- "pldm-common",
  "pldm-fw-pkg",
  "pldm-ua",
  "rand 0.8.5",
@@ -1297,6 +1297,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-pldm-common"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-rom-common"
 version = "0.1.0"
 dependencies = [
@@ -1408,9 +1416,9 @@ dependencies = [
  "bitfield",
  "caliptra-api-types",
  "caliptra-mcu-mctp-vdm-common",
+ "caliptra-mcu-pldm-common",
  "crc",
  "hex",
- "pldm-common",
  "pldm-ua",
  "rand 0.8.5",
  "zerocopy",
@@ -2372,6 +2380,7 @@ dependencies = [
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-libtockasync",
+ "caliptra-mcu-pldm-common",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
@@ -2384,7 +2393,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "pldm-common",
  "portable-atomic",
  "romtime",
  "zerocopy",
@@ -3089,6 +3097,7 @@ dependencies = [
  "caliptra-error",
  "caliptra-mcu-flash-image",
  "caliptra-mcu-libtockasync",
+ "caliptra-mcu-pldm-common",
  "caliptra-ocp-eat",
  "dpe",
  "embassy-executor",
@@ -3100,7 +3109,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "pldm-common",
  "pldm-lib",
  "zerocopy",
 ]
@@ -3778,14 +3786,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pldm-common"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "zerocopy",
-]
-
-[[package]]
 name = "pldm-fw-pkg"
 version = "0.1.0"
 dependencies = [
@@ -3806,6 +3806,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "caliptra-mcu-libtockasync",
+ "caliptra-mcu-pldm-common",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
@@ -3815,16 +3816,15 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "pldm-common",
 ]
 
 [[package]]
 name = "pldm-ua"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-pldm-common",
  "chrono",
  "log",
- "pldm-common",
  "pldm-fw-pkg",
  "simple_logger",
  "smlang",
@@ -4890,6 +4890,7 @@ dependencies = [
  "caliptra-mcu-image-header",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-mctp-vdm-common",
+ "caliptra-mcu-pldm-common",
  "caliptra-mcu-rom-common",
  "caliptra-mcu-testing-common",
  "caliptra-util-host-mctp-vdm-test-config",
@@ -4905,7 +4906,6 @@ dependencies = [
  "log",
  "openssl",
  "p384",
- "pldm-common",
  "pldm-fw-pkg",
  "pldm-ua",
  "rand 0.8.5",
@@ -5416,6 +5416,7 @@ dependencies = [
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-mctp-vdm-common",
+ "caliptra-mcu-pldm-common",
  "caliptra-ocp-eat",
  "critical-section",
  "embassy-executor",
@@ -5433,7 +5434,6 @@ dependencies = [
  "libtock_unittest",
  "mctp-vdm-lib",
  "mcu-mbox-lib",
- "pldm-common",
  "pldm-lib",
  "portable-atomic",
  "romtime",
