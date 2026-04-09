@@ -19,13 +19,12 @@ jobs:
           submodules: 'true'
 
       - name: Download prebuilt artifacts from fork release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p /tmp/prebuilt
-          gh release download "$ARTIFACT_RELEASE_TAG" \
-            --repo "$ARTIFACT_REPO" \
-            --dir /tmp/prebuilt
+          BASE_URL="https://github.com/${ARTIFACT_REPO}/releases/download/${ARTIFACT_RELEASE_TAG}"
+          curl -L -o /tmp/prebuilt/caliptra-binaries.tar.gz "${BASE_URL}/caliptra-binaries.tar.gz"
+          curl -L -o /tmp/prebuilt/caliptra-test-binaries.sqsh "${BASE_URL}/caliptra-test-binaries.sqsh"
+          curl -L -o /tmp/prebuilt/caliptra-bitstream.pdi "${BASE_URL}/caliptra-bitstream.pdi"
 
       - name: 'Upload bitstream'
         uses: actions/upload-artifact@v4
