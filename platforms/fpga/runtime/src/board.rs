@@ -11,6 +11,8 @@ use caliptra_mcu_components::mctp_driver_component_static;
 use caliptra_mcu_components::mctp_mux_component_static;
 use caliptra_mcu_components::mcu_mbox_component_static;
 use caliptra_mcu_components::{flash_partition_component_static, instantiate_flash_partitions};
+use caliptra_mcu_config_fpga::flash::STAGING_PARTITION;
+use caliptra_mcu_config_fpga::flash_partition_list_imaginary_flash;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use core::ptr::{addr_of, addr_of_mut};
@@ -27,8 +29,6 @@ use kernel::scheduler::cooperative::CooperativeSched;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
-use mcu_config_fpga::flash::STAGING_PARTITION;
-use mcu_config_fpga::flash_partition_list_imaginary_flash;
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
@@ -189,7 +189,7 @@ impl SyscallDriverLookup for VeeR {
             // caliptra_mcu_capsules_runtime::flash_partition::RECOVERY_IMAGE_PAR_DRIVER_NUM => {
             //     f(Some(self.recovery_image_par))
             // }
-            mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL => {
+            caliptra_mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL => {
                 if let Some(partition) = self.staging_partition[0] {
                     if partition.get_driver_num() == driver_num {
                         return f(Some(partition));

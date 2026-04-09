@@ -28,11 +28,11 @@ use mcu_rom_common::{
 // re-export these so the common ROM and runtime can use them
 #[no_mangle]
 #[used]
-pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_fpga::FPGA_MEMORY_MAP;
+pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_fpga::FPGA_MEMORY_MAP;
 
 #[no_mangle]
 #[used]
-pub static MCU_STRAPS: McuStraps = mcu_config_fpga::FPGA_MCU_STRAPS;
+pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_fpga::FPGA_MCU_STRAPS;
 
 pub extern "C" fn rom_entry() -> ! {
     print_to_console("FPGA MCU ROM\n");

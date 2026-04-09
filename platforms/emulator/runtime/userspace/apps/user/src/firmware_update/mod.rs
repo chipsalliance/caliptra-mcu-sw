@@ -170,11 +170,11 @@ mod dummy_flash {
     extern crate alloc;
     use alloc::boxed::Box;
     use async_trait::async_trait;
+    use caliptra_mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL;
     use core::fmt::Debug;
     use libapi_caliptra::firmware_update::StagingMemory;
     use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash as FlashSyscall};
     use libtock_platform::ErrorCode;
-    use mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL;
 
     pub struct ExternalFlash {
         flash_syscall: FlashSyscall,

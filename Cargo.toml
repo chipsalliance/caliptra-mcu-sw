@@ -216,7 +216,7 @@ caliptra-mcu-builder = { path = "builder" }
 caliptra-mcu-components = { path = "runtime/kernel/components" }
 caliptra-mcu-config = { path = "common/config" }
 caliptra-mcu-config-emulator = { path = "platforms/emulator/config" }
-mcu-config-fpga = { path = "platforms/fpga/config" }
+caliptra-mcu-config-fpga = { path = "platforms/fpga/config" }
 mcu-error = { path = "error" }
 mcu-firmware-bundler = { path = "firmware-bundler" }
 mcu-fuses-generator = { path = "registers/fuses" }

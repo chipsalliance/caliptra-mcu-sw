@@ -290,7 +290,7 @@ impl CaliptraBuilder {
                 component_id: MCU_RT_IDENTIFIER,
                 exec_bit: 2,
                 // MCU staging address in SRAM region (FPGA memory map)
-                staging_addr: mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset as u64,
+                staging_addr: caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset as u64,
                 ..Default::default()
             }
         };

@@ -12,7 +12,7 @@ mod test {
     use caliptra_hw_model::openocd::openocd_jtag_tap::OpenOcdJtagTap;
     use caliptra_hw_model::Fuses;
     use caliptra_mcu_builder::FirmwareBinaries;
-    use mcu_config_fpga::FPGA_MEMORY_MAP;
+    use caliptra_mcu_config_fpga::FPGA_MEMORY_MAP;
     use mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel};
     use mcu_rom_common::LifecycleControllerState;
 

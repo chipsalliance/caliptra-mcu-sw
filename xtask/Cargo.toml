@@ -32,7 +32,7 @@ elf.workspace = true
 hex.workspace = true
 caliptra-mcu-builder.workspace = true
 caliptra-mcu-config-emulator.workspace = true
-mcu-config-fpga.workspace = true
+caliptra-mcu-config-fpga.workspace = true
 mcu-firmware-bundler.workspace = true
 caliptra-mcu-fusegen.workspace = true
 mcu-rom-common = { workspace = true, optional = true }

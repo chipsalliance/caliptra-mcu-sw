@@ -19,10 +19,10 @@ mod platform {
     use super::*;
     #[no_mangle]
     #[used]
-    pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_fpga::FPGA_MEMORY_MAP;
+    pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_fpga::FPGA_MEMORY_MAP;
     #[no_mangle]
     #[used]
-    pub static MCU_STRAPS: McuStraps = mcu_config_fpga::FPGA_MCU_STRAPS;
+    pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_fpga::FPGA_MCU_STRAPS;
 
     pub(crate) struct FpgaWriter {}
     pub(crate) static mut WRITER: FpgaWriter = FpgaWriter {};

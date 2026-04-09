@@ -87,7 +87,7 @@ const FEATURES_REQUIRING_FLASH_BOOT: &[&str] =
 
 /// MCI base address for SoC image load addresses.
 /// Uses FPGA memory map since the emulator's AXI simulation uses FPGA-like addresses.
-const MCI_BASE_AXI_ADDRESS: u64 = mcu_config_fpga::FPGA_MEMORY_MAP.mci_offset as u64;
+const MCI_BASE_AXI_ADDRESS: u64 = caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.mci_offset as u64;
 
 /// Build the emulator with a specific feature flag.
 /// Returns the path to the built emulator binary, or None if the feature is not supported by the emulator.

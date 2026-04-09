@@ -66,7 +66,7 @@ pub fn append_rom_digest(binary: &PathBuf, rom_size: usize) -> Result<()> {
 
 pub fn rom_size_for_platform(platform: &str) -> usize {
     match platform {
-        "fpga" => mcu_config_fpga::FPGA_MEMORY_MAP.rom_size as usize,
+        "fpga" => caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.rom_size as usize,
         _ => caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size as usize,
     }
 }

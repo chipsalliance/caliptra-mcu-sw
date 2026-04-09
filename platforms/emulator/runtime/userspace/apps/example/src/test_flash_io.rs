@@ -2,9 +2,9 @@
 
 #[allow(unused)]
 use caliptra_mcu_config_emulator::flash::{IMAGE_A_PARTITION, IMAGE_B_PARTITION};
-use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash};
 #[allow(unused)]
-use mcu_config_fpga::flash::STAGING_PARTITION;
+use caliptra_mcu_config_fpga::flash::STAGING_PARTITION;
+use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash};
 
 const BUF_LEN: usize = 1024;
 const EXPECTED_CHUNK_SIZE: usize = 512;
