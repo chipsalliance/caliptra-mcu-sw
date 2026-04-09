@@ -5,10 +5,10 @@
 //! It splits non-page-aligned IOs into a series of page level reads, writes and erases.
 //! While it is handling an IO, it returns `BUSY` to all additional requests.
 //!
-//! This module is designed to be used on top of any flash and below any user of `flash_driver::hil::FlashStorage` interface.
+//! This module is designed to be used on top of any flash and below any user of `caliptra_mcu_flash_driver::hil::FlashStorage` interface.
 //!
 //! ```plain
-//!         flash_driver::hil::FlashStorage
+//!         caliptra_mcu_flash_driver::hil::FlashStorage
 //!                ┌─────────────┐
 //!                │             │
 //!                │ This module │

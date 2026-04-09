@@ -792,7 +792,7 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "caliptra-mcu-dma-driver",
- "flash-driver",
+ "caliptra-mcu-flash-driver",
  "kernel",
  "mcu-platforms-common",
  "registers-generated",
@@ -805,10 +805,10 @@ dependencies = [
  "bitfield",
  "caliptra-api",
  "caliptra-mcu-doe-transport",
+ "caliptra-mcu-flash-driver",
  "caliptra-ureg",
  "capsules-core",
  "capsules-extra",
- "flash-driver",
  "i3c-driver",
  "kernel",
  "mcu-mbox-comm",
@@ -1009,6 +1009,17 @@ dependencies = [
  "kernel",
  "registers-generated",
  "romtime",
+]
+
+[[package]]
+name = "caliptra-mcu-flash-driver"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "kernel",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
 ]
 
 [[package]]
@@ -2006,17 +2017,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "flash-driver"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "kernel",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
 name = "flash-image"
 version = "0.1.0"
 dependencies = [
@@ -3003,11 +3003,11 @@ dependencies = [
  "caliptra-mcu-capsules-runtime",
  "caliptra-mcu-dma-driver",
  "caliptra-mcu-doe-transport",
+ "caliptra-mcu-flash-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "flash-driver",
  "i3c-driver",
  "kernel",
  "mcu-config",
@@ -3277,11 +3277,11 @@ dependencies = [
  "caliptra-mcu-doe-mbox-driver",
  "caliptra-mcu-doe-transport",
  "caliptra-mcu-flash-ctrl-emulator",
+ "caliptra-mcu-flash-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "flash-driver",
  "i3c-driver",
  "kernel",
  "mcu-components",
@@ -3308,11 +3308,11 @@ dependencies = [
  "caliptra-mcu-capsules-runtime",
  "caliptra-mcu-dma-driver",
  "caliptra-mcu-flash-ctrl-fpga",
+ "caliptra-mcu-flash-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "flash-driver",
  "i3c-driver",
  "kernel",
  "mcu-components",
@@ -3441,11 +3441,11 @@ name = "mcu-tock-veer"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-flash-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "flash-driver",
  "i3c-driver",
  "kernel",
  "mcu-config",

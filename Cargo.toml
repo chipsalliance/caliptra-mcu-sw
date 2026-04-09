@@ -207,7 +207,7 @@ caliptra-mcu-emulator-periph = { path = "emulator/periph" }
 caliptra-mcu-emulator-registers-generated = { path = "registers/generated-emulator" }
 caliptra-mcu-flash-ctrl-emulator = { path = "platforms/emulator/runtime/kernel/drivers/flash_ctrl"}
 caliptra-mcu-flash-ctrl-fpga = { path = "platforms/fpga/runtime/drivers/flash_ctrl"}
-flash-driver = { path = "runtime/kernel/drivers/flash" }
+caliptra-mcu-flash-driver = { path = "runtime/kernel/drivers/flash" }
 flash-image = { path = "common/flash-image" }
 fusegen = { path = "provisioning/fuses/fusegen" }
 i3c-driver = { path = "runtime/kernel/drivers/i3c" }

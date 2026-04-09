@@ -2,10 +2,10 @@
 
 // Test flash storage driver read, write and erase on arbitrary length of data.
 
+use caliptra_mcu_flash_driver::{flash_storage_to_pages::FlashStorageToPages, hil::FlashStorage};
 use core::cell::RefCell;
 use core::cmp;
 use core::fmt::Write;
-use flash_driver::{flash_storage_to_pages::FlashStorageToPages, hil::FlashStorage};
 use kernel::hil::flash::HasClient;
 use kernel::utilities::cells::TakeCell;
 use kernel::{static_buf, static_init};
@@ -59,7 +59,7 @@ impl FlashStorageTestCallBack {
     }
 }
 
-impl flash_driver::hil::FlashStorageClient for FlashStorageTestCallBack {
+impl caliptra_mcu_flash_driver::hil::FlashStorageClient for FlashStorageTestCallBack {
     fn read_done(&self, buffer: &'static mut [u8], length: usize) {
         self.read_out_buf.replace(buffer);
         self.io_state.borrow_mut().read_bytes = length;
