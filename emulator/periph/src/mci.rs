@@ -12,7 +12,10 @@ use registers_generated::mci::bits::{
     Error0IntrT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest, SecurityState, WdtStatus,
     WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
 };
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 use tock_registers::interfaces::{ReadWriteable, Readable};
 
 const RESET_STATUS_MCU_RESET_MASK: u32 = 0x2;
@@ -47,6 +50,7 @@ pub struct Mci {
     generic_input_wires: [u32; 2],
     reset_requested: bool,
     fips_zeroization: bool,
+    fips_zeroization_cmd: Rc<Cell<bool>>,
 }
 
 impl Mci {
@@ -89,6 +93,7 @@ impl Mci {
             generic_input_wires,
             reset_requested: false,
             fips_zeroization,
+            fips_zeroization_cmd: Rc::new(Cell::new(false)),
 
             // --- init mtimecmp ---
             mtimecmp: default_mtimecmp,
@@ -96,6 +101,10 @@ impl Mci {
             mcu_mailbox1,
             soc_regs,
         }
+    }
+
+    pub fn set_fips_zeroization_cmd(&mut self, cmd: Rc<Cell<bool>>) {
+        self.fips_zeroization_cmd = cmd;
     }
 
     fn arm_mtime_interrupt(&mut self) {
@@ -967,6 +976,19 @@ impl MciPeripheral for Mci {
         registers_generated::mci::bits::FcFipsZerozationSts::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(if self.fips_zeroization { 1 } else { 0 })
+    }
+
+    fn write_mci_reg_fc_fips_zerozation(&mut self, val: caliptra_emu_types::RvData) {
+        if let Some(generated) = self.generated() {
+            generated.write_mci_reg_fc_fips_zerozation(val);
+        }
+        let mask = if let Some(generated) = self.generated() {
+            generated.read_mci_reg_fc_fips_zerozation()
+        } else {
+            0
+        };
+        let cmd = (mask == 0xFFFF_FFFF) && self.fips_zeroization;
+        self.fips_zeroization_cmd.set(cmd);
     }
 
     fn read_mci_reg_hw_rev_id(

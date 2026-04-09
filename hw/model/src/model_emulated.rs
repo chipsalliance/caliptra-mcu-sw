@@ -187,9 +187,12 @@ impl McuHwModel for ModelEmulated {
 
         let lc = LcCtrl::new();
 
+        let fips_zeroization_cmd = Rc::new(Cell::new(false));
+
         let otp = Otp::new(
             &clock.clone(),
             OtpArgs {
+                fips_zeroization_cmd: fips_zeroization_cmd.clone(),
                 raw_memory: Some(otp_mem),
                 vendor_pk_hash: params.vendor_pk_hash,
                 vendor_pqc_type: params
@@ -288,7 +291,7 @@ impl McuHwModel for ModelEmulated {
         } else {
             [0, 0]
         };
-        let mci = Mci::new(
+        let mut mci = Mci::new(
             &clock.clone(),
             ext_mci,
             Rc::new(RefCell::new(mci_irq)),
@@ -298,6 +301,7 @@ impl McuHwModel for ModelEmulated {
             mci_generic_input_wires,
             params.fips_zeroization,
         );
+        mci.set_fips_zeroization_cmd(fips_zeroization_cmd);
 
         let usb_periph = emulator_periph::UsbDevPeriph::new();
         let usb_host_controller = usb_periph.host_controller();
