@@ -16,6 +16,10 @@ pub mod test {
         },
         FirmwareManifest,
     };
+    use caliptra_mcu_pldm_ua::daemon::Options;
+    use caliptra_mcu_pldm_ua::daemon::PldmDaemon;
+    use caliptra_mcu_pldm_ua::transport::{EndpointId, PldmSocket, PldmTransport};
+    use caliptra_mcu_pldm_ua::{discovery_sm, update_sm};
     use caliptra_mcu_testing_common::mctp_transport::{MctpPldmSocket, MctpTransport};
     use caliptra_mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
@@ -24,10 +28,6 @@ pub mod test {
     use chrono::{TimeZone, Utc};
     use lazy_static::lazy_static;
     use log::{error, LevelFilter};
-    use pldm_ua::daemon::Options;
-    use pldm_ua::daemon::PldmDaemon;
-    use pldm_ua::transport::{EndpointId, PldmSocket, PldmTransport};
-    use pldm_ua::{discovery_sm, update_sm};
     use random_port::PortPicker;
     use simple_logger::SimpleLogger;
     use std::process::exit;

@@ -36,6 +36,8 @@ use caliptra_mcu_emulator_periph::{
 use caliptra_mcu_emulator_registers_generated::axicdma::AxicdmaPeripheral;
 use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
 use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
+use caliptra_mcu_pldm_ua::daemon::PldmDaemon;
+use caliptra_mcu_pldm_ua::transport::{EndpointId, PldmTransport};
 use caliptra_mcu_testing_common::i3c_socket;
 use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use caliptra_mcu_testing_common::mctp_transport::MctpTransport;
@@ -45,8 +47,6 @@ use caliptra_mcu_testing_common::{MCU_RUNNING, MCU_RUNTIME_STARTED, MCU_TICKS, T
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
-use pldm_ua::daemon::PldmDaemon;
-use pldm_ua::transport::{EndpointId, PldmTransport};
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{self, IsTerminal, Read, Write};
@@ -1049,20 +1049,21 @@ impl Emulator {
                 // we need to set the update state machine to exit on error
                 let _ = PldmDaemon::run(
                     pldm_socket,
-                    pldm_ua::daemon::Options {
+                    caliptra_mcu_pldm_ua::daemon::Options {
                         caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.unwrap()),
-                        discovery_sm_actions: pldm_ua::discovery_sm::DefaultActions {},
-                        update_sm_actions: pldm_ua::update_sm::DefaultActionsExitOnError {},
+                        discovery_sm_actions: caliptra_mcu_pldm_ua::discovery_sm::DefaultActions {},
+                        update_sm_actions:
+                            caliptra_mcu_pldm_ua::update_sm::DefaultActionsExitOnError {},
                         fd_tid: 0x01,
                     },
                 );
             } else {
                 let _ = PldmDaemon::run(
                     pldm_socket,
-                    pldm_ua::daemon::Options {
+                    caliptra_mcu_pldm_ua::daemon::Options {
                         caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.unwrap()),
-                        discovery_sm_actions: pldm_ua::discovery_sm::DefaultActions {},
-                        update_sm_actions: pldm_ua::update_sm::DefaultActions {},
+                        discovery_sm_actions: caliptra_mcu_pldm_ua::discovery_sm::DefaultActions {},
+                        update_sm_actions: caliptra_mcu_pldm_ua::update_sm::DefaultActions {},
                         fd_tid: 0x01,
                     },
                 );

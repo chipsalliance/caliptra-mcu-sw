@@ -27,9 +27,9 @@ use caliptra_mcu_pldm_fw_pkg::{
     },
     FirmwareManifest,
 };
+use caliptra_mcu_pldm_ua::{daemon::Options, events::PldmEvents, transport::PldmSocket, update_sm};
 use chrono::Utc;
 use common::CustomDiscoverySm;
-use pldm_ua::{daemon::Options, events::PldmEvents, transport::PldmSocket, update_sm};
 use uuid::Uuid;
 
 // Test UUID

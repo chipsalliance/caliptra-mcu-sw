@@ -12,9 +12,9 @@ use caliptra_mcu_pldm_common::message::firmware_update::query_devid::{
 };
 use caliptra_mcu_pldm_common::protocol::base::*;
 use caliptra_mcu_pldm_common::protocol::firmware_update::*;
+use caliptra_mcu_pldm_ua::transport::PldmSocket;
 use caliptra_mcu_testing_common::mctp_transport::MctpPldmSocket;
 use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
-use pldm_ua::transport::PldmSocket;
 use std::process::exit;
 use std::sync::atomic::Ordering;
 

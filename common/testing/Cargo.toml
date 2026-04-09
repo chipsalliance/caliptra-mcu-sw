@@ -12,7 +12,7 @@ bitfield.workspace = true
 crc.workspace = true
 caliptra-mcu-mctp-vdm-common.workspace = true
 caliptra-mcu-pldm-common.workspace = true
-pldm-ua.workspace = true
+caliptra-mcu-pldm-ua.workspace = true
 zerocopy.workspace = true
 
 [dev-dependencies]

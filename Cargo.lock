@@ -951,6 +951,7 @@ dependencies = [
  "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-fw-pkg",
+ "caliptra-mcu-pldm-ua",
  "caliptra-mcu-testing-common",
  "caliptra-registers",
  "caliptra-test",
@@ -969,7 +970,6 @@ dependencies = [
  "lazy_static",
  "log",
  "p384",
- "pldm-ua",
  "rand 0.8.5",
  "registers-generated",
  "sec1",
@@ -1320,6 +1320,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-pldm-ua"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-fw-pkg",
+ "chrono",
+ "log",
+ "simple_logger",
+ "smlang",
+ "uuid",
+]
+
+[[package]]
 name = "caliptra-mcu-rom-common"
 version = "0.1.0"
 dependencies = [
@@ -1432,9 +1445,9 @@ dependencies = [
  "caliptra-api-types",
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-ua",
  "crc",
  "hex",
- "pldm-ua",
  "rand 0.8.5",
  "zerocopy",
 ]
@@ -3819,19 +3832,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pldm-ua"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-pldm-common",
- "caliptra-mcu-pldm-fw-pkg",
- "chrono",
- "log",
- "simple_logger",
- "smlang",
- "uuid",
-]
-
-[[package]]
 name = "poll-common"
 version = "0.1.0"
 dependencies = [
@@ -4892,6 +4892,7 @@ dependencies = [
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-fw-pkg",
+ "caliptra-mcu-pldm-ua",
  "caliptra-mcu-rom-common",
  "caliptra-mcu-testing-common",
  "caliptra-util-host-mctp-vdm-test-config",
@@ -4907,7 +4908,6 @@ dependencies = [
  "log",
  "openssl",
  "p384",
- "pldm-ua",
  "rand 0.8.5",
  "random-port",
  "registers-generated",

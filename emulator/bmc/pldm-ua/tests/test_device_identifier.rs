@@ -12,9 +12,9 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::FwUpdateCmd;
 use caliptra_mcu_pldm_fw_pkg::manifest::{Descriptor, DescriptorType, FirmwareDeviceIdRecord};
 use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
 
-use pldm_ua::daemon::Options;
-use pldm_ua::transport::PldmSocket;
-use pldm_ua::update_sm;
+use caliptra_mcu_pldm_ua::daemon::Options;
+use caliptra_mcu_pldm_ua::transport::PldmSocket;
+use caliptra_mcu_pldm_ua::update_sm;
 
 // Test UUID
 const TEST_UUID: [u8; 16] = [

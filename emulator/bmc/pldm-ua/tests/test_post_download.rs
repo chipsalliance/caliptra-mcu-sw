@@ -31,8 +31,8 @@ use caliptra_mcu_pldm_fw_pkg::{
     manifest::{ComponentImageInformation, FirmwareDeviceIdRecord, PackageHeaderInformation},
     FirmwareManifest,
 };
+use caliptra_mcu_pldm_ua::{daemon::Options, events::PldmEvents, transport::PldmSocket, update_sm};
 use common::CustomDiscoverySm;
-use pldm_ua::{daemon::Options, events::PldmEvents, transport::PldmSocket, update_sm};
 
 // Test UUID
 pub const TEST_UUID: [u8; 16] = [
