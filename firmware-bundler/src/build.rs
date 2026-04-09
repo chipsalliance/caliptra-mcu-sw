@@ -9,7 +9,7 @@
 use std::{path::PathBuf, process::Command};
 
 use anyhow::{anyhow, bail, Result};
-use tbf_header::TbfHeader;
+use caliptra_mcu_tbf_header::TbfHeader;
 
 use crate::manifest::RuntimeVariant;
 use crate::{

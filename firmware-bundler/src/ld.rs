@@ -10,7 +10,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use tbf_header::TbfHeader;
+use caliptra_mcu_tbf_header::TbfHeader;
 
 use crate::{
     args::{Common, LdArgs},

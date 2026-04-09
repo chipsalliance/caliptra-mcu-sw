@@ -804,6 +804,7 @@ dependencies = [
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-flash-image",
  "caliptra-mcu-pldm-fw-pkg",
+ "caliptra-mcu-tbf-header",
  "cargo_metadata",
  "cfg-if",
  "chrono",
@@ -813,7 +814,6 @@ dependencies = [
  "semver",
  "serde",
  "subst",
- "tbf-header",
  "tempfile",
  "uuid",
  "walkdir",
@@ -1090,11 +1090,11 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "caliptra-mcu-image-header",
+ "caliptra-mcu-tbf-header",
  "clap 4.5.51",
  "elf",
  "serde",
  "subst",
- "tbf-header",
  "tempfile",
  "toml 0.8.23",
  "uuid",
@@ -1644,6 +1644,10 @@ dependencies = [
  "rand 0.8.5",
  "zerocopy",
 ]
+
+[[package]]
+name = "caliptra-mcu-tbf-header"
+version = "0.0.0"
 
 [[package]]
 name = "caliptra-mcu-test-fw-exception-handler"
@@ -4822,10 +4826,6 @@ dependencies = [
  "caliptra-mcu-libtock_platform",
  "caliptra-mcu-libtock_unittest",
 ]
-
-[[package]]
-name = "tbf-header"
-version = "0.0.0"
 
 [[package]]
 name = "tempfile"

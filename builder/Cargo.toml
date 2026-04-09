@@ -28,7 +28,7 @@ rayon = { workspace = true, optional = true }
 serde.workspace = true
 semver.workspace = true
 subst.workspace = true
-tbf-header.workspace = true
+caliptra-mcu-tbf-header.workspace = true
 tempfile.workspace = true
 uuid.workspace = true
 walkdir.workspace = true
