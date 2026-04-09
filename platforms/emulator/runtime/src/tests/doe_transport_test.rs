@@ -3,10 +3,10 @@
 // Test DOE MBOX driver: send data and ensure it is written back.
 
 use crate::EMULATOR_PERIPHERALS;
+use caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport;
 use core::cell::Cell;
 use core::cell::RefCell;
 use core::fmt::Write;
-use doe_mbox_driver::EmulatedDoeTransport;
 use doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
 use kernel::debug;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};

@@ -8,10 +8,10 @@ use caliptra_mcu_capsules_runtime::doe::driver::DoeDriver;
 use caliptra_mcu_capsules_runtime::flash_partition::FlashPartition;
 use caliptra_mcu_capsules_runtime::mctp::base_protocol::MessageType;
 use caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver;
+use caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
 use core::ptr::{addr_of, addr_of_mut};
-use doe_mbox_driver::EmulatedDoeTransport;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::errorcode;
@@ -627,7 +627,7 @@ pub unsafe fn main() {
         &emulator_peripherals.doe_transport,
     )
     .finalize(doe_component_static!(
-        doe_mbox_driver::EmulatedDoeTransport<'static, InternalTimers<'static>>
+        caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport<'static, InternalTimers<'static>>
     ));
 
     peripherals.init();

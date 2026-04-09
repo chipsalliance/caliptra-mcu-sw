@@ -196,7 +196,7 @@ caliptra-mailbox-server = { path = "caliptra-util-host/apps/mailbox/server" }
 caliptra-mcu-capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
 caliptra-mcu-capsules-runtime = { path = "runtime/kernel/capsules" }
 caliptra-mcu-dma-driver = { path = "platforms/emulator/runtime/kernel/drivers/dma" }
-doe-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/doe_mbox" }
+caliptra-mcu-doe-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/doe_mbox" }
 doe-transport = { path = "runtime/kernel/drivers/doe"}
 emulator = { path = "emulator/app" }
 emulator-bmc = { path = "emulator/bmc" }
