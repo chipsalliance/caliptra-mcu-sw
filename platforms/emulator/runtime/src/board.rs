@@ -14,6 +14,10 @@ use caliptra_mcu_components::{
     mailbox_component_static, mbox_sram_component_static, mctp_driver_component_static,
     mcu_mbox_component_static,
 };
+use caliptra_mcu_config_emulator::flash::{
+    IMAGE_A_PARTITION, IMAGE_B_PARTITION, PARTITION_TABLE, STAGING_PARTITION,
+};
+use caliptra_mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
 use caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
@@ -32,10 +36,6 @@ use kernel::storage_volume;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
-use mcu_config_emulator::flash::{
-    IMAGE_A_PARTITION, IMAGE_B_PARTITION, PARTITION_TABLE, STAGING_PARTITION,
-};
-use mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
 use mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
 use mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use mcu_tock_veer::pic::Pic;
@@ -141,7 +141,7 @@ struct VeeR {
         EmulatedDoeTransport<'static, InternalTimers<'static>>,
     >,
     flash_partitions: [Option<&'static FlashPartition<'static>>;
-        mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT],
+        caliptra_mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT],
     mailbox: &'static caliptra_mcu_capsules_runtime::mailbox::Mailbox<
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
@@ -189,9 +189,9 @@ impl SyscallDriverLookup for VeeR {
             caliptra_mcu_capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
             caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
             caliptra_mcu_capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
-            mcu_config_emulator::flash::DRIVER_NUM_START
-                ..=mcu_config_emulator::flash::DRIVER_NUM_END => {
-                for index in 0..mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT {
+            caliptra_mcu_config_emulator::flash::DRIVER_NUM_START
+                ..=caliptra_mcu_config_emulator::flash::DRIVER_NUM_END => {
+                for index in 0..caliptra_mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT {
                     if let Some(partition) = self.flash_partitions[index] {
                         if partition.get_driver_num() == driver_num {
                             return f(Some(partition));
@@ -641,8 +641,8 @@ pub unsafe fn main() {
             ));
 
     let mut flash_partitions: [Option<&'static FlashPartition<'static>>;
-        mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT] =
-        [None; mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT];
+        caliptra_mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT] =
+        [None; caliptra_mcu_config_emulator::flash::FLASH_PARTITIONS_COUNT];
 
     instantiate_flash_partitions!(
         flash_partition_list_primary,

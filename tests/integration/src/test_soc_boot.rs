@@ -8,11 +8,11 @@ mod test {
     use caliptra_image_types::ImageManifest;
     use caliptra_mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
     use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
-    use chrono::{TimeZone, Utc};
-    use hex::ToHex;
-    use mcu_config_emulator::flash::{
+    use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
+    use chrono::{TimeZone, Utc};
+    use hex::ToHex;
     use mcu_testing_common::DeviceLifecycle;
     use pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,

@@ -799,13 +799,13 @@ dependencies = [
  "caliptra-image-gen",
  "caliptra-image-types",
  "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
  "caliptra-mcu-flash-image",
  "cargo_metadata",
  "cfg-if",
  "chrono",
  "elf",
  "hex",
- "mcu-config-emulator",
  "mcu-config-fpga",
  "mcu-firmware-bundler",
  "pldm-fw-pkg",
@@ -885,6 +885,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-config-emulator"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-config",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-dma-driver"
 version = "0.1.0"
 dependencies = [
@@ -925,6 +933,7 @@ dependencies = [
  "caliptra-image-types",
  "caliptra-mailbox-server",
  "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
  "caliptra-mcu-emulator-bmc",
  "caliptra-mcu-emulator-caliptra",
  "caliptra-mcu-emulator-consts",
@@ -947,7 +956,6 @@ dependencies = [
  "hex",
  "lazy_static",
  "log",
- "mcu-config-emulator",
  "mcu-mbox-common",
  "mcu-otp-lifecycle",
  "mcu-testing-common",
@@ -2064,6 +2072,7 @@ dependencies = [
  "caliptra-api",
  "caliptra-auth-man-types",
  "caliptra-error",
+ "caliptra-mcu-config-emulator",
  "caliptra-mcu-libtockasync",
  "critical-section",
  "embassy-executor",
@@ -2077,7 +2086,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "mcu-config-emulator",
  "mcu-config-fpga",
  "pldm-common",
  "portable-atomic",
@@ -2806,11 +2814,11 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
  "embassy-executor",
  "embedded-alloc",
  "libsyscall-caliptra",
  "libtock_platform",
- "mcu-config-emulator",
  "zerocopy",
 ]
 
@@ -3027,14 +3035,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-config-emulator"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-config",
- "zerocopy",
-]
-
-[[package]]
 name = "mcu-config-fpga"
 version = "0.1.0"
 dependencies = [
@@ -3237,7 +3237,7 @@ dependencies = [
  "bitfield",
  "caliptra-mcu-builder",
  "caliptra-mcu-config",
- "mcu-config-emulator",
+ "caliptra-mcu-config-emulator",
  "mcu-error",
  "mcu-image-header",
  "mcu-rom-common",
@@ -3275,6 +3275,7 @@ dependencies = [
  "caliptra-mcu-capsules-runtime",
  "caliptra-mcu-components",
  "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
  "caliptra-mcu-dma-driver",
  "caliptra-mcu-doe-mbox-driver",
  "caliptra-mcu-doe-transport",
@@ -3286,7 +3287,6 @@ dependencies = [
  "capsules-system",
  "components",
  "kernel",
- "mcu-config-emulator",
  "mcu-mbox-comm",
  "mcu-mbox-driver",
  "mcu-platforms-common",
@@ -3412,8 +3412,8 @@ version = "0.1.0"
 dependencies = [
  "caliptra-api",
  "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
  "caliptra-registers",
- "mcu-config-emulator",
  "mcu-config-fpga",
  "mcu-rom-common",
  "registers-generated",
@@ -4893,6 +4893,7 @@ dependencies = [
  "caliptra-mctp-vdm-client",
  "caliptra-mcu-builder",
  "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
  "caliptra-mcu-flash-image",
  "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
@@ -4906,7 +4907,6 @@ dependencies = [
  "lazy_static",
  "log",
  "mctp-vdm-common",
- "mcu-config-emulator",
  "mcu-config-fpga",
  "mcu-error",
  "mcu-firmware-bundler",
@@ -5424,6 +5424,7 @@ dependencies = [
  "async-trait",
  "caliptra-api",
  "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
  "caliptra-mcu-libtockasync",
  "caliptra-ocp-eat",
  "critical-section",
@@ -5442,7 +5443,6 @@ dependencies = [
  "libtock_unittest",
  "mctp-vdm-common",
  "mctp-vdm-lib",
- "mcu-config-emulator",
  "mcu-config-fpga",
  "mcu-mbox-common",
  "mcu-mbox-lib",
@@ -5911,6 +5911,7 @@ dependencies = [
  "caliptra-image-gen",
  "caliptra-image-types",
  "caliptra-mcu-builder",
+ "caliptra-mcu-config-emulator",
  "caliptra-mcu-fusegen",
  "cargo_metadata",
  "cc",
@@ -5919,7 +5920,6 @@ dependencies = [
  "ecdsa",
  "elf",
  "hex",
- "mcu-config-emulator",
  "mcu-config-fpga",
  "mcu-firmware-bundler",
  "mcu-fuses-generator",

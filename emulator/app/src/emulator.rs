@@ -548,7 +548,7 @@ impl Emulator {
             auto_root_bus_offsets.lc_size = lc_size;
         }
 
-        let mut straps = mcu_config_emulator::EMULATOR_MCU_STRAPS;
+        let mut straps = caliptra_mcu_config_emulator::EMULATOR_MCU_STRAPS;
         if cli.active_i3c1 {
             straps.active_i3c = 1;
         }

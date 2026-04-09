@@ -11,7 +11,7 @@ async-trait.workspace = true
 libsyscall-caliptra.workspace = true
 libtock_platform.workspace = true
 caliptra-mcu-config.workspace = true
-mcu-config-emulator.workspace = true
+caliptra-mcu-config-emulator.workspace = true
 zerocopy.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]

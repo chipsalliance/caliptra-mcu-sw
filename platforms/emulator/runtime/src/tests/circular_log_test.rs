@@ -35,7 +35,8 @@ static mut DUMMY_BUFFER: [u8; PAGE_SIZE * 2] = [0; PAGE_SIZE * 2];
 const WAIT_MS: u32 = 50;
 // Number of entries to write per write operation.
 const ENTRIES_PER_WRITE: u64 = 10;
-const LOG_FLASH_BASE_ADDR: u32 = mcu_config_emulator::flash::LOGGING_FLASH_CONFIG.base_addr;
+const LOG_FLASH_BASE_ADDR: u32 =
+    caliptra_mcu_config_emulator::flash::LOGGING_FLASH_CONFIG.base_addr;
 
 // Test's current state.
 #[derive(Debug, Clone, Copy, PartialEq)]

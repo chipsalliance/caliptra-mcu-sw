@@ -28,7 +28,7 @@ use caliptra_mcu_config::boot::{
     BootConfig, BootConfigError, PartitionId, PartitionStatus, RollbackEnable,
 };
 use caliptra_mcu_config::{McuMemoryMap, McuStraps};
-use mcu_config_emulator::flash::{
+use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     PARTITION_TABLE,
 };
@@ -55,11 +55,11 @@ impl DotRecoveryHandler for TestDotRecoveryHandler {
 // re-export these so the common ROM can use it
 #[no_mangle]
 #[used]
-pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_emulator::EMULATOR_MEMORY_MAP;
+pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP;
 
 #[no_mangle]
 #[used]
-pub static MCU_STRAPS: McuStraps = mcu_config_emulator::EMULATOR_MCU_STRAPS;
+pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_emulator::EMULATOR_MCU_STRAPS;
 
 pub extern "C" fn rom_entry() -> ! {
     unsafe {

@@ -10,7 +10,8 @@ use kernel::create_capability;
 use kernel::hil;
 use kernel::hil::log::{LogRead, LogWrite};
 
-const LOG_FLASH_BASE_ADDR: u32 = mcu_config_emulator::flash::LOGGING_FLASH_CONFIG.base_addr;
+const LOG_FLASH_BASE_ADDR: u32 =
+    caliptra_mcu_config_emulator::flash::LOGGING_FLASH_CONFIG.base_addr;
 
 #[macro_export]
 macro_rules! logging_flash_component_static {

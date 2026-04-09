@@ -4,13 +4,13 @@ use caliptra_mcu_config::boot::{
     BootConfigAsync, BootConfigError, PartitionId, PartitionStatus, RollbackEnable,
 };
 use caliptra_mcu_config::flash::FlashPartition;
-use libsyscall_caliptra::flash::SpiFlash;
-use libsyscall_caliptra::DefaultSyscalls;
-use libtock_platform::ErrorCode;
-use mcu_config_emulator::flash::{
+use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     PARTITION_TABLE,
 };
+use libsyscall_caliptra::flash::SpiFlash;
+use libsyscall_caliptra::DefaultSyscalls;
+use libtock_platform::ErrorCode;
 use zerocopy::{FromBytes, IntoBytes};
 
 pub struct FlashBootConfig {

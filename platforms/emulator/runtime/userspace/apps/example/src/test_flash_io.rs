@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash};
 #[allow(unused)]
-use mcu_config_emulator::flash::{IMAGE_A_PARTITION, IMAGE_B_PARTITION};
+use caliptra_mcu_config_emulator::flash::{IMAGE_A_PARTITION, IMAGE_B_PARTITION};
+use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash};
 #[allow(unused)]
 use mcu_config_fpga::flash::STAGING_PARTITION;
 

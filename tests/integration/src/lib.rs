@@ -492,68 +492,98 @@ mod test {
             "--rom-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_offset
             ),
             "--rom-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size
+            ),
             "--dccm-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset
             ),
             "--dccm-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size
+            ),
             "--sram-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset
             ),
             "--sram-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_size
+            ),
             "--pic-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.pic_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.pic_offset
             ),
             "--i3c-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_offset
             ),
             "--i3c-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_size
+            ),
             "--mci-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_offset
             ),
             "--mci-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_size
+            ),
             "--mbox-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_offset
             ),
             "--mbox-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_size
+            ),
             "--soc-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_offset
             ),
             "--soc-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_size
+            ),
             "--otp-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_offset
             ),
             "--otp-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_size
+            ),
             "--lc-offset".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_offset),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_offset
+            ),
             "--lc-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_size
+            ),
         ]);
 
         let mut caliptra_builder = if let Some(caliptra_builder) = caliptra_builder {
