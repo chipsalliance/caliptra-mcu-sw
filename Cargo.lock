@@ -1180,6 +1180,7 @@ dependencies = [
  "caliptra-mcu-emulator-registers-generated",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-otp-lifecycle",
+ "caliptra-mcu-poll-common",
  "caliptra-mcu-rom-common",
  "caliptra-mcu-testing-common",
  "caliptra-registers",
@@ -1191,7 +1192,6 @@ dependencies = [
  "int-enum",
  "nix 0.26.4",
  "p384",
- "poll-common",
  "rand 0.8.5",
  "registers-generated",
  "romtime",
@@ -1330,6 +1330,13 @@ dependencies = [
  "simple_logger",
  "smlang",
  "uuid",
+]
+
+[[package]]
+name = "caliptra-mcu-poll-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
 ]
 
 [[package]]
@@ -3829,13 +3836,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
-]
-
-[[package]]
-name = "poll-common"
-version = "0.1.0"
-dependencies = [
- "anyhow",
 ]
 
 [[package]]

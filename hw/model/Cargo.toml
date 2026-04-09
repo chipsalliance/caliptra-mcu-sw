@@ -44,7 +44,7 @@ caliptra-mcu-rom-common.workspace = true
 caliptra-mcu-testing-common.workspace = true
 caliptra-mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
 p384.workspace = true
-poll-common.workspace = true
+caliptra-mcu-poll-common.workspace = true
 rand.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true

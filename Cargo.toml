@@ -243,7 +243,7 @@ caliptra-mcu-otp-digest = { path = "common/otp-digest" }
 caliptra-mcu-pldm-common = { path = "common/pldm"}
 caliptra-mcu-pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
 caliptra-mcu-pldm-ua = { path = "emulator/bmc/pldm-ua"}
-poll-common = { path = "common/poll"}
+caliptra-mcu-poll-common = { path = "common/poll"}
 provisioning-fuses = { path = "provisioning/fuses/lib" }
 registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }

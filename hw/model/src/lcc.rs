@@ -14,8 +14,8 @@ use thiserror::Error;
 
 use caliptra_hw_model::lcc::{LcCtrlReg, LcCtrlStatus, LcCtrlTransitionCmd};
 use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagTap, OpenOcdJtagTap};
+use caliptra_mcu_poll_common::poll_until;
 use caliptra_mcu_rom_common::{Lifecycle, LifecycleControllerState};
-use poll_common::poll_until;
 
 /// Errors related to the LCC operations below.
 #[derive(Error, Debug)]
