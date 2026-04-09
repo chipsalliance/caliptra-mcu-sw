@@ -636,7 +636,7 @@ pub unsafe fn main() {
     let mux_primary_flash =
         components::flash::FlashMuxComponent::new(&emulator_peripherals.primary_flash_ctrl)
             .finalize(components::flash_mux_component_static!(
-                flash_ctrl_emulator::EmulatedFlashCtrl
+                caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
             ));
 
     let mut flash_partitions: [Option<&'static FlashPartition<'static>>;
@@ -648,14 +648,14 @@ pub unsafe fn main() {
         flash_partitions,
         board_kernel,
         mux_primary_flash,
-        flash_ctrl_emulator::EmulatedFlashCtrl
+        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
     );
 
     // Create a mux for the recovery flash controller
     let mux_secondary_flash =
         components::flash::FlashMuxComponent::new(&emulator_peripherals.secondary_flash_ctrl)
             .finalize(components::flash_mux_component_static!(
-                flash_ctrl_emulator::EmulatedFlashCtrl
+                caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
             ));
 
     instantiate_flash_partitions!(
@@ -663,12 +663,14 @@ pub unsafe fn main() {
         flash_partitions,
         board_kernel,
         mux_secondary_flash,
-        flash_ctrl_emulator::EmulatedFlashCtrl
+        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
     );
 
     // Create flash user for logging capsule that is connected to the primary flash
     let logging_fl_user = components::flash::FlashUserComponent::new(mux_primary_flash).finalize(
-        components::flash_user_component_static!(flash_ctrl_emulator::EmulatedFlashCtrl),
+        components::flash_user_component_static!(
+            caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl
+        ),
     );
 
     // Logging capsule
@@ -680,7 +682,7 @@ pub unsafe fn main() {
         true,
     )
     .finalize(crate::logging_flash_component_static!(
-        virtual_flash::FlashUser<'static, flash_ctrl_emulator::EmulatedFlashCtrl>,
+        virtual_flash::FlashUser<'static, caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl>,
         caliptra_mcu_capsules_emulator::logging::driver::BUF_LEN
     ));
 

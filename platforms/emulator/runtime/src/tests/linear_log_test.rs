@@ -33,12 +33,12 @@ const LOG_FLASH_BASE_ADDR: u32 = mcu_config_emulator::flash::LOGGING_FLASH_CONFI
 
 pub unsafe fn run(
     mux_alarm: &'static MuxAlarm<'static, InternalTimers>,
-    flash_controller: &'static flash_ctrl_emulator::EmulatedFlashCtrl,
+    flash_controller: &'static caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl,
 ) -> Option<u32> {
     flash_controller.init();
     let pagebuffer = static_init!(
-        flash_ctrl_emulator::EmulatedFlashPage,
-        flash_ctrl_emulator::EmulatedFlashPage::default()
+        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
+        caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage::default()
     );
     // Create actual log storage abstraction on top of flash.
     let log: &'static mut Log = static_init!(
@@ -121,7 +121,7 @@ enum TestOp {
     Erase,
 }
 
-type Log = log::Log<'static, flash_ctrl_emulator::EmulatedFlashCtrl<'static>>;
+type Log = log::Log<'static, caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl<'static>>;
 struct LogTest<A: 'static + Alarm<'static>> {
     log: &'static Log,
     buffer: TakeCell<'static, [u8]>,

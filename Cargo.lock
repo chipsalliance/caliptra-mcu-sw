@@ -992,6 +992,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-flash-ctrl-emulator"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "kernel",
+ "registers-generated",
+ "romtime",
+]
+
+[[package]]
 name = "caliptra-ocp-eat"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=294bcacbd34aca6e23ce7b652885e3236f7e7afe#294bcacbd34aca6e23ce7b652885e3236f7e7afe"
@@ -1983,16 +1993,6 @@ dependencies = [
  "sha2",
  "sha3",
  "zeroize",
-]
-
-[[package]]
-name = "flash-ctrl-emulator"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "kernel",
- "registers-generated",
- "romtime",
 ]
 
 [[package]]
@@ -3276,11 +3276,11 @@ dependencies = [
  "caliptra-mcu-dma-driver",
  "caliptra-mcu-doe-mbox-driver",
  "caliptra-mcu-doe-transport",
+ "caliptra-mcu-flash-ctrl-emulator",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "flash-ctrl-emulator",
  "flash-driver",
  "i3c-driver",
  "kernel",
