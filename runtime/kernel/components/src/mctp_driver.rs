@@ -11,8 +11,8 @@
 //! Usage
 //! -----
 //! ```ignore
-//! use mcu_components::mctp_driver_component_static;
-//! use mcu_components::mctp_driver::MCTPDriverComponent;
+//! use caliptra_mcu_components::mctp_driver_component_static;
+//! use caliptra_mcu_components::mctp_driver::MCTPDriverComponent;
 //! use kernel::component::Component;
 //! use mcu_tock_veer::timers::InternalTimers;
 //! let spdm_mctp_driver = MCTPDriverComponent::new(

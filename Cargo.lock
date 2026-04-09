@@ -854,6 +854,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-components"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-capsules-emulator",
+ "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-dma-driver",
+ "caliptra-mcu-doe-transport",
+ "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
+ "capsules-core",
+ "capsules-extra",
+ "capsules-system",
+ "components",
+ "kernel",
+ "mcu-config",
+ "mcu-mbox-comm",
+ "mcu-mbox-driver",
+ "mcu-tock-veer",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
 name = "caliptra-mcu-dma-driver"
 version = "0.1.0"
 dependencies = [
@@ -2996,30 +3020,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-components"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-capsules-emulator",
- "caliptra-mcu-capsules-runtime",
- "caliptra-mcu-dma-driver",
- "caliptra-mcu-doe-transport",
- "caliptra-mcu-flash-driver",
- "caliptra-mcu-i3c-driver",
- "capsules-core",
- "capsules-extra",
- "capsules-system",
- "components",
- "kernel",
- "mcu-config",
- "mcu-mbox-comm",
- "mcu-mbox-driver",
- "mcu-tock-veer",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
 name = "mcu-config"
 version = "0.1.0"
 dependencies = [
@@ -3273,6 +3273,7 @@ dependencies = [
  "arrayvec",
  "caliptra-mcu-capsules-emulator",
  "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-components",
  "caliptra-mcu-dma-driver",
  "caliptra-mcu-doe-mbox-driver",
  "caliptra-mcu-doe-transport",
@@ -3284,7 +3285,6 @@ dependencies = [
  "capsules-system",
  "components",
  "kernel",
- "mcu-components",
  "mcu-config",
  "mcu-config-emulator",
  "mcu-mbox-comm",
@@ -3306,6 +3306,7 @@ dependencies = [
  "arrayvec",
  "caliptra-mcu-capsules-emulator",
  "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-components",
  "caliptra-mcu-dma-driver",
  "caliptra-mcu-flash-ctrl-fpga",
  "caliptra-mcu-flash-driver",
@@ -3315,7 +3316,6 @@ dependencies = [
  "capsules-system",
  "components",
  "kernel",
- "mcu-components",
  "mcu-config",
  "mcu-config-fpga",
  "mcu-mbox-driver",

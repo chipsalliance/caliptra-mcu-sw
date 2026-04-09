@@ -8,6 +8,12 @@ use caliptra_mcu_capsules_runtime::doe::driver::DoeDriver;
 use caliptra_mcu_capsules_runtime::flash_partition::FlashPartition;
 use caliptra_mcu_capsules_runtime::mctp::base_protocol::MessageType;
 use caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver;
+use caliptra_mcu_components::mctp_mux_component_static;
+use caliptra_mcu_components::{
+    doe_component_static, flash_partition_component_static, instantiate_flash_partitions,
+    mailbox_component_static, mbox_sram_component_static, mctp_driver_component_static,
+    mcu_mbox_component_static,
+};
 use caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use capsules_core::virtualizers::virtual_flash;
@@ -26,12 +32,6 @@ use kernel::storage_volume;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
-use mcu_components::mctp_mux_component_static;
-use mcu_components::{
-    doe_component_static, flash_partition_component_static, instantiate_flash_partitions,
-    mailbox_component_static, mbox_sram_component_static, mctp_driver_component_static,
-    mcu_mbox_component_static,
-};
 use mcu_config_emulator::flash::{
     IMAGE_A_PARTITION, IMAGE_B_PARTITION, PARTITION_TABLE, STAGING_PARTITION,
 };
@@ -475,7 +475,7 @@ pub unsafe fn main() {
     );
     hil::time::Alarm::set_alarm_client(virtual_alarm_user, alarm);
 
-    let mailbox = mcu_components::mailbox::MailboxComponent::new(
+    let mailbox = caliptra_mcu_components::mailbox::MailboxComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::mailbox::DRIVER_NUM,
         mux_alarm,
@@ -500,14 +500,14 @@ pub unsafe fn main() {
         VeeRDefaultPeripherals::new(emulator_peripherals, mux_alarm, &MCU_MEMORY_MAP, mci_regs)
     );
 
-    let mci = mcu_components::mci::MciComponent::new(
+    let mci = caliptra_mcu_components::mci::MciComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::mci::DRIVER_NUM,
         &peripherals.mci,
     )
     .finalize(kernel::static_buf!(caliptra_mcu_capsules_runtime::mci::Mci));
 
-    let mcu_mbox1_staging_sram = mcu_components::mbox_sram::MboxSramComponent::new(
+    let mcu_mbox1_staging_sram = caliptra_mcu_components::mbox_sram::MboxSramComponent::new(
         peripherals.mci.registers.clone(),
         board_kernel,
         caliptra_mcu_capsules_runtime::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
@@ -583,10 +583,11 @@ pub unsafe fn main() {
         "[mcu-runtime] Active I3C core for MCTP: {}",
         MCU_STRAPS.active_i3c
     );
-    let mux_mctp = mcu_components::mux_mctp::MCTPMuxComponent::new(active_i3c_core, mux_alarm)
-        .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding));
+    let mux_mctp =
+        caliptra_mcu_components::mux_mctp::MCTPMuxComponent::new(active_i3c_core, mux_alarm)
+            .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding));
 
-    let mctp_spdm = mcu_components::mctp_driver::MCTPDriverComponent::new(
+    let mctp_spdm = caliptra_mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
         mux_mctp,
@@ -594,7 +595,7 @@ pub unsafe fn main() {
     )
     .finalize(mctp_driver_component_static!(InternalTimers));
 
-    // let mctp_secure_spdm = mcu_components::mctp_driver::MCTPDriverComponent::new(
+    // let mctp_secure_spdm = caliptra_mcu_components::mctp_driver::MCTPDriverComponent::new(
     //     board_kernel,
     //     caliptra_mcu_capsules_runtime::mctp::driver::MCTP_SECURE_SPDM_DRIVER_NUM,
     //     mux_mctp,
@@ -602,7 +603,7 @@ pub unsafe fn main() {
     // )
     // .finalize(mctp_driver_component_static!(InternalTimers));
 
-    let mctp_pldm = mcu_components::mctp_driver::MCTPDriverComponent::new(
+    let mctp_pldm = caliptra_mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::mctp::driver::MCTP_PLDM_DRIVER_NUM,
         mux_mctp,
@@ -611,7 +612,7 @@ pub unsafe fn main() {
     .finalize(mctp_driver_component_static!(InternalTimers));
 
     // Enable MCTP Caliptra VDM driver
-    let mctp_caliptra = mcu_components::mctp_driver::MCTPDriverComponent::new(
+    let mctp_caliptra = caliptra_mcu_components::mctp_driver::MCTPDriverComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::mctp::driver::MCTP_CALIPTRA_DRIVER_NUM,
         mux_mctp,
@@ -621,7 +622,7 @@ pub unsafe fn main() {
     romtime::println!("[mcu-runtime] MCTP Caliptra driver component initialized");
 
     // Set up a SPDM over DOE capsule.
-    let doe_spdm = mcu_components::doe::DoeComponent::new(
+    let doe_spdm = caliptra_mcu_components::doe::DoeComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::doe::driver::DOE_SPDM_DRIVER_NUM,
         &emulator_peripherals.doe_transport,
@@ -686,7 +687,7 @@ pub unsafe fn main() {
         caliptra_mcu_capsules_emulator::logging::driver::BUF_LEN
     ));
 
-    let dma = mcu_components::dma::DmaComponent::new(
+    let dma = caliptra_mcu_components::dma::DmaComponent::new(
         &emulator_peripherals.dma,
         board_kernel,
         caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM,
@@ -696,7 +697,7 @@ pub unsafe fn main() {
     ));
 
     // MCU mailbox0 capsule
-    let mcu_mbox0 = mcu_components::mcu_mbox::McuMboxComponent::new(
+    let mcu_mbox0 = caliptra_mcu_components::mcu_mbox::McuMboxComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
         &peripherals.mcu_mbox0,
@@ -706,9 +707,10 @@ pub unsafe fn main() {
     ));
 
     #[allow(static_mut_refs)]
-    let system = mcu_components::system::SystemComponent::new(&mut EMULATOR_EXITER).finalize(
-        kernel::static_buf!(caliptra_mcu_capsules_runtime::system::System<'static, EmulatorExiter>),
-    );
+    let system = caliptra_mcu_components::system::SystemComponent::new(&mut EMULATOR_EXITER)
+        .finalize(kernel::static_buf!(
+            caliptra_mcu_capsules_runtime::system::System<'static, EmulatorExiter>
+        ));
 
     // Need to enable all interrupts for Tock Kernel
     chip.enable_pic_interrupts();

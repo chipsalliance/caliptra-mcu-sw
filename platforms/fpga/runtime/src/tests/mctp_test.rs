@@ -4,12 +4,12 @@ use caliptra_mcu_capsules_runtime::mctp::mux::MuxMCTPDriver;
 use caliptra_mcu_capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
 use caliptra_mcu_capsules_runtime::test::mctp::MockMctp;
 use caliptra_mcu_capsules_runtime::test::mctp::TestClient;
+use caliptra_mcu_components::mock_mctp::MockMctpComponent;
+use caliptra_mcu_components::mock_mctp_component_static;
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
 use core::fmt::Write;
 use kernel::component::Component;
 use kernel::static_init;
-use mcu_components::mock_mctp::MockMctpComponent;
-use mcu_components::mock_mctp_component_static;
 use mcu_tock_veer::timers::InternalTimers;
 use romtime::println;
 

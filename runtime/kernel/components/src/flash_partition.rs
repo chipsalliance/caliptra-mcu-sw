@@ -24,7 +24,7 @@ macro_rules! instantiate_flash_partitions {
                     .finalize(components::flash_user_component_static!($flash_ctrl_ty));
 
                 $flash_partitions[$index] = Some(
-                    mcu_components::flash_partition::FlashPartitionComponent::new(
+                    caliptra_mcu_components::flash_partition::FlashPartitionComponent::new(
                         $kernel,
                         $partition.driver_num as usize,
                         image_par_fl_user,
