@@ -348,8 +348,11 @@ impl Otp {
         let addr = p.byte_offset;
         let size = p.byte_size;
         let partitions = self.partitions.borrow();
-        let digest =
-            otp_digest::otp_digest(&partitions[addr..addr + size], DIGEST_IV, DIGEST_CONST);
+        let digest = caliptra_mcu_otp_digest::caliptra_mcu_otp_digest(
+            &partitions[addr..addr + size],
+            DIGEST_IV,
+            DIGEST_CONST,
+        );
         self.digests[partition * 2] = (digest & 0xffff_ffff) as u32;
         self.digests[partition * 2 + 1] = (digest >> 32) as u32;
     }

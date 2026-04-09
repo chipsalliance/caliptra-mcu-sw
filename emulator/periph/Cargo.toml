@@ -22,7 +22,7 @@ lazy_static.workspace = true
 caliptra-mcu-config.workspace = true
 caliptra-mcu-testing-common.workspace = true
 num_enum.workspace = true
-otp-digest.workspace = true
+caliptra-mcu-otp-digest.workspace = true
 caliptra-mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
 registers-generated.workspace = true
 semver.workspace = true

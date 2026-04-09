@@ -776,7 +776,7 @@ impl Otp {
             Some(w0 as u64 | ((w1 as u64) << 32))
         });
 
-        let digest = otp_digest::otp_digest_iter(blocks, iv, cnst);
+        let digest = caliptra_mcu_otp_digest::otp_digest_iter(blocks, iv, cnst);
         err?;
         Ok(digest)
     }

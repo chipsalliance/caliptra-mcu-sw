@@ -239,7 +239,7 @@ caliptra-mcu-test-harness = {path = "platforms/test_harness"}
 caliptra-mcu-testing-common = { path = "common/testing" }
 caliptra-mcu-tock-veer = { path = "runtime/kernel/veer" }
 caliptra-mcu-mctp-vdm-common = { path = "common/mctp-vdm" }
-otp-digest = { path = "common/otp-digest" }
+caliptra-mcu-otp-digest = { path = "common/otp-digest" }
 pldm-common = { path = "common/pldm"}
 pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
 pldm-ua = { path = "emulator/bmc/pldm-ua"}

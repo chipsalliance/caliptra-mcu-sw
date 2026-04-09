@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Result};
-use caliptra_mcu_emulator_periph::{otp_digest, otp_scramble, otp_unscramble};
+use caliptra_mcu_emulator_periph::{caliptra_mcu_otp_digest, otp_scramble, otp_unscramble};
 use caliptra_mcu_otp_lifecycle::hash_lc_token;
 use caliptra_mcu_rom_common::LifecycleControllerState;
 
@@ -108,7 +108,7 @@ pub fn otp_generate_lifecycle_tokens_mem(
         LC_TOKENS_KEY_IDX,
     )?;
 
-    let digest = otp_digest(
+    let digest = caliptra_mcu_otp_digest(
         &output[..LIFECYCLE_TOKENS_MEM_SIZE - DIGEST_SIZE],
         OTP_IV,
         OTP_CNST,
