@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "mcu-test-fw-hitless-update-flow"
+name = "caliptra-mcu-test-fw-hitless-update-flow"
 version.workspace = true
 edition.workspace = true
 
