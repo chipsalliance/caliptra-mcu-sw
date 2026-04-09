@@ -131,17 +131,24 @@ mod test {
 
     // Get ROM from prebuilt or compile
     fn get_or_compile_rom(feature: &str) -> PathBuf {
-        // Try to get prebuilt ROM from the firmware bundle
-        if feature.is_empty() {
-            if let Ok(binaries) = FirmwareBinaries::from_env() {
-                let output = target_binary("mcu_rom_prebuilt.bin");
-                if let Some(parent) = output.parent() {
-                    std::fs::create_dir_all(parent).ok();
-                }
-                std::fs::write(&output, &binaries.mcu_rom)
-                    .expect("Failed to write prebuilt ROM to file");
-                return output;
+        if let Ok(binaries) = FirmwareBinaries::from_env() {
+            let rom_data = if feature.is_empty() {
+                binaries.mcu_rom.clone()
+            } else {
+                binaries.test_feature_rom(feature)
+            };
+            let safe_name = feature.replace('/', "_");
+            let filename = if safe_name.is_empty() {
+                "mcu_rom_prebuilt.bin".to_string()
+            } else {
+                format!("mcu_rom_prebuilt_{}.bin", safe_name)
+            };
+            let output = target_binary(&filename);
+            if let Some(parent) = output.parent() {
+                std::fs::create_dir_all(parent).ok();
             }
+            std::fs::write(&output, &rom_data).expect("Failed to write prebuilt ROM to file");
+            return output;
         }
         // Fall back to compilation
         compile_rom(feature)
@@ -157,7 +164,7 @@ mod test {
 
     // Compile the ROM for a given feature flag (empty string for default ROM).
     pub fn get_rom_with_feature(feature: &str) -> PathBuf {
-        compile_rom(feature)
+        get_or_compile_rom(feature)
     }
 
     fn platform() -> &'static str {
@@ -268,7 +275,28 @@ mod test {
     }
 
     fn build_test_binaries(params: &TestParams) -> TestBinaries {
-        let mcu_runtime_path = compile_runtime(params.feature, false);
+        // Get MCU runtime: prefer prebuilt, fall back to compilation
+        let mcu_runtime_path = if let Ok(binaries) = FirmwareBinaries::from_env() {
+            let runtime_bytes = if let Some(feature) = params.feature {
+                binaries
+                    .test_runtime(feature)
+                    .unwrap_or_else(|_| {
+                        panic!("Failed to get prebuilt runtime for feature {}", feature)
+                    })
+                    .clone()
+            } else {
+                binaries.mcu_runtime.clone()
+            };
+            let path = target_binary("mcu_runtime_prebuilt_for_builder.bin");
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+            std::fs::write(&path, &runtime_bytes)
+                .expect("Failed to write prebuilt runtime to file");
+            path
+        } else {
+            compile_runtime(params.feature, false)
+        };
 
         // When a firmware prefix is provided, create a modified binary that
         // includes the prefix so the SOC manifest digest covers both.
@@ -287,9 +315,34 @@ mod test {
                 (mcu_runtime_path, bytes)
             };
 
+        // When prebuilt binaries are available, pass the Caliptra ROM/FW paths
+        // to the builder so it doesn't try to compile them from scratch.
+        let (prebuilt_caliptra_rom, prebuilt_caliptra_fw, prebuilt_vendor_pk_hash) =
+            if let Ok(binaries) = FirmwareBinaries::from_env() {
+                let rom_path =
+                    std::env::temp_dir().join("build_test_binaries_caliptra_rom_prebuilt.bin");
+                std::fs::write(&rom_path, &binaries.caliptra_rom)
+                    .expect("Failed to write prebuilt Caliptra ROM");
+                let fw_path =
+                    std::env::temp_dir().join("build_test_binaries_caliptra_fw_prebuilt.bin");
+                std::fs::write(&fw_path, &binaries.caliptra_fw)
+                    .expect("Failed to write prebuilt Caliptra FW");
+                let vendor_pk_hash = hex::encode(
+                    binaries
+                        .vendor_pk_hash()
+                        .expect("Failed to get vendor PK hash from prebuilt binaries"),
+                );
+                (Some(rom_path), Some(fw_path), Some(vendor_pk_hash))
+            } else {
+                (None, None, None)
+            };
+
         let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
             fpga: cfg!(feature = "fpga_realtime"),
             mcu_firmware: Some(mcu_runtime_for_builder),
+            caliptra_rom: prebuilt_caliptra_rom,
+            caliptra_firmware: prebuilt_caliptra_fw,
+            vendor_pk_hash: prebuilt_vendor_pk_hash,
             ..Default::default()
         });
         let caliptra_rom = std::fs::read(

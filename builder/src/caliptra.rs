@@ -172,6 +172,9 @@ impl CaliptraBuilder {
             // Write the re-signed bundle to a new path
             let path = target_dir().join("caliptra-fw-bundle-resigned.bin");
             let fw_bytes = new_bundle.to_bytes()?;
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
             std::fs::write(&path, fw_bytes)?;
 
             self.vendor_pk_hash = Some(vendor_hash);
@@ -352,6 +355,9 @@ impl CaliptraBuilder {
         let path = name
             .map(PathBuf::from)
             .unwrap_or(target_dir().join("soc-manifest"));
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         std::fs::write(&path, manifest.as_bytes())?;
         Ok(path)
     }
