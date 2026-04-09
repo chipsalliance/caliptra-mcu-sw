@@ -2,7 +2,7 @@
 
 use crate::kernel_data::with_kernel_data;
 use crate::{command_return, ExpectedSyscall, SyscallLogEntry};
-use libtock_platform::{ErrorCode, Register};
+use caliptra_mcu_libtock_platform::{ErrorCode, Register};
 use std::convert::TryInto;
 
 pub(super) fn command(

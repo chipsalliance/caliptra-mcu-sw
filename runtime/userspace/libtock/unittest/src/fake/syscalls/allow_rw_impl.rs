@@ -1,6 +1,6 @@
 use crate::kernel_data::with_kernel_data;
 use crate::{ExpectedSyscall, SyscallLogEntry};
-use libtock_platform::{return_variant, ErrorCode, Register};
+use caliptra_mcu_libtock_platform::{return_variant, ErrorCode, Register};
 use std::convert::TryInto;
 
 pub(super) unsafe fn allow_rw(

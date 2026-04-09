@@ -1,4 +1,4 @@
-use libtock_platform::Register;
+use caliptra_mcu_libtock_platform::Register;
 
 /// Unit tests can use `ExpectedSyscall` to alter `fake::Kernel`'s behavior for
 /// a particular system call.
@@ -15,7 +15,7 @@ pub enum ExpectedSyscall {
         /// If not `None`, `yield-no-wait` will set the return value to the
         /// specified value. If `None`, `yield-no-wait` will set the return
         /// value based on whether or not an upcall was run.
-        override_return: Option<libtock_platform::YieldNoWaitReturn>,
+        override_return: Option<caliptra_mcu_libtock_platform::YieldNoWaitReturn>,
     },
 
     YieldWait {
@@ -32,7 +32,7 @@ pub enum ExpectedSyscall {
 
         /// If not None, the Subscribe call will be skipped and the provided
         /// error code will be returned (along with the passed upcall).
-        skip_with_error: Option<libtock_platform::ErrorCode>,
+        skip_with_error: Option<caliptra_mcu_libtock_platform::ErrorCode>,
     },
 
     // -------------------------------------------------------------------------
@@ -48,7 +48,7 @@ pub enum ExpectedSyscall {
 
         // If not None, the output of the driver will be replaced with the given
         // return value.
-        override_return: Option<libtock_platform::CommandReturn>,
+        override_return: Option<caliptra_mcu_libtock_platform::CommandReturn>,
     },
 
     // -------------------------------------------------------------------------
@@ -60,7 +60,7 @@ pub enum ExpectedSyscall {
 
         // If set to Some(_), the driver's allow_readonly method will not be
         // invoked and the provided error will be returned instead.
-        return_error: Option<libtock_platform::ErrorCode>,
+        return_error: Option<caliptra_mcu_libtock_platform::ErrorCode>,
     },
 
     // -------------------------------------------------------------------------
@@ -72,7 +72,7 @@ pub enum ExpectedSyscall {
 
         // If set to Some(_), the driver's allow_readwrite method will not be
         // invoked and the provided error will be returned instead.
-        return_error: Option<libtock_platform::ErrorCode>,
+        return_error: Option<caliptra_mcu_libtock_platform::ErrorCode>,
     },
 
     // -------------------------------------------------------------------------
@@ -84,7 +84,7 @@ pub enum ExpectedSyscall {
 
         // If set to Some(_), the driver's memop method will not be
         // invoked and the provided error will be returned instead.
-        return_error: Option<libtock_platform::ErrorCode>,
+        return_error: Option<caliptra_mcu_libtock_platform::ErrorCode>,
     },
     // TODO: Add Exit.
 }

@@ -5,7 +5,7 @@ use crate::codec::CodecError;
 use crate::codec::MessageBuf;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use libtock_platform::ErrorCode;
+use caliptra_mcu_libtock_platform::ErrorCode;
 
 pub type TransportResult<T> = Result<T, TransportError>;
 

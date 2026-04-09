@@ -14,7 +14,7 @@ caliptra-api.workspace = true
 constant_time_eq.workspace = true
 caliptra-mcu-libapi-caliptra.workspace = true
 caliptra-mcu-libsyscall-caliptra.workspace = true
-libtock_platform.workspace = true
+caliptra-mcu-libtock_platform.workspace = true
 caliptra-mcu-libtock_console.workspace = true
 zerocopy.workspace = true
 

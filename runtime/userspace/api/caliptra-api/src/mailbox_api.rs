@@ -37,11 +37,11 @@ use caliptra_api::mailbox::{
     MAX_CMB_DATA_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
+use caliptra_mcu_libtock_platform::ErrorCode;
 use core::mem::size_of;
 use dpe::context::ContextHandle;
 use dpe::response::{GetCertificateChainResp, ResponseHdr};
 use dpe::DPE_PROFILE;
-use libtock_platform::ErrorCode;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const MAX_CRYPTO_MBOX_DATA_SIZE: usize = 1024;

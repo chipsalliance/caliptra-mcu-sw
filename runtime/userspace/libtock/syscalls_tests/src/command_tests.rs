@@ -1,7 +1,7 @@
 //! Tests for the Command system call implementation in
-//! `libtock_platform::Syscalls`.
+//! `caliptra_mcu_libtock_platform::Syscalls`.
 
-use libtock_platform::Syscalls;
+use caliptra_mcu_libtock_platform::Syscalls;
 use libtock_unittest::{command_return, fake, ExpectedSyscall, SyscallLogEntry};
 
 #[test]

@@ -1,4 +1,4 @@
-use libtock_platform::{
+use caliptra_mcu_libtock_platform::{
     share, subscribe, CommandReturn, DefaultConfig, ErrorCode, Syscalls, YieldNoWaitReturn,
 };
 use libtock_unittest::{command_return, fake, DriverInfo, DriverShareRef, SyscallLogEntry};
@@ -109,7 +109,7 @@ fn success() {
 fn unwinding_upcall() {
     struct BadUpcall;
 
-    impl libtock_platform::Upcall<subscribe::AnyId> for BadUpcall {
+    impl caliptra_mcu_libtock_platform::Upcall<subscribe::AnyId> for BadUpcall {
         fn upcall(&self, _: u32, _: u32, _: u32) {
             panic!("Beginning stack unwinding");
         }

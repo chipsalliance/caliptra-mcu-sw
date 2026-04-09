@@ -19,7 +19,7 @@ use std::panic::{catch_unwind, Location, UnwindSafe};
 ///
 /// #[cfg(not(miri))]
 /// fn main() {
-///     use libtock_platform::Syscalls;
+///     use caliptra_mcu_libtock_platform::Syscalls;
 ///     let _kernel = libtock_unittest::fake::Kernel::new();
 ///     let exit = libtock_unittest::exit_test("tests::foo", || {
 ///         libtock_unittest::fake::Syscalls::exit_terminate(0);

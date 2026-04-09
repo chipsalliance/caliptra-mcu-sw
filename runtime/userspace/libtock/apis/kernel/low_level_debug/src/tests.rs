@@ -1,5 +1,5 @@
 use super::*;
-use libtock_platform::ErrorCode;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use libtock_unittest::{command_return, fake, ExpectedSyscall};
 
 type LowLevelDebug = super::LowLevelDebug<fake::Syscalls>;

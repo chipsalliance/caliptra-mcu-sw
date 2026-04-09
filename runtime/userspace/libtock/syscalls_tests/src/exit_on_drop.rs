@@ -1,4 +1,4 @@
-use libtock_platform::exit_on_drop::ExitOnDrop;
+use caliptra_mcu_libtock_platform::exit_on_drop::ExitOnDrop;
 use libtock_unittest::fake;
 
 // Unwinds if `unwind` is true, otherwise just returns.

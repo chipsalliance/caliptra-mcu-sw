@@ -1,6 +1,6 @@
 use crate::fake;
+use caliptra_mcu_libtock_platform::{share, DefaultConfig, ErrorCode, YieldNoWaitReturn};
 use fake::gpio::*;
-use libtock_platform::{share, DefaultConfig, ErrorCode, YieldNoWaitReturn};
 
 // Tests the command implementation.
 #[test]
@@ -175,10 +175,10 @@ fn command() {
 }
 
 // Integration test that verifies Gpio works with fake::Kernel and
-// libtock_platform::Syscalls.
+// caliptra_mcu_libtock_platform::Syscalls.
 #[test]
 fn kernel_integration() {
-    use libtock_platform::Syscalls;
+    use caliptra_mcu_libtock_platform::Syscalls;
     let kernel = fake::Kernel::new();
     let gpio = Gpio::<10>::new();
     gpio.set_missing_gpio(1);

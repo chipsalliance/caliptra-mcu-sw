@@ -6,6 +6,7 @@ use super::pldm_context::{DOWNLOAD_CTX, PLDM_STATE};
 use super::pldm_fdops::UpdateFdOps;
 use super::StagingMemory;
 
+use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
@@ -15,7 +16,6 @@ use caliptra_mcu_pldm_lib::firmware_device::fd_ops::FdOps;
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
-use libtock_platform::ErrorCode;
 
 pub static FW_UPDATE_TASK_YIELD: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 pub static PLDM_DAEMON_TASK_YIELD: Signal<CriticalSectionRawMutex, ()> = Signal::new();

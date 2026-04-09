@@ -5,8 +5,8 @@
 //! and a function 'set_tone_sync' used to call the upcall when the tone command is received.
 
 use crate::{DriverInfo, DriverShareRef};
+use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 use core::time::Duration;
-use libtock_platform::{CommandReturn, ErrorCode};
 use std::cell::Cell;
 
 // The `upcall_on_command` field is set to Some(value) if an upcall(with value as its argument) should be called when tone command is received,

@@ -27,6 +27,7 @@ use caliptra_mcu_libsyscall_caliptra::dma::{
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
+use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_libtockasync::TockExecutor;
 use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
@@ -34,7 +35,6 @@ use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyR
 use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
 use caliptra_mcu_pldm_lib::daemon::PldmService;
 use embassy_executor::Spawner;
-use libtock_platform::ErrorCode;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;

@@ -81,7 +81,7 @@ pub unsafe trait RawSyscalls: Sized {
     //            preserves_flags  (a callback can change flags)
     //            noreturn         (yield is expected to return)
     //            nostack          (a callback needs the stack)
-    /// `yield1` should only be called by `libtock_platform`.
+    /// `yield1` should only be called by `caliptra_mcu_libtock_platform`.
     /// # Safety
     /// yield1 may only be used for yield operations that do not return a value.
     /// It is exactly as safe as the underlying system call.
@@ -101,7 +101,7 @@ pub unsafe trait RawSyscalls: Sized {
     //            preserves_flags  (a callback can change flags)
     //            noreturn         (yield is expected to return)
     //            nostack          (a callback needs the stack)
-    /// `yield2` should only be called by `libtock_platform`.
+    /// `yield2` should only be called by `caliptra_mcu_libtock_platform`.
     /// # Safety
     /// yield2 may only be used for yield operations that do not return a value.
     /// It has the same safety invariants as the underlying system call.
@@ -129,7 +129,7 @@ pub unsafe trait RawSyscalls: Sized {
     //                       different values)
     //            readonly  (incompatible with nomem)
     //            noreturn
-    /// `syscall1` should only be called by `libtock_platform`.
+    /// `syscall1` should only be called by `caliptra_mcu_libtock_platform`.
     /// # Safety
     /// This directly makes a system call. It can only be used for Memop calls
     /// that accept 1 argument and only overwrite r0 and r1 on return. It is
@@ -154,7 +154,7 @@ pub unsafe trait RawSyscalls: Sized {
     //            pure      Two invocations of sbrk can return different values
     //            readonly  Incompatible with nomem
     //            noreturn
-    /// `syscall2` should only be called by `libtock_platform`.
+    /// `syscall2` should only be called by `caliptra_mcu_libtock_platform`.
     /// # Safety
     /// `syscall2` directly makes a system call. It can only be used for core
     /// kernel system calls that accept 2 arguments and only overwrite r0 and r1
@@ -176,7 +176,7 @@ pub unsafe trait RawSyscalls: Sized {
     //
     // For subscribe(), the callback pointer should be either 0 (for the null
     // callback) or an `unsafe extern fn(u32, u32, u32, Register)`.
-    /// `syscall4` should only be called by `libtock_platform`.
+    /// `syscall4` should only be called by `caliptra_mcu_libtock_platform`.
     ///
     /// # Safety
     /// `syscall4` must NOT be used to invoke yield. It inherits all safety

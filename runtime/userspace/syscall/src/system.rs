@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::DefaultSyscalls;
-use libtock_platform::{ErrorCode, Syscalls};
+use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
 
 pub struct System {}
 

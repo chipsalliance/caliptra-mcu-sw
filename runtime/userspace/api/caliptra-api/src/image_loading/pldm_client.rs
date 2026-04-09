@@ -11,7 +11,7 @@ use caliptra_mcu_libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
 
-use libtock_platform::ErrorCode;
+use caliptra_mcu_libtock_platform::ErrorCode;
 
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;

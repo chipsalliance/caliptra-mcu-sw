@@ -1,6 +1,6 @@
+use caliptra_mcu_libtock_platform::Syscalls;
 use futures::future::Future;
 use futures::task::noop_waker;
-use libtock_platform::Syscalls;
 use std::pin::Pin;
 use std::task::Context;
 use std::thread::sleep;

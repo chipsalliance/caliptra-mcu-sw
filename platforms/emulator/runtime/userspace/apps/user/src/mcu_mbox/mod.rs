@@ -11,12 +11,12 @@ mod cmd_handler_mock;
 use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use core::fmt::Write;
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::signal::Signal;
-use libtock_platform::ErrorCode;
 
 #[embassy_executor::task]
 pub async fn mcu_mbox_task() {

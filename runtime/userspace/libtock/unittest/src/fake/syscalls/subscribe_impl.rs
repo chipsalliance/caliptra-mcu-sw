@@ -1,6 +1,6 @@
 use crate::kernel_data::with_kernel_data;
 use crate::{ExpectedSyscall, SyscallLogEntry};
-use libtock_platform::{return_variant, ErrorCode, Register};
+use caliptra_mcu_libtock_platform::{return_variant, ErrorCode, Register};
 use std::convert::TryInto;
 
 // Safety: The arguments must represent a valid Subscribe call as specified by
@@ -100,7 +100,14 @@ pub(super) unsafe fn subscribe(
             _ => unsafe {
                 core::mem::transmute::<
                     Register,
-                    Option<unsafe extern "C" fn(u32, u32, u32, libtock_platform::Register)>,
+                    Option<
+                        unsafe extern "C" fn(
+                            u32,
+                            u32,
+                            u32,
+                            caliptra_mcu_libtock_platform::Register,
+                        ),
+                    >,
                 >(upcall_fn)
             },
         },

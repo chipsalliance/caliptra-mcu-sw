@@ -1,6 +1,6 @@
 use crate::fake::{self, SyscallDriver};
+use caliptra_mcu_libtock_platform::{share, DefaultConfig, YieldNoWaitReturn};
 use fake::buzzer::*;
-use libtock_platform::{share, DefaultConfig, YieldNoWaitReturn};
 
 #[test]
 fn command() {
@@ -24,7 +24,7 @@ fn command() {
 
 #[test]
 fn kernel_integration() {
-    use libtock_platform::Syscalls;
+    use caliptra_mcu_libtock_platform::Syscalls;
     let kernel = fake::Kernel::new();
     let buzzer = Buzzer::new();
     kernel.add_driver(&buzzer);

@@ -1,7 +1,7 @@
 use crate::kernel_data::with_kernel_data;
 use crate::upcall::{Upcall, UpcallId, UpcallQueueEntry};
 use crate::{fake, ExpectedSyscall, SyscallLogEntry};
-use libtock_platform::{RawSyscalls, YieldNoWaitReturn};
+use caliptra_mcu_libtock_platform::{RawSyscalls, YieldNoWaitReturn};
 use std::panic::catch_unwind;
 
 use fake::syscalls::yield_impl::*;
@@ -12,7 +12,7 @@ unsafe extern "C" fn copy_args(
     arg0: u32,
     arg1: u32,
     arg2: u32,
-    output: libtock_platform::Register,
+    output: caliptra_mcu_libtock_platform::Register,
 ) {
     let output: *mut [u32; 3] = output.into();
     unsafe {

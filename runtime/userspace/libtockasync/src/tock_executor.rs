@@ -90,7 +90,7 @@ impl TockExecutor {
 
 #[cfg(not(target_arch = "riscv32"))]
 unsafe fn yield1(_r0: u32) {
-    use libtock_platform::Syscalls;
+    use caliptra_mcu_libtock_platform::Syscalls;
     libtock_unittest::fake::Syscalls::yield_wait();
 }
 

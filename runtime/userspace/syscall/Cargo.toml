@@ -11,7 +11,7 @@ async-trait.workspace = true
 caliptra-api.workspace = true
 embassy-sync.workspace = true
 caliptra-mcu-libtock_console.workspace = true
-libtock_platform.workspace = true
+caliptra-mcu-libtock_platform.workspace = true
 caliptra-mcu-libtockasync.workspace = true
 libtock_runtime.workspace = true
 

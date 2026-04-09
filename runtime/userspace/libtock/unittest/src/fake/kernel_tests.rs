@@ -3,7 +3,7 @@ use crate::{fake, ExpectedSyscall, SyscallLogEntry};
 
 #[test]
 fn expected_syscall_queue() {
-    use libtock_platform::YieldNoWaitReturn::Upcall;
+    use caliptra_mcu_libtock_platform::YieldNoWaitReturn::Upcall;
     use std::matches;
     use ExpectedSyscall::YieldNoWait;
     let kernel = fake::Kernel::new();

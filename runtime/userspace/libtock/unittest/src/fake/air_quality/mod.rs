@@ -1,5 +1,5 @@
 use crate::{DriverInfo, DriverShareRef};
-use libtock_platform::{CommandReturn, ErrorCode};
+use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 use std::cell::Cell;
 
 pub struct AirQuality {

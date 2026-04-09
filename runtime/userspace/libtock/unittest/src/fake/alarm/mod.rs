@@ -3,9 +3,9 @@
 //! Supports frequency and set_relative.
 //! Will schedule the upcall immediately.
 
+use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 use core::cell::Cell;
 use core::num::Wrapping;
-use libtock_platform::{CommandReturn, ErrorCode};
 
 use crate::{DriverInfo, DriverShareRef};
 

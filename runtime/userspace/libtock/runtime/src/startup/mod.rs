@@ -1,7 +1,7 @@
 //! Runtime components related to process startup.
 
 use crate::TockSyscalls;
-use libtock_platform::{Syscalls, Termination};
+use caliptra_mcu_libtock_platform::{Syscalls, Termination};
 
 // Include the correct `start` symbol (the program entry point) for the
 // architecture.
@@ -13,7 +13,7 @@ core::arch::global_asm!(include_str!("asm_riscv32.s"));
 ///
 /// The process binary's `main` function must have the signature
 /// `FnOnce() -> T`, where T is some concrete type that implements
-/// `libtock_platform::Termination`.
+/// `caliptra_mcu_libtock_platform::Termination`.
 ///
 /// # Example
 /// ```

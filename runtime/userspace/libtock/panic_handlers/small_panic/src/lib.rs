@@ -1,7 +1,7 @@
 #![no_std]
 
 use caliptra_mcu_libtock_low_level_debug::{AlertCode, LowLevelDebug};
-use libtock_platform::{ErrorCode, Syscalls};
+use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
 use libtock_runtime::TockSyscalls;
 
 #[allow(dead_code)]

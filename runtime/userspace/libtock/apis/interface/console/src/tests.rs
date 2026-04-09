@@ -1,6 +1,6 @@
 use super::*;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use core::fmt::Write;
-use libtock_platform::ErrorCode;
 use libtock_unittest::{command_return, fake, ExpectedSyscall};
 
 type Console = super::Console<fake::Syscalls>;

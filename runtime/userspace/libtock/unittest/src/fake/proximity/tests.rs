@@ -1,6 +1,6 @@
 use crate::fake::{self, SyscallDriver};
+use caliptra_mcu_libtock_platform::{share, DefaultConfig, YieldNoWaitReturn};
 use fake::proximity::*;
-use libtock_platform::{share, DefaultConfig, YieldNoWaitReturn};
 
 //Test the command implementation
 #[test]
@@ -39,11 +39,11 @@ fn command() {
 }
 
 // Integration test that verifies Proximity works with fake::Kernel and
-// libtock_platform::Syscalls.
+// caliptra_mcu_libtock_platform::Syscalls.
 
 #[test]
 fn kernel_integration() {
-    use libtock_platform::Syscalls;
+    use caliptra_mcu_libtock_platform::Syscalls;
     let kernel = fake::Kernel::new();
     let proximity = Proximity::new();
     kernel.add_driver(&proximity);

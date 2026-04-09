@@ -4,7 +4,7 @@ use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
 use caliptra_mcu_libsyscall_caliptra::dma::{
     AXIAddr, DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
 };
-use libtock_platform::ErrorCode;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use zerocopy::FromBytes;
 
 use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash as FlashSyscall;

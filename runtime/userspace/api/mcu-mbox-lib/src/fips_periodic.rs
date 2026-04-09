@@ -11,13 +11,13 @@ use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_alarm::{Convert, Hz, Milliseconds};
 use caliptra_mcu_libtock_console::Console;
+use caliptra_mcu_libtock_platform::Syscalls;
 use caliptra_mcu_libtockasync::TockSubscribe;
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
-use libtock_platform::Syscalls;
 
 /// Periodic FIPS self-test interval in milliseconds.
 /// Default: 60 seconds (60000 ms)
@@ -77,7 +77,7 @@ pub fn get_status() -> (bool, u32, u32) {
 
 /// Async sleep helper
 async fn sleep_ms(ms: u32) {
-    use libtock_platform::ErrorCode;
+    use caliptra_mcu_libtock_platform::ErrorCode;
 
     let _guard = ALARM_MUTEX.lock().await;
     let freq: Result<u32, ErrorCode> =

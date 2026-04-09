@@ -80,7 +80,7 @@ mod tests {
     use super::*;
     use crate::upcall::Upcall;
     use crate::DriverInfo;
-    use libtock_platform::Register;
+    use caliptra_mcu_libtock_platform::Register;
     use std::rc::Rc;
 
     #[derive(Default)]
@@ -94,8 +94,8 @@ mod tests {
         fn register(&self, share_ref: DriverShareRef) {
             self.share_ref.replace(share_ref);
         }
-        fn command(&self, _: u32, _: u32, _: u32) -> libtock_platform::CommandReturn {
-            crate::command_return::failure(libtock_platform::ErrorCode::NoSupport)
+        fn command(&self, _: u32, _: u32, _: u32) -> caliptra_mcu_libtock_platform::CommandReturn {
+            crate::command_return::failure(caliptra_mcu_libtock_platform::ErrorCode::NoSupport)
         }
     }
 
@@ -141,7 +141,13 @@ mod tests {
         // Call schedule again. This should still do nothing, because the upcall
         // is a null upcall.
         assert_eq!(mock_driver.share_ref.schedule_upcall(2, (3, 4, 5)), Ok(()));
-        unsafe extern "C" fn upcall(_: u32, _: u32, _: u32, _: libtock_platform::Register) {}
+        unsafe extern "C" fn upcall(
+            _: u32,
+            _: u32,
+            _: u32,
+            _: caliptra_mcu_libtock_platform::Register,
+        ) {
+        }
         // Cast to a pointer to get a stable address.
         let upcall_ptr = upcall as unsafe extern "C" fn(u32, u32, u32, Register);
         with_kernel_data(|kernel_data| {

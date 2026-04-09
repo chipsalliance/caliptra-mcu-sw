@@ -1,4 +1,4 @@
-use libtock_platform::Register;
+use caliptra_mcu_libtock_platform::Register;
 
 /// SyscallLogEntry represents a system call made during test execution.
 #[derive(Debug, Eq, PartialEq)]

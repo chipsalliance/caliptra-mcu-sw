@@ -7,10 +7,10 @@
 use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libtock::alarm::*;
 use caliptra_mcu_libtock_console::Console;
+use caliptra_mcu_libtock_platform::{self as platform};
+use caliptra_mcu_libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use caliptra_mcu_libtockasync::TockSubscribe;
 use core::fmt::Write;
-use libtock_platform::{self as platform};
-use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 
 #[cfg(feature = "test-pldm-request-response")]
 mod test_pldm_request_response;

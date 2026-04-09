@@ -1,9 +1,9 @@
 #![no_std]
 
-use core::cell::Cell;
-use libtock_platform::{
+use caliptra_mcu_libtock_platform::{
     share, subscribe::OneId, AllowRw, DefaultConfig, ErrorCode, Subscribe, Syscalls, Upcall,
 };
+use core::cell::Cell;
 
 pub struct Rng<S: Syscalls>(S);
 

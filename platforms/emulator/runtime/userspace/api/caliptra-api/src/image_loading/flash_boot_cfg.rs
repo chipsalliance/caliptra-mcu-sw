@@ -10,7 +10,7 @@ use caliptra_mcu_config_emulator::flash::{
 };
 use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use libtock_platform::ErrorCode;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use zerocopy::{FromBytes, IntoBytes};
 
 pub struct FlashBootConfig {

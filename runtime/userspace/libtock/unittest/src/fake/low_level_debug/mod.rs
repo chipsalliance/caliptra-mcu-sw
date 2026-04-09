@@ -6,7 +6,7 @@
 //! be retrieved via `take_messages` for use in unit tests.
 
 use crate::DriverInfo;
-use libtock_platform::{CommandReturn, ErrorCode};
+use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 
 pub struct LowLevelDebug {
     messages: core::cell::Cell<Vec<Message>>,

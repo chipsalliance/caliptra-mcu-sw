@@ -20,7 +20,7 @@ use crate::EXECUTOR;
 ))]
 use caliptra_mcu_libapi_caliptra::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
 
-use libtock_platform::ErrorCode;
+use caliptra_mcu_libtock_platform::ErrorCode;
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 
 #[allow(dead_code)]
@@ -94,8 +94,8 @@ mod external_memory {
     use caliptra_mcu_libsyscall_caliptra::dma::{
         DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
     };
+    use caliptra_mcu_libtock_platform::ErrorCode;
     use core::fmt::Debug;
-    use libtock_platform::ErrorCode;
 
     use crate::image_loader::EMULATED_DMA_MAPPING;
 
@@ -175,8 +175,8 @@ mod dummy_flash {
     use caliptra_mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL;
     use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
     use caliptra_mcu_libsyscall_caliptra::flash::{FlashCapacity, SpiFlash as FlashSyscall};
+    use caliptra_mcu_libtock_platform::ErrorCode;
     use core::fmt::Debug;
-    use libtock_platform::ErrorCode;
 
     pub struct ExternalFlash {
         flash_syscall: FlashSyscall,
@@ -232,8 +232,8 @@ mod flash_memory {
         flash::{FlashCapacity, SpiFlash as FlashSyscall},
         DefaultSyscalls,
     };
+    use caliptra_mcu_libtock_platform::ErrorCode;
     use core::fmt::Debug;
-    use libtock_platform::ErrorCode;
 
     use caliptra_mcu_libtock_console::Console;
     use core::fmt::Write;

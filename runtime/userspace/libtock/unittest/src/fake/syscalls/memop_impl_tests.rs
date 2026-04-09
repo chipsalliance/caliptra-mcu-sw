@@ -1,6 +1,6 @@
 use super::memop_impl::*;
 use crate::{fake, ExpectedSyscall};
-use libtock_platform::{return_variant, ErrorCode, ReturnVariant};
+use caliptra_mcu_libtock_platform::{return_variant, ErrorCode, ReturnVariant};
 use std::convert::TryInto;
 use std::panic::catch_unwind;
 

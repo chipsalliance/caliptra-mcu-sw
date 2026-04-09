@@ -31,10 +31,10 @@ use caliptra_mcu_libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSys
 #[allow(unused)]
 use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libtock_console::Console;
+use caliptra_mcu_libtock_platform::ErrorCode;
 #[allow(unused)]
 use caliptra_mcu_pldm_lib::daemon::PldmService;
 use core::fmt::Write;
-use libtock_platform::ErrorCode;
 
 #[allow(unused)]
 use crate::EXECUTOR;

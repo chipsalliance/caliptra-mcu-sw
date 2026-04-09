@@ -2,11 +2,11 @@
 
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_alarm::{Convert, Hz, Milliseconds};
+use caliptra_mcu_libtock_platform::{self as platform};
+use caliptra_mcu_libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use caliptra_mcu_libtockasync::TockSubscribe;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use libtock_platform::{self as platform};
-use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 
 pub struct AsyncAlarm<S: Syscalls = DefaultSyscalls, C: platform::subscribe::Config = DefaultConfig>(
     S,

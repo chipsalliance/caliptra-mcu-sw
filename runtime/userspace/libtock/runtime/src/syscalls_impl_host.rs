@@ -1,4 +1,4 @@
-use libtock_platform::{RawSyscalls, Register};
+use caliptra_mcu_libtock_platform::{RawSyscalls, Register};
 
 // These are fake syscalls just to make the compilation happy.
 unsafe impl RawSyscalls for crate::TockSyscalls {

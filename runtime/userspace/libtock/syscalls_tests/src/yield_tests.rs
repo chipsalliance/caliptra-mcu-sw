@@ -1,7 +1,7 @@
 //! Tests for implementations of Yield system calls in
-//! `libtock_platform::Syscalls`.
+//! `caliptra_mcu_libtock_platform::Syscalls`.
 
-use libtock_platform::{Syscalls, YieldNoWaitReturn};
+use caliptra_mcu_libtock_platform::{Syscalls, YieldNoWaitReturn};
 use libtock_unittest::{fake, ExpectedSyscall, SyscallLogEntry};
 
 // Tests yield_no_wait with an upcall executed.

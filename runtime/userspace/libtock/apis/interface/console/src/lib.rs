@@ -1,14 +1,14 @@
 #![no_std]
 
+use caliptra_mcu_libtock_platform as platform;
+use caliptra_mcu_libtock_platform::allow_ro::AllowRo;
+use caliptra_mcu_libtock_platform::allow_rw::AllowRw;
+use caliptra_mcu_libtock_platform::share;
+use caliptra_mcu_libtock_platform::subscribe::Subscribe;
+use caliptra_mcu_libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use core::cell::Cell;
 use core::fmt;
 use core::marker::PhantomData;
-use libtock_platform as platform;
-use libtock_platform::allow_ro::AllowRo;
-use libtock_platform::allow_rw::AllowRw;
-use libtock_platform::share;
-use libtock_platform::subscribe::Subscribe;
-use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 
 /// The console driver.
 ///

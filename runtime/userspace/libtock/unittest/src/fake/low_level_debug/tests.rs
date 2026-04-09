@@ -18,10 +18,10 @@ fn command() {
 }
 
 // Integration test that verifies LowLevelDebug works with fake::Kernel and
-// libtock_platform::Syscalls.
+// caliptra_mcu_libtock_platform::Syscalls.
 #[test]
 fn kernel_integration() {
-    use libtock_platform::Syscalls;
+    use caliptra_mcu_libtock_platform::Syscalls;
     let kernel = fake::Kernel::new();
     let low_level_debug = LowLevelDebug::new();
     kernel.add_driver(&low_level_debug);
