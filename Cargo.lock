@@ -1081,9 +1081,9 @@ name = "caliptra-mcu-firmware-bundler"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "caliptra-mcu-image-header",
  "clap 4.5.51",
  "elf",
- "mcu-image-header",
  "serde",
  "subst",
  "tbf-header",
@@ -1214,6 +1214,13 @@ dependencies = [
  "romtime",
  "rv32i",
  "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-image-header"
+version = "0.1.0"
+dependencies = [
+ "zerocopy",
 ]
 
 [[package]]
@@ -3157,13 +3164,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-image-header"
-version = "0.1.0"
-dependencies = [
- "zerocopy",
-]
-
-[[package]]
 name = "mcu-mbox-comm"
 version = "0.1.0"
 dependencies = [
@@ -3270,7 +3270,7 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-error",
- "mcu-image-header",
+ "caliptra-mcu-image-header",
  "mcu-rom-common",
  "registers-generated",
  "riscv-csr",
@@ -4899,6 +4899,7 @@ dependencies = [
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-flash-image",
  "caliptra-mcu-hw-model",
+ "caliptra-mcu-image-header",
  "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
  "chrono",
@@ -4911,7 +4912,6 @@ dependencies = [
  "lazy_static",
  "log",
  "mctp-vdm-common",
- "mcu-image-header",
  "mcu-mbox-common",
  "mcu-rom-common",
  "mcu-testing-common",

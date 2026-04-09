@@ -154,7 +154,8 @@ pub extern "C" fn rom_entry() -> ! {
         let mcu_image_verifier = McuImageVerifier;
         let rom_parameters = RomParameters {
             mcu_image_verifier: Some(&mcu_image_verifier),
-            mcu_image_header_size: core::mem::size_of::<mcu_image_header::McuImageHeader>(),
+            mcu_image_header_size: core::mem::size_of::<caliptra_mcu_image_header::McuImageHeader>(
+            ),
             dot_flash: Some(dot_flash),
             otp_enable_integrity_check: true,
             otp_enable_consistency_check: true,

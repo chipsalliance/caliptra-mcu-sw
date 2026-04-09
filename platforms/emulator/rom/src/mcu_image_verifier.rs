@@ -10,7 +10,7 @@ impl ImageVerifier for McuImageVerifier {
         // TODO: make this unconditional and use proper fuses for it instead of test fuses
         #[cfg(any(feature = "test-mcu-svn-gt-fuse", feature = "test-mcu-svn-lt-fuse"))]
         {
-            use mcu_image_header::McuImageHeader;
+            use caliptra_mcu_image_header::McuImageHeader;
             use zerocopy::FromBytes;
             let Ok((header, _)) = McuImageHeader::ref_from_prefix(_header) else {
                 romtime::println!("[mcu-rom] Invalid MCU image header");

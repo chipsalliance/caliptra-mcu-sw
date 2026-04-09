@@ -228,7 +228,7 @@ caliptra-mcu-test-fw-otp-blank-check = { path = "hw/model/test-fw/otp-blank-chec
 caliptra-mcu-test-fw-lc-ctrl = { path = "hw/model/test-fw/lc-ctrl" }
 caliptra-mcu-test-fw-otp-scramble-check = { path = "hw/model/test-fw/otp-scramble-check" }
 mcu-test-fw-sw-digest-lock = { path = "hw/model/test-fw/sw-digest-lock" }
-mcu-image-header = { path = "platforms/emulator/mcu-image-header" }
+caliptra-mcu-image-header = { path = "platforms/emulator/mcu-image-header" }
 mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
 mcu-mbox-common = { path = "common/mcu-mbox" }
 mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" }
