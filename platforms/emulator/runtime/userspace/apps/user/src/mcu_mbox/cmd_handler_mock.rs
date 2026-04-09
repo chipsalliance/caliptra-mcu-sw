@@ -5,8 +5,9 @@ extern crate alloc;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use external_cmds_common::{
-    AttestedCsrData, CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
-    UnifiedCommandHandler, MAX_FW_VERSION_LEN, MAX_UID_LEN,
+    AttestedCsrData, AuthorizeDebugUnlockTokenReq, AuthorizeDebugUnlockTokenResp, CommandError,
+    DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, RequestDebugUnlockReq,
+    RequestDebugUnlockResp, Uid, UnifiedCommandHandler, MAX_FW_VERSION_LEN, MAX_UID_LEN,
 };
 use mcu_mbox_common::config;
 
@@ -90,6 +91,22 @@ impl UnifiedCommandHandler for NonCryptoCmdHandlerMock {
         _device_key_id: u32,
         _algorithm: u32,
         _csr_data: &mut AttestedCsrData,
+    ) -> Result<(), CommandError> {
+        Err(CommandError::NotSupported)
+    }
+
+    async fn request_debug_unlock(
+        &self,
+        _req: &RequestDebugUnlockReq,
+        _resp: &mut RequestDebugUnlockResp,
+    ) -> Result<(), CommandError> {
+        Err(CommandError::NotSupported)
+    }
+
+    async fn authorize_debug_unlock_token(
+        &self,
+        _req: &AuthorizeDebugUnlockTokenReq,
+        _resp: &mut AuthorizeDebugUnlockTokenResp,
     ) -> Result<(), CommandError> {
         Err(CommandError::NotSupported)
     }
