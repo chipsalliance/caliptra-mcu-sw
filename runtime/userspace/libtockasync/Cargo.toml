@@ -10,7 +10,7 @@ edition.workspace = true
 [dependencies]
 critical-section.workspace = true
 embassy-executor.workspace = true
-libtock.workspace = true
+caliptra-mcu-libtock.workspace = true
 libtock_console.workspace = true
 libtock_debug_panic.workspace = true
 libtock_platform.workspace = true

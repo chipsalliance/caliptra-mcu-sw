@@ -3,11 +3,11 @@
 #![allow(static_mut_refs)]
 
 extern crate alloc;
+use caliptra_mcu_libtock::console::Console;
+use caliptra_mcu_libtock::runtime::set_main;
 use core::fmt::Write;
 use core::mem::MaybeUninit;
 use embedded_alloc::Heap;
-use libtock::console::Console;
-use libtock::runtime::set_main;
 
 const HEAP_SIZE: usize = 0x40;
 #[global_allocator]
