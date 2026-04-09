@@ -25,5 +25,5 @@ inherits = "nightly"
 default-filter = """
 (package(mcu-hw-model)
     - test(model_emulated::test::test_new_unbooted)) |
-(package(tests-integration) and test(test_mcu_mbox_cmds))
+(package(tests-integration) and test(test_mcu_mbox_prod_debug_unlock))
 """
