@@ -801,13 +801,13 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-flash-image",
  "cargo_metadata",
  "cfg-if",
  "chrono",
  "elf",
  "hex",
- "mcu-firmware-bundler",
  "pldm-fw-pkg",
  "rayon",
  "semver",
@@ -1075,6 +1075,24 @@ dependencies = [
 [[package]]
 name = "caliptra-mcu-error"
 version = "0.1.0"
+
+[[package]]
+name = "caliptra-mcu-firmware-bundler"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap 4.5.51",
+ "elf",
+ "mcu-image-header",
+ "serde",
+ "subst",
+ "tbf-header",
+ "tempfile",
+ "toml 0.8.23",
+ "uuid",
+ "walkdir",
+ "zerocopy",
+]
 
 [[package]]
 name = "caliptra-mcu-flash-ctrl-emulator"
@@ -3046,24 +3064,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-firmware-bundler"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "clap 4.5.51",
- "elf",
- "mcu-image-header",
- "serde",
- "subst",
- "tbf-header",
- "tempfile",
- "toml 0.8.23",
- "uuid",
- "walkdir",
- "zerocopy",
-]
-
-[[package]]
 name = "mcu-fuses-generator"
 version = "0.1.0"
 dependencies = [
@@ -4896,6 +4896,7 @@ dependencies = [
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-error",
+ "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-flash-image",
  "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
@@ -4909,7 +4910,6 @@ dependencies = [
  "lazy_static",
  "log",
  "mctp-vdm-common",
- "mcu-firmware-bundler",
  "mcu-hw-model",
  "mcu-image-header",
  "mcu-mbox-common",
@@ -5913,6 +5913,7 @@ dependencies = [
  "caliptra-mcu-builder",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-fusegen",
  "cargo_metadata",
  "cc",
@@ -5921,7 +5922,6 @@ dependencies = [
  "ecdsa",
  "elf",
  "hex",
- "mcu-firmware-bundler",
  "mcu-fuses-generator",
  "mcu-hw-model",
  "mcu-rom-common",

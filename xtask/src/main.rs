@@ -2,9 +2,9 @@
 
 use caliptra_api_types::DeviceLifecycle;
 use caliptra_mcu_builder::ImageCfg;
+use caliptra_mcu_firmware_bundler::args::Commands as BundleCommands;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
-use mcu_firmware_bundler::args::Commands as BundleCommands;
 use std::path::PathBuf;
 
 mod auth_manifest;
@@ -601,7 +601,7 @@ fn main() {
                 Ok(())
             }
         },
-        Commands::FirmwareBundler { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
+        Commands::FirmwareBundler { cmd } => caliptra_mcu_firmware_bundler::execute(cmd.clone()),
     };
     result.unwrap_or_else(|e| {
         eprintln!("Error: {:?}", e);

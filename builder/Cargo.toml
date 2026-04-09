@@ -22,7 +22,7 @@ hex.workspace = true
 caliptra-mcu-config.workspace = true
 caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-config-fpga.workspace = true
-mcu-firmware-bundler.workspace = true
+caliptra-mcu-firmware-bundler.workspace = true
 pldm-fw-pkg.workspace = true
 rayon = { workspace = true, optional = true }
 serde.workspace = true

@@ -9,7 +9,7 @@
 use crate::utils::manifest_file;
 use crate::{CaliptraBuildArgs, PROJECT_ROOT};
 use anyhow::Result;
-use mcu_firmware_bundler::args::{
+use caliptra_mcu_firmware_bundler::args::{
     BuildArgs, BundleArgs, Commands as BundleCommands, Common, LdArgs,
 };
 use std::path::PathBuf;
@@ -48,7 +48,7 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
         },
     };
 
-    mcu_firmware_bundler::execute(bundle_cmd)?;
+    caliptra_mcu_firmware_bundler::execute(bundle_cmd)?;
 
     // The bundle step rebuilds the ROM via objcopy, which strips the SHA-384
     // digest appended by rom_build(). Re-apply the digest so the ROM binary
@@ -81,6 +81,6 @@ pub fn bare_metal_build() -> Result<PathBuf> {
         },
     };
 
-    mcu_firmware_bundler::execute(bundle_cmd)?;
+    caliptra_mcu_firmware_bundler::execute(bundle_cmd)?;
     Ok(runtime_bin)
 }
