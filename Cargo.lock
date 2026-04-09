@@ -1340,6 +1340,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-provisioning-fuses"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-mcu-fusegen",
+ "registers-generated",
+]
+
+[[package]]
 name = "caliptra-mcu-rom-common"
 version = "0.1.0"
 dependencies = [
@@ -3936,15 +3945,6 @@ dependencies = [
  "quote",
  "syn 2.0.109",
  "version_check",
-]
-
-[[package]]
-name = "provisioning-fuses"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "caliptra-mcu-fusegen",
- "registers-generated",
 ]
 
 [[package]]
