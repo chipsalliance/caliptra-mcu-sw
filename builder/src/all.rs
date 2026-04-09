@@ -640,6 +640,12 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     // Runtime features and built-in ROM-only test features are best-effort because
     // not every feature is valid on every platform. Explicit test ROM features are
     // required because tests request them by name from the bundle.
+    // Preserve the base ROM binary before feature ROM builds reuse and rename
+    // the same bundler output path.
+    let mcu_rom_preserved = tempfile::NamedTempFile::new()?;
+    std::fs::copy(&mcu_rom, mcu_rom_preserved.path())?;
+    let mcu_rom = mcu_rom_preserved.path().to_path_buf();
+
     const ROM_ONLY_TEST_FEATURES: &[&str] = &[
         "test-i3c-services",
         "test-fw-manifest-dot",
