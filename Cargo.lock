@@ -1253,6 +1253,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-test-fw-mailbox-responder"
+version = "0.1.0"
+dependencies = [
+ "mcu-rom-common",
+ "mcu-test-harness",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
 name = "caliptra-ocp-eat"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=294bcacbd34aca6e23ce7b652885e3236f7e7afe#294bcacbd34aca6e23ce7b652885e3236f7e7afe"
@@ -3355,17 +3366,6 @@ version = "0.1.0"
 dependencies = [
  "mcu-rom-common",
  "mcu-test-harness",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-fw-mailbox-responder"
-version = "0.1.0"
-dependencies = [
- "mcu-rom-common",
- "mcu-test-harness",
- "registers-generated",
  "romtime",
  "tock-registers",
 ]
