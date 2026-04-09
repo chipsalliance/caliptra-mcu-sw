@@ -1367,6 +1367,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-pldm-lib"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-mcu-libtockasync",
+ "caliptra-mcu-pldm-common",
+ "embassy-executor",
+ "embassy-sync",
+ "embedded-alloc",
+ "libsyscall-caliptra",
+ "libtock_alarm",
+ "libtock_console",
+ "libtock_platform",
+ "libtock_runtime",
+ "libtock_unittest",
+]
+
+[[package]]
 name = "caliptra-mcu-pldm-ua"
 version = "0.1.0"
 dependencies = [
@@ -3228,6 +3246,7 @@ dependencies = [
  "caliptra-mcu-flash-image",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-lib",
  "caliptra-ocp-eat",
  "dpe",
  "embassy-executor",
@@ -3239,7 +3258,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "pldm-lib",
  "zerocopy",
 ]
 
@@ -3865,24 +3883,6 @@ dependencies = [
  "arrayvec",
  "cfg-if",
  "ufmt 0.2.0",
-]
-
-[[package]]
-name = "pldm-lib"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "caliptra-mcu-libtockasync",
- "caliptra-mcu-pldm-common",
- "embassy-executor",
- "embassy-sync",
- "embedded-alloc",
- "libsyscall-caliptra",
- "libtock_alarm",
- "libtock_console",
- "libtock_platform",
- "libtock_runtime",
- "libtock_unittest",
 ]
 
 [[package]]
@@ -5420,6 +5420,7 @@ dependencies = [
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-mctp-vdm-lib",
  "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-lib",
  "caliptra-mcu-romtime",
  "caliptra-ocp-eat",
  "critical-section",
@@ -5435,7 +5436,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "pldm-lib",
  "portable-atomic",
  "spdm-lib",
  "static_cell",

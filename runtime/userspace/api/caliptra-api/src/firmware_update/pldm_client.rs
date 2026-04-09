@@ -10,12 +10,12 @@ use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyRes
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
+use caliptra_mcu_pldm_lib::daemon::PldmService;
+use caliptra_mcu_pldm_lib::firmware_device::fd_ops::FdOps;
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use libtock_platform::ErrorCode;
-use pldm_lib::daemon::PldmService;
-use pldm_lib::firmware_device::fd_ops::FdOps;
 
 pub static FW_UPDATE_TASK_YIELD: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 pub static PLDM_DAEMON_TASK_YIELD: Signal<CriticalSectionRawMutex, ()> = Signal::new();

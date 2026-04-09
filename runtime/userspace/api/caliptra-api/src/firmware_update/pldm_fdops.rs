@@ -17,7 +17,7 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::{
     ComponentResponseCode, Descriptor, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
 };
 use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
-use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
+use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
 
 const ESTIMATED_ACTIVATION_TIME_SECS: u16 = 600; // 10 minutes estimated activation time including reset
 

@@ -17,13 +17,13 @@ use caliptra_mcu_libtockasync::TockExecutor;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
+use caliptra_mcu_pldm_lib::daemon::PldmService;
 use embassy_executor::Spawner;
 use libsyscall_caliptra::dma::DMAMapping;
 use libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
 use libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
 use libsyscall_caliptra::{dma::AXIAddr, mailbox::Mailbox};
 use libtock_platform::ErrorCode;
-use pldm_lib::daemon::PldmService;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 pub const IMAGE_AUTHORIZED: u32 = 0xDEADC0DE;

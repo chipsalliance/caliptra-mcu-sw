@@ -17,8 +17,8 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::{
     ComponentResponseCode, Descriptor, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
 };
 use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
+use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
 use libsyscall_caliptra::dma::{AXIAddr, DMAMapping, DMASource, DMATransaction, DMA as DMASyscall};
-use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
 
 pub struct StreamingFdOps<'a, D: DMAMapping> {
     descriptors: &'a [Descriptor],

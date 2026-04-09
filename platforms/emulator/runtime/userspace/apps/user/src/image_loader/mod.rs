@@ -21,6 +21,8 @@ use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     PARTITION_TABLE,
 };
+#[allow(unused)]
+use caliptra_mcu_pldm_lib::daemon::PldmService;
 use core::fmt::Write;
 #[allow(unused)]
 use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
@@ -33,8 +35,6 @@ use libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
 use libsyscall_caliptra::system::System;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
-#[allow(unused)]
-use pldm_lib::daemon::PldmService;
 
 #[allow(unused)]
 use crate::EXECUTOR;
