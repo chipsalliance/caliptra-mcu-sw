@@ -47,7 +47,7 @@ pub(crate) fn autogen_fuses(
     let fuses_hjson = get_file_path_or_default(fuses_hjson_path, IFP_SPECIFIC_FUSES_DEFAULT_PATH);
     let fuse_config = if fuses_hjson.exists() {
         let hjson_content = std::fs::read_to_string(&fuses_hjson)?;
-        Some(mcu_fuses_generator::schema::parse_fuse_hjson_str(
+        Some(caliptra_mcu_fuses_generator::schema::parse_fuse_hjson_str(
             &hjson_content,
         )?)
     } else {
@@ -55,7 +55,7 @@ pub(crate) fn autogen_fuses(
     };
 
     let detailed_output = if let Some(ref config) = fuse_config {
-        Some(mcu_fuses_generator::codegen::generate_fuses(
+        Some(caliptra_mcu_fuses_generator::codegen::generate_fuses(
             config,
             Some(&partition_mmap),
         )?)
@@ -102,8 +102,8 @@ pub(crate) fn autogen_fuses(
 /// Build a map of partition name → PartitionMmapInfo from the parsed OTP mmap.
 fn build_partition_mmap(
     otp: &OtpMmap,
-) -> std::collections::HashMap<String, mcu_fuses_generator::codegen::PartitionMmapInfo> {
-    use mcu_fuses_generator::codegen::{PartitionItemInfo, PartitionMmapInfo};
+) -> std::collections::HashMap<String, caliptra_mcu_fuses_generator::codegen::PartitionMmapInfo> {
+    use caliptra_mcu_fuses_generator::codegen::{PartitionItemInfo, PartitionMmapInfo};
 
     let mut map = std::collections::HashMap::new();
     let mut offset: usize = 0;
@@ -268,10 +268,10 @@ fn generate_fuse_partitions_from_otp(otp: &OtpMmap) -> Result<String> {
 /// Generate markdown documentation for the fuse map.
 fn generate_fuse_docs(
     otp: &OtpMmap,
-    fuse_config: Option<&mcu_fuses_generator::schema::FuseConfig>,
+    fuse_config: Option<&caliptra_mcu_fuses_generator::schema::FuseConfig>,
     partition_mmap: &std::collections::HashMap<
         String,
-        mcu_fuses_generator::codegen::PartitionMmapInfo,
+        caliptra_mcu_fuses_generator::codegen::PartitionMmapInfo,
     >,
 ) -> String {
     let mut md = String::new();
@@ -400,8 +400,10 @@ fn generate_fuse_docs(
     md
 }
 
-fn format_layout(layout: &Option<mcu_fuses_generator::schema::FuseLayoutPolicy>) -> String {
-    use mcu_fuses_generator::schema::FuseLayoutPolicy;
+fn format_layout(
+    layout: &Option<caliptra_mcu_fuses_generator::schema::FuseLayoutPolicy>,
+) -> String {
+    use caliptra_mcu_fuses_generator::schema::FuseLayoutPolicy;
     match layout {
         None | Some(FuseLayoutPolicy::Single) => "Single".to_string(),
         Some(FuseLayoutPolicy::OneHot) => "OneHot".to_string(),

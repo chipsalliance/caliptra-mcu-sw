@@ -1143,6 +1143,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-fuses-generator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde-hjson",
+ "syn 2.0.109",
+]
+
+[[package]]
 name = "caliptra-mcu-i3c-driver"
 version = "0.1.0"
 dependencies = [
@@ -3061,19 +3074,6 @@ dependencies = [
  "libtock_unittest",
  "mctp-vdm-common",
  "zerocopy",
-]
-
-[[package]]
-name = "mcu-fuses-generator"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "prettyplease",
- "proc-macro2",
- "quote",
- "serde",
- "serde-hjson",
- "syn 2.0.109",
 ]
 
 [[package]]
@@ -5915,6 +5915,7 @@ dependencies = [
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-fusegen",
+ "caliptra-mcu-fuses-generator",
  "cargo_metadata",
  "cc",
  "clap 4.5.51",
@@ -5922,7 +5923,6 @@ dependencies = [
  "ecdsa",
  "elf",
  "hex",
- "mcu-fuses-generator",
  "mcu-hw-model",
  "mcu-rom-common",
  "p384",
