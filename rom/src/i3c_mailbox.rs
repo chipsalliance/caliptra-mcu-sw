@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use mcu_error::McuError;
-use registers_generated::i3c;
-use registers_generated::i3c::bits::{InterruptStatus, Status, TtiResetControl};
-use romtime::StaticRef;
+use caliptra_mcu_error::McuError;
+use caliptra_mcu_registers_generated::i3c;
+use caliptra_mcu_registers_generated::i3c::bits::{InterruptStatus, Status, TtiResetControl};
+use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{Readable, Writeable};
 
 /// I3C Mandatory Data Byte for service IBI notifications.
@@ -63,7 +63,7 @@ impl I3cMailboxHandler {
 
     /// Run the mailbox processing loop until completion or timeout.
     pub fn run(&mut self) -> Result<(), McuError> {
-        romtime::println!("[mcu-rom-i3c-svc] Entering I3C services mode");
+        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Entering I3C services mode");
 
         // Announce readiness via IBI. Use a short timeout since the I3C
         // controller may not be ready to acknowledge IBIs yet (e.g. on FPGA
@@ -82,7 +82,7 @@ impl I3cMailboxHandler {
             }
         }
 
-        romtime::println!("[mcu-rom-i3c-svc] I3C services timed out");
+        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] I3C services timed out");
         Err(McuError::ROM_COLD_BOOT_DOT_ERROR)
     }
 
@@ -90,12 +90,12 @@ impl I3cMailboxHandler {
     fn dispatch(&self, cmd: u8, _rx_buf: &[u32; MAX_RX_WORDS], _data_len: usize) -> DispatchResult {
         match cmd {
             CMD_PING => {
-                romtime::println!("[mcu-rom-i3c-svc] PING received");
+                caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] PING received");
                 self.send_response(STATUS_SUCCESS, &PONG_PAYLOAD);
                 DispatchResult::Continue
             }
             _ => {
-                romtime::println!("[mcu-rom-i3c-svc] Unknown command: {:#x}", cmd);
+                caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Unknown command: {:#x}", cmd);
                 self.send_status(STATUS_INVALID_CMD);
                 DispatchResult::Continue
             }

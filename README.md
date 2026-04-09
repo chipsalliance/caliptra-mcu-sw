@@ -98,14 +98,14 @@ Some ROM and runtime shared code resides under `romtime/`.
 
 The general structure of any platform-specific ROM entry point should be:
 
-* At some point, call `mcu_rom_common::set_fatal_error_handler()` to set a fatal error handler. (By default, the handler will simply loop forever.)
-* At some point, call `romtime::set_printer` if you want the debugging logs to be sent somewhere (by default, the logs will simply be ignored).
+* At some point, call `caliptra_mcu_rom_common::set_fatal_error_handler()` to set a fatal error handler. (By default, the handler will simply loop forever.)
+* At some point, call `caliptra_mcu_romtime::set_printer` if you want the debugging logs to be sent somewhere (by default, the logs will simply be ignored).
 * Do any platform-specific initialization
-* Call `mcu_rom_common::rom_start()`.
+* Call `caliptra_mcu_rom_common::rom_start()`.
 * Do any other platform-specific code, including clearing any state.
 * Jump to the firmware.
 
-The `mcu_rom_common::rom_start()` will handle the standard [MCU ROM boot flow](https://chipsalliance.github.io/caliptra-mcu-sw/rom.html).
+The `caliptra_mcu_rom_common::rom_start()` will handle the standard [MCU ROM boot flow](https://chipsalliance.github.io/caliptra-mcu-sw/rom.html).
 
 Additional callbacks and handlers may be defined in the future for the common MCU ROM to utilize.
 

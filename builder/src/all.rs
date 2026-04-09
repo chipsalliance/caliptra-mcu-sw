@@ -37,7 +37,7 @@ struct FeatureTestResource {
     runtime_file: tempfile::NamedTempFile,
     soc_manifest_file: tempfile::NamedTempFile,
     flash_image: PathBuf,
-    caliptra_mcu_pldm_fw_pkg: tempfile::NamedTempFile,
+    pldm_fw_pkg: tempfile::NamedTempFile,
     update_flash_image: Option<PathBuf>,
 }
 
@@ -95,8 +95,13 @@ pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
     use std::process::Command;
 
     let mut cmd = Command::new("cargo");
-    cmd.current_dir(&*PROJECT_ROOT)
-        .args(["build", "-p", "emulator", "--profile", "test"]);
+    cmd.current_dir(&*PROJECT_ROOT).args([
+        "build",
+        "-p",
+        "caliptra-mcu-emulator",
+        "--profile",
+        "test",
+    ]);
 
     if !feature.is_empty() {
         cmd.args(["--features", feature]);
@@ -194,7 +199,7 @@ impl FirmwareBinaries {
     const MCU_RUNTIME_NAME: &'static str = "mcu_runtime.bin";
     const SOC_MANIFEST_NAME: &'static str = "soc_manifest.bin";
     const FLASH_IMAGE_NAME: &'static str = "flash_image.bin";
-    const PLDM_FW_PKG_NAME: &'static str = "caliptra_mcu_pldm_fw_pkg.bin";
+    const PLDM_FW_PKG_NAME: &'static str = "pldm_fw_pkg.bin";
 
     /// Reads the environment variable `CPTRA_FIRMWARE_BUNDLE`.
     ///
@@ -601,8 +606,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             get_default_pldm_fw_manifest(&dev_uuid, &data)
         }
     };
-    let caliptra_mcu_pldm_fw_pkg = tempfile::NamedTempFile::new().unwrap();
-    let pldm_fw_pkg_path = caliptra_mcu_pldm_fw_pkg
+    let pldm_fw_pkg = tempfile::NamedTempFile::new().unwrap();
+    let pldm_fw_pkg_path = pldm_fw_pkg
         .path()
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
@@ -773,7 +778,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 runtime_file: feature_runtime_file,
                 soc_manifest_file: feature_soc_manifest_file,
                 flash_image: feature_flash_image,
-                caliptra_mcu_pldm_fw_pkg: feature_pldm_fw_pkg,
+                pldm_fw_pkg: feature_pldm_fw_pkg,
                 update_flash_image: feature_update_flash_image,
             })
         })
@@ -836,7 +841,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         runtime_file: runtime,
         soc_manifest_file: soc_manifest,
         flash_image,
-        caliptra_mcu_pldm_fw_pkg,
+        pldm_fw_pkg,
         update_flash_image,
     } in test_runtimes
     {
@@ -884,11 +889,11 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         let pldm_fw_pkg_name = format!("mcu-test-pldm-fw-pkg-{}.bin", feature);
         println!(
             "Adding {} -> {}",
-            caliptra_mcu_pldm_fw_pkg.path().display(),
+            pldm_fw_pkg.path().display(),
             pldm_fw_pkg_name
         );
         add_to_zip(
-            &caliptra_mcu_pldm_fw_pkg.path().to_path_buf(),
+            &pldm_fw_pkg.path().to_path_buf(),
             &pldm_fw_pkg_name,
             &mut zip,
             options,

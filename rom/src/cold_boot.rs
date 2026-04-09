@@ -258,8 +258,8 @@ fn attempt_dot_override(
 /// Runs the I3C mailbox handler loop, processing commands until completion
 /// or timeout. Sets boot status checkpoints on entry and exit.
 fn enter_i3c_services(
-    mci: &romtime::Mci,
-    i3c_base: romtime::StaticRef<registers_generated::i3c::regs::I3c>,
+    mci: &caliptra_mcu_romtime::Mci,
+    i3c_base: caliptra_mcu_romtime::StaticRef<caliptra_mcu_registers_generated::i3c::regs::I3c>,
     services: I3cServicesModes,
 ) {
     // Extend the watchdog timeout for I3C services since the loop may run
@@ -269,16 +269,16 @@ fn enter_i3c_services(
     // Disable the recovery interface status registers.
     i3c_base
         .sec_fw_recovery_if_recovery_status
-        .write(registers_generated::i3c::bits::RecoveryStatus::DevRecStatus.val(3));
+        .write(caliptra_mcu_registers_generated::i3c::bits::RecoveryStatus::DevRecStatus.val(3));
     i3c_base
         .sec_fw_recovery_if_device_status_0
-        .write(registers_generated::i3c::bits::DeviceStatus0::DevStatus.val(0));
+        .write(caliptra_mcu_registers_generated::i3c::bits::DeviceStatus0::DevStatus.val(0));
 
     // Clear the virtual device address to fully deactivate the recovery
     // device on the I3C bus.
     i3c_base.stdby_ctrl_mode_stby_cr_virt_device_addr.set(0);
 
-    romtime::println!("[mcu-rom-i3c-svc] Recovery disabled");
+    caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Recovery disabled");
 
     mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesStarted.into());
     let mut handler = I3cMailboxHandler::new(i3c_base, services);
@@ -287,7 +287,7 @@ fn enter_i3c_services(
             mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesComplete.into());
         }
         Err(err) => {
-            romtime::println!("[mcu-rom] I3C services error: {}", HexWord(err.into()));
+            caliptra_mcu_romtime::println!("[mcu-rom] I3C services error: {}", HexWord(err.into()));
         }
     }
 }
@@ -756,7 +756,7 @@ impl BootFlow for ColdBoot {
 
         soc.pk_hash_volatile_lock(&env.otp, pk_hash_idx);
         if env.otp.check_error().is_some() {
-            romtime::println!("[mcu-rom] OTP error: {}", HexWord(env.otp.status()));
+            caliptra_mcu_romtime::println!("[mcu-rom] OTP error: {}", HexWord(env.otp.status()));
             env.otp.print_errors();
         }
 

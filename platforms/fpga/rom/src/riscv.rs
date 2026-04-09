@@ -139,7 +139,7 @@ pub extern "C" fn rom_entry() -> ! {
         mci_mbox0_axi_users: mbox_axi_users,
         mci_mbox1_axi_users: mbox_axi_users,
         i3c_services: if cfg!(feature = "test-i3c-services") {
-            Some(mcu_rom_common::I3cServicesModes::DOT_RECOVERY)
+            Some(caliptra_mcu_rom_common::I3cServicesModes::DOT_RECOVERY)
         } else {
             None
         },

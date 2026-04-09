@@ -192,7 +192,7 @@ caliptra-mcu-core-mctp-vdm-client = { path = "caliptra-util-host/apps/mctp-vdm/c
 caliptra-mcu-core-util-host-transport = { path = "caliptra-util-host/transport" }
 caliptra-mcu-core-util-host-command-types = { path = "caliptra-util-host/command-types" }
 caliptra-mcu-core-util-host-osal = { path = "caliptra-util-host/osal" }
-caliptra-mailbox-server = { path = "caliptra-util-host/apps/mailbox/server" }
+caliptra-mcu-core-mailbox-server = { path = "caliptra-util-host/apps/mailbox/server" }
 caliptra-mcu-capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
 caliptra-mcu-capsules-runtime = { path = "runtime/kernel/capsules" }
 caliptra-mcu-dma-driver = { path = "platforms/emulator/runtime/kernel/drivers/dma" }

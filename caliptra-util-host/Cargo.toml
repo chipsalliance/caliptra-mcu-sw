@@ -32,7 +32,7 @@ caliptra-mcu-core-util-host-transport = { path = "transport" }
 caliptra-util-host-cbinding = { path = "cbinding" }
 caliptra-mcu-core-util-host-mailbox-test-config = { path = "apps/mailbox/config" }
 caliptra-mailbox-client = { path = "apps/mailbox/client" }
-caliptra-mailbox-server = { path = "apps/mailbox/server" }
+caliptra-mcu-core-mailbox-server = { path = "apps/mailbox/server" }
 caliptra-mcu-core-util-host-mctp-vdm-test-config = { path = "apps/mctp-vdm/config" }
 caliptra-mcu-core-mctp-vdm-client = { path = "apps/mctp-vdm/client" }
 

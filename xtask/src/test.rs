@@ -188,7 +188,7 @@ fn test_hello() -> Result<()> {
     let args = get_emulator_args();
     let output = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .args(["run", "-p", "emulator", "--"])
+        .args(["run", "-p", "caliptra-mcu-emulator", "--"])
         .args(&args)
         .output()?;
 

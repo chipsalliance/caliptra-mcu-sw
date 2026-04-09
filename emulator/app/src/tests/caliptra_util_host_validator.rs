@@ -5,7 +5,7 @@ use std::process::{exit, Command};
 use std::sync::atomic::Ordering;
 use std::thread::{self, sleep};
 
-use caliptra_mailbox_server::ServerConfig;
+use caliptra_mcu_core_mailbox_server::ServerConfig;
 use caliptra_mcu_core_util_host_mailbox_test_config::{
     DeviceCapabilitiesConfig, DeviceConfig, DeviceInfoConfig, FirmwareVersionConfig, NetworkConfig,
     ServerConfig as ConfigServerConfig, TestConfig, ValidationConfig,
@@ -130,7 +130,8 @@ pub fn run_mbox_responder(mbox: McuMailboxTransport) {
         let server_config = ServerConfig::default();
         println!("Starting mailbox server on {}", server_config.bind_addr);
 
-        let mut server = caliptra_mailbox_server::MailboxServer::new(server_config).unwrap();
+        let mut server =
+            caliptra_mcu_core_mailbox_server::MailboxServer::new(server_config).unwrap();
 
         // Run server with a simple echo handler
         server

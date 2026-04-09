@@ -367,11 +367,11 @@ impl Soc {
         // Read strap register to check for provisioning mode.
         let strap_reg = self.registers.ss_strap_generic[2].get();
         if (strap_reg & Self::PK_HASH_STRAPPING_MASK) != 0 {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
               "[mcu-fuse-write] PK Hash provisioning mode detected, skipping vendor PK hash lock."
           );
         } else {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[mcu-fuse-write] Locking vendor PK hash slots from index {}",
                 selected_index
             );

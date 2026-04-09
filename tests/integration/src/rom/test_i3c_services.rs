@@ -8,8 +8,8 @@
 #[cfg(test)]
 mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
-    use mcu_hw_model::McuHwModel;
-    use mcu_testing_common::i3c_socket::BufferedStream;
+    use caliptra_mcu_hw_model::McuHwModel;
+    use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
     use random_port::PortPicker;
     use std::net::{SocketAddr, TcpStream};
     use std::sync::atomic::Ordering;
