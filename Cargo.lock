@@ -777,12 +777,12 @@ name = "caliptra-mctp-vdm-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-testing-common",
  "caliptra-util-host-command-types",
  "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
  "clap 4.5.51",
- "mctp-vdm-common",
  "zerocopy",
 ]
 
@@ -1266,6 +1266,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-mctp-vdm-common"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-otp-lifecycle"
 version = "0.1.0"
 dependencies = [
@@ -1395,9 +1403,9 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "caliptra-api-types",
+ "caliptra-mcu-mctp-vdm-common",
  "crc",
  "hex",
- "mctp-vdm-common",
  "pldm-common",
  "pldm-ua",
  "rand 0.8.5",
@@ -1565,9 +1573,9 @@ version = "0.1.0"
 name = "caliptra-util-host-transport"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-mctp-vdm-common",
  "caliptra-util-host-command-types",
  "caliptra-util-host-osal",
- "mctp-vdm-common",
  "zerocopy",
 ]
 
@@ -3292,19 +3300,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
-name = "mctp-vdm-common"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "zerocopy",
-]
-
-[[package]]
 name = "mctp-vdm-lib"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "caliptra-mcu-libtockasync",
+ "caliptra-mcu-mctp-vdm-common",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
@@ -3315,7 +3316,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "mctp-vdm-common",
  "zerocopy",
 ]
 
@@ -4889,6 +4889,7 @@ dependencies = [
  "caliptra-mcu-hw-model",
  "caliptra-mcu-image-header",
  "caliptra-mcu-mbox-common",
+ "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-rom-common",
  "caliptra-mcu-testing-common",
  "caliptra-util-host-mctp-vdm-test-config",
@@ -4902,7 +4903,6 @@ dependencies = [
  "hmac",
  "lazy_static",
  "log",
- "mctp-vdm-common",
  "openssl",
  "p384",
  "pldm-common",
@@ -5415,6 +5415,7 @@ dependencies = [
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
+ "caliptra-mcu-mctp-vdm-common",
  "caliptra-ocp-eat",
  "critical-section",
  "embassy-executor",
@@ -5430,7 +5431,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "mctp-vdm-common",
  "mctp-vdm-lib",
  "mcu-mbox-lib",
  "pldm-common",

@@ -17,7 +17,7 @@ libtock_alarm.workspace = true
 libtock_console.workspace = true
 libtock_platform.workspace = true
 libtock_runtime.workspace = true
-mctp-vdm-common.workspace = true
+caliptra-mcu-mctp-vdm-common.workspace = true
 zerocopy.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]

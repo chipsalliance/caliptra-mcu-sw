@@ -2,22 +2,22 @@
 
 use crate::error::VdmLibError;
 use crate::transport::MctpVdmTransport;
-use core::convert::TryFrom;
-use external_cmds_common::{
-    AttestedCsrData, CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
-    UnifiedCommandHandler, MAX_ATTESTED_CSR_DATA_LEN, MAX_UID_LEN,
-};
-use mctp_vdm_common::codec::VdmCodec;
-use mctp_vdm_common::message::{
+use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
+use caliptra_mcu_mctp_vdm_common::message::{
     AsymAlgorithm, DeviceCapabilitiesResponse, DeviceIdResponse, DeviceInfoRequest,
     DeviceInfoResponse, ExportAttestedCsrRequest, ExportAttestedCsrResponse,
     FirmwareVersionRequest, FirmwareVersionResponse, DEVICE_CAPS_SIZE,
 };
-use mctp_vdm_common::protocol::{
+use caliptra_mcu_mctp_vdm_common::protocol::{
     VdmCommand, VdmCompletionCode, VdmFailureResponse, VdmMsgHeader, VDM_MSG_HEADER_LEN,
 };
-use mctp_vdm_common::util::mctp_transport::{
+use caliptra_mcu_mctp_vdm_common::util::mctp_transport::{
     construct_mctp_vdm_msg, extract_vdm_msg, VDM_MSG_OFFSET,
+};
+use core::convert::TryFrom;
+use external_cmds_common::{
+    AttestedCsrData, CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
+    UnifiedCommandHandler, MAX_ATTESTED_CSR_DATA_LEN, MAX_UID_LEN,
 };
 use zerocopy::IntoBytes;
 

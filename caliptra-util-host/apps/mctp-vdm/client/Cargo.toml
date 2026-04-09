@@ -21,5 +21,5 @@ caliptra-util-host-mctp-vdm-test-config.workspace = true
 caliptra-util-host-transport.workspace = true
 caliptra-util-host-command-types.workspace = true
 caliptra-mcu-testing-common.workspace = true
-mctp-vdm-common.workspace = true
+caliptra-mcu-mctp-vdm-common.workspace = true
 zerocopy.workspace = true

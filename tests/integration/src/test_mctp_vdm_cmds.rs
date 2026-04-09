@@ -10,21 +10,23 @@ pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_mbox_common::config;
+    use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
+    use caliptra_mcu_mctp_vdm_common::message::device_capabilities::{
+        DeviceCapabilitiesRequest, DeviceCapabilitiesResponse,
+    };
+    use caliptra_mcu_mctp_vdm_common::message::device_id::{DeviceIdRequest, DeviceIdResponse};
+    use caliptra_mcu_mctp_vdm_common::message::device_info::{
+        DeviceInfoRequest, DeviceInfoResponse,
+    };
+    use caliptra_mcu_mctp_vdm_common::message::firmware_version::{
+        FirmwareVersionRequest, FirmwareVersionResponse,
+    };
+    use caliptra_mcu_mctp_vdm_common::protocol::header::VdmCompletionCode;
     use caliptra_mcu_testing_common::mctp_vdm_transport::{
         MctpVdmSocket, MctpVdmTransport, VdmClient, VdmTransportError,
     };
     use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
     use log::{info, LevelFilter};
-    use mctp_vdm_common::codec::VdmCodec;
-    use mctp_vdm_common::message::device_capabilities::{
-        DeviceCapabilitiesRequest, DeviceCapabilitiesResponse,
-    };
-    use mctp_vdm_common::message::device_id::{DeviceIdRequest, DeviceIdResponse};
-    use mctp_vdm_common::message::device_info::{DeviceInfoRequest, DeviceInfoResponse};
-    use mctp_vdm_common::message::firmware_version::{
-        FirmwareVersionRequest, FirmwareVersionResponse,
-    };
-    use mctp_vdm_common::protocol::header::VdmCompletionCode;
     use random_port::PortPicker;
     use simple_logger::SimpleLogger;
     use std::process::exit;

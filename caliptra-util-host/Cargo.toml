@@ -50,7 +50,7 @@ clap = { version = "4.5.23", features = [
     "wrap_help",
 ] }
 hmac = "0.12"
-mctp-vdm-common = { path = "../common/mctp-vdm" }
+caliptra-mcu-mctp-vdm-common = { path = "../common/mctp-vdm" }
 caliptra-mcu-testing-common = { path = "../common/testing" }
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }

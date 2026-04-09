@@ -8,8 +8,8 @@
 use crate::i3c::DynamicI3cAddress;
 use crate::i3c_socket::BufferedStream;
 use crate::mctp_util::common::MctpUtil;
-use mctp_vdm_common::codec::VdmCodec;
-use mctp_vdm_common::protocol::header::{
+use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
+use caliptra_mcu_mctp_vdm_common::protocol::header::{
     VdmCompletionCode, VdmMsgHeader, MCTP_VDM_MSG_TYPE, VDM_MSG_HEADER_LEN,
 };
 use std::net::{SocketAddr, TcpStream};
