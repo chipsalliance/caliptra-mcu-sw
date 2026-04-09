@@ -33,7 +33,7 @@ pub type CaliptraResult<T> = Result<T, CaliptraApiError>;
 #[derive(Debug, Clone, PartialEq)]
 pub enum CaliptraApiError {
     /// OSAL error
-    Osal(caliptra_util_host_osal::OsalError),
+    Osal(caliptra_mcu_core_util_host_osal::OsalError),
     /// Invalid parameter
     InvalidParameter(&'static str),
     /// Session not initialized
@@ -46,8 +46,8 @@ pub enum CaliptraApiError {
     SessionError(&'static str),
 }
 
-impl From<caliptra_util_host_osal::OsalError> for CaliptraApiError {
-    fn from(err: caliptra_util_host_osal::OsalError) -> Self {
+impl From<caliptra_mcu_core_util_host_osal::OsalError> for CaliptraApiError {
+    fn from(err: caliptra_mcu_core_util_host_osal::OsalError) -> Self {
         CaliptraApiError::Osal(err)
     }
 }

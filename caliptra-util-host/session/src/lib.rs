@@ -7,7 +7,7 @@
 #![no_std]
 
 use caliptra_mcu_core_util_host_command_types::{CaliptraCommandId, CommandRequest, CommandResponse};
-use caliptra_util_host_osal::time::{sleep, Duration, Instant};
+use caliptra_mcu_core_util_host_osal::time::{sleep, Duration, Instant};
 use caliptra_mcu_core_util_host_transport::Transport;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
@@ -557,8 +557,8 @@ impl SessionManager {
 }
 
 // Error conversions
-impl From<caliptra_util_host_osal::error::OsalError> for SessionError {
-    fn from(_error: caliptra_util_host_osal::error::OsalError) -> Self {
+impl From<caliptra_mcu_core_util_host_osal::error::OsalError> for SessionError {
+    fn from(_error: caliptra_mcu_core_util_host_osal::error::OsalError) -> Self {
         SessionError::OsalError("OSAL error")
     }
 }

@@ -2,7 +2,7 @@
 
 //! Transport error types
 
-use caliptra_util_host_osal::OsalError;
+use caliptra_mcu_core_util_host_osal::OsalError;
 use core::fmt;
 
 pub type TransportResult<T> = Result<T, TransportError>;

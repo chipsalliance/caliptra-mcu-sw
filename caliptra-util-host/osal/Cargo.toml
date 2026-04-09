@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-util-host-osal"
+name = "caliptra-mcu-core-util-host-osal"
 version.workspace = true
 edition.workspace = true
 description = "OS Abstraction Layer for Caliptra Utility Host Library"

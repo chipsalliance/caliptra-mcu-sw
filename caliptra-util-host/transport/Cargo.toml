@@ -7,7 +7,7 @@ edition.workspace = true
 description = "Transport layer for Caliptra Utility Host Library"
 
 [dependencies]
-caliptra-util-host-osal.workspace = true
+caliptra-mcu-core-util-host-osal.workspace = true
 caliptra-mcu-core-util-host-command-types.workspace = true
 caliptra-mcu-mctp-vdm-common.workspace = true
 zerocopy.workspace = true

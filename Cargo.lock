@@ -925,12 +925,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-core-util-host-osal"
+version = "0.1.0"
+
+[[package]]
 name = "caliptra-mcu-core-util-host-transport"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-core-util-host-command-types",
+ "caliptra-mcu-core-util-host-osal",
  "caliptra-mcu-mctp-vdm-common",
- "caliptra-util-host-osal",
  "zerocopy",
 ]
 
@@ -1906,10 +1910,6 @@ source = "git+https://github.com/chipsalliance/caliptra-sw?rev=294bcacbd34aca6e2
 name = "caliptra-ureg"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=294bcacbd34aca6e23ce7b652885e3236f7e7afe#294bcacbd34aca6e23ce7b652885e3236f7e7afe"
-
-[[package]]
-name = "caliptra-util-host-osal"
-version = "0.1.0"
 
 [[package]]
 name = "caliptra-x509"
