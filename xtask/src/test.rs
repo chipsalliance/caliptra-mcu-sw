@@ -27,13 +27,13 @@ const EXCLUDED_PACKAGES: &[&str] = &[
     "libtock_unittest",
     "syscalls_tests",
     // no_std firmware binaries targeting RISC-V; can't be run on the host
-    "mcu-test-fw-exception-handler",
-    "mcu-test-fw-hitless-update-flow",
-    "mcu-test-fw-lc-ctrl",
-    "mcu-test-fw-mailbox-responder",
-    "mcu-test-fw-otp-blank-check",
+    "caliptra-mcu-test-fw-exception-handler",
+    "caliptra-mcu-test-fw-hitless-update-flow",
+    "caliptra-mcu-test-fw-lc-ctrl",
+    "caliptra-mcu-test-fw-mailbox-responder",
+    "caliptra-mcu-test-fw-otp-blank-check",
     "mcu-test-fw-otp-scramble-check",
-    "mcu-test-fw-sw-digest-lock",
+    "caliptra-mcu-test-fw-sw-digest-lock",
 ];
 
 pub(crate) fn test(args: TestArgs) -> Result<()> {

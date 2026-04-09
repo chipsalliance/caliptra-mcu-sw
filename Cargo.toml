@@ -226,7 +226,7 @@ caliptra-mcu-test-fw-hitless-update-flow = { path = "hw/model/test-fw/hitless-up
 caliptra-mcu-test-fw-mailbox-responder = { path = "hw/model/test-fw/mailbox-responder" }
 caliptra-mcu-test-fw-otp-blank-check = { path = "hw/model/test-fw/otp-blank-check" }
 caliptra-mcu-test-fw-lc-ctrl = { path = "hw/model/test-fw/lc-ctrl" }
-mcu-test-fw-otp-scramble-check = { path = "hw/model/test-fw/otp-scramble-check" }
+caliptra-mcu-test-fw-otp-scramble-check = { path = "hw/model/test-fw/otp-scramble-check" }
 mcu-test-fw-sw-digest-lock = { path = "hw/model/test-fw/sw-digest-lock" }
 mcu-image-header = { path = "platforms/emulator/mcu-image-header" }
 mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
