@@ -23,5 +23,5 @@ caliptra-mcu-libtock_debug_panic.workspace = true
 caliptra-mcu-libtock_low_level_debug.workspace = true
 caliptra-mcu-libtock_platform.workspace = true
 caliptra-mcu-libtock_rng.workspace = true
-libtock_runtime.workspace = true
+caliptra-mcu-libtock_runtime.workspace = true
 libtock_small_panic.workspace = true

@@ -13,7 +13,7 @@ embassy-sync.workspace = true
 caliptra-mcu-libtock_console.workspace = true
 caliptra-mcu-libtock_platform.workspace = true
 caliptra-mcu-libtockasync.workspace = true
-libtock_runtime.workspace = true
+caliptra-mcu-libtock_runtime.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 libtock_unittest.workspace = true

@@ -72,7 +72,7 @@ fn main() {
 #[cfg(target_arch = "riscv32")]
 #[embassy_executor::task]
 async fn start() {
-    async_main::<libtock_runtime::TockSyscalls>().await;
+    async_main::<caliptra_mcu_libtock_runtime::TockSyscalls>().await;
 }
 
 #[cfg(not(target_arch = "riscv32"))]

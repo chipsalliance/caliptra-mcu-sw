@@ -7,7 +7,7 @@ extern crate caliptra_mcu_libtock_debug_panic;
 extern crate libtock_small_panic;
 
 pub use caliptra_mcu_libtock_platform as platform;
-pub use libtock_runtime as runtime;
+pub use caliptra_mcu_libtock_runtime as runtime;
 
 pub mod alarm {
     use caliptra_mcu_libtock_alarm as alarm;

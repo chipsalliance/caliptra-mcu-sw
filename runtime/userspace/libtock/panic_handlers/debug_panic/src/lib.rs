@@ -2,8 +2,8 @@
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_low_level_debug::{AlertCode, LowLevelDebug};
 use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
+use caliptra_mcu_libtock_runtime::TockSyscalls;
 use core::fmt::Write;
-use libtock_runtime::TockSyscalls;
 
 /// This handler requires some 0x400 bytes of stack
 #[allow(dead_code)]

@@ -14,7 +14,7 @@ caliptra-mcu-libtock.workspace = true
 caliptra-mcu-libtock_console.workspace = true
 caliptra-mcu-libtock_debug_panic.workspace = true
 caliptra-mcu-libtock_platform.workspace = true
-libtock_runtime.workspace = true
+caliptra-mcu-libtock_runtime.workspace = true
 portable-atomic.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
