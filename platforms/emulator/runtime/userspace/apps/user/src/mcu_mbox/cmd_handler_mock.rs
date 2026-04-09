@@ -4,11 +4,11 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use caliptra_mcu_mbox_common::config;
 use external_cmds_common::{
     AttestedCsrData, CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
     UnifiedCommandHandler, MAX_FW_VERSION_LEN, MAX_UID_LEN,
 };
-use mcu_mbox_common::config;
 
 #[derive(Default)]
 pub struct NonCryptoCmdHandlerMock;

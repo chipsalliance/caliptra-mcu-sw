@@ -10,9 +10,7 @@ pub mod test {
         McuMailboxError, McuMailboxResponse, McuMailboxTransport,
     };
     use caliptra_mcu_hw_model::McuHwModel;
-    use hkdf::Hkdf;
-    use hmac::{Hmac, Mac};
-    use mcu_mbox_common::messages::{
+    use caliptra_mcu_mbox_common::messages::{
         CmAesDecryptInitReq, CmAesDecryptUpdateReq, CmAesEncryptInitReq,
         CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq, CmAesGcmDecryptFinalReq,
         CmAesGcmDecryptFinalRespHeader, CmAesGcmDecryptInitReq, CmAesGcmDecryptUpdateReq,
@@ -39,6 +37,8 @@ pub mod test {
         McuShaInitResp, McuShaUpdateReq, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
         CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
     };
+    use hkdf::Hkdf;
+    use hmac::{Hmac, Mac};
     use mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
         MCU_RUNNING,
@@ -302,9 +302,9 @@ pub mod test {
             // Add firmware version test messages
             for idx in 0..=2 {
                 let version_str = match idx {
-                    0 => mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[0],
-                    1 => mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[1],
-                    2 => mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[2],
+                    0 => caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[0],
+                    1 => caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[1],
+                    2 => caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[2],
                     _ => unreachable!(),
                 };
 
@@ -342,7 +342,7 @@ pub mod test {
             let cmd = device_caps_req.cmd_code();
             device_caps_req.populate_chksum().unwrap();
 
-            let test_capabilities = &mcu_mbox_common::config::TEST_DEVICE_CAPABILITIES;
+            let test_capabilities = &caliptra_mcu_mbox_common::config::TEST_DEVICE_CAPABILITIES;
             let mut device_caps_resp = McuMailboxResp::DeviceCaps(DeviceCapsResp {
                 hdr: MailboxRespHeader::default(),
                 caps: {
@@ -367,7 +367,7 @@ pub mod test {
             let cmd = device_id_req.cmd_code();
             device_id_req.populate_chksum().unwrap();
 
-            let test_device_id = &mcu_mbox_common::config::TEST_DEVICE_ID;
+            let test_device_id = &caliptra_mcu_mbox_common::config::TEST_DEVICE_ID;
             let mut device_id_resp = McuMailboxResp::DeviceId(DeviceIdResp {
                 hdr: MailboxRespHeader::default(),
                 vendor_id: test_device_id.vendor_id,
@@ -391,7 +391,7 @@ pub mod test {
             let cmd = device_info_req.cmd_code();
             device_info_req.populate_chksum().unwrap();
 
-            let test_uid = &mcu_mbox_common::config::TEST_UID;
+            let test_uid = &caliptra_mcu_mbox_common::config::TEST_UID;
             let mut device_info_resp = McuMailboxResp::DeviceInfo(DeviceInfoResp {
                 hdr: MailboxRespHeaderVarSize {
                     data_len: test_uid.len() as u32,

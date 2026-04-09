@@ -9,6 +9,7 @@
 pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_mcu_hw_model::McuHwModel;
+    use caliptra_mcu_mbox_common::config;
     use log::{info, LevelFilter};
     use mctp_vdm_common::codec::VdmCodec;
     use mctp_vdm_common::message::device_capabilities::{
@@ -20,7 +21,6 @@ pub mod test {
         FirmwareVersionRequest, FirmwareVersionResponse,
     };
     use mctp_vdm_common::protocol::header::VdmCompletionCode;
-    use mcu_mbox_common::config;
     use mcu_testing_common::mctp_vdm_transport::{
         MctpVdmSocket, MctpVdmTransport, VdmClient, VdmTransportError,
     };

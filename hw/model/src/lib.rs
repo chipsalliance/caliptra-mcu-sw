@@ -13,9 +13,9 @@ use caliptra_hw_model_types::{
     EtrngResponse, HexBytes, HexSlice, RandomEtrngResponses, RandomNibbles, DEFAULT_CPTRA_OBF_KEY,
 };
 use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_mcu_mbox_common::messages::calc_checksum;
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
 use caliptra_ureg::MmioMut;
-use mcu_mbox_common::messages::calc_checksum;
 pub use mcu_mgr::McuManager;
 pub use mcu_rom_common::{LifecycleControllerState, LifecycleRawTokens, LifecycleToken};
 use mcu_testing_common::MCU_RUNNING;
@@ -515,7 +515,7 @@ pub trait McuHwModel {
     /// Executes a typed request and (on success), returns the typed response.
     /// The checksum field of the request is calculated, and the checksum of the
     /// response is validated.
-    fn mailbox_execute_req<R: mcu_mbox_common::messages::Request>(
+    fn mailbox_execute_req<R: caliptra_mcu_mbox_common::messages::Request>(
         &mut self,
         mut req: R,
     ) -> Result<R::Resp> {

@@ -47,7 +47,7 @@ caliptra-otp-digest.workspace = true
 mcu-firmware-bundler.workspace = true
 caliptra-mcu-hw-model.workspace = true
 caliptra-mcu-image-header.workspace = true
-mcu-mbox-common.workspace = true
+caliptra-mcu-mbox-common.workspace = true
 mcu-rom-common.workspace = true
 mcu-testing-common.workspace = true
 p384 = { workspace = true, features = ["ecdsa"] }

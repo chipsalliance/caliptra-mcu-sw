@@ -230,7 +230,7 @@ caliptra-mcu-test-fw-otp-scramble-check = { path = "hw/model/test-fw/otp-scrambl
 mcu-test-fw-sw-digest-lock = { path = "hw/model/test-fw/sw-digest-lock" }
 caliptra-mcu-image-header = { path = "platforms/emulator/mcu-image-header" }
 caliptra-mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
-mcu-mbox-common = { path = "common/mcu-mbox" }
+caliptra-mcu-mbox-common = { path = "common/mcu-mbox" }
 mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" }
 mcu-otp-lifecycle = { path = "common/otp-lifecycle" }
 mcu-platforms-common = { path = "platforms/common" }

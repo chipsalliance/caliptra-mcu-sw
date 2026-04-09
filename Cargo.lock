@@ -947,6 +947,7 @@ dependencies = [
  "caliptra-mcu-emulator-mcu-mbox",
  "caliptra-mcu-emulator-periph",
  "caliptra-mcu-emulator-registers-generated",
+ "caliptra-mcu-mbox-common",
  "caliptra-registers",
  "caliptra-test",
  "caliptra-util-host-mailbox-test-config",
@@ -963,7 +964,6 @@ dependencies = [
  "hex",
  "lazy_static",
  "log",
- "mcu-mbox-common",
  "mcu-otp-lifecycle",
  "mcu-testing-common",
  "p384",
@@ -1178,6 +1178,7 @@ dependencies = [
  "caliptra-mcu-emulator-caliptra",
  "caliptra-mcu-emulator-periph",
  "caliptra-mcu-emulator-registers-generated",
+ "caliptra-mcu-mbox-common",
  "caliptra-registers",
  "caliptra-test-harness-types",
  "caliptra-ureg",
@@ -1185,7 +1186,6 @@ dependencies = [
  "fips204",
  "hex",
  "int-enum",
- "mcu-mbox-common",
  "mcu-otp-lifecycle",
  "mcu-rom-common",
  "mcu-testing-common",
@@ -1244,6 +1244,14 @@ name = "caliptra-mcu-mbox-comm"
 version = "0.1.0"
 dependencies = [
  "kernel",
+]
+
+[[package]]
+name = "caliptra-mcu-mbox-common"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api",
+ "zerocopy",
 ]
 
 [[package]]
@@ -3171,14 +3179,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-mbox-common"
-version = "0.1.0"
-dependencies = [
- "caliptra-api",
- "zerocopy",
-]
-
-[[package]]
 name = "mcu-mbox-driver"
 version = "0.1.0"
 dependencies = [
@@ -3195,6 +3195,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-api",
  "caliptra-mcu-libtockasync",
+ "caliptra-mcu-mbox-common",
  "embassy-executor",
  "embassy-sync",
  "external-cmds-common",
@@ -3204,7 +3205,6 @@ dependencies = [
  "libtock_console",
  "libtock_platform",
  "libtock_runtime",
- "mcu-mbox-common",
  "zerocopy",
 ]
 
@@ -4900,6 +4900,7 @@ dependencies = [
  "caliptra-mcu-flash-image",
  "caliptra-mcu-hw-model",
  "caliptra-mcu-image-header",
+ "caliptra-mcu-mbox-common",
  "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
  "chrono",
@@ -4912,7 +4913,6 @@ dependencies = [
  "lazy_static",
  "log",
  "mctp-vdm-common",
- "mcu-mbox-common",
  "mcu-rom-common",
  "mcu-testing-common",
  "openssl",
@@ -5427,6 +5427,7 @@ dependencies = [
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-libtockasync",
+ "caliptra-mcu-mbox-common",
  "caliptra-ocp-eat",
  "critical-section",
  "embassy-executor",
@@ -5444,7 +5445,6 @@ dependencies = [
  "libtock_unittest",
  "mctp-vdm-common",
  "mctp-vdm-lib",
- "mcu-mbox-common",
  "mcu-mbox-lib",
  "pldm-common",
  "pldm-lib",
