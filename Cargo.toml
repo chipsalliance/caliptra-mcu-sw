@@ -253,7 +253,7 @@ caliptra-mcu-romtime = { path = "romtime" }
 
 # App related dependencies
 caliptra-mcu-external-cmds-common = { path = "runtime/userspace/api/external-cmds-common" }
-mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
+caliptra-mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
 mctp-vdm-lib = { path = "runtime/userspace/api/mctp-vdm-lib" }
 pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
 spdm-lib = { path = "runtime/userspace/api/spdm-lib", default-features = false }

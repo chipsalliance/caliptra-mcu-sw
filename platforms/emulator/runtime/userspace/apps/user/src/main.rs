@@ -105,7 +105,7 @@ pub(crate) async fn async_main() {
     EXECUTOR
         .get()
         .spawner()
-        .spawn(mcu_mbox_lib::fips_periodic::fips_periodic_task())
+        .spawn(caliptra_mcu_mbox_lib::fips_periodic::fips_periodic_task())
         .unwrap();
 
     #[cfg(any(

@@ -1274,6 +1274,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-mbox-lib"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api",
+ "caliptra-mcu-external-cmds-common",
+ "caliptra-mcu-libtockasync",
+ "caliptra-mcu-mbox-common",
+ "embassy-executor",
+ "embassy-sync",
+ "libapi-caliptra",
+ "libsyscall-caliptra",
+ "libtock_alarm",
+ "libtock_console",
+ "libtock_platform",
+ "libtock_runtime",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-mctp-vdm-common"
 version = "0.1.0"
 dependencies = [
@@ -3423,25 +3442,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-mbox-lib"
-version = "0.1.0"
-dependencies = [
- "caliptra-api",
- "caliptra-mcu-external-cmds-common",
- "caliptra-mcu-libtockasync",
- "caliptra-mcu-mbox-common",
- "embassy-executor",
- "embassy-sync",
- "libapi-caliptra",
- "libsyscall-caliptra",
- "libtock_alarm",
- "libtock_console",
- "libtock_platform",
- "libtock_runtime",
- "zerocopy",
-]
-
-[[package]]
 name = "mcu-rom-emulator"
 version = "0.1.0"
 dependencies = [
@@ -5416,6 +5416,7 @@ dependencies = [
  "caliptra-mcu-external-cmds-common",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
+ "caliptra-mcu-mbox-lib",
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-romtime",
@@ -5434,7 +5435,6 @@ dependencies = [
  "libtock_runtime",
  "libtock_unittest",
  "mctp-vdm-lib",
- "mcu-mbox-lib",
  "pldm-lib",
  "portable-atomic",
  "spdm-lib",
