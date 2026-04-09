@@ -806,10 +806,10 @@ dependencies = [
  "caliptra-api",
  "caliptra-mcu-doe-transport",
  "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
  "caliptra-ureg",
  "capsules-core",
  "capsules-extra",
- "i3c-driver",
  "kernel",
  "mcu-mbox-comm",
  "registers-generated",
@@ -1037,6 +1037,18 @@ dependencies = [
  "hex",
  "serde",
  "serde-hjson",
+]
+
+[[package]]
+name = "caliptra-mcu-i3c-driver"
+version = "0.1.0"
+dependencies = [
+ "capsules-core",
+ "kernel",
+ "registers-generated",
+ "romtime",
+ "rv32i",
+ "tock-registers",
 ]
 
 [[package]]
@@ -2444,18 +2456,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "i3c-driver"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "kernel",
- "registers-generated",
- "romtime",
- "rv32i",
- "tock-registers",
-]
-
-[[package]]
 name = "iana-time-zone"
 version = "0.1.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3004,11 +3004,11 @@ dependencies = [
  "caliptra-mcu-dma-driver",
  "caliptra-mcu-doe-transport",
  "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "i3c-driver",
  "kernel",
  "mcu-config",
  "mcu-mbox-comm",
@@ -3188,7 +3188,7 @@ dependencies = [
 name = "mcu-platforms-common"
 version = "0.1.0"
 dependencies = [
- "i3c-driver",
+ "caliptra-mcu-i3c-driver",
  "kernel",
  "mcu-config",
  "mcu-tock-veer",
@@ -3278,11 +3278,11 @@ dependencies = [
  "caliptra-mcu-doe-transport",
  "caliptra-mcu-flash-ctrl-emulator",
  "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "i3c-driver",
  "kernel",
  "mcu-components",
  "mcu-config",
@@ -3309,11 +3309,11 @@ dependencies = [
  "caliptra-mcu-dma-driver",
  "caliptra-mcu-flash-ctrl-fpga",
  "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "i3c-driver",
  "kernel",
  "mcu-components",
  "mcu-config",
@@ -3442,11 +3442,11 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-capsules-runtime",
  "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
- "i3c-driver",
  "kernel",
  "mcu-config",
  "mcu-mbox-driver",

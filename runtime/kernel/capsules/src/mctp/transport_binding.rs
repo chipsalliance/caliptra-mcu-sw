@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use crate::mctp::base_protocol::{MCTP_BASELINE_TRANSMISSION_UNIT, MCTP_HDR_SIZE};
+use caliptra_mcu_i3c_driver::hil::{I3CTarget, RxClient, TxClient};
 use core::cell::Cell;
-use i3c_driver::hil::{I3CTarget, RxClient, TxClient};
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::cells::TakeCell;
 use kernel::ErrorCode;

@@ -21,9 +21,9 @@ use caliptra_mcu_capsules_runtime::mctp::mux::MuxMCTPDriver;
 use caliptra_mcu_capsules_runtime::mctp::transport_binding::{
     MCTPI3CBinding, MCTPTransportBinding,
 };
+use caliptra_mcu_i3c_driver::core::MAX_READ_WRITE_SIZE;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::mem::MaybeUninit;
-use i3c_driver::core::MAX_READ_WRITE_SIZE;
 use kernel::component::Component;
 use kernel::deferred_call::DeferredCallClient;
 use kernel::hil::time::Alarm;
@@ -34,8 +34,8 @@ macro_rules! mctp_mux_component_static {
     ($A:ty, $T:ty $(,)?) => {{
         use caliptra_mcu_capsules_runtime::mctp::mux::MuxMCTPDriver;
         use caliptra_mcu_capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
+        use caliptra_mcu_i3c_driver::core::MAX_READ_WRITE_SIZE;
         use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
-        use i3c_driver::core::MAX_READ_WRITE_SIZE;
 
         let alarm = kernel::static_buf!(VirtualMuxAlarm<'static, $A>);
         let tx_buffer = kernel::static_buf!([u8; MAX_READ_WRITE_SIZE]);
@@ -54,13 +54,13 @@ macro_rules! mctp_mux_component_static {
 }
 
 pub struct MCTPMuxComponent<A: Alarm<'static> + 'static> {
-    i3c_target: &'static dyn i3c_driver::hil::I3CTarget<'static>,
+    i3c_target: &'static dyn caliptra_mcu_i3c_driver::hil::I3CTarget<'static>,
     mux_alarm: &'static MuxAlarm<'static, A>,
 }
 
 impl<A: Alarm<'static>> MCTPMuxComponent<A> {
     pub fn new(
-        i3c_target: &'static dyn i3c_driver::hil::I3CTarget,
+        i3c_target: &'static dyn caliptra_mcu_i3c_driver::hil::I3CTarget,
         mux_alarm: &'static MuxAlarm<'static, A>,
     ) -> Self {
         Self {
