@@ -6,7 +6,7 @@
 //! via the I3C controller socket exposed by the emulator.
 
 use anyhow::Result;
-use caliptra_mctp_vdm_client::{TestConfig, Validator};
+use caliptra_mcu_core_mctp_vdm_client::{TestConfig, Validator};
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -55,7 +55,7 @@ fn main() -> Result<()> {
                     args.port, args.target_addr
                 );
                 let config = TestConfig {
-                    network: caliptra_mctp_vdm_client::NetworkConfig {
+                    network: caliptra_mcu_core_mctp_vdm_client::NetworkConfig {
                         default_server_address: format!("127.0.0.1:{}", args.port),
                         target_i3c_address: args.target_addr,
                     },

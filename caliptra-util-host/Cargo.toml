@@ -34,7 +34,7 @@ caliptra-mcu-core-util-host-mailbox-test-config = { path = "apps/mailbox/config"
 caliptra-mailbox-client = { path = "apps/mailbox/client" }
 caliptra-mailbox-server = { path = "apps/mailbox/server" }
 caliptra-mcu-core-util-host-mctp-vdm-test-config = { path = "apps/mctp-vdm/config" }
-caliptra-mctp-vdm-client = { path = "apps/mctp-vdm/client" }
+caliptra-mcu-core-mctp-vdm-client = { path = "apps/mctp-vdm/client" }
 
 # External dependencies
 anyhow = "1.0.97"

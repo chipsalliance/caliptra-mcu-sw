@@ -773,20 +773,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliptra-mctp-vdm-client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "caliptra-mcu-core-util-host-mctp-vdm-test-config",
- "caliptra-mcu-mctp-vdm-common",
- "caliptra-mcu-testing-common",
- "caliptra-util-host-command-types",
- "caliptra-util-host-transport",
- "clap 4.5.51",
- "zerocopy",
-]
-
-[[package]]
 name = "caliptra-mcu-builder"
 version = "0.0.0"
 dependencies = [
@@ -897,6 +883,20 @@ name = "caliptra-mcu-config-fpga"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-config",
+]
+
+[[package]]
+name = "caliptra-mcu-core-mctp-vdm-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-mcu-core-util-host-mctp-vdm-test-config",
+ "caliptra-mcu-mctp-vdm-common",
+ "caliptra-mcu-testing-common",
+ "caliptra-util-host-command-types",
+ "caliptra-util-host-transport",
+ "clap 4.5.51",
+ "zerocopy",
 ]
 
 [[package]]
@@ -4878,11 +4878,11 @@ dependencies = [
  "caliptra-image-fake-keys",
  "caliptra-image-gen",
  "caliptra-image-types",
- "caliptra-mctp-vdm-client",
  "caliptra-mcu-builder",
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-core-mctp-vdm-client",
  "caliptra-mcu-core-util-host-mctp-vdm-test-config",
  "caliptra-mcu-error",
  "caliptra-mcu-firmware-bundler",

@@ -1,13 +1,13 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "caliptra-mctp-vdm-client"
+name = "caliptra-mcu-core-mctp-vdm-client"
 version.workspace = true
 edition.workspace = true
 description = "Caliptra MCTP VDM Client Library with Validation Support"
 
 [lib]
-name = "caliptra_mctp_vdm_client"
+name = "caliptra_mcu_core_mctp_vdm_client"
 path = "src/lib.rs"
 
 [[bin]]

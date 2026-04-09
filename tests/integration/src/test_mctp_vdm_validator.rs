@@ -8,7 +8,7 @@
 #[cfg(test)]
 pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
-    use caliptra_mctp_vdm_client::{DynamicI3cAddress, TestConfig, Validator};
+    use caliptra_mcu_core_mctp_vdm_client::{DynamicI3cAddress, TestConfig, Validator};
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
     use random_port::PortPicker;
@@ -30,7 +30,7 @@ pub mod test {
             );
 
             let config = TestConfig {
-                network: caliptra_mctp_vdm_client::NetworkConfig {
+                network: caliptra_mcu_core_mctp_vdm_client::NetworkConfig {
                     default_server_address: format!("127.0.0.1:{}", i3c_port),
                     target_i3c_address: i3c_address.into(),
                 },
