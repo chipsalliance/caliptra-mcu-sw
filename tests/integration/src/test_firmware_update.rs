@@ -6,8 +6,8 @@ mod test {
         compile_runtime, get_rom_with_feature, has_prebuilt_binaries, run_runtime, TEST_LOCK,
     };
     use caliptra_image_types::ImageManifest;
+    use caliptra_mcu_flash_image::{MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER};
     use chrono::{TimeZone, Utc};
-    use flash_image::{MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER};
     use hex::ToHex;
     use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
     use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};

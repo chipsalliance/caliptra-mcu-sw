@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use flash_image::{
+use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, FLASH_IMAGE_MAGIC_NUMBER, HEADER_VERSION,
     MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
 };

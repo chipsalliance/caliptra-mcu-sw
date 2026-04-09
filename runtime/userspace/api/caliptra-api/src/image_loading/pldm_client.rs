@@ -3,7 +3,7 @@
 extern crate alloc;
 use crate::image_loading::pldm_context::State;
 use crate::image_loading::pldm_fdops::StreamingFdOps;
-use flash_image::{FlashHeader, ImageHeader};
+use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 

@@ -12,8 +12,8 @@ use caliptra_api::mailbox::{
     AuthorizeAndStashReq, AuthorizeAndStashResp, CommandId, GetImageInfoReq, GetImageInfoResp,
     ImageHashSource, MailboxReqHeader, MailboxRespHeader, Request,
 };
+use caliptra_mcu_flash_image::{FlashHeader, SOC_MANIFEST_IDENTIFIER};
 use embassy_executor::Spawner;
-use flash_image::{FlashHeader, SOC_MANIFEST_IDENTIFIER};
 use libsyscall_caliptra::dma::DMAMapping;
 use libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
 use libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};

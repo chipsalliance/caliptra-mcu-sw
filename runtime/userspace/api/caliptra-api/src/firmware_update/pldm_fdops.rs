@@ -7,7 +7,7 @@ use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
 use crate::MAX_PLDM_TRANSFER_SIZE;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use flash_image::{FlashHeader, ImageHeader};
+use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
 use pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use pldm_common::message::firmware_update::get_status::ProgressPercent;

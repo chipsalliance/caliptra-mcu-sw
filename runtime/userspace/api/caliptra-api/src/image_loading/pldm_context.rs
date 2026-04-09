@@ -2,7 +2,7 @@
 
 use core::cell::RefCell;
 
-use flash_image::{FlashHeader, ImageHeader};
+use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
 use libsyscall_caliptra::dma::AXIAddr;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;

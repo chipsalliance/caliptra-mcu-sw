@@ -17,11 +17,11 @@ use caliptra_api::mailbox::{
 use caliptra_auth_man_types::{
     AuthManifestImageMetadata, AuthManifestImageMetadataCollection, AuthorizationManifest,
 };
-use embassy_executor::Spawner;
-use flash_image::{
+use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
     SOC_MANIFEST_IDENTIFIER,
 };
+use embassy_executor::Spawner;
 use libsyscall_caliptra::dma::AXIAddr;
 use libsyscall_caliptra::dma::{DMAMapping, DMASource, DMATransaction, DMA as DMASyscall};
 use libsyscall_caliptra::mailbox::Mailbox;

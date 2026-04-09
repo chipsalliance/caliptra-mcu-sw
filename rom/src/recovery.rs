@@ -2,7 +2,7 @@
 
 use crate::flash::flash_partition::FlashPartition;
 use bitfield::bitfield;
-use flash_image::{
+use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
     SOC_MANIFEST_IDENTIFIER,
 };

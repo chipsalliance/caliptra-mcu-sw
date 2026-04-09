@@ -1023,6 +1023,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-flash-image"
+version = "0.1.0"
+dependencies = [
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-ocp-eat"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=294bcacbd34aca6e23ce7b652885e3236f7e7afe#294bcacbd34aca6e23ce7b652885e3236f7e7afe"
@@ -2017,13 +2024,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "flash-image"
-version = "0.1.0"
-dependencies = [
- "zerocopy",
-]
-
-[[package]]
 name = "flate2"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2700,12 +2700,12 @@ dependencies = [
  "caliptra-api",
  "caliptra-auth-man-types",
  "caliptra-error",
+ "caliptra-mcu-flash-image",
  "caliptra-ocp-eat",
  "dpe",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "flash-image",
  "futures",
  "libsyscall-caliptra",
  "libtock_console",
@@ -2972,11 +2972,11 @@ dependencies = [
  "caliptra-image-fake-keys",
  "caliptra-image-gen",
  "caliptra-image-types",
+ "caliptra-mcu-flash-image",
  "cargo_metadata",
  "cfg-if",
  "chrono",
  "elf",
- "flash-image",
  "hex",
  "mcu-config",
  "mcu-config-emulator",
@@ -3214,8 +3214,8 @@ dependencies = [
  "caliptra-api",
  "caliptra-api-types",
  "caliptra-drivers",
+ "caliptra-mcu-flash-image",
  "constant_time_eq 0.4.2",
- "flash-image",
  "mcu-config",
  "mcu-error",
  "mcu-otp-lifecycle",
@@ -4891,13 +4891,13 @@ dependencies = [
  "caliptra-image-gen",
  "caliptra-image-types",
  "caliptra-mctp-vdm-client",
+ "caliptra-mcu-flash-image",
  "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
  "chrono",
  "crc",
  "ecdsa",
  "fips204",
- "flash-image",
  "hex",
  "hkdf",
  "hmac",

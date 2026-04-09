@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use flash_image::{FlashHeader, ImageHeader};
+use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
 use libsyscall_caliptra::dma::{AXIAddr, DMAMapping, DMASource, DMATransaction, DMA as DMASyscall};
 use libtock_platform::ErrorCode;
 use zerocopy::FromBytes;
