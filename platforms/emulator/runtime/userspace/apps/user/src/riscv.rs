@@ -26,5 +26,5 @@ fn main() {
     let mut console_writer = Console::writer();
     writeln!(console_writer, "Hello world! from SPDM main").unwrap();
 
-    libtockasync::start_async(crate::start());
+    caliptra_mcu_libtockasync::start_async(crate::start());
 }

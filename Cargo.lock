@@ -1052,6 +1052,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-libtockasync"
+version = "0.1.0"
+dependencies = [
+ "critical-section",
+ "embassy-executor",
+ "embedded-alloc",
+ "libtock",
+ "libtock_console",
+ "libtock_debug_panic",
+ "libtock_platform",
+ "libtock_runtime",
+ "libtock_unittest",
+ "portable-atomic",
+]
+
+[[package]]
 name = "caliptra-ocp-eat"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=294bcacbd34aca6e23ce7b652885e3236f7e7afe#294bcacbd34aca6e23ce7b652885e3236f7e7afe"
@@ -1982,6 +1998,7 @@ dependencies = [
  "caliptra-api",
  "caliptra-auth-man-types",
  "caliptra-error",
+ "caliptra-mcu-libtockasync",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
@@ -1994,7 +2011,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "libtockasync",
  "mcu-config-emulator",
  "mcu-config-fpga",
  "pldm-common",
@@ -2701,6 +2717,7 @@ dependencies = [
  "caliptra-auth-man-types",
  "caliptra-error",
  "caliptra-mcu-flash-image",
+ "caliptra-mcu-libtockasync",
  "caliptra-ocp-eat",
  "dpe",
  "embassy-executor",
@@ -2712,7 +2729,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "libtockasync",
  "pldm-common",
  "pldm-lib",
  "zerocopy",
@@ -2744,12 +2760,12 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "caliptra-api",
+ "caliptra-mcu-libtockasync",
  "embassy-sync",
  "libtock_console",
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "libtockasync",
 ]
 
 [[package]]
@@ -2842,22 +2858,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libtockasync"
-version = "0.1.0"
-dependencies = [
- "critical-section",
- "embassy-executor",
- "embedded-alloc",
- "libtock",
- "libtock_console",
- "libtock_debug_panic",
- "libtock_platform",
- "libtock_runtime",
- "libtock_unittest",
- "portable-atomic",
-]
-
-[[package]]
 name = "libz-rs-sys"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2945,6 +2945,7 @@ name = "mctp-vdm-lib"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "caliptra-mcu-libtockasync",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
@@ -2955,7 +2956,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "libtockasync",
  "mctp-vdm-common",
  "zerocopy",
 ]
@@ -3163,6 +3163,7 @@ name = "mcu-mbox-lib"
 version = "0.1.0"
 dependencies = [
  "caliptra-api",
+ "caliptra-mcu-libtockasync",
  "embassy-executor",
  "embassy-sync",
  "external-cmds-common",
@@ -3172,7 +3173,6 @@ dependencies = [
  "libtock_console",
  "libtock_platform",
  "libtock_runtime",
- "libtockasync",
  "mcu-mbox-common",
  "zerocopy",
 ]
@@ -3817,6 +3817,7 @@ name = "pldm-lib"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "caliptra-mcu-libtockasync",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
@@ -3826,7 +3827,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "libtockasync",
  "pldm-common",
 ]
 
@@ -5423,6 +5423,7 @@ dependencies = [
  "arrayvec",
  "async-trait",
  "caliptra-api",
+ "caliptra-mcu-libtockasync",
  "caliptra-ocp-eat",
  "critical-section",
  "embassy-executor",
@@ -5438,7 +5439,6 @@ dependencies = [
  "libtock_platform",
  "libtock_runtime",
  "libtock_unittest",
- "libtockasync",
  "mctp-vdm-common",
  "mctp-vdm-lib",
  "mcu-config",

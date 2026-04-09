@@ -6,6 +6,7 @@
 //! in the background. It can be enabled/disabled via MCU mailbox commands.
 
 use caliptra_api::mailbox::CommandId as CaliptraCommandId;
+use caliptra_mcu_libtockasync::TockSubscribe;
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -17,7 +18,6 @@ use libsyscall_caliptra::DefaultSyscalls;
 use libtock_alarm::{Convert, Hz, Milliseconds};
 use libtock_console::Console;
 use libtock_platform::Syscalls;
-use libtockasync::TockSubscribe;
 
 /// Periodic FIPS self-test interval in milliseconds.
 /// Default: 60 seconds (60000 ms)

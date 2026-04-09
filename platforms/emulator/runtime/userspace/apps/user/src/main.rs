@@ -6,11 +6,11 @@
 
 use core::fmt::Write;
 
+use caliptra_mcu_libtockasync::TockExecutor;
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
-use libtockasync::TockExecutor;
 #[cfg(any(
     feature = "test-firmware-update-streaming",
     feature = "test-firmware-update-flash"
@@ -64,7 +64,7 @@ fn main() {
     // build a fake kernel so that the app will at least start without Tock
     let _kernel = kernel();
     // call the main function
-    libtockasync::start_async(start());
+    caliptra_mcu_libtockasync::start_async(start());
 }
 
 #[embassy_executor::task]

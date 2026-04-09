@@ -4,13 +4,13 @@
 #![cfg_attr(target_arch = "riscv32", no_main)]
 #![allow(static_mut_refs)]
 
+use caliptra_mcu_libtockasync::TockSubscribe;
 use core::fmt::Write;
 use libsyscall_caliptra::system::System;
 use libtock::alarm::*;
 use libtock_console::Console;
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
-use libtockasync::TockSubscribe;
 
 #[cfg(feature = "test-pldm-request-response")]
 mod test_pldm_request_response;
@@ -66,7 +66,7 @@ fn main() {
     // build a fake kernel so that the app will at least start without Tock
     let _kernel = kernel();
     // call the main function
-    libtockasync::start_async(start());
+    caliptra_mcu_libtockasync::start_async(start());
 }
 
 #[cfg(target_arch = "riscv32")]
@@ -342,10 +342,10 @@ impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
 #[cfg(test)]
 mod test {
     use super::{command, kernel, sleep};
+    use caliptra_mcu_libtockasync::TockExecutor;
     use libtock_alarm::Milliseconds;
     use libtock_unittest::fake;
     use libtock_unittest::fake::Alarm;
-    use libtockasync::TockExecutor;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::{LazyLock, Mutex};
 
