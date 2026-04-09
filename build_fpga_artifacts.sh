@@ -102,21 +102,31 @@ cargo install --git https://github.com/chipsalliance/caliptra-infra \
 mv subsystem.pdi /tmp/caliptra-bitstream.pdi
 echo "==> Bitstream downloaded."
 
-# ---------- Copy artifacts into workspace ----------
-ARTIFACT_DIR="$SCRIPT_DIR/prebuilt-artifacts"
-echo "==> Copying artifacts to $ARTIFACT_DIR ..."
-rm -rf "$ARTIFACT_DIR"
-mkdir -p "$ARTIFACT_DIR"
-cp /tmp/caliptra-binaries/caliptra-binaries.tar.gz "$ARTIFACT_DIR/"
-cp /tmp/caliptra-test-binaries.sqsh "$ARTIFACT_DIR/"
-cp /tmp/caliptra-bitstream.pdi "$ARTIFACT_DIR/"
-echo "==> Artifacts copied."
+# ---------- Upload to fork release ----------
+FORK_REPO="mlvisaya/caliptra-mcu-sw"
+RELEASE_TAG="debug-unlock-artifacts"
+
+echo "==> Uploading artifacts to ${FORK_REPO} release ${RELEASE_TAG}..."
+
+# Create the release if it doesn't exist, or delete and recreate to update assets
+if gh release view "$RELEASE_TAG" --repo "$FORK_REPO" &>/dev/null; then
+    echo "  Release exists, deleting old assets..."
+    gh release delete "$RELEASE_TAG" --repo "$FORK_REPO" --yes
+fi
+
+gh release create "$RELEASE_TAG" --prerelease \
+    --repo "$FORK_REPO" \
+    --title "Prebuilt FPGA test artifacts" \
+    --notes "Temporary prebuilt artifacts for debug unlock PR" \
+    /tmp/caliptra-binaries/caliptra-binaries.tar.gz \
+    /tmp/caliptra-test-binaries.sqsh \
+    /tmp/caliptra-bitstream.pdi
+
+echo "==> Artifacts uploaded."
 
 # ---------- Summary ----------
 echo ""
 echo "============================================"
-echo "Artifacts built and staged for commit:"
-echo "  $ARTIFACT_DIR/caliptra-binaries.tar.gz"
-echo "  $ARTIFACT_DIR/caliptra-test-binaries.sqsh"
-echo "  $ARTIFACT_DIR/caliptra-bitstream.pdi"
+echo "Artifacts built and uploaded to:"
+echo "  https://github.com/${FORK_REPO}/releases/tag/${RELEASE_TAG}"
 echo "============================================"
