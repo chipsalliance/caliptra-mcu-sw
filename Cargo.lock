@@ -842,11 +842,11 @@ dependencies = [
  "caliptra-mcu-doe-transport",
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-mbox-comm",
  "caliptra-ureg",
  "capsules-core",
  "capsules-extra",
  "kernel",
- "mcu-mbox-comm",
  "registers-generated",
  "romtime",
  "tock-registers",
@@ -864,12 +864,12 @@ dependencies = [
  "caliptra-mcu-doe-transport",
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-mbox-comm",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
  "kernel",
- "mcu-mbox-comm",
  "mcu-mbox-driver",
  "mcu-tock-veer",
  "registers-generated",
@@ -1237,6 +1237,13 @@ dependencies = [
  "libtock_runtime",
  "libtock_unittest",
  "portable-atomic",
+]
+
+[[package]]
+name = "caliptra-mcu-mbox-comm"
+version = "0.1.0"
+dependencies = [
+ "kernel",
 ]
 
 [[package]]
@@ -3164,13 +3171,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-mbox-comm"
-version = "0.1.0"
-dependencies = [
- "kernel",
-]
-
-[[package]]
 name = "mcu-mbox-common"
 version = "0.1.0"
 dependencies = [
@@ -3182,9 +3182,9 @@ dependencies = [
 name = "mcu-mbox-driver"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-mbox-comm",
  "capsules-core",
  "kernel",
- "mcu-mbox-comm",
  "registers-generated",
  "romtime",
 ]
@@ -3313,12 +3313,12 @@ dependencies = [
  "caliptra-mcu-flash-ctrl-emulator",
  "caliptra-mcu-flash-driver",
  "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-mbox-comm",
  "capsules-core",
  "capsules-extra",
  "capsules-system",
  "components",
  "kernel",
- "mcu-mbox-comm",
  "mcu-mbox-driver",
  "mcu-platforms-common",
  "mcu-tock-veer",

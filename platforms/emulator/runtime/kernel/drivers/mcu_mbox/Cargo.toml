@@ -8,7 +8,7 @@ edition.workspace = true
 
 [dependencies]
 capsules-core.workspace = true
-mcu-mbox-comm.workspace = true
+caliptra-mcu-mbox-comm.workspace = true
 kernel.workspace = true
 registers-generated.workspace = true
 romtime.workspace = true

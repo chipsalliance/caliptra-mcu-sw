@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver;
+use caliptra_mcu_mbox_comm::hil;
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
-use mcu_mbox_comm::hil;
 
 #[macro_export]
 macro_rules! mcu_mbox_component_static {
