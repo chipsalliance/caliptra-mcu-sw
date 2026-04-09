@@ -192,7 +192,7 @@ caliptra-util-host-transport = { path = "caliptra-util-host/transport" }
 caliptra-util-host-command-types = { path = "caliptra-util-host/command-types" }
 caliptra-util-host-osal = { path = "caliptra-util-host/osal" }
 caliptra-mailbox-server = { path = "caliptra-util-host/apps/mailbox/server" }
-capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
+caliptra-mcu-capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
 capsules-runtime = { path = "runtime/kernel/capsules" }
 dma-driver = { path = "platforms/emulator/runtime/kernel/drivers/dma" }
 doe-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/doe_mbox" }

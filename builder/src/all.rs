@@ -610,7 +610,14 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     // Build feature-specific MCU ROMs so tests don't need to compile at runtime.
     // Only builds for features that the ROM crate supports; tests using other features
     // will fall back to the generic MCU ROM.
-    let feature_roms: Result<Vec<(PathBuf, String)>> = maybe_par_iter(&separate_features)
+    // Include both runtime features (which may have matching ROM features) and
+    // ROM-only test features that don't have a corresponding runtime feature.
+    let rom_features_to_build: Vec<&str> = separate_features
+        .iter()
+        .copied()
+        .chain(crate::features::ROM_ONLY_TEST_FEATURES.iter().copied())
+        .collect();
+    let feature_roms: Result<Vec<(PathBuf, String)>> = maybe_par_iter(&rom_features_to_build)
         .filter_map(|feature| {
             let target_dir = if cfg!(feature = "parallel-build") {
                 Some(crate::target_dir().join(format!("target-feature-rom-{}", feature)))

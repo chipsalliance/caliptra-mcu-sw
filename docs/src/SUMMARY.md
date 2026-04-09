@@ -2,6 +2,7 @@
 
 - [MCU Specification](./mcu.md)
 - [Reference ROM Specification](./rom.md)
+    - [ROM I3C Services](./rom_i3c_services.md)
     - [Device Ownership Transfer](./dot.md)
         - [DOT I3C Recovery Protocol](./dot_i3c.md)
     - [ROM Fuses](./rom-fuses.md)

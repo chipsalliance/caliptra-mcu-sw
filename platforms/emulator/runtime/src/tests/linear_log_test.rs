@@ -5,9 +5,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Copyright Tock Contributors 2022.
 
+use caliptra_mcu_capsules_emulator::logging::logging_flash as log;
+use caliptra_mcu_capsules_emulator::logging::logging_flash::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
-use capsules_emulator::logging::logging_flash as log;
-use capsules_emulator::logging::logging_flash::{ENTRY_HEADER_SIZE, PAGE_HEADER_SIZE};
 use core::cell::Cell;
 use core::ptr::addr_of_mut;
 use kernel::debug;

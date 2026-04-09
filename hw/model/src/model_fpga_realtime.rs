@@ -64,6 +64,7 @@ pub struct ModelFpgaRealtime {
     caliptra_firmware: Option<Vec<u8>>,
     soc_manifest: Option<Vec<u8>>,
     mcu_firmware: Option<Vec<u8>>,
+    check_booted_to_runtime: bool,
 }
 
 impl ModelFpgaRealtime {
@@ -147,12 +148,11 @@ impl ModelFpgaRealtime {
         i3c_rx: mpsc::Receiver<I3cBusCommand>,
         controller: XI3CWrapper,
     ) {
-        // check if we need to write any I3C packets to Caliptra
         while running.load(Ordering::Relaxed) {
             for rx in i3c_rx.try_iter() {
                 match rx.cmd.cmd {
                     I3cTcriCommand::Regular(_cmd) => {
-                        if rx.cmd.data.len() > 0 {
+                        if !rx.cmd.data.is_empty() {
                             // wait for space in the write FIFOs
                             while controller.cmd_fifo_level() == 0
                                 || controller.write_fifo_level() < 16
@@ -367,6 +367,7 @@ impl McuHwModel for ModelFpgaRealtime {
             caliptra_firmware: Some(params.caliptra_firmware.to_vec()).filter(|f| !f.is_empty()),
             soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
             mcu_firmware: Some(params.mcu_firmware.to_vec()).filter(|f| !f.is_empty()),
+            check_booted_to_runtime: params.check_booted_to_runtime,
         };
 
         Ok(m)
@@ -412,30 +413,57 @@ impl McuHwModel for ModelFpgaRealtime {
 
         // wait until firmware is booted
         const BOOT_CYCLES: u64 = 800_000_000;
-        self.step_until(|hw| {
-            hw.cycle_count() >= BOOT_CYCLES
-                || hw
-                    .mci_boot_milestones()
-                    .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-        });
-        println!(
-            "Boot completed at cycle count {}, flow status {}",
-            self.cycle_count(),
-            u32::from(self.mci_flow_status())
-        );
-        assert!(self
-            .mci_boot_milestones()
-            .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
-        MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
-        // turn off recovery
-        self.base.recovery_started = false;
-        println!("Resetting I3C controller");
-        {
-            let i3c_ctrl = self.base.i3c_controller().unwrap();
-            let ctrl = i3c_ctrl.controller.lock().unwrap();
-            ctrl.ready.set(false);
+        if self.check_booted_to_runtime {
+            self.step_until(|hw| {
+                hw.cycle_count() >= BOOT_CYCLES
+                    || hw
+                        .mci_boot_milestones()
+                        .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+            });
+            println!(
+                "Boot completed at cycle count {}, flow status {}",
+                self.cycle_count(),
+                u32::from(self.mci_flow_status())
+            );
+            assert!(self
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE));
+            MCU_RUNTIME_STARTED.store(true, Ordering::Relaxed);
+            // turn off recovery
+            self.base.recovery_started = false;
+            println!("Resetting I3C controller");
+            {
+                let i3c_ctrl = self.base.i3c_controller().unwrap();
+                let ctrl = i3c_ctrl.controller.lock().unwrap();
+                ctrl.ready.set(false);
+            }
+            self.base.i3c_controller().unwrap().configure();
+        } else {
+            // ROM-only mode: wait for recovery to deliver firmware, but don't
+            // assert FIRMWARE_BOOT_FLOW_COMPLETE since the ROM may stay in a
+            // service loop instead of booting the runtime.
+            const ROM_ONLY_WAIT_CYCLES: u64 = 50_000_000;
+            let start_cycle = self.cycle_count();
+            self.step_until(|hw| hw.cycle_count() - start_cycle >= ROM_ONLY_WAIT_CYCLES);
+            println!(
+                "ROM-only boot wait completed at cycle count {}, flow status {}",
+                self.cycle_count(),
+                u32::from(self.mci_flow_status())
+            );
+            self.base.recovery_started = false;
+            // Reconfigure the I3C controller (RSTDAA+ENTDAA) so the bus
+            // transitions from recovery state to normal TTI operation.
+            // The RSTDAA strips the target's dynamic address, then ENTDAA
+            // re-assigns it. This ensures the controller and target are in
+            // sync for private write transactions.
+            println!("Resetting I3C controller for TTI mode");
+            {
+                let i3c_ctrl = self.base.i3c_controller().unwrap();
+                let ctrl = i3c_ctrl.controller.lock().unwrap();
+                ctrl.ready.set(false);
+            }
+            self.base.i3c_controller().unwrap().configure();
         }
-        self.base.i3c_controller().unwrap().configure();
 
         Ok(())
     }
