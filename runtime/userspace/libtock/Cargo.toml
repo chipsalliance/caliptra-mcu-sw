@@ -17,7 +17,7 @@ rust_embedded = [
 
 [dependencies]
 embedded-hal = { workspace = true, optional = true }
-libtock_alarm.workspace = true
+caliptra-mcu-libtock_alarm.workspace = true
 libtock_console.workspace = true
 libtock_debug_panic.workspace = true
 libtock_low_level_debug.workspace = true

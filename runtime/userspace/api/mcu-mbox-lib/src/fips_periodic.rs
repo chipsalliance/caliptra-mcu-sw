@@ -9,13 +9,13 @@ use caliptra_api::mailbox::CommandId as CaliptraCommandId;
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_alarm::{Convert, Hz, Milliseconds};
 use caliptra_mcu_libtockasync::TockSubscribe;
 use core::fmt::Write;
 use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
-use libtock_alarm::{Convert, Hz, Milliseconds};
 use libtock_console::Console;
 use libtock_platform::Syscalls;
 

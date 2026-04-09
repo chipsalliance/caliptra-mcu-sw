@@ -342,8 +342,8 @@ impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
 #[cfg(test)]
 mod test {
     use super::{command, kernel, sleep};
+    use caliptra_mcu_libtock_alarm::Milliseconds;
     use caliptra_mcu_libtockasync::TockExecutor;
-    use libtock_alarm::Milliseconds;
     use libtock_unittest::fake;
     use libtock_unittest::fake::Alarm;
     use std::sync::atomic::{AtomicU32, Ordering};

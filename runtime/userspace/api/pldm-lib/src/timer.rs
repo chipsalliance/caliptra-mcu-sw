@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_alarm::{Convert, Hz, Milliseconds};
 use caliptra_mcu_libtockasync::TockSubscribe;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use libtock_alarm::{Convert, Hz, Milliseconds};
 use libtock_platform::{self as platform};
 use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 

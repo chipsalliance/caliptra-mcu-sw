@@ -1289,8 +1289,8 @@ dependencies = [
 name = "caliptra-mcu-libtock"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-libtock_alarm",
  "embedded-hal",
- "libtock_alarm",
  "libtock_console",
  "libtock_debug_panic",
  "libtock_low_level_debug",
@@ -1298,6 +1298,14 @@ dependencies = [
  "libtock_rng",
  "libtock_runtime",
  "libtock_small_panic",
+]
+
+[[package]]
+name = "caliptra-mcu-libtock_alarm"
+version = "0.1.0"
+dependencies = [
+ "libtock_platform",
+ "libtock_unittest",
 ]
 
 [[package]]
@@ -1350,11 +1358,11 @@ dependencies = [
  "caliptra-mcu-external-cmds-common",
  "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_alarm",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
  "embassy-executor",
  "embassy-sync",
- "libtock_alarm",
  "libtock_console",
  "libtock_platform",
  "libtock_runtime",
@@ -1376,12 +1384,12 @@ dependencies = [
  "async-trait",
  "caliptra-mcu-external-cmds-common",
  "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_alarm",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mctp-vdm-common",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "libtock_alarm",
  "libtock_console",
  "libtock_platform",
  "libtock_runtime",
@@ -1441,12 +1449,12 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_alarm",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "libtock_alarm",
  "libtock_console",
  "libtock_platform",
  "libtock_runtime",
@@ -2624,13 +2632,13 @@ dependencies = [
  "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock",
+ "caliptra-mcu-libtock_alarm",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-romtime",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
- "libtock_alarm",
  "libtock_console",
  "libtock_debug_panic",
  "libtock_platform",
@@ -3326,14 +3334,6 @@ name = "libc"
 version = "0.2.177"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2874a2af47a2325c2001a6e6fad9b16a53b802102b528163885171cf92b15976"
-
-[[package]]
-name = "libtock_alarm"
-version = "0.1.0"
-dependencies = [
- "libtock_platform",
- "libtock_unittest",
-]
 
 [[package]]
 name = "libtock_console"
