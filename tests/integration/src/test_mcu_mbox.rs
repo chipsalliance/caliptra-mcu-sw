@@ -152,6 +152,7 @@ pub mod test {
 
         hw.start_i3c_controller();
         let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
+        let caliptra_mmio_ptr = hw.base.mmio.caliptra_mmio().unwrap() as u64;
 
         std::thread::spawn(move || {
             wait_for_runtime_start();
@@ -159,6 +160,16 @@ pub mod test {
                 exit(-1);
             }
             sleep_emulator_ticks(5_000_000);
+
+            // Set PROD_DBG_UNLOCK_REQ bit (bit 1 = 0x2) in SsDbgManufServiceRegReq register.
+            // SoC IFC registers are at caliptra_mmio + 0x3_0000, and
+            // ss_dbg_manuf_service_reg_req is at offset 0x5c0 within the SoC register block.
+            unsafe {
+                let soc_base = (caliptra_mmio_ptr as *mut u32).offset(0x3_0000 / 4);
+                let dbg_manuf_req = soc_base.offset(0x5c0 / 4);
+                std::ptr::write_volatile(dbg_manuf_req, 0x2);
+            }
+
             let mci_base = unsafe { romtime::StaticRef::new(mci_ptr as *const mci::regs::Mci) };
             let mbox_transport = McuMailboxTransport::new(mci_base);
             println!("MCU MBOX Prod Debug Unlock Test Thread Starting:");
@@ -2660,8 +2671,7 @@ pub mod test {
             );
 
             println!("Production debug unlock end-to-end test passed");
-//            Ok(())
-            Err(())
+            Ok(())
         }
     }
 
