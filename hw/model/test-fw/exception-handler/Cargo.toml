@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "mcu-test-fw-exception-handler"
+name = "caliptra-mcu-test-fw-exception-handler"
 version.workspace = true
 edition.workspace = true
 
