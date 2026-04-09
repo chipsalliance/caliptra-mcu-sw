@@ -209,10 +209,10 @@ impl McuHwModel for ModelEmulated {
         let lc_bytes = &otp_mem[fuses::LIFE_CYCLE_BYTE_OFFSET
             ..fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE];
         let (lc_state_index, lc_transition_cnt) = if lc_bytes.iter().any(|&b| b != 0) {
-            let mem: [u8; mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE] = lc_bytes
+            let mem: [u8; caliptra_mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE] = lc_bytes
                 .try_into()
                 .expect("lifecycle partition size mismatch");
-            let (state_idx, count) = mcu_otp_lifecycle::lc_decode_memory(&mem)?;
+            let (state_idx, count) = caliptra_mcu_otp_lifecycle::lc_decode_memory(&mem)?;
             (state_idx as u32, count as u32)
         } else {
             (0, 0)

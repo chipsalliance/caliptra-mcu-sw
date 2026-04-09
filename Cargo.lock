@@ -948,6 +948,7 @@ dependencies = [
  "caliptra-mcu-emulator-periph",
  "caliptra-mcu-emulator-registers-generated",
  "caliptra-mcu-mbox-common",
+ "caliptra-mcu-otp-lifecycle",
  "caliptra-registers",
  "caliptra-test",
  "caliptra-util-host-mailbox-test-config",
@@ -964,7 +965,6 @@ dependencies = [
  "hex",
  "lazy_static",
  "log",
- "mcu-otp-lifecycle",
  "mcu-testing-common",
  "p384",
  "pldm-common",
@@ -1047,9 +1047,9 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-emulator-consts",
  "caliptra-mcu-emulator-registers-generated",
+ "caliptra-mcu-otp-lifecycle",
  "caliptra-registers",
  "lazy_static",
- "mcu-otp-lifecycle",
  "mcu-testing-common",
  "num_enum",
  "otp-digest",
@@ -1179,6 +1179,7 @@ dependencies = [
  "caliptra-mcu-emulator-periph",
  "caliptra-mcu-emulator-registers-generated",
  "caliptra-mcu-mbox-common",
+ "caliptra-mcu-otp-lifecycle",
  "caliptra-registers",
  "caliptra-test-harness-types",
  "caliptra-ureg",
@@ -1186,7 +1187,6 @@ dependencies = [
  "fips204",
  "hex",
  "int-enum",
- "mcu-otp-lifecycle",
  "mcu-rom-common",
  "mcu-testing-common",
  "nix 0.26.4",
@@ -1263,6 +1263,13 @@ dependencies = [
  "kernel",
  "registers-generated",
  "romtime",
+]
+
+[[package]]
+name = "caliptra-mcu-otp-lifecycle"
+version = "0.1.0"
+dependencies = [
+ "sha3",
 ]
 
 [[package]]
@@ -3209,13 +3216,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-otp-lifecycle"
-version = "0.1.0"
-dependencies = [
- "sha3",
-]
-
-[[package]]
 name = "mcu-platforms-common"
 version = "0.1.0"
 dependencies = [
@@ -3248,8 +3248,8 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-error",
  "caliptra-mcu-flash-image",
+ "caliptra-mcu-otp-lifecycle",
  "constant_time_eq 0.4.2",
- "mcu-otp-lifecycle",
  "otp-digest",
  "registers-generated",
  "riscv-csr",

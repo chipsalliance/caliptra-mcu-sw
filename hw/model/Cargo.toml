@@ -42,7 +42,7 @@ caliptra-mcu-config.workspace = true
 caliptra-mcu-mbox-common.workspace = true
 mcu-rom-common.workspace = true
 mcu-testing-common.workspace = true
-mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
+caliptra-mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
 p384.workspace = true
 poll-common.workspace = true
 rand.workspace = true

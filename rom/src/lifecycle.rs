@@ -60,7 +60,7 @@ pub struct LifecycleHashedTokens {
     pub rma: LifecycleHashedToken,
 }
 
-pub use mcu_otp_lifecycle::LifecycleControllerState;
+pub use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 
 pub struct Lifecycle {
     registers: StaticRef<lc_ctrl::regs::LcCtrl>,

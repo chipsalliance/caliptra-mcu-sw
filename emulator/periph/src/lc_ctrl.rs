@@ -54,7 +54,7 @@ const STATUS_TOKEN_ERROR: u32 = 1 << 6;
 const STATUS_OTP_ERROR: u32 = 1 << 8;
 
 // Lifecycle state indices from the shared otp-lifecycle crate.
-use mcu_otp_lifecycle::LifecycleControllerState as LcState;
+use caliptra_mcu_otp_lifecycle::LifecycleControllerState as LcState;
 const RAW: u32 = LcState::Raw as u32;
 const TEST_UNLOCKED0: u32 = LcState::TestUnlocked0 as u32;
 const TEST_LOCKED0: u32 = LcState::TestLocked0 as u32;
@@ -84,7 +84,7 @@ fn decode_lc_state_mnemonic(mnemonic: u32) -> Option<u32> {
     }
 }
 
-use mcu_otp_lifecycle::hash_lc_token;
+use caliptra_mcu_otp_lifecycle::hash_lc_token;
 
 /// What token (if any) a valid transition requires.
 enum TokenRequirement {
@@ -199,11 +199,11 @@ impl LcCtrl {
         if let Some(otp) = &self.otp_partitions {
             let otp = otp.borrow();
             let start = LIFE_CYCLE_BYTE_OFFSET;
-            let end = start + mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE;
+            let end = start + caliptra_mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE;
             if end <= otp.len() && otp[start..end].iter().any(|&b| b != 0) {
-                let mut mem = [0u8; mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE];
+                let mut mem = [0u8; caliptra_mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE];
                 mem.copy_from_slice(&otp[start..end]);
-                if let Ok((state_idx, count)) = mcu_otp_lifecycle::lc_decode_memory(&mem) {
+                if let Ok((state_idx, count)) = caliptra_mcu_otp_lifecycle::lc_decode_memory(&mem) {
                     self.lc_state_index = state_idx as u32;
                     self.lc_transition_cnt = count as u32;
                 }
@@ -248,7 +248,8 @@ impl LcCtrl {
         let Some(otp) = &self.otp_partitions else {
             return;
         };
-        let Ok(mem) = mcu_otp_lifecycle::lc_generate_memory(state_index, transition_count) else {
+        let Ok(mem) = caliptra_mcu_otp_lifecycle::lc_generate_memory(state_index, transition_count)
+        else {
             return;
         };
         let mut otp = otp.borrow_mut();
@@ -419,7 +420,7 @@ impl caliptra_mcu_emulator_registers_generated::lc::LcPeripheral for LcCtrl {
 mod tests {
     use super::*;
 
-    use mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE;
+    use caliptra_mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE;
 
     /// Build OTP partition data with provisioned tokens and a given LC state.
     fn make_otp_data(state_index: u8, transition_count: u8, raw_token: &[u8; 16]) -> Vec<u8> {
@@ -443,7 +444,8 @@ mod tests {
         }
 
         // Provision LC state.
-        let lc_mem = mcu_otp_lifecycle::lc_generate_memory(state_index, transition_count).unwrap();
+        let lc_mem =
+            caliptra_mcu_otp_lifecycle::lc_generate_memory(state_index, transition_count).unwrap();
         data[LIFE_CYCLE_BYTE_OFFSET..LIFE_CYCLE_BYTE_OFFSET + LIFECYCLE_MEM_SIZE]
             .copy_from_slice(&lc_mem);
 
@@ -594,7 +596,7 @@ mod tests {
             [LIFE_CYCLE_BYTE_OFFSET..LIFE_CYCLE_BYTE_OFFSET + LIFECYCLE_MEM_SIZE]
             .try_into()
             .unwrap();
-        let (state_idx, count) = mcu_otp_lifecycle::lc_decode_memory(&lc_bytes).unwrap();
+        let (state_idx, count) = caliptra_mcu_otp_lifecycle::lc_decode_memory(&lc_bytes).unwrap();
         assert_eq!(state_idx, PROD as u8);
         assert_eq!(count, 10);
     }
@@ -635,7 +637,8 @@ mod tests {
                 [LIFE_CYCLE_BYTE_OFFSET..LIFE_CYCLE_BYTE_OFFSET + LIFECYCLE_MEM_SIZE]
                 .try_into()
                 .unwrap();
-            let (state_idx, count) = mcu_otp_lifecycle::lc_decode_memory(&lc_bytes).unwrap();
+            let (state_idx, count) =
+                caliptra_mcu_otp_lifecycle::lc_decode_memory(&lc_bytes).unwrap();
             drop(otp_ref);
 
             assert_eq!(
@@ -666,7 +669,7 @@ mod tests {
             [LIFE_CYCLE_BYTE_OFFSET..LIFE_CYCLE_BYTE_OFFSET + LIFECYCLE_MEM_SIZE]
             .try_into()
             .unwrap();
-        let (state_idx, _count) = mcu_otp_lifecycle::lc_decode_memory(&lc_bytes).unwrap();
+        let (state_idx, _count) = caliptra_mcu_otp_lifecycle::lc_decode_memory(&lc_bytes).unwrap();
         assert_eq!(state_idx, PROD as u8);
     }
 

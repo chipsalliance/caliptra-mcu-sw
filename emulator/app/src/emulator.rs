@@ -373,19 +373,20 @@ impl Emulator {
             .as_ref()
             .and_then(|p| Otp::read_lifecycle_from_file(p))
         {
-            let mem: [u8; mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE] =
+            let mem: [u8; caliptra_mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE] =
                 lc_bytes.try_into().map_err(|_| {
                     io::Error::new(
                         io::ErrorKind::InvalidData,
                         "OTP lifecycle partition has wrong size",
                     )
                 })?;
-            let (state, count) = mcu_otp_lifecycle::lc_decode_memory(&mem).map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Failed to decode lifecycle from OTP fuses: {e}"),
-                )
-            })?;
+            let (state, count) =
+                caliptra_mcu_otp_lifecycle::lc_decode_memory(&mem).map_err(|e| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("Failed to decode lifecycle from OTP fuses: {e}"),
+                    )
+                })?;
             (state as u32, count as u32, None)
         } else {
             // No existing fuses — generate from CLI arg.
@@ -395,12 +396,13 @@ impl Emulator {
                 DeviceLifecycle::Production => (17u8, 1u8),   // Prod
                 _ => (17u8, 1u8),
             };
-            let fuse_data = mcu_otp_lifecycle::lc_generate_memory(idx, cnt).map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Failed to generate lifecycle fuses: {e}"),
-                )
-            })?;
+            let fuse_data =
+                caliptra_mcu_otp_lifecycle::lc_generate_memory(idx, cnt).map_err(|e| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("Failed to generate lifecycle fuses: {e}"),
+                    )
+                })?;
             (idx as u32, cnt as u32, Some(fuse_data.to_vec()))
         };
 
