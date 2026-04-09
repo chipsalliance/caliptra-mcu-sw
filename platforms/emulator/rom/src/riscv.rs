@@ -197,6 +197,8 @@ pub extern "C" fn rom_entry() -> ! {
         ..Default::default()
     };
 
+    let hooks = LoggingRomHooks;
+
     if cfg!(feature = "test-flash-based-boot") {
         // Initialize the flash controller for testing purposes
 
@@ -357,6 +359,17 @@ pub extern "C" fn rom_entry() -> ! {
             } else {
                 None
             },
+            i3c_services: if cfg!(feature = "test-i3c-services") {
+                Some(mcu_rom_common::I3cServicesModes::DOT_RECOVERY)
+            } else {
+                None
+            },
+            force_i3c_services: cfg!(feature = "test-i3c-services"),
+            hooks: if cfg!(feature = "test-rom-hooks") {
+                Some(&hooks)
+            } else {
+                None
+            },
             ..Default::default()
         });
     } else {
@@ -405,6 +418,12 @@ pub extern "C" fn rom_entry() -> ! {
             } else {
                 None
             },
+            i3c_services: if cfg!(feature = "test-i3c-services") {
+                Some(mcu_rom_common::I3cServicesModes::DOT_RECOVERY)
+            } else {
+                None
+            },
+            force_i3c_services: cfg!(feature = "test-i3c-services"),
             ..Default::default()
         });
     }

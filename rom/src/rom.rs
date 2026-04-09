@@ -790,6 +790,20 @@ pub fn verify_mcu_mbox_axi_users(
     Ok(())
 }
 
+bitflags::bitflags! {
+    /// Bitmask of I3C service modes the ROM may enter when appropriate.
+    ///
+    /// Each flag enables a category of I3C mailbox commands that the ROM will
+    /// accept. The ROM enters I3C services mode either when a relevant
+    /// condition is met (e.g., DOT recovery needed) or unconditionally when
+    /// `force_i3c_services` is set on `RomParameters`.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct I3cServicesModes: u32 {
+        /// Enable DOT recovery commands over I3C.
+        const DOT_RECOVERY = 1 << 0;
+    }
+}
+
 /// Policy controlling whether DOT backup-blob recovery is attempted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DotRecoveryPolicy {
@@ -867,6 +881,15 @@ pub struct RomParameters<'a> {
     /// Caliptra entropy bypass mode. See [spec](https://chipsalliance.github.io/caliptra-web/docs/2.1/firmware/rom_spec.html#entropy-source-configuration-registers)
     /// for more details.
     pub itrng_entropy_bypass_mode: bool,
+    /// Optional bitmask of I3C service modes the ROM may enter.
+    /// When `None`, no I3C services are available. When set, the ROM will
+    /// enter the I3C mailbox handler for the enabled services when the
+    /// appropriate condition is met (e.g., DOT recovery needed).
+    pub i3c_services: Option<I3cServicesModes>,
+    /// When true, the ROM unconditionally enters the I3C services handler
+    /// at the appropriate point in the boot flow, regardless of whether a
+    /// triggering condition (like DOT failure) occurred.
+    pub force_i3c_services: bool,
 }
 
 pub fn rom_start(params: RomParameters) {

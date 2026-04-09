@@ -18,7 +18,7 @@ use crate::mailbox;
 use crate::{
     configure_mcu_mbox_axi_users, device_ownership_transfer, fatal_error,
     verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, AxiUsers, BootFlow, DotBlob,
-    FuseParams, RomEnv, RomParameters, MCU_MEMORY_MAP,
+    FuseParams, I3cMailboxHandler, I3cServicesModes, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api::mailbox::{
     CmImportReq, CmImportResp, CmKeyUsage, CmStableKeyType, Cmk, CommandId, FeProgReq,
@@ -42,7 +42,7 @@ use romtime::{
     CaliptraSoC, HexBytes, HexWord, LifecycleControllerState, LifecycleToken, McuBootMilestones,
     McuRomBootStatus,
 };
-use tock_registers::interfaces::{ReadWriteable, Readable};
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
 // TODO: Remove these local CM_AES_GCM_DECRYPT_DMA definitions once caliptra-sw
@@ -735,6 +735,45 @@ fn attempt_dot_override(
     }
 }
 
+/// Enter I3C services mode if enabled in `RomParameters`.
+///
+/// Runs the I3C mailbox handler loop, processing commands until completion
+/// or timeout. Sets boot status checkpoints on entry and exit.
+fn enter_i3c_services(
+    mci: &romtime::Mci,
+    i3c_base: romtime::StaticRef<registers_generated::i3c::regs::I3c>,
+    services: I3cServicesModes,
+) {
+    // Extend the watchdog timeout for I3C services since the loop may run
+    // for an extended period waiting for commands from the BMC.
+    mci.configure_wdt(u32::MAX as u64, 1);
+
+    // Disable the recovery interface status registers.
+    i3c_base
+        .sec_fw_recovery_if_recovery_status
+        .write(registers_generated::i3c::bits::RecoveryStatus::DevRecStatus.val(3));
+    i3c_base
+        .sec_fw_recovery_if_device_status_0
+        .write(registers_generated::i3c::bits::DeviceStatus0::DevStatus.val(0));
+
+    // Clear the virtual device address to fully deactivate the recovery
+    // device on the I3C bus.
+    i3c_base.stdby_ctrl_mode_stby_cr_virt_device_addr.set(0);
+
+    romtime::println!("[mcu-rom-i3c-svc] Recovery disabled");
+
+    mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesStarted.into());
+    let mut handler = I3cMailboxHandler::new(i3c_base, services);
+    match handler.run() {
+        Ok(()) => {
+            mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesComplete.into());
+        }
+        Err(err) => {
+            romtime::println!("[mcu-rom] I3C services error: {}", HexWord(err.into()));
+        }
+    }
+}
+
 impl BootFlow for ColdBoot {
     fn run(env: &mut RomEnv, params: RomParameters) -> ! {
         #[cfg(feature = "ocp-lock")]
@@ -1083,6 +1122,12 @@ impl BootFlow for ColdBoot {
                     // Recovery success triggers a warm reset and never returns.
                     // If recovery failed or was not configured, try override.
                     attempt_dot_override(env, &dot_fuses, &params, dot_flash, key_type);
+                    // Try I3C services if DOT_RECOVERY enabled
+                    if let Some(services) = params.i3c_services {
+                        if services.contains(I3cServicesModes::DOT_RECOVERY) {
+                            enter_i3c_services(&env.mci, i3c_base, services);
+                        }
+                    }
                     romtime::println!(
                         "[mcu-rom] DOT fuses are initialized but DOT blob is empty/corrupt"
                     );
@@ -1118,6 +1163,12 @@ impl BootFlow for ColdBoot {
                                     HexWord(e.into())
                                 );
                             }
+                            // Try I3C services if DOT_RECOVERY enabled
+                            if let Some(services) = params.i3c_services {
+                                if services.contains(I3cServicesModes::DOT_RECOVERY) {
+                                    enter_i3c_services(&env.mci, i3c_base, services);
+                                }
+                            }
                         }
                         romtime::println!(
                             "[mcu-rom] Fatal error performing Device Ownership Transfer: {}",
@@ -1136,6 +1187,13 @@ impl BootFlow for ColdBoot {
         if let Some(ref owner) = owner_pk_hash {
             env.soc.set_owner_pk_hash(owner);
             env.soc.lock_owner_pk_hash();
+        }
+
+        // Enter I3C services unconditionally if force_i3c_services is set
+        if params.force_i3c_services {
+            if let Some(services) = params.i3c_services {
+                enter_i3c_services(&env.mci, i3c_base, services);
+            }
         }
 
         // Re-borrow after DOT flow (which took &mut env).

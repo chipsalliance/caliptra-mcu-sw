@@ -607,7 +607,21 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     // Build feature-specific MCU ROMs so tests don't need to compile at runtime.
     // Only builds for features that the ROM crate supports; tests using other features
     // will fall back to the generic MCU ROM.
-    for feature in separate_features.iter() {
+    //
+    // ROM-only test features that don't have a corresponding runtime feature
+    // must still be built so tests using `rom_feature: Some(...)` can find them.
+    const ROM_ONLY_TEST_FEATURES: &[&str] = &[
+        "test-i3c-services",
+        "test-fw-manifest-dot",
+        "test-fw-manifest-dot-hitless",
+        "test-dot-recovery",
+    ];
+    let rom_features_to_build: Vec<String> = separate_features
+        .iter()
+        .map(|f| f.to_string())
+        .chain(ROM_ONLY_TEST_FEATURES.iter().map(|s| s.to_string()))
+        .collect();
+    for feature in rom_features_to_build.iter() {
         match crate::rom_build(Some(platform.to_string()), Some(feature.to_string())) {
             Ok(rom_path) => {
                 let rom_name = format!("mcu-test-rom-feature-{}.bin", feature);

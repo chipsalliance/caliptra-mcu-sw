@@ -49,3 +49,4 @@ test-fw-manifest-dot-hitless = [
 test-pldm-streaming-boot = []
 test-ocp-lock = []
 active-i3c1 = ["mcu-config-emulator/active-i3c1"]
+test-i3c-services = []

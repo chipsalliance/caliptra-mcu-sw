@@ -31,6 +31,8 @@ pub use rom::*;
 mod rom_env;
 pub use rom_env::*;
 mod i3c;
+mod i3c_mailbox;
+pub use i3c_mailbox::I3cMailboxHandler;
 mod mailbox;
 mod recovery;
 
