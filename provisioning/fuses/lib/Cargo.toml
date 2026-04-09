@@ -6,7 +6,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-registers-generated = { workspace = true }
+caliptra-mcu-registers-generated = { workspace = true }
 
 [build-dependencies]
 caliptra-mcu-fusegen.workspace = true

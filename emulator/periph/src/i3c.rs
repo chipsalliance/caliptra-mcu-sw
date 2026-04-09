@@ -13,13 +13,13 @@ use caliptra_emu_bus::{Device, Event, EventData};
 use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
 use caliptra_mcu_emulator_registers_generated::i3c::{I3cGenerated, I3cPeripheral};
-use caliptra_mcu_testing_common::i3c::{
-    DynamicI3cAddress, I3cTcriCommand, I3cTcriResponseXfer, IbiDescriptor, ResponseDescriptor,
-};
-use registers_generated::i3c::bits::{
+use caliptra_mcu_registers_generated::i3c::bits::{
     DeviceStatus0, ExtcapHeader, IndirectFifoCtrl0, IndirectFifoStatus0, InterruptEnable,
     InterruptStatus, RecIntfCfg, RecoveryCtrl, Status, StbyCrCapabilities, StbyCrDeviceAddr,
     TtiQueueSize,
+};
+use caliptra_mcu_testing_common::i3c::{
+    DynamicI3cAddress, I3cTcriCommand, I3cTcriResponseXfer, IbiDescriptor, ResponseDescriptor,
 };
 use semver::Version;
 use std::collections::VecDeque;
@@ -66,23 +66,31 @@ pub struct I3c {
     hw_revision: Version,
 
     i3c_ec_sec_fw_recovery_if_prot_cap_2: ReadWriteRegister<u32>,
-    i3c_ec_sec_fw_recovery_if_device_status_0:
-        ReadWriteRegister<u32, registers_generated::i3c::bits::DeviceStatus0::Register>,
+    i3c_ec_sec_fw_recovery_if_device_status_0: ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::DeviceStatus0::Register,
+    >,
     i3c_ec_sec_fw_recovery_if_recovery_status: ReadWriteRegister<u32>,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0:
-        ReadWriteRegister<u32, registers_generated::i3c::bits::IndirectFifoCtrl0::Register>,
+    i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0: ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
+    >,
     i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1: ReadWriteRegister<u32>,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0:
-        ReadWriteRegister<u32, registers_generated::i3c::bits::IndirectFifoStatus0::Register>,
+    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0: ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::IndirectFifoStatus0::Register,
+    >,
     i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1: ReadWriteRegister<u32>,
     i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2: ReadWriteRegister<u32>,
     i3c_ec_sec_fw_recovery_if_recovery_ctrl:
-        ReadWriteRegister<u32, registers_generated::i3c::bits::RecoveryCtrl::Register>,
+        ReadWriteRegister<u32, caliptra_mcu_registers_generated::i3c::bits::RecoveryCtrl::Register>,
     i3c_ec_soc_mgmt_if_rec_intf_cfg:
-        ReadWriteRegister<u32, registers_generated::i3c::bits::RecIntfCfg::Register>,
+        ReadWriteRegister<u32, caliptra_mcu_registers_generated::i3c::bits::RecIntfCfg::Register>,
     indirect_fifo_data: Vec<u8>,
-    i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access:
-        ReadWriteRegister<u32, registers_generated::i3c::bits::RecIntfRegW1cAccess::Register>,
+    i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access: ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
+    >,
 
     interrupt_status: ReadWriteRegister<u32, InterruptStatus::Register>,
     interrupt_enable: ReadWriteRegister<u32, InterruptEnable::Register>,
@@ -532,8 +540,10 @@ impl I3cPeripheral for I3c {
 
     fn read_i3c_ec_tti_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Status::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::Status::Register,
+    > {
         self.ibi_status
             .take()
             .unwrap_or_else(|| ReadWriteRegister::new(0))
@@ -543,7 +553,7 @@ impl I3cPeripheral for I3c {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::InterruptEnable::Register,
+        caliptra_mcu_registers_generated::i3c::bits::InterruptEnable::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
     }
@@ -552,7 +562,7 @@ impl I3cPeripheral for I3c {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::InterruptStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::InterruptStatus::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_status.reg.get())
     }
@@ -562,7 +572,7 @@ impl I3cPeripheral for I3c {
 
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::InterruptStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::InterruptStatus::Register,
         >,
     ) {
         let current = self.interrupt_status.reg.get();
@@ -577,7 +587,7 @@ impl I3cPeripheral for I3c {
 
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::InterruptEnable::Register,
+            caliptra_mcu_registers_generated::i3c::bits::InterruptEnable::Register,
         >,
     ) {
         self.interrupt_enable.reg.set(val.reg.get());
@@ -701,7 +711,7 @@ impl I3cPeripheral for I3c {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::ProtCap2::Register,
+            caliptra_mcu_registers_generated::i3c::bits::ProtCap2::Register,
         >,
     ) {
         self.i3c_ec_sec_fw_recovery_if_prot_cap_2
@@ -711,8 +721,10 @@ impl I3cPeripheral for I3c {
 
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_2(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap2::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::ProtCap2::Register,
+    > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_sec_fw_recovery_if_prot_cap_2.reg.get(),
         )
@@ -722,7 +734,7 @@ impl I3cPeripheral for I3c {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DeviceStatus0::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DeviceStatus0::Register,
         >,
     ) {
         let current_status = self
@@ -755,7 +767,7 @@ impl I3cPeripheral for I3c {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DeviceStatus0::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DeviceStatus0::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_sec_fw_recovery_if_device_status_0.reg.get(),
@@ -766,7 +778,7 @@ impl I3cPeripheral for I3c {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::RecoveryStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::RecoveryStatus::Register,
         >,
     ) {
         self.i3c_ec_sec_fw_recovery_if_recovery_status
@@ -778,7 +790,7 @@ impl I3cPeripheral for I3c {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RecoveryStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RecoveryStatus::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_sec_fw_recovery_if_recovery_status.reg.get(),
@@ -789,7 +801,7 @@ impl I3cPeripheral for I3c {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
         >,
     ) {
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0
@@ -869,7 +881,7 @@ impl I3cPeripheral for I3c {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IndirectFifoStatus0::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IndirectFifoStatus0::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0
@@ -902,7 +914,7 @@ impl I3cPeripheral for I3c {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RecoveryCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RecoveryCtrl::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_sec_fw_recovery_if_recovery_ctrl.reg.get(),
@@ -913,7 +925,7 @@ impl I3cPeripheral for I3c {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access.reg.get(),
@@ -924,7 +936,7 @@ impl I3cPeripheral for I3c {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::RecoveryCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::RecoveryCtrl::Register,
         >,
     ) {
         self.i3c_ec_sec_fw_recovery_if_recovery_ctrl
@@ -935,7 +947,7 @@ impl I3cPeripheral for I3c {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RecIntfCfg::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RecIntfCfg::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.i3c_ec_soc_mgmt_if_rec_intf_cfg.reg.get())
     }
@@ -943,7 +955,7 @@ impl I3cPeripheral for I3c {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::RecIntfCfg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::RecIntfCfg::Register,
         >,
     ) {
         self.i3c_ec_soc_mgmt_if_rec_intf_cfg.reg.set(val.reg.get());
@@ -953,7 +965,7 @@ impl I3cPeripheral for I3c {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
+            caliptra_mcu_registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
         >,
     ) {
         self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access
@@ -964,7 +976,7 @@ impl I3cPeripheral for I3c {
         let new_activate_rec_img = self
             .i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access
             .reg
-            .read(registers_generated::i3c::bits::RecIntfRegW1cAccess::RecoveryCtrlActivateRecImg);
+            .read(caliptra_mcu_registers_generated::i3c::bits::RecIntfRegW1cAccess::RecoveryCtrlActivateRecImg);
 
         let recovery_ctrl = self.read_i3c_ec_sec_fw_recovery_if_recovery_ctrl();
         recovery_ctrl
@@ -973,10 +985,9 @@ impl I3cPeripheral for I3c {
         self.write_i3c_ec_sec_fw_recovery_if_recovery_ctrl(recovery_ctrl);
 
         // Update indirect memory reset
-        let new_indirect_fifo_reset = self
-            .i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access
-            .reg
-            .read(registers_generated::i3c::bits::RecIntfRegW1cAccess::IndirectFifoCtrlReset);
+        let new_indirect_fifo_reset = self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access.reg.read(
+            caliptra_mcu_registers_generated::i3c::bits::RecIntfRegW1cAccess::IndirectFifoCtrlReset,
+        );
         let indirect_fifo_ctrl_0 = self.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0();
         indirect_fifo_ctrl_0
             .reg
@@ -984,14 +995,14 @@ impl I3cPeripheral for I3c {
         self.write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0(indirect_fifo_ctrl_0);
 
         // Update device reset
-        let new_device_reset = self
-            .i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access
-            .reg
-            .read(registers_generated::i3c::bits::RecIntfRegW1cAccess::DeviceResetCtrl);
+        let new_device_reset = self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access.reg.read(
+            caliptra_mcu_registers_generated::i3c::bits::RecIntfRegW1cAccess::DeviceResetCtrl,
+        );
         let device_reset = self.read_i3c_ec_sec_fw_recovery_if_device_reset();
-        device_reset
-            .reg
-            .modify(registers_generated::i3c::bits::DeviceReset::ResetCtrl.val(new_device_reset));
+        device_reset.reg.modify(
+            caliptra_mcu_registers_generated::i3c::bits::DeviceReset::ResetCtrl
+                .val(new_device_reset),
+        );
         self.write_i3c_ec_sec_fw_recovery_if_device_reset(device_reset);
     }
 
@@ -1121,7 +1132,7 @@ mod tests {
         assert_eq!(
             bus.read(
                 RvSize::Word,
-                registers_generated::i3c::I3C_CSR_ADDR + TTI_RX_DESC_QUEUE_PORT
+                caliptra_mcu_registers_generated::i3c::I3C_CSR_ADDR + TTI_RX_DESC_QUEUE_PORT
             )
             .unwrap(),
             4

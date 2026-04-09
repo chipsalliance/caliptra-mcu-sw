@@ -7,8 +7,8 @@
 #![no_std]
 
 use caliptra_mcu_error::McuError;
+use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_rom_common::{fatal_error, RomEnv};
-use registers_generated::mci;
 use romtime::McuBootMilestones;
 use romtime::McuResetReason;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};

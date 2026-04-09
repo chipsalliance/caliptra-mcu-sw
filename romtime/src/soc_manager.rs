@@ -7,8 +7,8 @@ use caliptra_api::{
     mailbox::{MailboxReqHeader, MailboxRespHeader},
     CaliptraApiError, SocManager,
 };
+use caliptra_mcu_registers_generated::{mbox, soc};
 use caliptra_ureg::RealMmioMut;
-use registers_generated::{mbox, soc};
 use zerocopy::{FromBytes, IntoBytes};
 
 const MAILBOX_SIZE: usize = 256 * 1024;

@@ -4,6 +4,8 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
+use caliptra_mcu_registers_generated::mci;
+use caliptra_mcu_registers_generated::mci::bits::{MboxExecute, MboxTargetStatus};
 use core::cell::Cell;
 use core::ops::{Index, IndexMut};
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
@@ -11,8 +13,6 @@ use kernel::hil;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::ErrorCode;
-use registers_generated::mci;
-use registers_generated::mci::bits::{MboxExecute, MboxTargetStatus};
 use romtime::StaticRef;
 
 pub const PAGE_SIZE: usize = 256;

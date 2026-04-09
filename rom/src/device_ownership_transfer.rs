@@ -53,7 +53,7 @@ impl DotFuses {
 
     /// Load DOT fuses from OTP using the generated FuseEntryInfo constants.
     pub fn load_from_otp(otp: &Otp) -> McuResult<Self> {
-        use registers_generated::fuses;
+        use caliptra_mcu_registers_generated::fuses;
 
         // dot_initialized: LinearMajorityVote(1 bit, 3x) → logical 0 or 1
         let enabled = otp.read_entry(fuses::DOT_INITIALIZED)? != 0;
@@ -492,7 +492,7 @@ fn burn_dot_fuses(env: &mut RomEnv, dot_fuses: &DotFuses, blob: &DotBlob) -> Mcu
 /// * `Ok(())` - If the fuse was successfully burned.
 /// * `Err(McuError)` - If the OTP write operation fails.
 fn burn_dot_lock_fuse(otp: &Otp, dot_fuses: &DotFuses) -> McuResult<()> {
-    use registers_generated::fuses;
+    use caliptra_mcu_registers_generated::fuses;
     // Each state transition burns the next sequential bit in the dot_fuse_array.
     let next_bit = dot_fuses.burned as u32;
     if next_bit >= (dot_fuses.total as u32) {

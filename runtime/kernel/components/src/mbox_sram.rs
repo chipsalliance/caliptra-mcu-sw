@@ -2,13 +2,13 @@
 
 // Component for MCI driver.
 
+use caliptra_mcu_registers_generated::mci;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::create_capability;
 use kernel::hil::time::Alarm;
-use registers_generated::mci;
 use romtime::StaticRef;
 
 #[macro_export]

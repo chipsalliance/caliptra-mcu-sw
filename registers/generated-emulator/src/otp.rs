@@ -25,7 +25,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::InterruptState::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::InterruptState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::interrupt_state");
@@ -39,7 +39,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::InterruptState::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::InterruptState::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -56,7 +56,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::otp_interrupt_enable");
@@ -70,7 +70,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -87,7 +87,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::InterruptTest::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::InterruptTest::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -104,7 +104,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::AlertTest::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::AlertTest::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -121,7 +121,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::OtpStatus::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::OtpStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::otp_status");
@@ -135,7 +135,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::direct_access_regwen");
@@ -149,7 +149,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -166,7 +166,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::DirectAccessCmd::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessCmd::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -183,7 +183,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::direct_access_address");
@@ -197,7 +197,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -214,7 +214,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::check_trigger_regwen");
@@ -228,7 +228,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -245,7 +245,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::CheckTrigger::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::CheckTrigger::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -262,7 +262,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::CheckRegwen::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::CheckRegwen::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -336,7 +336,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::sw_manuf_partition_read_lock");
@@ -350,7 +350,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -364,7 +364,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::svn_partition_read_lock");
@@ -378,7 +378,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -395,7 +395,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -411,7 +411,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -425,8 +425,8 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
-    > {
+        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
+    >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_manuf_partition_read_lock");
         }
@@ -439,7 +439,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -453,8 +453,8 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
-    > {
+        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
+    >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_prod_partition_read_lock");
         }
@@ -467,7 +467,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -481,8 +481,8 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
-    > {
+        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
+    >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_revocations_prod_partition_read_lock");
         }
@@ -495,7 +495,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -509,8 +509,8 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
-    > {
+        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
+    >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_non_secret_prod_partition_read_lock");
         }
@@ -523,7 +523,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -552,8 +552,10 @@ pub trait OtpPeripheral {
     }
     fn read_csr0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr0::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr0::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr0");
         }
@@ -566,7 +568,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr0::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr0::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -581,8 +583,10 @@ pub trait OtpPeripheral {
     }
     fn read_csr1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr1::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr1::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr1");
         }
@@ -595,7 +599,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr1::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr1::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -610,8 +614,10 @@ pub trait OtpPeripheral {
     }
     fn read_csr2(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr2::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr2::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr2");
         }
@@ -624,7 +630,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr2::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr2::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -639,8 +645,10 @@ pub trait OtpPeripheral {
     }
     fn read_csr3(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr3::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr3::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr3");
         }
@@ -653,7 +661,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr3::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr3::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -668,8 +676,10 @@ pub trait OtpPeripheral {
     }
     fn read_csr4(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr4::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr4::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr4");
         }
@@ -682,7 +692,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr4::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr4::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -697,8 +707,10 @@ pub trait OtpPeripheral {
     }
     fn read_csr5(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr5::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr5::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr5");
         }
@@ -711,7 +723,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr5::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr5::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -726,8 +738,10 @@ pub trait OtpPeripheral {
     }
     fn read_csr6(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr6::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr6::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr6");
         }
@@ -740,7 +754,7 @@ pub trait OtpPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr6::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr6::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -755,8 +769,10 @@ pub trait OtpPeripheral {
     }
     fn read_csr7(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr7::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr7::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::csr7");
         }
@@ -769,7 +785,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_0");
@@ -783,7 +799,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_1");
@@ -797,7 +813,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_2");
@@ -811,7 +827,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_3");
@@ -825,7 +841,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_4");
@@ -839,7 +855,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_5");
@@ -853,7 +869,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_6");
@@ -867,7 +883,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_7");
@@ -881,7 +897,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_8");
@@ -895,7 +911,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_9");
@@ -909,7 +925,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_10");
@@ -923,7 +939,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_11");
@@ -937,7 +953,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_12");
@@ -951,7 +967,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_13");
@@ -965,7 +981,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_14");
@@ -979,7 +995,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_15");
@@ -993,7 +1009,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_16");
@@ -1007,7 +1023,7 @@ pub trait OtpPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read otp::err_code_rf_err_code_17");
@@ -1537,7 +1553,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::InterruptState::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::InterruptState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::interrupt_state");
@@ -1548,7 +1564,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::InterruptState::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::InterruptState::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1570,7 +1586,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::otp_interrupt_enable");
@@ -1581,7 +1597,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::OtpInterruptEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1600,7 +1616,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::InterruptTest::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::InterruptTest::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1622,7 +1638,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::AlertTest::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::AlertTest::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1650,7 +1666,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::OtpStatus::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::OtpStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::otp_status");
@@ -1661,7 +1677,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::direct_access_regwen");
@@ -1672,7 +1688,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessRegwen::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1689,7 +1705,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::DirectAccessCmd::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessCmd::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1713,7 +1729,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::direct_access_address");
@@ -1724,7 +1740,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1741,7 +1757,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::check_trigger_regwen");
@@ -1752,7 +1768,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::CheckTriggerRegwen::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1769,7 +1785,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::CheckTrigger::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::CheckTrigger::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1791,7 +1807,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::CheckRegwen::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::CheckRegwen::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1867,7 +1883,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -1880,7 +1896,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::SwManufPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1897,7 +1913,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -1910,7 +1926,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::SvnPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1927,7 +1943,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_test_partition_read_lock");
@@ -1938,7 +1954,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorTestPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1955,8 +1971,8 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
-    > {
+        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
+    >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_manuf_partition_read_lock");
         }
@@ -1966,7 +1982,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1983,8 +1999,8 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
-    > {
+        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
+    >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_prod_partition_read_lock");
         }
@@ -1994,7 +2010,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2011,8 +2027,8 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
-    > {
+        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
+    >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_revocations_prod_partition_read_lock");
         }
@@ -2022,7 +2038,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2039,8 +2055,8 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
-    > {
+        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
+    >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_non_secret_prod_partition_read_lock");
         }
@@ -2050,7 +2066,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2084,8 +2100,10 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_csr0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr0::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr0::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr0");
         }
@@ -2095,7 +2113,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr0::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr0::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2121,8 +2139,10 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_csr1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr1::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr1::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr1");
         }
@@ -2132,7 +2152,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr1::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr1::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2158,8 +2178,10 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_csr2(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr2::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr2::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr2");
         }
@@ -2169,7 +2191,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr2::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr2::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2187,8 +2209,10 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_csr3(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr3::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr3::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr3");
         }
@@ -2198,7 +2222,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr3::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr3::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2220,8 +2244,10 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_csr4(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr4::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr4::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr4");
         }
@@ -2231,7 +2257,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr4::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr4::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2255,8 +2281,10 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_csr5(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr5::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr5::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr5");
         }
@@ -2266,7 +2294,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr5::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr5::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2288,8 +2316,10 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_csr6(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr6::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr6::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr6");
         }
@@ -2299,7 +2329,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::Csr6::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::Csr6::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2323,8 +2353,10 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn read_csr7(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::Csr7::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::Csr7::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::csr7");
         }
@@ -2334,7 +2366,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_0");
@@ -2345,7 +2377,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_1");
@@ -2356,7 +2388,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_2");
@@ -2367,7 +2399,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_3");
@@ -2378,7 +2410,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_4");
@@ -2389,7 +2421,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_5");
@@ -2400,7 +2432,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_6");
@@ -2411,7 +2443,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_7");
@@ -2422,7 +2454,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_8");
@@ -2433,7 +2465,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read otp::err_code_rf_err_code_9");
@@ -2444,7 +2476,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2457,7 +2489,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2470,7 +2502,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2483,7 +2515,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2496,7 +2528,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2509,7 +2541,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2522,7 +2554,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2535,7 +2567,7 @@ impl OtpPeripheral for OtpGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(

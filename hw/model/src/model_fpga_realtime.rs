@@ -39,14 +39,18 @@ struct CaliptraMmio {
 
 impl CaliptraMmio {
     #[allow(unused)]
-    fn mbox(&self) -> &mut registers_generated::mbox::regs::Mbox {
+    fn mbox(&self) -> &mut caliptra_mcu_registers_generated::mbox::regs::Mbox {
         unsafe {
-            &mut *(self.ptr.offset(0x2_0000 / 4) as *mut registers_generated::mbox::regs::Mbox)
+            &mut *(self.ptr.offset(0x2_0000 / 4)
+                as *mut caliptra_mcu_registers_generated::mbox::regs::Mbox)
         }
     }
     #[allow(unused)]
-    fn soc(&self) -> &mut registers_generated::soc::regs::Soc {
-        unsafe { &mut *(self.ptr.offset(0x3_0000 / 4) as *mut registers_generated::soc::regs::Soc) }
+    fn soc(&self) -> &mut caliptra_mcu_registers_generated::soc::regs::Soc {
+        unsafe {
+            &mut *(self.ptr.offset(0x3_0000 / 4)
+                as *mut caliptra_mcu_registers_generated::soc::regs::Soc)
+        }
     }
 }
 

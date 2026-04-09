@@ -23,8 +23,10 @@ pub trait MboxPeripheral {
     }
     fn read_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mbox::bits::MboxLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mbox::mbox_lock");
         }
@@ -126,7 +128,7 @@ pub trait MboxPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxExecute::Register,
+        caliptra_mcu_registers_generated::mbox::bits::MboxExecute::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mbox::mbox_execute");
@@ -140,7 +142,7 @@ pub trait MboxPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxExecute::Register,
+            caliptra_mcu_registers_generated::mbox::bits::MboxExecute::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -157,7 +159,7 @@ pub trait MboxPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxStatus::Register,
+        caliptra_mcu_registers_generated::mbox::bits::MboxStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mbox::mbox_status");
@@ -171,7 +173,7 @@ pub trait MboxPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxStatus::Register,
+            caliptra_mcu_registers_generated::mbox::bits::MboxStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -188,7 +190,7 @@ pub trait MboxPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxUnlock::Register,
+        caliptra_mcu_registers_generated::mbox::bits::MboxUnlock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mbox::mbox_unlock");
@@ -202,7 +204,7 @@ pub trait MboxPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxUnlock::Register,
+            caliptra_mcu_registers_generated::mbox::bits::MboxUnlock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -217,8 +219,10 @@ pub trait MboxPeripheral {
     }
     fn read_tap_mode(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::TapMode::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mbox::bits::TapMode::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mbox::tap_mode");
         }
@@ -231,7 +235,7 @@ pub trait MboxPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::TapMode::Register,
+            caliptra_mcu_registers_generated::mbox::bits::TapMode::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -294,8 +298,10 @@ impl MboxPeripheral for MboxGenerated {
     }
     fn read_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::MboxLock::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mbox::bits::MboxLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::mbox_lock");
         }
@@ -391,7 +397,7 @@ impl MboxPeripheral for MboxGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxExecute::Register,
+        caliptra_mcu_registers_generated::mbox::bits::MboxExecute::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::mbox_execute");
@@ -402,7 +408,7 @@ impl MboxPeripheral for MboxGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxExecute::Register,
+            caliptra_mcu_registers_generated::mbox::bits::MboxExecute::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -422,7 +428,7 @@ impl MboxPeripheral for MboxGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxStatus::Register,
+        caliptra_mcu_registers_generated::mbox::bits::MboxStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::mbox_status");
@@ -433,7 +439,7 @@ impl MboxPeripheral for MboxGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxStatus::Register,
+            caliptra_mcu_registers_generated::mbox::bits::MboxStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -453,7 +459,7 @@ impl MboxPeripheral for MboxGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mbox::bits::MboxUnlock::Register,
+        caliptra_mcu_registers_generated::mbox::bits::MboxUnlock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::mbox_unlock");
@@ -464,7 +470,7 @@ impl MboxPeripheral for MboxGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::MboxUnlock::Register,
+            caliptra_mcu_registers_generated::mbox::bits::MboxUnlock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -482,8 +488,10 @@ impl MboxPeripheral for MboxGenerated {
     }
     fn read_tap_mode(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mbox::bits::TapMode::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mbox::bits::TapMode::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mbox::tap_mode");
         }
@@ -493,7 +501,7 @@ impl MboxPeripheral for MboxGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mbox::bits::TapMode::Register,
+            caliptra_mcu_registers_generated::mbox::bits::TapMode::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {

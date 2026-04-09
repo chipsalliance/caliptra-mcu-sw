@@ -580,7 +580,8 @@ fn emu_make_peripheral_trait(
 
             let rcrate = format_ident!("{crate_name}",);
             let tyn = camel_ident(register.ty.name.as_ref().unwrap());
-            let read_val = quote! { registers_generated :: #rcrate :: bits :: #tyn :: Register };
+            let read_val =
+                quote! { caliptra_mcu_registers_generated :: #rcrate :: bits :: #tyn :: Register };
             let prim = format_ident!("{}", register.ty.width.rust_primitive_name());
             let fulltyn = quote! { caliptra_emu_bus::ReadWriteRegister::<#prim, #read_val> };
             if register.can_read() {

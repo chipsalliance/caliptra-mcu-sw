@@ -25,7 +25,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraHwErrorFatal::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraHwErrorFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_hw_error_fatal");
@@ -39,7 +39,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraHwErrorFatal::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraHwErrorFatal::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -56,7 +56,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_hw_error_non_fatal");
@@ -70,7 +70,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -205,7 +205,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraFlowStatus::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraFlowStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_flow_status");
@@ -219,7 +219,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraFlowStatus::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraFlowStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -236,7 +236,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraResetReason::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraResetReason::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_reset_reason");
@@ -250,7 +250,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraSecurityState::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraSecurityState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_security_state");
@@ -285,7 +285,7 @@ pub trait SocPeripheral {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -302,7 +302,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
         index: usize,
     ) {
@@ -334,7 +334,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_trng_axi_user_lock");
@@ -348,7 +348,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -385,7 +385,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraTrngCtrl::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraTrngCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_trng_ctrl");
@@ -399,7 +399,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraTrngCtrl::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraTrngCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -416,7 +416,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraTrngStatus::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraTrngStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_trng_status");
@@ -430,7 +430,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraTrngStatus::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraTrngStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -447,7 +447,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraFuseWrDone::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraFuseWrDone::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_fuse_wr_done");
@@ -461,7 +461,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraFuseWrDone::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraFuseWrDone::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -498,7 +498,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraBootfsmGo::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraBootfsmGo::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_bootfsm_go");
@@ -512,7 +512,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraBootfsmGo::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraBootfsmGo::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -546,7 +546,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraClkGatingEn::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraClkGatingEn::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_clk_gating_en");
@@ -560,7 +560,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraClkGatingEn::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraClkGatingEn::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -609,7 +609,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraHwRevId::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraHwRevId::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_hw_rev_id");
@@ -646,7 +646,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraHwConfig::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraHwConfig::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_hw_config");
@@ -660,7 +660,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraWdtTimer1En::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer1En::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_wdt_timer1_en");
@@ -674,7 +674,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraWdtTimer1En::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer1En::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -691,7 +691,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_wdt_timer1_ctrl");
@@ -705,7 +705,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -746,7 +746,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraWdtTimer2En::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer2En::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_wdt_timer2_en");
@@ -760,7 +760,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraWdtTimer2En::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer2En::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -777,7 +777,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_wdt_timer2_ctrl");
@@ -791,7 +791,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -832,7 +832,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraWdtStatus::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraWdtStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_wdt_status");
@@ -846,7 +846,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraWdtStatus::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraWdtStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -880,7 +880,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_fuse_axi_user_lock");
@@ -894,7 +894,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -931,7 +931,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -947,7 +947,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -961,7 +961,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -977,7 +977,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1054,7 +1054,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraXxxxxxxk::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraXxxxxxxk::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_cap_lock");
@@ -1068,7 +1068,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraXxxxxxxk::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraXxxxxxxk::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1108,7 +1108,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraXxxxxxxk::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraXxxxxxxk::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::cptra_owner_pk_hash_lock");
@@ -1122,7 +1122,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraXxxxxxxk::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraXxxxxxxk::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1181,7 +1181,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::FuseEccRevocation::Register,
+        caliptra_mcu_registers_generated::soc::bits::FuseEccRevocation::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::fuse_ecc_revocation");
@@ -1195,7 +1195,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::FuseEccRevocation::Register,
+            caliptra_mcu_registers_generated::soc::bits::FuseEccRevocation::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1252,7 +1252,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
+        caliptra_mcu_registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::fuse_anti_rollback_disable");
@@ -1266,7 +1266,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
+            caliptra_mcu_registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1340,7 +1340,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::FuseMldsaRevocation::Register,
+        caliptra_mcu_registers_generated::soc::bits::FuseMldsaRevocation::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::fuse_mldsa_revocation");
@@ -1354,7 +1354,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::FuseMldsaRevocation::Register,
+            caliptra_mcu_registers_generated::soc::bits::FuseMldsaRevocation::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1371,7 +1371,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::FuseSocSteppingId::Register,
+        caliptra_mcu_registers_generated::soc::bits::FuseSocSteppingId::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::fuse_soc_stepping_id");
@@ -1385,7 +1385,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::FuseSocSteppingId::Register,
+            caliptra_mcu_registers_generated::soc::bits::FuseSocSteppingId::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1422,7 +1422,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::FusePqcKeyType::Register,
+        caliptra_mcu_registers_generated::soc::bits::FusePqcKeyType::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::fuse_pqc_key_type");
@@ -1436,7 +1436,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::FusePqcKeyType::Register,
+            caliptra_mcu_registers_generated::soc::bits::FusePqcKeyType::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1473,7 +1473,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
+        caliptra_mcu_registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::fuse_soc_manifest_max_svn");
@@ -1487,7 +1487,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
+            caliptra_mcu_registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1737,7 +1737,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::SsDebugIntent::Register,
+        caliptra_mcu_registers_generated::soc::bits::SsDebugIntent::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_debug_intent");
@@ -1791,7 +1791,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
+        caliptra_mcu_registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_dbg_manuf_service_reg_req");
@@ -1805,7 +1805,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
+            caliptra_mcu_registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1819,7 +1819,7 @@ pub trait SocPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
+        caliptra_mcu_registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read soc::ss_dbg_manuf_service_reg_rsp");
@@ -1833,7 +1833,7 @@ pub trait SocPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
+            caliptra_mcu_registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2077,7 +2077,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraHwErrorFatal::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraHwErrorFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_hw_error_fatal");
@@ -2088,7 +2088,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraHwErrorFatal::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraHwErrorFatal::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2111,7 +2111,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2124,7 +2124,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraHwErrorNonFatal::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2256,7 +2256,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraFlowStatus::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraFlowStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_flow_status");
@@ -2267,7 +2267,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraFlowStatus::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraFlowStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2295,7 +2295,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraResetReason::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraResetReason::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_reset_reason");
@@ -2306,7 +2306,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraSecurityState::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraSecurityState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_security_state");
@@ -2338,7 +2338,7 @@ impl SocPeripheral for SocGenerated {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2352,7 +2352,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
         index: usize,
     ) {
@@ -2389,7 +2389,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2402,7 +2402,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2439,7 +2439,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraTrngCtrl::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraTrngCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_trng_ctrl");
@@ -2450,7 +2450,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraTrngCtrl::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraTrngCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2470,7 +2470,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraTrngStatus::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraTrngStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_trng_status");
@@ -2481,7 +2481,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraTrngStatus::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraTrngStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2503,7 +2503,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraFuseWrDone::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraFuseWrDone::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_fuse_wr_done");
@@ -2514,7 +2514,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraFuseWrDone::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraFuseWrDone::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2548,7 +2548,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraBootfsmGo::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraBootfsmGo::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_bootfsm_go");
@@ -2559,7 +2559,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraBootfsmGo::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraBootfsmGo::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2598,7 +2598,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraClkGatingEn::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraClkGatingEn::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_clk_gating_en");
@@ -2609,7 +2609,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraClkGatingEn::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraClkGatingEn::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2652,7 +2652,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraHwRevId::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraHwRevId::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_hw_rev_id");
@@ -2683,7 +2683,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraHwConfig::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraHwConfig::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_hw_config");
@@ -2694,7 +2694,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraWdtTimer1En::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer1En::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_timer1_en");
@@ -2705,7 +2705,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraWdtTimer1En::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer1En::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2722,7 +2722,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_timer1_ctrl");
@@ -2733,7 +2733,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer1Ctrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2771,7 +2771,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraWdtTimer2En::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer2En::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_timer2_en");
@@ -2782,7 +2782,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraWdtTimer2En::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer2En::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2799,7 +2799,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_timer2_ctrl");
@@ -2810,7 +2810,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraWdtTimer2Ctrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2848,7 +2848,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraWdtStatus::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraWdtStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_wdt_status");
@@ -2859,7 +2859,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraWdtStatus::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraWdtStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2900,7 +2900,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2913,7 +2913,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraXxxxAxiUserLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2953,7 +2953,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2966,7 +2966,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraItrngEntropyConfig0::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2985,7 +2985,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2998,7 +2998,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraItrngEntropyConfig1::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3071,7 +3071,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraXxxxxxxk::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraXxxxxxxk::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::cptra_cap_lock");
@@ -3082,7 +3082,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraXxxxxxxk::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraXxxxxxxk::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3122,7 +3122,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::CptraXxxxxxxk::Register,
+        caliptra_mcu_registers_generated::soc::bits::CptraXxxxxxxk::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3135,7 +3135,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::CptraXxxxxxxk::Register,
+            caliptra_mcu_registers_generated::soc::bits::CptraXxxxxxxk::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3197,7 +3197,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::FuseEccRevocation::Register,
+        caliptra_mcu_registers_generated::soc::bits::FuseEccRevocation::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::fuse_ecc_revocation");
@@ -3208,7 +3208,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::FuseEccRevocation::Register,
+            caliptra_mcu_registers_generated::soc::bits::FuseEccRevocation::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3264,7 +3264,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
+        caliptra_mcu_registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3277,7 +3277,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
+            caliptra_mcu_registers_generated::soc::bits::FuseAntiRollbackDisable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3351,7 +3351,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::FuseMldsaRevocation::Register,
+        caliptra_mcu_registers_generated::soc::bits::FuseMldsaRevocation::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::fuse_mldsa_revocation");
@@ -3362,7 +3362,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::FuseMldsaRevocation::Register,
+            caliptra_mcu_registers_generated::soc::bits::FuseMldsaRevocation::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3379,7 +3379,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::FuseSocSteppingId::Register,
+        caliptra_mcu_registers_generated::soc::bits::FuseSocSteppingId::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::fuse_soc_stepping_id");
@@ -3390,7 +3390,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::FuseSocSteppingId::Register,
+            caliptra_mcu_registers_generated::soc::bits::FuseSocSteppingId::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3424,7 +3424,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::FusePqcKeyType::Register,
+        caliptra_mcu_registers_generated::soc::bits::FusePqcKeyType::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::fuse_pqc_key_type");
@@ -3435,7 +3435,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::FusePqcKeyType::Register,
+            caliptra_mcu_registers_generated::soc::bits::FusePqcKeyType::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3475,7 +3475,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
+        caliptra_mcu_registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3488,7 +3488,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
+            caliptra_mcu_registers_generated::soc::bits::FuseSocManifestMaxSvn::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3729,7 +3729,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::SsDebugIntent::Register,
+        caliptra_mcu_registers_generated::soc::bits::SsDebugIntent::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read soc::ss_debug_intent");
@@ -3779,7 +3779,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
+        caliptra_mcu_registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3792,7 +3792,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
+            caliptra_mcu_registers_generated::soc::bits::SsDbgManufServiceRegReq::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3813,7 +3813,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
+        caliptra_mcu_registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3826,7 +3826,7 @@ impl SocPeripheral for SocGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
+            caliptra_mcu_registers_generated::soc::bits::SsDbgManufServiceRegRsp::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {

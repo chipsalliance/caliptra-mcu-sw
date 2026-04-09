@@ -4,6 +4,10 @@
 
 use crate::hil::I3CTargetInfo;
 use crate::hil::{RxClient, TxClient};
+use caliptra_mcu_registers_generated::i3c::bits::{
+    InterruptEnable, InterruptStatus, Status, StbyCrDeviceAddr,
+};
+use caliptra_mcu_registers_generated::i3c::regs::I3c;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
@@ -12,8 +16,6 @@ use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
-use registers_generated::i3c::bits::{InterruptEnable, InterruptStatus, Status, StbyCrDeviceAddr};
-use registers_generated::i3c::regs::I3c;
 use tock_registers::{register_bitfields, LocalRegisterCopy};
 
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;

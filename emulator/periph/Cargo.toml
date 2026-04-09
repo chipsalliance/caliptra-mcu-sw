@@ -24,7 +24,7 @@ caliptra-mcu-testing-common.workspace = true
 num_enum.workspace = true
 caliptra-mcu-otp-digest.workspace = true
 caliptra-mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }
-registers-generated.workspace = true
+caliptra-mcu-registers-generated.workspace = true
 semver.workspace = true
 serde_json.workspace = true
 serde.workspace = true

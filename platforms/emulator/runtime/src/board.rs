@@ -20,6 +20,7 @@ use caliptra_mcu_config_emulator::flash::{
 use caliptra_mcu_config_emulator::{flash_partition_list_primary, flash_partition_list_secondary};
 use caliptra_mcu_doe_mbox_driver::EmulatedDoeTransport;
 use caliptra_mcu_platforms_common::pmp_config::{PlatformPMPConfig, PlatformRegion};
+use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_tock_veer::chip::{VeeRDefaultPeripherals, TIMERS};
 use caliptra_mcu_tock_veer::pic::Pic;
 use caliptra_mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
@@ -41,7 +42,6 @@ use kernel::storage_volume;
 use kernel::syscall;
 use kernel::utilities::registers::interfaces::ReadWriteable;
 use kernel::{create_capability, debug, static_init};
-use registers_generated::mci;
 use romtime::CaliptraSoC;
 use romtime::McuBootMilestones;
 use romtime::StaticRef;
@@ -401,7 +401,7 @@ pub unsafe fn main() {
 
     // AXICDMA
     platform_regions.push(PlatformRegion {
-        start_addr: registers_generated::axicdma::AXICDMA_ADDR as *const u8,
+        start_addr: caliptra_mcu_registers_generated::axicdma::AXICDMA_ADDR as *const u8,
         size: 0x1000,
         is_mmio: true,
         user_accessible: false,

@@ -11,7 +11,7 @@ kernel.workspace = true
 
 # [target.'cfg(target_arch = "riscv32")'.dependencies]
 capsules-core.workspace = true
-registers-generated.workspace = true
+caliptra-mcu-registers-generated.workspace = true
 romtime.workspace = true
 tock-registers.workspace = true
 

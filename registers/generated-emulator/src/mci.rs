@@ -86,8 +86,10 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_cap_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::CapLock::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::CapLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_cap_lock");
         }
@@ -100,7 +102,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::CapLock::Register,
+            caliptra_mcu_registers_generated::mci::bits::CapLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -115,8 +117,10 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_hw_rev_id(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwRevId::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::HwRevId::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_hw_rev_id");
         }
@@ -150,8 +154,10 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_hw_config0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig0::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::HwConfig0::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_hw_config0");
         }
@@ -162,8 +168,10 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_hw_config1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig1::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::HwConfig1::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_hw_config1");
         }
@@ -236,7 +244,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::HwFlowStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::HwFlowStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_hw_flow_status");
@@ -250,7 +258,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::ResetReason::Register,
+        caliptra_mcu_registers_generated::mci::bits::ResetReason::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_reset_reason");
@@ -264,7 +272,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::ResetReason::Register,
+            caliptra_mcu_registers_generated::mci::bits::ResetReason::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -281,7 +289,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::ResetStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::ResetStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_reset_status");
@@ -295,7 +303,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::SecurityState::Register,
+        caliptra_mcu_registers_generated::mci::bits::SecurityState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_security_state");
@@ -309,7 +317,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::HwErrorFatal::Register,
+        caliptra_mcu_registers_generated::mci::bits::HwErrorFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_hw_error_fatal");
@@ -323,7 +331,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::HwErrorFatal::Register,
+            caliptra_mcu_registers_generated::mci::bits::HwErrorFatal::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -340,7 +348,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::AggErrorFatal::Register,
+        caliptra_mcu_registers_generated::mci::bits::AggErrorFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_agg_error_fatal");
@@ -354,7 +362,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::AggErrorFatal::Register,
+            caliptra_mcu_registers_generated::mci::bits::AggErrorFatal::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -371,7 +379,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::HwErrorNonFatal::Register,
+        caliptra_mcu_registers_generated::mci::bits::HwErrorNonFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_hw_error_non_fatal");
@@ -385,7 +393,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::HwErrorNonFatal::Register,
+            caliptra_mcu_registers_generated::mci::bits::HwErrorNonFatal::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -399,7 +407,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::AggErrorNonFatal::Register,
+        caliptra_mcu_registers_generated::mci::bits::AggErrorNonFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_agg_error_non_fatal");
@@ -413,7 +421,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::AggErrorNonFatal::Register,
+            caliptra_mcu_registers_generated::mci::bits::AggErrorNonFatal::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -528,7 +536,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
+        caliptra_mcu_registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_internal_hw_error_fatal_mask");
@@ -542,7 +550,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
+            caliptra_mcu_registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -556,7 +564,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
+        caliptra_mcu_registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_internal_hw_error_non_fatal_mask");
@@ -570,7 +578,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
+            caliptra_mcu_registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -584,7 +592,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
+        caliptra_mcu_registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_internal_agg_error_fatal_mask");
@@ -598,7 +606,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
+            caliptra_mcu_registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -612,7 +620,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
+        caliptra_mcu_registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_internal_agg_error_non_fatal_mask");
@@ -626,7 +634,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
+            caliptra_mcu_registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -674,7 +682,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::WdtTimer1En::Register,
+        caliptra_mcu_registers_generated::mci::bits::WdtTimer1En::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_wdt_timer1_en");
@@ -688,7 +696,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::WdtTimer1En::Register,
+            caliptra_mcu_registers_generated::mci::bits::WdtTimer1En::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -705,7 +713,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::WdtTimer1Ctrl::Register,
+        caliptra_mcu_registers_generated::mci::bits::WdtTimer1Ctrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_wdt_timer1_ctrl");
@@ -719,7 +727,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::WdtTimer1Ctrl::Register,
+            caliptra_mcu_registers_generated::mci::bits::WdtTimer1Ctrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -760,7 +768,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::WdtTimer2En::Register,
+        caliptra_mcu_registers_generated::mci::bits::WdtTimer2En::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_wdt_timer2_en");
@@ -774,7 +782,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::WdtTimer2En::Register,
+            caliptra_mcu_registers_generated::mci::bits::WdtTimer2En::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -791,7 +799,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::WdtTimer2Ctrl::Register,
+        caliptra_mcu_registers_generated::mci::bits::WdtTimer2Ctrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_wdt_timer2_ctrl");
@@ -805,7 +813,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::WdtTimer2Ctrl::Register,
+            caliptra_mcu_registers_generated::mci::bits::WdtTimer2Ctrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -844,8 +852,10 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_wdt_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtStatus::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::WdtStatus::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_wdt_status");
         }
@@ -972,7 +982,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::ResetRequest::Register,
+        caliptra_mcu_registers_generated::mci::bits::ResetRequest::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_reset_request");
@@ -986,7 +996,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::ResetRequest::Register,
+            caliptra_mcu_registers_generated::mci::bits::ResetRequest::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1001,8 +1011,10 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_mci_bootfsm_go(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::Go::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_mci_bootfsm_go");
         }
@@ -1013,7 +1025,10 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_mci_bootfsm_go(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            caliptra_mcu_registers_generated::mci::bits::Go::Register,
+        >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -1027,8 +1042,10 @@ pub trait MciPeripheral {
     }
     fn read_mci_reg_cptra_boot_go(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::Go::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_cptra_boot_go");
         }
@@ -1039,7 +1056,10 @@ pub trait MciPeripheral {
     }
     fn write_mci_reg_cptra_boot_go(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            caliptra_mcu_registers_generated::mci::bits::Go::Register,
+        >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -1055,7 +1075,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::FwSramExecRegionSize::Register,
+        caliptra_mcu_registers_generated::mci::bits::FwSramExecRegionSize::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -1071,7 +1091,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::FwSramExecRegionSize::Register,
+            caliptra_mcu_registers_generated::mci::bits::FwSramExecRegionSize::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1147,7 +1167,7 @@ pub trait MciPeripheral {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxxAxiUserLock::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxxAxiUserLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -1164,7 +1184,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxxAxiUserLock::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxxAxiUserLock::Register,
         >,
         index: usize,
     ) {
@@ -1204,7 +1224,7 @@ pub trait MciPeripheral {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxxAxiUserLock::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxxAxiUserLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -1221,7 +1241,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxxAxiUserLock::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxxAxiUserLock::Register,
         >,
         index: usize,
     ) {
@@ -1396,7 +1416,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::SsDebugIntent::Register,
+        caliptra_mcu_registers_generated::mci::bits::SsDebugIntent::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_ss_debug_intent");
@@ -1410,7 +1430,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::SsConfigDone::Register,
+        caliptra_mcu_registers_generated::mci::bits::SsConfigDone::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -1426,7 +1446,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::SsConfigDone::Register,
+            caliptra_mcu_registers_generated::mci::bits::SsConfigDone::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1440,7 +1460,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::SsConfigDone::Register,
+        caliptra_mcu_registers_generated::mci::bits::SsConfigDone::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mci_reg_ss_config_done");
@@ -1454,7 +1474,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::SsConfigDone::Register,
+            caliptra_mcu_registers_generated::mci::bits::SsConfigDone::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1495,7 +1515,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::GlobalIntrEnT::Register,
+        caliptra_mcu_registers_generated::mci::bits::GlobalIntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_global_intr_en_r");
@@ -1509,7 +1529,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::GlobalIntrEnT::Register,
+            caliptra_mcu_registers_generated::mci::bits::GlobalIntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1523,7 +1543,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error0IntrEnT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error0IntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error0_intr_en_r");
@@ -1537,7 +1557,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error0IntrEnT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error0IntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1551,7 +1571,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error1IntrEnT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error1IntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error1_intr_en_r");
@@ -1565,7 +1585,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error1IntrEnT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error1IntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1579,7 +1599,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif0IntrEnT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif0IntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif0_intr_en_r");
@@ -1593,7 +1613,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif0IntrEnT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif0IntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1607,7 +1627,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif1IntrEnT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif1IntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif1_intr_en_r");
@@ -1621,7 +1641,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif1IntrEnT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif1IntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1635,7 +1655,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::GlobalIntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::GlobalIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_global_intr_r");
@@ -1649,7 +1669,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::GlobalIntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::GlobalIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_global_intr_r");
@@ -1663,7 +1683,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error0IntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error0IntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error0_internal_intr_r");
@@ -1677,7 +1697,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error0IntrT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error0IntrT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1691,7 +1711,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error1IntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error1IntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error1_internal_intr_r");
@@ -1705,7 +1725,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error1IntrT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error1IntrT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1719,7 +1739,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif0IntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif0IntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif0_internal_intr_r");
@@ -1733,7 +1753,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif0IntrT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif0IntrT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1747,7 +1767,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif1IntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif1IntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif1_internal_intr_r");
@@ -1761,7 +1781,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif1IntrT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif1IntrT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1775,7 +1795,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error0IntrTrigT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error0IntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error0_intr_trig_r");
@@ -1789,7 +1809,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error0IntrTrigT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error0IntrTrigT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1803,7 +1823,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error1IntrTrigT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error1IntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error1_intr_trig_r");
@@ -1817,7 +1837,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error1IntrTrigT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error1IntrTrigT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1831,7 +1851,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif0IntrTrigT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif0IntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif0_intr_trig_r");
@@ -1845,7 +1865,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif0IntrTrigT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif0IntrTrigT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1859,7 +1879,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif1IntrTrigT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif1IntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif1_intr_trig_r");
@@ -1873,7 +1893,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif1IntrTrigT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif1IntrTrigT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3759,7 +3779,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_internal_intr_count_incr_r");
@@ -3773,7 +3793,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r");
@@ -3787,7 +3807,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r");
@@ -3801,7 +3821,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r");
@@ -3816,7 +3836,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r");
@@ -3831,7 +3851,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_incr_r");
@@ -3846,7 +3866,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r");
@@ -3860,7 +3880,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r");
@@ -3874,7 +3894,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r");
@@ -3888,7 +3908,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r");
@@ -3902,7 +3922,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r");
@@ -3916,7 +3936,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r");
@@ -3930,7 +3950,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r");
@@ -3944,7 +3964,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r");
@@ -3958,7 +3978,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r");
@@ -3972,7 +3992,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r");
@@ -3986,7 +4006,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r");
@@ -4001,7 +4021,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r");
@@ -4016,7 +4036,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r");
@@ -4031,7 +4051,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r");
@@ -4046,7 +4066,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r");
@@ -4061,7 +4081,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r");
@@ -4076,7 +4096,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r");
@@ -4091,7 +4111,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r");
@@ -4106,7 +4126,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r");
@@ -4121,7 +4141,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r");
@@ -4136,7 +4156,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r");
@@ -4151,7 +4171,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r");
@@ -4166,7 +4186,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r");
@@ -4181,7 +4201,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r");
@@ -4196,7 +4216,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r");
@@ -4211,7 +4231,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r");
@@ -4226,7 +4246,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r");
@@ -4241,7 +4261,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r");
@@ -4256,7 +4276,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r");
@@ -4271,7 +4291,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r");
@@ -4286,7 +4306,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r");
@@ -4301,7 +4321,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r");
@@ -4316,7 +4336,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r");
@@ -4330,7 +4350,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_incr_r");
@@ -4345,7 +4365,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r");
@@ -4359,7 +4379,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r");
@@ -4374,7 +4394,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r");
@@ -4389,7 +4409,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r");
@@ -4404,7 +4424,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r");
@@ -4419,7 +4439,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r");
@@ -4434,7 +4454,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r");
@@ -4449,7 +4469,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r");
@@ -4464,7 +4484,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r");
@@ -4479,7 +4499,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r");
@@ -4494,7 +4514,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r");
@@ -4509,7 +4529,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r");
@@ -4524,7 +4544,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r");
@@ -4539,7 +4559,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r");
@@ -4554,7 +4574,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r");
@@ -4569,7 +4589,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r");
@@ -4584,7 +4604,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r");
@@ -4599,7 +4619,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r");
@@ -4614,7 +4634,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r");
@@ -4629,7 +4649,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r");
@@ -4644,7 +4664,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r");
@@ -4659,7 +4679,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r");
@@ -4674,7 +4694,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r");
@@ -4689,7 +4709,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r");
@@ -4704,7 +4724,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r");
@@ -4719,7 +4739,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r");
@@ -4734,7 +4754,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r");
@@ -4749,7 +4769,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r");
@@ -4764,7 +4784,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r");
@@ -4779,7 +4799,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r");
@@ -4794,7 +4814,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r");
@@ -4809,7 +4829,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r");
@@ -4824,7 +4844,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r");
@@ -4839,7 +4859,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_incr_r");
@@ -4854,7 +4874,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_incr_r");
@@ -4869,7 +4889,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r");
@@ -4883,7 +4903,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r");
@@ -4897,7 +4917,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_incr_r");
@@ -4912,7 +4932,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r");
@@ -4926,7 +4946,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r");
@@ -4940,7 +4960,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r");
@@ -4954,7 +4974,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r");
@@ -4968,7 +4988,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_incr_r");
@@ -4983,7 +5003,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_incr_r");
@@ -4998,7 +5018,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_incr_r");
@@ -5011,8 +5031,10 @@ pub trait MciPeripheral {
     }
     fn read_mcu_trace_buffer_csr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Status::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::Status::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_trace_buffer_csr_status");
         }
@@ -5091,8 +5113,10 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::MboxLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox0_csr_mbox_lock");
         }
@@ -5133,7 +5157,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetUserValid::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mcu_mbox0_csr_mbox_target_user_valid");
@@ -5147,7 +5171,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetUserValid::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5201,7 +5225,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxExecute::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox0_csr_mbox_execute");
@@ -5215,7 +5239,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxExecute::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5229,7 +5253,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -5245,7 +5269,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5259,7 +5283,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxCmdStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -5275,7 +5299,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxCmdStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5289,7 +5313,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxHwStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxHwStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox0_csr_mbox_hw_status");
@@ -5321,8 +5345,10 @@ pub trait MciPeripheral {
     }
     fn read_mcu_mbox1_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::MboxLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox1_csr_mbox_lock");
         }
@@ -5363,7 +5389,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetUserValid::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read mci::mcu_mbox1_csr_mbox_target_user_valid");
@@ -5377,7 +5403,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetUserValid::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5431,7 +5457,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxExecute::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox1_csr_mbox_execute");
@@ -5445,7 +5471,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxExecute::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5459,7 +5485,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -5475,7 +5501,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5489,7 +5515,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxCmdStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -5505,7 +5531,7 @@ pub trait MciPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxCmdStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5519,7 +5545,7 @@ pub trait MciPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxHwStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxHwStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read mci::mcu_mbox1_csr_mbox_hw_status");
@@ -6340,8 +6366,10 @@ impl MciPeripheral for MciGenerated {
     }
     fn read_mci_reg_cap_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::CapLock::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::CapLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_cap_lock");
         }
@@ -6351,7 +6379,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::CapLock::Register,
+            caliptra_mcu_registers_generated::mci::bits::CapLock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -6369,8 +6397,10 @@ impl MciPeripheral for MciGenerated {
     }
     fn read_mci_reg_hw_rev_id(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwRevId::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::HwRevId::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_hw_rev_id");
         }
@@ -6398,8 +6428,10 @@ impl MciPeripheral for MciGenerated {
     }
     fn read_mci_reg_hw_config0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig0::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::HwConfig0::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_hw_config0");
         }
@@ -6407,8 +6439,10 @@ impl MciPeripheral for MciGenerated {
     }
     fn read_mci_reg_hw_config1(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwConfig1::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::HwConfig1::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_hw_config1");
         }
@@ -6463,7 +6497,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::HwFlowStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::HwFlowStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_hw_flow_status");
@@ -6474,7 +6508,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::ResetReason::Register,
+        caliptra_mcu_registers_generated::mci::bits::ResetReason::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_reset_reason");
@@ -6485,7 +6519,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::ResetReason::Register,
+            caliptra_mcu_registers_generated::mci::bits::ResetReason::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -6506,7 +6540,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::ResetStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::ResetStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_reset_status");
@@ -6517,7 +6551,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::SecurityState::Register,
+        caliptra_mcu_registers_generated::mci::bits::SecurityState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_security_state");
@@ -6528,7 +6562,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::HwErrorFatal::Register,
+        caliptra_mcu_registers_generated::mci::bits::HwErrorFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_hw_error_fatal");
@@ -6539,7 +6573,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::HwErrorFatal::Register,
+            caliptra_mcu_registers_generated::mci::bits::HwErrorFatal::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -6560,7 +6594,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::AggErrorFatal::Register,
+        caliptra_mcu_registers_generated::mci::bits::AggErrorFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -6573,7 +6607,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::AggErrorFatal::Register,
+            caliptra_mcu_registers_generated::mci::bits::AggErrorFatal::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -6652,7 +6686,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::HwErrorNonFatal::Register,
+        caliptra_mcu_registers_generated::mci::bits::HwErrorNonFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -6665,7 +6699,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::HwErrorNonFatal::Register,
+            caliptra_mcu_registers_generated::mci::bits::HwErrorNonFatal::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -6684,7 +6718,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::AggErrorNonFatal::Register,
+        caliptra_mcu_registers_generated::mci::bits::AggErrorNonFatal::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -6697,7 +6731,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::AggErrorNonFatal::Register,
+            caliptra_mcu_registers_generated::mci::bits::AggErrorNonFatal::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -6867,7 +6901,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
+        caliptra_mcu_registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_internal_hw_error_fatal_mask");
@@ -6878,7 +6912,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
+            caliptra_mcu_registers_generated::mci::bits::InternalHwErrorFatalMask::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -6899,7 +6933,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
+        caliptra_mcu_registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_internal_hw_error_non_fatal_mask");
@@ -6910,7 +6944,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
+            caliptra_mcu_registers_generated::mci::bits::InternalHwErrorNonFatalMask::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -6929,7 +6963,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
+        caliptra_mcu_registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_internal_agg_error_fatal_mask");
@@ -6940,7 +6974,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
+            caliptra_mcu_registers_generated::mci::bits::InternalAggErrorFatalMask::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -7019,7 +7053,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
+        caliptra_mcu_registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_internal_agg_error_non_fatal_mask");
@@ -7030,7 +7064,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
+            caliptra_mcu_registers_generated::mci::bits::InternalAggErrorNonFatalMask::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -7143,7 +7177,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::WdtTimer1En::Register,
+        caliptra_mcu_registers_generated::mci::bits::WdtTimer1En::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_wdt_timer1_en");
@@ -7154,7 +7188,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::WdtTimer1En::Register,
+            caliptra_mcu_registers_generated::mci::bits::WdtTimer1En::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -7171,7 +7205,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::WdtTimer1Ctrl::Register,
+        caliptra_mcu_registers_generated::mci::bits::WdtTimer1Ctrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -7184,7 +7218,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::WdtTimer1Ctrl::Register,
+            caliptra_mcu_registers_generated::mci::bits::WdtTimer1Ctrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -7225,7 +7259,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::WdtTimer2En::Register,
+        caliptra_mcu_registers_generated::mci::bits::WdtTimer2En::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_wdt_timer2_en");
@@ -7236,7 +7270,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::WdtTimer2En::Register,
+            caliptra_mcu_registers_generated::mci::bits::WdtTimer2En::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -7253,7 +7287,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::WdtTimer2Ctrl::Register,
+        caliptra_mcu_registers_generated::mci::bits::WdtTimer2Ctrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -7266,7 +7300,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::WdtTimer2Ctrl::Register,
+            caliptra_mcu_registers_generated::mci::bits::WdtTimer2Ctrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -7305,8 +7339,10 @@ impl MciPeripheral for MciGenerated {
     }
     fn read_mci_reg_wdt_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::WdtStatus::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::WdtStatus::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_wdt_status");
         }
@@ -7427,7 +7463,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::ResetRequest::Register,
+        caliptra_mcu_registers_generated::mci::bits::ResetRequest::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_reset_request");
@@ -7438,7 +7474,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::ResetRequest::Register,
+            caliptra_mcu_registers_generated::mci::bits::ResetRequest::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -7453,8 +7489,10 @@ impl MciPeripheral for MciGenerated {
     }
     fn read_mci_reg_mci_bootfsm_go(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::Go::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_mci_bootfsm_go");
         }
@@ -7462,7 +7500,10 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_mci_bootfsm_go(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            caliptra_mcu_registers_generated::mci::bits::Go::Register,
+        >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_mci_bootfsm_go = 0x{:08x}" , val . reg . get ());
@@ -7476,8 +7517,10 @@ impl MciPeripheral for MciGenerated {
     }
     fn read_mci_reg_cptra_boot_go(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::Go::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_cptra_boot_go");
         }
@@ -7485,7 +7528,10 @@ impl MciPeripheral for MciGenerated {
     }
     fn write_mci_reg_cptra_boot_go(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Go::Register>,
+        val: caliptra_emu_bus::ReadWriteRegister<
+            u32,
+            caliptra_mcu_registers_generated::mci::bits::Go::Register,
+        >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write mci::mci_reg_cptra_boot_go = 0x{:08x}" , val . reg . get ());
@@ -7501,7 +7547,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::FwSramExecRegionSize::Register,
+        caliptra_mcu_registers_generated::mci::bits::FwSramExecRegionSize::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_fw_sram_exec_region_size");
@@ -7512,7 +7558,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::FwSramExecRegionSize::Register,
+            caliptra_mcu_registers_generated::mci::bits::FwSramExecRegionSize::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -7587,7 +7633,7 @@ impl MciPeripheral for MciGenerated {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxxAxiUserLock::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxxAxiUserLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_mbox0_axi_user_lock[{}]" , index);
@@ -7598,7 +7644,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxxAxiUserLock::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxxAxiUserLock::Register,
         >,
         index: usize,
     ) {
@@ -7638,7 +7684,7 @@ impl MciPeripheral for MciGenerated {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxxAxiUserLock::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxxAxiUserLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_mbox1_axi_user_lock[{}]" , index);
@@ -7649,7 +7695,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxxAxiUserLock::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxxAxiUserLock::Register,
         >,
         index: usize,
     ) {
@@ -7814,7 +7860,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::SsDebugIntent::Register,
+        caliptra_mcu_registers_generated::mci::bits::SsDebugIntent::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -7827,7 +7873,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::SsConfigDone::Register,
+        caliptra_mcu_registers_generated::mci::bits::SsConfigDone::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -7840,7 +7886,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::SsConfigDone::Register,
+            caliptra_mcu_registers_generated::mci::bits::SsConfigDone::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -7857,7 +7903,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::SsConfigDone::Register,
+        caliptra_mcu_registers_generated::mci::bits::SsConfigDone::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read mci::mci_reg_ss_config_done");
@@ -7868,7 +7914,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::SsConfigDone::Register,
+            caliptra_mcu_registers_generated::mci::bits::SsConfigDone::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -7909,7 +7955,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::GlobalIntrEnT::Register,
+        caliptra_mcu_registers_generated::mci::bits::GlobalIntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_global_intr_en_r");
@@ -7920,7 +7966,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::GlobalIntrEnT::Register,
+            caliptra_mcu_registers_generated::mci::bits::GlobalIntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -7939,7 +7985,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error0IntrEnT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error0IntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error0_intr_en_r");
@@ -7950,7 +7996,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error0IntrEnT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error0IntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -7977,7 +8023,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error1IntrEnT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error1IntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error1_intr_en_r");
@@ -7988,7 +8034,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error1IntrEnT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error1IntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -8067,7 +8113,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif0IntrEnT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif0IntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif0_intr_en_r");
@@ -8078,7 +8124,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif0IntrEnT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif0IntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -8123,7 +8169,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif1IntrEnT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif1IntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif1_intr_en_r");
@@ -8134,7 +8180,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif1IntrEnT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif1IntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -8213,7 +8259,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::GlobalIntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::GlobalIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_global_intr_r");
@@ -8224,7 +8270,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::GlobalIntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::GlobalIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_global_intr_r");
@@ -8235,7 +8281,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error0IntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error0IntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error0_internal_intr_r");
@@ -8246,7 +8292,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error0IntrT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error0IntrT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -8273,7 +8319,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error1IntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error1IntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error1_internal_intr_r");
@@ -8284,7 +8330,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error1IntrT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error1IntrT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -8363,7 +8409,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif0IntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif0IntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif0_internal_intr_r");
@@ -8374,7 +8420,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif0IntrT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif0IntrT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -8419,7 +8465,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif1IntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif1IntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif1_internal_intr_r");
@@ -8430,7 +8476,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif1IntrT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif1IntrT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -8509,7 +8555,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error0IntrTrigT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error0IntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error0_intr_trig_r");
@@ -8520,7 +8566,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error0IntrTrigT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error0IntrTrigT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -8547,7 +8593,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error1IntrTrigT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error1IntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error1_intr_trig_r");
@@ -8558,7 +8604,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error1IntrTrigT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error1IntrTrigT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -8637,7 +8683,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif0IntrTrigT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif0IntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif0_intr_trig_r");
@@ -8648,7 +8694,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif0IntrTrigT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif0IntrTrigT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -8693,7 +8739,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif1IntrTrigT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif1IntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif1_intr_trig_r");
@@ -8704,7 +8750,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif1IntrTrigT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif1IntrTrigT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -10653,7 +10699,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_internal_intr_count_incr_r");
@@ -10666,7 +10712,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_mbox0_ecc_unc_intr_count_incr_r");
@@ -10679,7 +10725,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_mbox1_ecc_unc_intr_count_incr_r");
@@ -10692,7 +10738,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_wdt_timer1_timeout_intr_count_incr_r");
@@ -10705,7 +10751,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_wdt_timer2_timeout_intr_count_incr_r");
@@ -10718,7 +10764,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_mcu_sram_dmi_axi_collision_intr_count_incr_r");
@@ -10731,7 +10777,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal0_intr_count_incr_r");
@@ -10744,7 +10790,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal1_intr_count_incr_r");
@@ -10757,7 +10803,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal2_intr_count_incr_r");
@@ -10770,7 +10816,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal3_intr_count_incr_r");
@@ -10783,7 +10829,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal4_intr_count_incr_r");
@@ -10796,7 +10842,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal5_intr_count_incr_r");
@@ -10809,7 +10855,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal6_intr_count_incr_r");
@@ -10822,7 +10868,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal7_intr_count_incr_r");
@@ -10835,7 +10881,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal8_intr_count_incr_r");
@@ -10848,7 +10894,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal9_intr_count_incr_r");
@@ -10861,7 +10907,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal10_intr_count_incr_r");
@@ -10874,7 +10920,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal11_intr_count_incr_r");
@@ -10887,7 +10933,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal12_intr_count_incr_r");
@@ -10900,7 +10946,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal13_intr_count_incr_r");
@@ -10913,7 +10959,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal14_intr_count_incr_r");
@@ -10926,7 +10972,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal15_intr_count_incr_r");
@@ -10939,7 +10985,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal16_intr_count_incr_r");
@@ -10952,7 +10998,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal17_intr_count_incr_r");
@@ -10965,7 +11011,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal18_intr_count_incr_r");
@@ -10978,7 +11024,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal19_intr_count_incr_r");
@@ -10991,7 +11037,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal20_intr_count_incr_r");
@@ -11004,7 +11050,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal21_intr_count_incr_r");
@@ -11017,7 +11063,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal22_intr_count_incr_r");
@@ -11030,7 +11076,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal23_intr_count_incr_r");
@@ -11043,7 +11089,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal24_intr_count_incr_r");
@@ -11056,7 +11102,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal25_intr_count_incr_r");
@@ -11069,7 +11115,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal26_intr_count_incr_r");
@@ -11082,7 +11128,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal27_intr_count_incr_r");
@@ -11095,7 +11141,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal28_intr_count_incr_r");
@@ -11108,7 +11154,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal29_intr_count_incr_r");
@@ -11121,7 +11167,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal30_intr_count_incr_r");
@@ -11134,7 +11180,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_error_agg_error_fatal31_intr_count_incr_r");
@@ -11147,7 +11193,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mcu_sram_ecc_cor_intr_count_incr_r");
@@ -11160,7 +11206,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_cptra_mcu_reset_req_intr_count_incr_r");
@@ -11173,7 +11219,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_gen_in_toggle_intr_count_incr_r");
@@ -11186,7 +11232,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal0_intr_count_incr_r");
@@ -11199,7 +11245,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal1_intr_count_incr_r");
@@ -11212,7 +11258,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal2_intr_count_incr_r");
@@ -11225,7 +11271,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal3_intr_count_incr_r");
@@ -11238,7 +11284,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal4_intr_count_incr_r");
@@ -11251,7 +11297,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal5_intr_count_incr_r");
@@ -11264,7 +11310,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal6_intr_count_incr_r");
@@ -11277,7 +11323,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal7_intr_count_incr_r");
@@ -11290,7 +11336,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal8_intr_count_incr_r");
@@ -11303,7 +11349,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal9_intr_count_incr_r");
@@ -11316,7 +11362,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal10_intr_count_incr_r");
@@ -11329,7 +11375,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal11_intr_count_incr_r");
@@ -11342,7 +11388,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal12_intr_count_incr_r");
@@ -11355,7 +11401,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal13_intr_count_incr_r");
@@ -11368,7 +11414,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal14_intr_count_incr_r");
@@ -11381,7 +11427,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal15_intr_count_incr_r");
@@ -11394,7 +11440,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal16_intr_count_incr_r");
@@ -11407,7 +11453,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal17_intr_count_incr_r");
@@ -11420,7 +11466,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal18_intr_count_incr_r");
@@ -11433,7 +11479,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal19_intr_count_incr_r");
@@ -11446,7 +11492,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal20_intr_count_incr_r");
@@ -11459,7 +11505,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal21_intr_count_incr_r");
@@ -11472,7 +11518,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal22_intr_count_incr_r");
@@ -11485,7 +11531,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal23_intr_count_incr_r");
@@ -11498,7 +11544,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal24_intr_count_incr_r");
@@ -11511,7 +11557,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal25_intr_count_incr_r");
@@ -11524,7 +11570,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal26_intr_count_incr_r");
@@ -11537,7 +11583,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal27_intr_count_incr_r");
@@ -11550,7 +11596,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal28_intr_count_incr_r");
@@ -11563,7 +11609,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal29_intr_count_incr_r");
@@ -11576,7 +11622,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal30_intr_count_incr_r");
@@ -11589,7 +11635,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_agg_error_non_fatal31_intr_count_incr_r");
@@ -11602,7 +11648,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox0_target_done_intr_count_incr_r");
@@ -11615,7 +11661,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox1_target_done_intr_count_incr_r");
@@ -11628,7 +11674,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox0_cmd_avail_intr_count_incr_r");
@@ -11641,7 +11687,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox1_cmd_avail_intr_count_incr_r");
@@ -11654,7 +11700,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_cptra_mbox_cmd_avail_intr_count_incr_r");
@@ -11667,7 +11713,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox0_ecc_cor_intr_count_incr_r");
@@ -11680,7 +11726,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox1_ecc_cor_intr_count_incr_r");
@@ -11693,7 +11739,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_debug_locked_intr_count_incr_r");
@@ -11706,7 +11752,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_scan_mode_intr_count_incr_r");
@@ -11719,7 +11765,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox0_soc_req_lock_intr_count_incr_r");
@@ -11732,7 +11778,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_mbox1_soc_req_lock_intr_count_incr_r");
@@ -11745,7 +11791,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mci_reg_intr_block_rf_notif_otp_operation_done_intr_count_incr_r");
@@ -11756,8 +11802,10 @@ impl MciPeripheral for MciGenerated {
     }
     fn read_mcu_trace_buffer_csr_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::Status::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::Status::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_trace_buffer_csr_status"
@@ -11828,8 +11876,10 @@ impl MciPeripheral for MciGenerated {
     }
     fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::MboxLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_lock"
@@ -11866,7 +11916,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetUserValid::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_target_user_valid");
@@ -11877,7 +11927,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetUserValid::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -11930,7 +11980,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxExecute::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -11943,7 +11993,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxExecute::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -11960,7 +12010,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mcu_mbox0_csr_mbox_target_status");
@@ -11971,7 +12021,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -11990,7 +12040,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxCmdStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -12003,7 +12053,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxCmdStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -12020,7 +12070,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxHwStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxHwStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -12051,8 +12101,10 @@ impl MciPeripheral for MciGenerated {
     }
     fn read_mcu_mbox1_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::MboxLock::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_lock"
@@ -12089,7 +12141,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetUserValid::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_target_user_valid");
@@ -12100,7 +12152,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetUserValid::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -12153,7 +12205,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxExecute::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -12166,7 +12218,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxExecute::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -12183,7 +12235,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read mci::mcu_mbox1_csr_mbox_target_status");
@@ -12194,7 +12246,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -12213,7 +12265,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxCmdStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -12226,7 +12278,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxCmdStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -12243,7 +12295,7 @@ impl MciPeripheral for MciGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxHwStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxHwStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(

@@ -24,11 +24,11 @@ use caliptra_mcu_emulator_registers_generated::primary_flash::{
 use caliptra_mcu_emulator_registers_generated::secondary_flash::{
     SecondaryFlashGenerated, SecondaryFlashPeripheral,
 };
-use core::convert::TryInto;
-use registers_generated::primary_flash_ctrl;
-use registers_generated::primary_flash_ctrl::bits::{
+use caliptra_mcu_registers_generated::primary_flash_ctrl;
+use caliptra_mcu_registers_generated::primary_flash_ctrl::bits::{
     CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
 };
+use core::convert::TryInto;
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{Read, Seek, Write};
@@ -460,7 +460,7 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_state.reg.get())
     }
@@ -469,20 +469,18 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
         // Interrupt state register: SW write 1 to clear
-        if val
-            .reg
-            .is_set(registers_generated::primary_flash_ctrl::bits::FlInterruptState::Error)
-        {
+        if val.reg.is_set(
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptState::Error,
+        ) {
             self.clear_interrupt(FlashCtrlIntType::Error);
         }
-        if val
-            .reg
-            .is_set(registers_generated::primary_flash_ctrl::bits::FlInterruptState::Event)
-        {
+        if val.reg.is_set(
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptState::Event,
+        ) {
             self.clear_interrupt(FlashCtrlIntType::Event);
         }
     }
@@ -491,7 +489,7 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
     }
@@ -500,13 +498,13 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
         if self.interrupt_state.reg.is_set(FlInterruptState::Error)
             && val
                 .reg
-                .is_set(registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Error)
+                .is_set(caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Error)
         {
             self.error_irq.set_level(true);
             self.timer.schedule_poll_in(1);
@@ -515,7 +513,7 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
         if self.interrupt_state.reg.is_set(FlInterruptState::Event)
             && val
                 .reg
-                .is_set(registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Event)
+                .is_set(caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Event)
         {
             self.event_irq.set_level(true);
             self.timer.schedule_poll_in(1);
@@ -553,7 +551,7 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::FlControl::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlControl::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.control.reg.get())
     }
@@ -562,7 +560,7 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::FlControl::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlControl::Register,
         >,
     ) {
         if !self.ctrl_regwen.reg.is_set(CtrlRegwen::En) {
@@ -584,7 +582,7 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.op_status.reg.get())
     }
@@ -593,7 +591,7 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
         >,
     ) {
         self.op_status.reg.set(val.reg.get());
@@ -603,7 +601,7 @@ impl PrimaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.ctrl_regwen.reg.get())
     }
@@ -635,7 +633,7 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_state.reg.get())
     }
@@ -644,7 +642,7 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
         // Interrupt state register: SW write 1 to clear
@@ -666,7 +664,7 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.interrupt_enable.reg.get())
     }
@@ -675,7 +673,7 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
         if self.interrupt_state.reg.is_set(FlInterruptState::Error)
@@ -728,7 +726,7 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::FlControl::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlControl::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.control.reg.get())
     }
@@ -737,7 +735,7 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::FlControl::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlControl::Register,
         >,
     ) {
         if !self.ctrl_regwen.reg.is_set(CtrlRegwen::En) {
@@ -759,7 +757,7 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.op_status.reg.get())
     }
@@ -768,7 +766,7 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
         >,
     ) {
         self.op_status.reg.set(val.reg.get());
@@ -778,7 +776,7 @@ impl SecondaryFlashPeripheral for DummyFlashCtrl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.ctrl_regwen.reg.get())
     }
@@ -793,12 +791,12 @@ mod test {
     use caliptra_emu_types::RvSize;
     use caliptra_mcu_emulator_consts::{RAM_ORG, RAM_SIZE};
     use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
-    use core::panic;
-    use registers_generated::primary_flash_ctrl::bits::{
+    use caliptra_mcu_registers_generated::primary_flash_ctrl::bits::{
         FlControl, FlInterruptEnable, FlInterruptState, OpStatus,
     };
-    use registers_generated::primary_flash_ctrl::PRIMARY_FLASH_CTRL_ADDR;
-    use registers_generated::secondary_flash_ctrl::SECONDARY_FLASH_CTRL_ADDR;
+    use caliptra_mcu_registers_generated::primary_flash_ctrl::PRIMARY_FLASH_CTRL_ADDR;
+    use caliptra_mcu_registers_generated::secondary_flash_ctrl::SECONDARY_FLASH_CTRL_ADDR;
+    use core::panic;
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 

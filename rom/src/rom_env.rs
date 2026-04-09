@@ -13,8 +13,8 @@ Abstract:
 --*/
 
 use crate::{Lifecycle, Otp, Soc};
+use caliptra_mcu_registers_generated::{i3c, lc_ctrl, mci, otp_ctrl, soc};
 use core::ptr::addr_of;
-use registers_generated::{i3c, lc_ctrl, mci, otp_ctrl, soc};
 use romtime::{CaliptraSoC, Mci, StaticRef};
 
 /// ROM Environment containing all peripherals and managers

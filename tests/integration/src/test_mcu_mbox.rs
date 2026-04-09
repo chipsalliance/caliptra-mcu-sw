@@ -37,6 +37,7 @@ pub mod test {
         McuShaInitResp, McuShaUpdateReq, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
         CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
     };
+    use caliptra_mcu_registers_generated::mci;
     use caliptra_mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
         MCU_RUNNING,
@@ -48,7 +49,6 @@ pub mod test {
     use rand::prelude::*;
     use rand::rngs::StdRng;
     use random_port::PortPicker;
-    use registers_generated::mci;
     use sha2::{Digest, Sha384, Sha512};
     use std::process::exit;
     use std::sync::atomic::Ordering;

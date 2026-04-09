@@ -18,8 +18,8 @@ use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_types::{RvAddr, RvData};
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_mcu_emulator_registers_generated::otp::OtpGenerated;
-use registers_generated::fuses::{self};
-use registers_generated::otp_ctrl::bits::{DirectAccessCmd, OtpStatus};
+use caliptra_mcu_registers_generated::fuses::{self};
+use caliptra_mcu_registers_generated::otp_ctrl::bits::{DirectAccessCmd, OtpStatus};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -502,7 +502,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
         val: ReadWriteRegister<
             u32,
-            registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
         >,
     ) {
         let val = val.reg.get();
@@ -513,14 +513,19 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
 
     fn read_direct_access_address(
         &mut self,
-    ) -> ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::DirectAccessAddress::Register>
-    {
+    ) -> ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessAddress::Register,
+    > {
         self.direct_access_address.into()
     }
 
     fn write_direct_access_cmd(
         &mut self,
-        val: ReadWriteRegister<u32, registers_generated::otp_ctrl::bits::DirectAccessCmd::Register>,
+        val: ReadWriteRegister<
+            u32,
+            caliptra_mcu_registers_generated::otp_ctrl::bits::DirectAccessCmd::Register,
+        >,
     ) {
         let val = val.reg.get();
         if val.count_ones() > 1 {
@@ -543,7 +548,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[0])
     }
@@ -551,7 +556,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[1])
     }
@@ -559,7 +564,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[2])
     }
@@ -567,7 +572,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[3])
     }
@@ -575,7 +580,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[4])
     }
@@ -583,7 +588,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[5])
     }
@@ -591,7 +596,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[6])
     }
@@ -599,7 +604,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[7])
     }
@@ -607,7 +612,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[8])
     }
@@ -615,7 +620,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[9])
     }
@@ -623,7 +628,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[10])
     }
@@ -631,7 +636,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[11])
     }
@@ -639,7 +644,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[12])
     }
@@ -647,7 +652,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[13])
     }
@@ -655,7 +660,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[14])
     }
@@ -663,7 +668,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[15])
     }
@@ -671,7 +676,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[16])
     }
@@ -679,7 +684,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
+        caliptra_mcu_registers_generated::otp_ctrl::bits::ErrCodeRegT::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.err_codes[17])
     }

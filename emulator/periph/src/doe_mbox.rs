@@ -2,7 +2,7 @@
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_cpu::Irq;
 use caliptra_mcu_emulator_registers_generated::doe_mbox::{DoeMboxGenerated, DoeMboxPeripheral};
-use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
+use caliptra_mcu_registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
 use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -78,7 +78,7 @@ impl DoeMboxPeripheral for DummyDoeMbox {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
+        caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.periph.inner.lock().unwrap().mbox_status.reg.get(),
@@ -89,7 +89,7 @@ impl DoeMboxPeripheral for DummyDoeMbox {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
+            caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
         >,
     ) {
         // STATUS register uses normal read/write semantics
@@ -107,7 +107,7 @@ impl DoeMboxPeripheral for DummyDoeMbox {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
+        caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(
             self.periph.inner.lock().unwrap().mbox_event.reg.get(),
@@ -118,7 +118,7 @@ impl DoeMboxPeripheral for DummyDoeMbox {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
+            caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
         >,
     ) {
         self.periph
@@ -362,8 +362,8 @@ mod tests {
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
     use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
-    use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
-    use registers_generated::doe_mbox::DOE_MBOX_ADDR;
+    use caliptra_mcu_registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
+    use caliptra_mcu_registers_generated::doe_mbox::DOE_MBOX_ADDR;
 
     const DOE_MBOX_BASE_ADDR: u32 = DOE_MBOX_ADDR;
     const DOE_MBOX_DLEN_REG_OFFSET: u32 = 0x04;

@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use registers_generated::mci;
-use registers_generated::mci::bits::{MboxCmdStatus, MboxExecute, Notif0IntrTrigT};
+use caliptra_mcu_registers_generated::mci;
+use caliptra_mcu_registers_generated::mci::bits::{MboxCmdStatus, MboxExecute, Notif0IntrTrigT};
 use romtime::StaticRef;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 

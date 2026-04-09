@@ -11,8 +11,8 @@
 #![no_main]
 #![no_std]
 
+use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_rom_common::{fatal_error, Otp, RomEnv};
-use registers_generated::fuses;
 use tock_registers::interfaces::Readable;
 
 const DIGEST_IV: u64 = 0x90C7_F21F_6224_F027;

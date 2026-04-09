@@ -19,14 +19,14 @@ use std::rc::Rc;
 
 use caliptra_emu_bus::ReadWriteRegister;
 use caliptra_mcu_emulator_registers_generated::lc::LcGenerated;
-use registers_generated::lc_ctrl;
+use caliptra_mcu_registers_generated::lc_ctrl;
 use tock_registers::interfaces::Readable;
 
 #[cfg(test)]
 use crate::otp_scramble;
 use crate::otp_unscramble;
 
-// OTP partition offsets (from registers_generated::fuses).
+// OTP partition offsets (from caliptra_mcu_registers_generated::fuses).
 const SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET: usize = 0x2d8;
 const LIFE_CYCLE_BYTE_OFFSET: usize = 0xc80;
 

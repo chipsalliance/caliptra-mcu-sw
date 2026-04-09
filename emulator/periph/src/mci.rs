@@ -7,11 +7,11 @@ use caliptra_emu_cpu::Irq;
 use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_types::RvData;
 use caliptra_mcu_emulator_registers_generated::mci::{MciGenerated, MciPeripheral};
-use caliptra_registers::soc_ifc::RegisterBlock;
-use registers_generated::mci::bits::{
+use caliptra_mcu_registers_generated::mci::bits::{
     Error0IntrT, Error0IntrTrigT, Notif0IntrEnT, Notif0IntrT, ResetReason, ResetRequest,
     SecurityState, WdtStatus, WdtTimer1Ctrl, WdtTimer1En, WdtTimer2Ctrl, WdtTimer2En,
 };
+use caliptra_registers::soc_ifc::RegisterBlock;
 use std::{cell::RefCell, rc::Rc};
 use tock_registers::interfaces::{ReadWriteable, Readable};
 
@@ -398,7 +398,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error0IntrTrigT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error0IntrTrigT::Register,
         >,
     ) {
         // 1) Pulse behavior: clear trigger bits after write
@@ -433,7 +433,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error0IntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error0IntrT::Register,
     > {
         self.ext_mci_regs
             .regs
@@ -446,7 +446,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error0IntrT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error0IntrT::Register,
         >,
     ) {
         // W1C clear
@@ -470,7 +470,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Error0IntrEnT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Error0IntrEnT::Register,
     > {
         self.ext_mci_regs
             .regs
@@ -483,7 +483,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Error0IntrEnT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Error0IntrEnT::Register,
         >,
     ) {
         self.ext_mci_regs
@@ -498,7 +498,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::GlobalIntrEnT::Register,
+            caliptra_mcu_registers_generated::mci::bits::GlobalIntrEnT::Register,
         >,
     ) {
         self.ext_mci_regs
@@ -513,7 +513,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::GlobalIntrEnT::Register,
+        caliptra_mcu_registers_generated::mci::bits::GlobalIntrEnT::Register,
     > {
         self.ext_mci_regs
             .regs
@@ -526,7 +526,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif0IntrTrigT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif0IntrTrigT::Register,
     > {
         self.ext_mci_regs
             .regs
@@ -538,7 +538,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif0IntrTrigT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif0IntrTrigT::Register,
         >,
     ) {
         let cur_value = self
@@ -579,7 +579,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::ResetRequest::Register,
+            caliptra_mcu_registers_generated::mci::bits::ResetRequest::Register,
         >,
     ) {
         // Store value in shared ext_mci register (will be consumed by emulator)
@@ -614,7 +614,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif0IntrT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif0IntrT::Register,
     > {
         self.ext_mci_regs
             .regs
@@ -627,7 +627,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif0IntrT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif0IntrT::Register,
         >,
     ) {
         let cur = self
@@ -649,7 +649,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::Notif0IntrEnT::Register,
+        caliptra_mcu_registers_generated::mci::bits::Notif0IntrEnT::Register,
     > {
         self.ext_mci_regs
             .regs
@@ -662,7 +662,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::Notif0IntrEnT::Register,
+            caliptra_mcu_registers_generated::mci::bits::Notif0IntrEnT::Register,
         >,
     ) {
         self.ext_mci_regs
@@ -694,8 +694,10 @@ impl MciPeripheral for Mci {
 
     fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::MboxLock::Register,
+    > {
         self.mcu_mailbox0
             .as_mut()
             .expect("mcu_mbox0 is not initialized")
@@ -739,7 +741,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetUserValid::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
         self.mcu_mailbox0
             .as_mut()
@@ -754,7 +756,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetUserValid::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
     ) {
         self.mcu_mailbox0
@@ -810,7 +812,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxExecute::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
     > {
         self.mcu_mailbox0
             .as_mut()
@@ -825,7 +827,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxExecute::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         self.mcu_mailbox0
@@ -841,7 +843,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
         self.mcu_mailbox0
             .as_mut()
@@ -856,7 +858,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
     ) {
         self.mcu_mailbox0
@@ -872,7 +874,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxCmdStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
     > {
         self.mcu_mailbox0
             .as_mut()
@@ -887,7 +889,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxCmdStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
     ) {
         self.mcu_mailbox0
@@ -903,7 +905,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxHwStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxHwStatus::Register,
     > {
         self.mcu_mailbox0
             .as_mut()
@@ -936,8 +938,10 @@ impl MciPeripheral for Mci {
 
     fn read_mcu_mbox1_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::MboxLock::Register,
+    > {
         self.mcu_mailbox1
             .as_mut()
             .expect("mcu_mbox1 is not initialized")
@@ -981,7 +985,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetUserValid::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
         self.mcu_mailbox1
             .as_mut()
@@ -996,7 +1000,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetUserValid::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
     ) {
         self.mcu_mailbox1
@@ -1052,7 +1056,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxExecute::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
     > {
         self.mcu_mailbox1
             .as_mut()
@@ -1067,7 +1071,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxExecute::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         self.mcu_mailbox1
@@ -1083,7 +1087,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
         self.mcu_mailbox1
             .as_mut()
@@ -1098,7 +1102,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
     ) {
         self.mcu_mailbox1
@@ -1114,7 +1118,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxCmdStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
     > {
         self.mcu_mailbox1
             .as_mut()
@@ -1129,7 +1133,7 @@ impl MciPeripheral for Mci {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxCmdStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
     ) {
         self.mcu_mailbox1
@@ -1145,7 +1149,7 @@ impl MciPeripheral for Mci {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxHwStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxHwStatus::Register,
     > {
         self.mcu_mailbox1
             .as_mut()
@@ -1158,8 +1162,10 @@ impl MciPeripheral for Mci {
 
     fn read_mci_reg_hw_rev_id(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::HwRevId::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::HwRevId::Register,
+    > {
         caliptra_emu_bus::ReadWriteRegister::new(0x1000)
     }
 

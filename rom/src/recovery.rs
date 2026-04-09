@@ -6,8 +6,10 @@ use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
     SOC_MANIFEST_IDENTIFIER,
 };
-use registers_generated::i3c;
-use registers_generated::i3c::bits::{IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess};
+use caliptra_mcu_registers_generated::i3c;
+use caliptra_mcu_registers_generated::i3c::bits::{
+    IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess,
+};
 use romtime::StaticRef;
 use smlang::statemachine;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};

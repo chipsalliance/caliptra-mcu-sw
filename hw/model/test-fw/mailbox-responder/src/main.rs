@@ -5,8 +5,8 @@
 #![no_main]
 #![no_std]
 
+use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_rom_common::RomEnv;
-use registers_generated::mci;
 use romtime::McuBootMilestones;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 

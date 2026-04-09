@@ -997,7 +997,7 @@ mod test {
         println!("[TEST] Reset completed successfully - runtime booted after DOT fuse burn");
 
         // Verify that the DOT lock fuse was actually burned
-        use registers_generated::fuses;
+        use caliptra_mcu_registers_generated::fuses;
 
         let otp_memory = hw.read_otp_memory();
 
@@ -1034,7 +1034,7 @@ mod test {
     /// Creates OTP memory with DOT in locked state (ODD, 1 fuse bit burned).
     /// Uses the generated fuse entry offsets for correct placement.
     fn create_locked_otp_memory() -> Vec<u8> {
-        use registers_generated::fuses;
+        use caliptra_mcu_registers_generated::fuses;
         let mut otp =
             vec![0u8; fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
         // Set dot_initialized = 1 via LinearMajorityVote(1 bit, 3x) encoding: 0b111
@@ -1224,7 +1224,7 @@ mod test {
     /// Creates OTP memory for override testing.
     /// Includes locked state fuses AND the vendor recovery PK hash.
     fn create_challenge_recovery_otp_memory(pk_hash: &[u8; 48]) -> Vec<u8> {
-        use registers_generated::fuses;
+        use caliptra_mcu_registers_generated::fuses;
 
         let required_size = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset
             + fuses::VENDOR_RECOVERY_PK_HASH.byte_size
@@ -1442,7 +1442,7 @@ mod test {
 
         // Verify the DOT fuse was burned (bit 1 should now be set, total burned = 2)
         let otp_memory = hw.read_otp_memory();
-        let fuse_array_offset = registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset;
+        let fuse_array_offset = caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset;
         let lock_fuse_byte = otp_memory[fuse_array_offset];
         assert!(
             lock_fuse_byte & 0x03 == 0x03,
@@ -1507,7 +1507,7 @@ mod test {
 
         // Verify the fuse was NOT burned (should still be 1)
         let otp_memory = hw.read_otp_memory();
-        let fuse_array_offset = registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset;
+        let fuse_array_offset = caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset;
         let lock_fuse_byte = otp_memory[fuse_array_offset];
         assert_eq!(
             lock_fuse_byte & 0x03,
@@ -1588,7 +1588,7 @@ mod test {
 
         // Verify the fuse was NOT burned (should still be 1 = ODD/locked).
         let otp_memory = hw.read_otp_memory();
-        let fuse_array_offset = registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset;
+        let fuse_array_offset = caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset;
         let lock_fuse_byte = otp_memory[fuse_array_offset];
         assert_eq!(
             lock_fuse_byte & 0x03,
@@ -1647,8 +1647,8 @@ mod test {
     /// Expected: The manifest LOCK command burns the lock fuse (EVEN → ODD).
     #[test]
     fn test_fw_manifest_dot_lock() {
+        use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
-        use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -1714,8 +1714,8 @@ mod test {
     /// Expected: No additional fuses burned (idempotent).
     #[test]
     fn test_fw_manifest_dot_lock_idempotent() {
+        use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
-        use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -1775,8 +1775,8 @@ mod test {
     /// Expected: One additional fuse burned (ODD → EVEN), total 2.
     #[test]
     fn test_fw_manifest_dot_unlock() {
+        use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
-        use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -1829,8 +1829,8 @@ mod test {
     /// Test: UNLOCK command is idempotent when device is already in EVEN (unlocked) state.
     #[test]
     fn test_fw_manifest_dot_unlock_idempotent() {
+        use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
-        use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -1883,8 +1883,8 @@ mod test {
     /// Test: DISABLE command burns a fuse when in EVEN (unlocked) state.
     #[test]
     fn test_fw_manifest_dot_disable() {
+        use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_DISABLE;
-        use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -1934,7 +1934,7 @@ mod test {
     /// Test: No manifest magic means DOT commands are silently skipped.
     #[test]
     fn test_fw_manifest_dot_no_magic_skipped() {
-        use registers_generated::fuses;
+        use caliptra_mcu_registers_generated::fuses;
         use romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -1988,8 +1988,8 @@ mod test {
     /// Test: ROTATE command burns 2 fuses when below min_fuse_count threshold.
     #[test]
     fn test_fw_manifest_dot_rotate() {
+        use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
-        use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();
@@ -2039,8 +2039,8 @@ mod test {
     /// Test: ROTATE command is idempotent when burned count already meets min_fuse_count.
     #[test]
     fn test_fw_manifest_dot_rotate_idempotent() {
+        use caliptra_mcu_registers_generated::fuses;
         use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
-        use registers_generated::fuses;
         use romtime::McuBootMilestones;
 
         let owner_pk_hash = get_owner_pk_hash();

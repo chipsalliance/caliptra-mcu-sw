@@ -25,7 +25,7 @@ pub trait DoeMboxPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::doe_mbox::bits::DoeMboxLock::Register,
+        caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read doe_mbox::doe_mbox_lock");
@@ -59,7 +59,7 @@ pub trait DoeMboxPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
+        caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read doe_mbox::doe_mbox_status");
@@ -73,7 +73,7 @@ pub trait DoeMboxPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
+            caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -90,7 +90,7 @@ pub trait DoeMboxPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
+        caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read doe_mbox::doe_mbox_event");
@@ -104,7 +104,7 @@ pub trait DoeMboxPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
+            caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -182,7 +182,7 @@ impl DoeMboxPeripheral for DoeMboxGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::doe_mbox::bits::DoeMboxLock::Register,
+        caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxLock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read doe_mbox::doe_mbox_lock");
@@ -210,7 +210,7 @@ impl DoeMboxPeripheral for DoeMboxGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
+        caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read doe_mbox::doe_mbox_status");
@@ -221,7 +221,7 @@ impl DoeMboxPeripheral for DoeMboxGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
+            caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -242,7 +242,7 @@ impl DoeMboxPeripheral for DoeMboxGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
+        caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read doe_mbox::doe_mbox_event");
@@ -253,7 +253,7 @@ impl DoeMboxPeripheral for DoeMboxGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
+            caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxEvent::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {

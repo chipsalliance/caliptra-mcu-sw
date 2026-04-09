@@ -389,7 +389,7 @@ mod test {
             Some(custom_otp)
         } else if params.dot_enabled {
             // TODO: move this when we add the fuse-burning scripts
-            use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
+            use caliptra_mcu_registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
             // Create OTP memory large enough to include the vendor non-secret prod partition
             let mut otp = vec![0u8; VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 256];
             // Set dot_initialized to 1 at the start of the vendor non-secret prod partition

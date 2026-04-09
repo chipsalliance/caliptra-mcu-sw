@@ -2,18 +2,18 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
+use caliptra_mcu_registers_generated::primary_flash_ctrl::{
+    bits::{CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus},
+    regs::PrimaryFlashCtrl,
+    PRIMARY_FLASH_CTRL_ADDR,
+};
+use caliptra_mcu_registers_generated::secondary_flash_ctrl::SECONDARY_FLASH_CTRL_ADDR;
 use core::ops::{Index, IndexMut};
 use kernel::hil;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
-use registers_generated::primary_flash_ctrl::{
-    bits::{CtrlRegwen, FlControl, FlInterruptEnable, FlInterruptState, OpStatus},
-    regs::PrimaryFlashCtrl,
-    PRIMARY_FLASH_CTRL_ADDR,
-};
-use registers_generated::secondary_flash_ctrl::SECONDARY_FLASH_CTRL_ADDR;
 
 // The recovery flash controller is identical to the main flash controller in the emulator.
 // Both controllers use the same register structures, differing only in their base addresses.

@@ -245,7 +245,7 @@ caliptra-mcu-pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
 caliptra-mcu-pldm-ua = { path = "emulator/bmc/pldm-ua"}
 caliptra-mcu-poll-common = { path = "common/poll"}
 caliptra-mcu-provisioning-fuses = { path = "provisioning/fuses/lib" }
-registers-generated = { path = "registers/generated-firmware" }
+caliptra-mcu-registers-generated = { path = "registers/generated-firmware" }
 registers-generator = { path = "registers/generator" }
 registers-systemrdl = { path = "registers/systemrdl" }
 registers-systemrdl-new = { path = "registers/systemrdl-new" }

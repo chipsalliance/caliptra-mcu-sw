@@ -14,8 +14,8 @@
 #![no_main]
 #![no_std]
 
+use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_rom_common::{fatal_error, RomEnv};
-use registers_generated::fuses;
 use tock_registers::interfaces::Readable;
 
 const GO_BIT: u32 = 1 << 0;

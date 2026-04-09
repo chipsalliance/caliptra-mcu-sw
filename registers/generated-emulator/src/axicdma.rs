@@ -25,7 +25,7 @@ pub trait AxicdmaPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::axicdma::bits::AxicdmaControl::Register,
+        caliptra_mcu_registers_generated::axicdma::bits::AxicdmaControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read axicdma::axicdma_control");
@@ -39,7 +39,7 @@ pub trait AxicdmaPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::axicdma::bits::AxicdmaControl::Register,
+            caliptra_mcu_registers_generated::axicdma::bits::AxicdmaControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -56,7 +56,7 @@ pub trait AxicdmaPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::axicdma::bits::AxicdmaStatus::Register,
+        caliptra_mcu_registers_generated::axicdma::bits::AxicdmaStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read axicdma::axicdma_status");
@@ -70,7 +70,7 @@ pub trait AxicdmaPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::axicdma::bits::AxicdmaStatus::Register,
+            caliptra_mcu_registers_generated::axicdma::bits::AxicdmaStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -161,7 +161,7 @@ pub trait AxicdmaPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
+        caliptra_mcu_registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -177,7 +177,7 @@ pub trait AxicdmaPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
+            caliptra_mcu_registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -233,7 +233,7 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::axicdma::bits::AxicdmaControl::Register,
+        caliptra_mcu_registers_generated::axicdma::bits::AxicdmaControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read axicdma::axicdma_control");
@@ -244,7 +244,7 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::axicdma::bits::AxicdmaControl::Register,
+            caliptra_mcu_registers_generated::axicdma::bits::AxicdmaControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -271,7 +271,7 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::axicdma::bits::AxicdmaStatus::Register,
+        caliptra_mcu_registers_generated::axicdma::bits::AxicdmaStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read axicdma::axicdma_status");
@@ -282,7 +282,7 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::axicdma::bits::AxicdmaStatus::Register,
+            caliptra_mcu_registers_generated::axicdma::bits::AxicdmaStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -373,7 +373,7 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
+        caliptra_mcu_registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -386,7 +386,7 @@ impl AxicdmaPeripheral for AxicdmaGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
+            caliptra_mcu_registers_generated::axicdma::bits::AxicdmaBytesToTransfer::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {

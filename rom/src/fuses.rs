@@ -7,8 +7,8 @@
 use crate::otp::Otp;
 use crate::{Bits, Duplication, FuseLayout, PqcKeyType};
 use caliptra_mcu_error::{McuError, McuResult};
+use caliptra_mcu_registers_generated::fuses as generated_fuses;
 use core::num::NonZero;
-use registers_generated::fuses as generated_fuses;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 /// Owner public key hash structure.

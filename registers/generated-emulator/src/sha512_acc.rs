@@ -25,7 +25,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::Lock::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::Lock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read sha512_acc::lock");
@@ -39,7 +39,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::Lock::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::Lock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -65,7 +65,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::Mode::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::Mode::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read sha512_acc::mode");
@@ -79,7 +79,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::Mode::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::Mode::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -156,7 +156,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::Execute::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::Execute::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read sha512_acc::execute");
@@ -170,7 +170,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::Execute::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::Execute::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -187,7 +187,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::Status::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::Status::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read sha512_acc::status");
@@ -213,7 +213,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::Control::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::Control::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read sha512_acc::control");
@@ -227,7 +227,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::Control::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::Control::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -244,7 +244,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_global_intr_en_r");
@@ -258,7 +258,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -272,7 +272,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_error_intr_en_r");
@@ -286,7 +286,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -300,7 +300,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_notif_intr_en_r");
@@ -314,7 +314,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -328,7 +328,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::GlobalIntrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::GlobalIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_error_global_intr_r");
@@ -342,7 +342,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::GlobalIntrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::GlobalIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_notif_global_intr_r");
@@ -356,7 +356,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::ErrorIntrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::ErrorIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_error_internal_intr_r");
@@ -370,7 +370,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::ErrorIntrT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::ErrorIntrT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -384,7 +384,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::NotifIntrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::NotifIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_notif_internal_intr_r");
@@ -398,7 +398,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::NotifIntrT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::NotifIntrT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -412,7 +412,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_error_intr_trig_r");
@@ -426,7 +426,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -440,7 +440,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_notif_intr_trig_r");
@@ -454,7 +454,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -553,7 +553,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_error0_intr_count_incr_r");
@@ -567,7 +567,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_error1_intr_count_incr_r");
@@ -581,7 +581,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_error2_intr_count_incr_r");
@@ -595,7 +595,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_error3_intr_count_incr_r");
@@ -609,7 +609,7 @@ pub trait Sha512AccPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read sha512_acc::intr_block_rf_notif_cmd_done_intr_count_incr_r");
@@ -709,7 +709,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::Lock::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::Lock::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read sha512_acc::lock");
@@ -720,7 +720,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::Lock::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::Lock::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -746,7 +746,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::Mode::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::Mode::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read sha512_acc::mode");
@@ -757,7 +757,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::Mode::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::Mode::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -836,7 +836,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::Execute::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::Execute::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read sha512_acc::execute");
@@ -847,7 +847,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::Execute::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::Execute::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -867,7 +867,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::Status::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::Status::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read sha512_acc::status");
@@ -887,7 +887,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::Control::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::Control::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read sha512_acc::control");
@@ -898,7 +898,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::Control::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::Control::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -918,7 +918,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_global_intr_en_r");
@@ -929,7 +929,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::GlobalIntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -948,7 +948,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_error_intr_en_r");
@@ -959,7 +959,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::ErrorIntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -982,7 +982,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_notif_intr_en_r");
@@ -993,7 +993,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::NotifIntrEnT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1010,7 +1010,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::GlobalIntrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::GlobalIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_error_global_intr_r");
@@ -1021,7 +1021,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::GlobalIntrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::GlobalIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_notif_global_intr_r");
@@ -1032,7 +1032,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::ErrorIntrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::ErrorIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_error_internal_intr_r");
@@ -1043,7 +1043,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::ErrorIntrT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::ErrorIntrT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1066,7 +1066,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::NotifIntrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::NotifIntrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_notif_internal_intr_r");
@@ -1077,7 +1077,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::NotifIntrT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::NotifIntrT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1094,7 +1094,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_error_intr_trig_r");
@@ -1105,7 +1105,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::ErrorIntrTrigT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1128,7 +1128,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_notif_intr_trig_r");
@@ -1139,7 +1139,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
+            caliptra_mcu_registers_generated::sha512_acc::bits::NotifIntrTrigT::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1241,7 +1241,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_error0_intr_count_incr_r");
@@ -1252,7 +1252,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_error1_intr_count_incr_r");
@@ -1263,7 +1263,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_error2_intr_count_incr_r");
@@ -1274,7 +1274,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_error3_intr_count_incr_r");
@@ -1285,7 +1285,7 @@ impl Sha512AccPeripheral for Sha512AccGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
+        caliptra_mcu_registers_generated::sha512_acc::bits::IntrCountIncrT::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read sha512_acc::intr_block_rf_notif_cmd_done_intr_count_incr_r");

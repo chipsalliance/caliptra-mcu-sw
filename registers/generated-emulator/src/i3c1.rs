@@ -78,8 +78,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_base_hc_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HcControl::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::HcControl::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_hc_control");
         }
@@ -92,7 +94,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::HcControl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::HcControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -109,7 +111,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ControllerDeviceAddr::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ControllerDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -125,7 +127,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::ControllerDeviceAddr::Register,
+            caliptra_mcu_registers_generated::i3c::bits::ControllerDeviceAddr::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -139,7 +141,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::HcCapabilities::Register,
+        caliptra_mcu_registers_generated::i3c::bits::HcCapabilities::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_hc_capabilities");
@@ -153,7 +155,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ResetControl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ResetControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_reset_control");
@@ -167,7 +169,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::ResetControl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::ResetControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -184,7 +186,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::PresentState::Register,
+        caliptra_mcu_registers_generated::i3c::bits::PresentState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_present_state");
@@ -198,7 +200,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IntrStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IntrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_intr_status");
@@ -212,7 +214,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IntrStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IntrStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -229,7 +231,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IntrStatusEnable::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IntrStatusEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_intr_status_enable");
@@ -243,7 +245,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IntrStatusEnable::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IntrStatusEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -257,7 +259,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IntrSignalEnable::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IntrSignalEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_intr_signal_enable");
@@ -271,7 +273,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IntrSignalEnable::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IntrSignalEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -285,7 +287,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IntrForce::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IntrForce::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -302,7 +304,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DatSectionOffset::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DatSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_dat_section_offset");
@@ -316,7 +318,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DctSectionOffset::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DctSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_dct_section_offset");
@@ -330,7 +332,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DctSectionOffset::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DctSectionOffset::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -344,7 +346,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RingHeadersSectionOffset::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RingHeadersSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_base_ring_headers_section_offset");
@@ -358,7 +360,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::PioSectionOffset::Register,
+        caliptra_mcu_registers_generated::i3c::bits::PioSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_pio_section_offset");
@@ -372,7 +374,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ExtCapsSectionOffset::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ExtCapsSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -388,7 +390,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IntCtrlCmdsEn::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IntCtrlCmdsEn::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_int_ctrl_cmds_en");
@@ -402,7 +404,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IbiNotifyCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IbiNotifyCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_ibi_notify_ctrl");
@@ -416,7 +418,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IbiNotifyCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IbiNotifyCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -430,7 +432,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -446,7 +448,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -460,7 +462,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DevCtxBaseLo::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DevCtxBaseLo::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_dev_ctx_base_lo");
@@ -474,7 +476,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DevCtxBaseLo::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DevCtxBaseLo::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -488,7 +490,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DevCtxBaseHi::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DevCtxBaseHi::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_dev_ctx_base_hi");
@@ -502,7 +504,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DevCtxBaseHi::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DevCtxBaseHi::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -514,8 +516,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_base_dev_ctx_sg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DevCtxSg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::DevCtxSg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_base_dev_ctx_sg");
         }
@@ -571,7 +575,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::QueueThldCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::QueueThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::piocontrol_queue_thld_ctrl");
@@ -585,7 +589,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::QueueThldCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::QueueThldCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -599,7 +603,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DataBufferThldCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DataBufferThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -615,7 +619,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DataBufferThldCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DataBufferThldCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -627,8 +631,10 @@ pub trait I3c1Peripheral {
     }
     fn read_piocontrol_queue_size(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::QueueSize::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::QueueSize::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::piocontrol_queue_size");
         }
@@ -641,7 +647,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::AltQueueSize::Register,
+        caliptra_mcu_registers_generated::i3c::bits::AltQueueSize::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::piocontrol_alt_queue_size");
@@ -655,7 +661,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::PioIntrStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::PioIntrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::piocontrol_pio_intr_status");
@@ -669,7 +675,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::PioIntrStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::PioIntrStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -683,7 +689,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::PioIntrStatusEnable::Register,
+        caliptra_mcu_registers_generated::i3c::bits::PioIntrStatusEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -699,7 +705,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::PioIntrStatusEnable::Register,
+            caliptra_mcu_registers_generated::i3c::bits::PioIntrStatusEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -713,7 +719,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::PioIntrSignalEnable::Register,
+        caliptra_mcu_registers_generated::i3c::bits::PioIntrSignalEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -729,7 +735,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::PioIntrSignalEnable::Register,
+            caliptra_mcu_registers_generated::i3c::bits::PioIntrSignalEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -743,7 +749,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::PioIntrForce::Register,
+            caliptra_mcu_registers_generated::i3c::bits::PioIntrForce::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -757,7 +763,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::PioControl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::PioControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::piocontrol_pio_control");
@@ -771,7 +777,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::PioControl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::PioControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -788,7 +794,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ExtcapHeader::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_extcap_header");
@@ -818,8 +824,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_2(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap2::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::ProtCap2::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_2");
         }
@@ -832,7 +840,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::ProtCap2::Register,
+            caliptra_mcu_registers_generated::i3c::bits::ProtCap2::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -844,8 +852,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_3(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap3::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::ProtCap3::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_3");
         }
@@ -858,7 +868,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::ProtCap3::Register,
+            caliptra_mcu_registers_generated::i3c::bits::ProtCap3::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -870,8 +880,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DeviceId0::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::DeviceId0::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_0");
         }
@@ -884,7 +896,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DeviceId0::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DeviceId0::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -992,7 +1004,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DeviceStatus0::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DeviceStatus0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_status_0");
@@ -1006,7 +1018,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DeviceStatus0::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DeviceStatus0::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1020,7 +1032,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DeviceStatus1::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DeviceStatus1::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_status_1");
@@ -1034,7 +1046,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DeviceStatus1::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DeviceStatus1::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1048,7 +1060,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DeviceReset::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DeviceReset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_device_reset");
@@ -1062,7 +1074,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DeviceReset::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DeviceReset::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1076,7 +1088,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RecoveryCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RecoveryCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_recovery_ctrl");
@@ -1090,7 +1102,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::RecoveryCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::RecoveryCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1104,7 +1116,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RecoveryStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RecoveryStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_recovery_status");
@@ -1118,7 +1130,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::RecoveryStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::RecoveryStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1130,8 +1142,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_sec_fw_recovery_if_hw_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HwStatus::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::HwStatus::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_hw_status");
         }
@@ -1144,7 +1158,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::HwStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::HwStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1158,7 +1172,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0");
@@ -1172,7 +1186,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1208,7 +1222,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IndirectFifoStatus0::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IndirectFifoStatus0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0");
@@ -1286,7 +1300,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ExtcapHeader::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_extcap_header");
@@ -1300,7 +1314,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrControl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_control");
@@ -1314,7 +1328,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrControl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1328,7 +1342,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_addr");
@@ -1342,7 +1356,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1356,7 +1370,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrCapabilities::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrCapabilities::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_capabilities");
@@ -1370,7 +1384,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char");
@@ -1384,7 +1398,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1398,7 +1412,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_status");
@@ -1412,7 +1426,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1426,7 +1440,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrDeviceChar::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrDeviceChar::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_char");
@@ -1440,7 +1454,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrDeviceChar::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrDeviceChar::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1474,7 +1488,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrIntrStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrIntrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_status");
@@ -1488,7 +1502,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrIntrStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrIntrStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1524,7 +1538,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable");
@@ -1538,7 +1552,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1552,7 +1566,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrIntrForce::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrIntrForce::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_force");
@@ -1566,7 +1580,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrIntrForce::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrIntrForce::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1580,7 +1594,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps");
@@ -1594,7 +1608,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1608,7 +1622,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params");
@@ -1622,7 +1636,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1636,7 +1650,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr");
@@ -1650,7 +1664,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1683,7 +1697,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ExtcapHeader::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_extcap_header");
@@ -1695,8 +1709,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_tti_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Control::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::Control::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_control");
         }
@@ -1709,7 +1725,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::Control::Register,
+            caliptra_mcu_registers_generated::i3c::bits::Control::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1724,8 +1740,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_tti_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Status::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::Status::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_status");
         }
@@ -1738,7 +1756,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::TtiResetControl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::TtiResetControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -1754,7 +1772,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TtiResetControl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TtiResetControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1768,7 +1786,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::InterruptStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::InterruptStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_interrupt_status");
@@ -1782,7 +1800,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::InterruptStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::InterruptStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1796,7 +1814,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::InterruptEnable::Register,
+        caliptra_mcu_registers_generated::i3c::bits::InterruptEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_interrupt_enable");
@@ -1810,7 +1828,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::InterruptEnable::Register,
+            caliptra_mcu_registers_generated::i3c::bits::InterruptEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1824,7 +1842,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::InterruptForce::Register,
+        caliptra_mcu_registers_generated::i3c::bits::InterruptForce::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_interrupt_force");
@@ -1838,7 +1856,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::InterruptForce::Register,
+            caliptra_mcu_registers_generated::i3c::bits::InterruptForce::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1896,7 +1914,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::TtiQueueSize::Register,
+        caliptra_mcu_registers_generated::i3c::bits::TtiQueueSize::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_tti_queue_size");
@@ -1910,7 +1928,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IbiTtiQueueSize::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IbiTtiQueueSize::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -1926,7 +1944,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -1942,7 +1960,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1956,7 +1974,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_tti_tti_data_buffer_thld_ctrl");
@@ -1970,7 +1988,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -1984,7 +2002,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ExtcapHeader::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2036,7 +2054,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RecIntfCfg::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RecIntfCfg::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2052,7 +2070,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::RecIntfCfg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::RecIntfCfg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2066,7 +2084,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access");
@@ -2080,7 +2098,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
+            caliptra_mcu_registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2132,7 +2150,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::SocPadConf::Register,
+        caliptra_mcu_registers_generated::i3c::bits::SocPadConf::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2148,7 +2166,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::SocPadConf::Register,
+            caliptra_mcu_registers_generated::i3c::bits::SocPadConf::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2162,7 +2180,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::SocPadAttr::Register,
+        caliptra_mcu_registers_generated::i3c::bits::SocPadAttr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2178,7 +2196,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::SocPadAttr::Register,
+            caliptra_mcu_registers_generated::i3c::bits::SocPadAttr::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2224,8 +2242,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_r_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TRReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::TRReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_r_reg");
         }
@@ -2238,7 +2258,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TRReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TRReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2250,8 +2270,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_f_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TFReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::TFReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_f_reg");
         }
@@ -2264,7 +2286,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TFReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TFReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2276,8 +2298,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_dat_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuDatReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::TSuDatReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_su_dat_reg"
@@ -2292,7 +2316,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TSuDatReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TSuDatReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2304,8 +2328,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_hd_dat_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdDatReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::THdDatReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_hd_dat_reg"
@@ -2320,7 +2346,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::THdDatReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::THdDatReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2332,8 +2358,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_high_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THighReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::THighReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_high_reg"
@@ -2348,7 +2376,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::THighReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::THighReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2360,8 +2388,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_low_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TLowReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::TLowReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_low_reg"
@@ -2376,7 +2406,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TLowReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TLowReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2388,8 +2418,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_hd_sta_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdStaReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::THdStaReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_hd_sta_reg"
@@ -2404,7 +2436,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::THdStaReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::THdStaReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2416,8 +2448,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_sta_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStaReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::TSuStaReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_su_sta_reg"
@@ -2432,7 +2466,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TSuStaReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TSuStaReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2444,8 +2478,10 @@ pub trait I3c1Peripheral {
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_sto_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStoReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::TSuStoReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Non-functional register stub: read i3c1::i3c_ec_soc_mgmt_if_t_su_sto_reg"
@@ -2460,7 +2496,7 @@ pub trait I3c1Peripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TSuStoReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TSuStoReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2531,7 +2567,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ExtcapHeader::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2547,7 +2583,7 @@ pub trait I3c1Peripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ControllerConfig::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ControllerConfig::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2885,8 +2921,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_base_hc_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HcControl::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::HcControl::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c1::i3c_base_hc_control");
         }
@@ -2896,7 +2934,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::HcControl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::HcControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2925,7 +2963,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ControllerDeviceAddr::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ControllerDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_base_controller_device_addr");
@@ -2936,7 +2974,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::ControllerDeviceAddr::Register,
+            caliptra_mcu_registers_generated::i3c::bits::ControllerDeviceAddr::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -2955,7 +2993,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::HcCapabilities::Register,
+        caliptra_mcu_registers_generated::i3c::bits::HcCapabilities::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2968,7 +3006,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ResetControl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ResetControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -2981,7 +3019,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::ResetControl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::ResetControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3008,7 +3046,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::PresentState::Register,
+        caliptra_mcu_registers_generated::i3c::bits::PresentState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3021,7 +3059,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IntrStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IntrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c1::i3c_base_intr_status");
@@ -3032,7 +3070,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IntrStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IntrStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3057,7 +3095,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IntrStatusEnable::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IntrStatusEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3070,7 +3108,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IntrStatusEnable::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IntrStatusEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3095,7 +3133,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IntrSignalEnable::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IntrSignalEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3108,7 +3146,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IntrSignalEnable::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IntrSignalEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3133,7 +3171,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IntrForce::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IntrForce::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3158,7 +3196,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DatSectionOffset::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DatSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3171,7 +3209,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DctSectionOffset::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DctSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3184,7 +3222,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DctSectionOffset::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DctSectionOffset::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3201,7 +3239,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RingHeadersSectionOffset::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RingHeadersSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_base_ring_headers_section_offset");
@@ -3212,7 +3250,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::PioSectionOffset::Register,
+        caliptra_mcu_registers_generated::i3c::bits::PioSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3225,7 +3263,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ExtCapsSectionOffset::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ExtCapsSectionOffset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_base_ext_caps_section_offset");
@@ -3236,7 +3274,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IntCtrlCmdsEn::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IntCtrlCmdsEn::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3249,7 +3287,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IbiNotifyCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IbiNotifyCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3262,7 +3300,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IbiNotifyCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IbiNotifyCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3283,7 +3321,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3296,7 +3334,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IbiDataAbortCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3319,7 +3357,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DevCtxBaseLo::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DevCtxBaseLo::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3332,7 +3370,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DevCtxBaseLo::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DevCtxBaseLo::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3349,7 +3387,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DevCtxBaseHi::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DevCtxBaseHi::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3362,7 +3400,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DevCtxBaseHi::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DevCtxBaseHi::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3377,8 +3415,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_base_dev_ctx_sg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DevCtxSg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::DevCtxSg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c1::i3c_base_dev_ctx_sg");
         }
@@ -3432,7 +3472,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::QueueThldCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::QueueThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3445,7 +3485,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::QueueThldCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::QueueThldCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3468,7 +3508,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DataBufferThldCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DataBufferThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::piocontrol_data_buffer_thld_ctrl");
@@ -3479,7 +3519,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DataBufferThldCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DataBufferThldCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3500,8 +3540,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_piocontrol_queue_size(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::QueueSize::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::QueueSize::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c1::piocontrol_queue_size");
         }
@@ -3511,7 +3553,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::AltQueueSize::Register,
+        caliptra_mcu_registers_generated::i3c::bits::AltQueueSize::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3524,7 +3566,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::PioIntrStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::PioIntrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3537,7 +3579,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::PioIntrStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::PioIntrStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3556,7 +3598,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::PioIntrStatusEnable::Register,
+        caliptra_mcu_registers_generated::i3c::bits::PioIntrStatusEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::piocontrol_pio_intr_status_enable");
@@ -3567,7 +3609,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::PioIntrStatusEnable::Register,
+            caliptra_mcu_registers_generated::i3c::bits::PioIntrStatusEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3596,7 +3638,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::PioIntrSignalEnable::Register,
+        caliptra_mcu_registers_generated::i3c::bits::PioIntrSignalEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::piocontrol_pio_intr_signal_enable");
@@ -3607,7 +3649,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::PioIntrSignalEnable::Register,
+            caliptra_mcu_registers_generated::i3c::bits::PioIntrSignalEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3636,7 +3678,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::PioIntrForce::Register,
+            caliptra_mcu_registers_generated::i3c::bits::PioIntrForce::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3665,7 +3707,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::PioControl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::PioControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -3678,7 +3720,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::PioControl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::PioControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3699,7 +3741,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ExtcapHeader::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_extcap_header");
@@ -3720,8 +3762,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_2(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap2::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::ProtCap2::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_2");
         }
@@ -3731,7 +3775,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::ProtCap2::Register,
+            caliptra_mcu_registers_generated::i3c::bits::ProtCap2::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3748,8 +3792,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_prot_cap_3(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::ProtCap3::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::ProtCap3::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_prot_cap_3");
         }
@@ -3759,7 +3805,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::ProtCap3::Register,
+            caliptra_mcu_registers_generated::i3c::bits::ProtCap3::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3778,8 +3824,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_device_id_0(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::DeviceId0::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::DeviceId0::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_id_0");
         }
@@ -3789,7 +3837,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DeviceId0::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DeviceId0::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3901,7 +3949,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DeviceStatus0::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DeviceStatus0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_status_0");
@@ -3912,7 +3960,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DeviceStatus0::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DeviceStatus0::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3933,7 +3981,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DeviceStatus1::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DeviceStatus1::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_status_1");
@@ -3944,7 +3992,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DeviceStatus1::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DeviceStatus1::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3965,7 +4013,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::DeviceReset::Register,
+        caliptra_mcu_registers_generated::i3c::bits::DeviceReset::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_device_reset");
@@ -3976,7 +4024,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::DeviceReset::Register,
+            caliptra_mcu_registers_generated::i3c::bits::DeviceReset::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -3997,7 +4045,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RecoveryCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RecoveryCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_recovery_ctrl");
@@ -4008,7 +4056,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::RecoveryCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::RecoveryCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4029,7 +4077,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RecoveryStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RecoveryStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_recovery_status");
@@ -4040,7 +4088,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::RecoveryStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::RecoveryStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4059,8 +4107,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_sec_fw_recovery_if_hw_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::HwStatus::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::HwStatus::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_hw_status");
         }
@@ -4070,7 +4120,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::HwStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::HwStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4099,7 +4149,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0");
@@ -4112,7 +4162,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
+            caliptra_mcu_registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4153,7 +4203,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IndirectFifoStatus0::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IndirectFifoStatus0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0");
@@ -4212,7 +4262,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ExtcapHeader::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_extcap_header");
@@ -4223,7 +4273,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrControl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_control");
@@ -4234,7 +4284,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrControl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4275,7 +4325,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_addr");
@@ -4286,7 +4336,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrDeviceAddr::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4309,7 +4359,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrCapabilities::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrCapabilities::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_capabilities");
@@ -4320,7 +4370,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virtual_device_char");
@@ -4333,7 +4383,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrVirtualDeviceChar::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4356,7 +4406,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_status");
@@ -4367,7 +4417,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4388,7 +4438,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrDeviceChar::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrDeviceChar::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_device_char");
@@ -4399,7 +4449,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrDeviceChar::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrDeviceChar::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4442,7 +4492,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrIntrStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrIntrStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_status");
@@ -4453,7 +4503,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrIntrStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrIntrStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4516,7 +4566,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_signal_enable");
@@ -4529,7 +4579,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrIntrSignalEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4570,7 +4620,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrIntrForce::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrIntrForce::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_intr_force");
@@ -4581,7 +4631,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrIntrForce::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrIntrForce::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4614,7 +4664,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_getcaps");
@@ -4627,7 +4677,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrCccConfigGetcaps::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4646,7 +4696,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_ccc_config_rstact_params");
@@ -4659,7 +4709,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrCccConfigRstactParams::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4680,7 +4730,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
+        caliptra_mcu_registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_stdby_ctrl_mode_stby_cr_virt_device_addr");
@@ -4693,7 +4743,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
+            caliptra_mcu_registers_generated::i3c::bits::StbyCrVirtDeviceAddr::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4733,7 +4783,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ExtcapHeader::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -4744,8 +4794,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_tti_control(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Control::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::Control::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c1::i3c_ec_tti_control");
         }
@@ -4755,7 +4807,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::Control::Register,
+            caliptra_mcu_registers_generated::i3c::bits::Control::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4776,8 +4828,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_tti_status(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::Status::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::Status::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read i3c1::i3c_ec_tti_status");
         }
@@ -4787,7 +4841,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::TtiResetControl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::TtiResetControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -4800,7 +4854,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TtiResetControl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TtiResetControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4827,7 +4881,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::InterruptStatus::Register,
+        caliptra_mcu_registers_generated::i3c::bits::InterruptStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -4840,7 +4894,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::InterruptStatus::Register,
+            caliptra_mcu_registers_generated::i3c::bits::InterruptStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4883,7 +4937,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::InterruptEnable::Register,
+        caliptra_mcu_registers_generated::i3c::bits::InterruptEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -4896,7 +4950,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::InterruptEnable::Register,
+            caliptra_mcu_registers_generated::i3c::bits::InterruptEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -4937,7 +4991,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::InterruptForce::Register,
+        caliptra_mcu_registers_generated::i3c::bits::InterruptForce::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -4950,7 +5004,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::InterruptForce::Register,
+            caliptra_mcu_registers_generated::i3c::bits::InterruptForce::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5038,7 +5092,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::TtiQueueSize::Register,
+        caliptra_mcu_registers_generated::i3c::bits::TtiQueueSize::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -5051,7 +5105,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::IbiTtiQueueSize::Register,
+        caliptra_mcu_registers_generated::i3c::bits::IbiTtiQueueSize::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_tti_ibi_tti_queue_size");
@@ -5062,7 +5116,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_tti_tti_queue_thld_ctrl");
@@ -5073,7 +5127,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TtiQueueThldCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5094,7 +5148,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
+        caliptra_mcu_registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_tti_tti_data_buffer_thld_ctrl");
@@ -5105,7 +5159,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TtiDataBufferThldCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5128,7 +5182,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ExtcapHeader::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_extcap_header");
@@ -5173,7 +5227,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RecIntfCfg::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RecIntfCfg::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_rec_intf_cfg");
@@ -5184,7 +5238,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::RecIntfCfg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::RecIntfCfg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5203,7 +5257,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
+        caliptra_mcu_registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access");
@@ -5214,7 +5268,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
+            caliptra_mcu_registers_generated::i3c::bits::RecIntfRegW1cAccess::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5269,7 +5323,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::SocPadConf::Register,
+        caliptra_mcu_registers_generated::i3c::bits::SocPadConf::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_soc_pad_conf");
@@ -5280,7 +5334,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::SocPadConf::Register,
+            caliptra_mcu_registers_generated::i3c::bits::SocPadConf::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5313,7 +5367,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::SocPadAttr::Register,
+        caliptra_mcu_registers_generated::i3c::bits::SocPadAttr::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_soc_pad_attr");
@@ -5324,7 +5378,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::SocPadAttr::Register,
+            caliptra_mcu_registers_generated::i3c::bits::SocPadAttr::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5375,8 +5429,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_soc_mgmt_if_t_r_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TRReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::TRReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_r_reg"
@@ -5388,7 +5444,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TRReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TRReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5403,8 +5459,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_soc_mgmt_if_t_f_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TFReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::TFReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_f_reg"
@@ -5416,7 +5474,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TFReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TFReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5431,8 +5489,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_dat_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuDatReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::TSuDatReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_su_dat_reg");
         }
@@ -5442,7 +5502,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TSuDatReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TSuDatReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5457,8 +5517,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_soc_mgmt_if_t_hd_dat_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdDatReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::THdDatReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_hd_dat_reg");
         }
@@ -5468,7 +5530,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::THdDatReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::THdDatReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5483,8 +5545,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_soc_mgmt_if_t_high_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THighReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::THighReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_high_reg");
         }
@@ -5494,7 +5558,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::THighReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::THighReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5509,8 +5573,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_soc_mgmt_if_t_low_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TLowReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::TLowReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
                 "[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_low_reg"
@@ -5522,7 +5588,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TLowReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TLowReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5537,8 +5603,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_soc_mgmt_if_t_hd_sta_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::THdStaReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::THdStaReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_hd_sta_reg");
         }
@@ -5548,7 +5616,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::THdStaReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::THdStaReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5563,8 +5631,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_sta_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStaReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::TSuStaReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_su_sta_reg");
         }
@@ -5574,7 +5644,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TSuStaReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TSuStaReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5589,8 +5659,10 @@ impl I3c1Peripheral for I3c1Generated {
     }
     fn read_i3c_ec_soc_mgmt_if_t_su_sto_reg(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::i3c::bits::TSuStoReg::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::i3c::bits::TSuStoReg::Register,
+    > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_soc_mgmt_if_t_su_sto_reg");
         }
@@ -5600,7 +5672,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::i3c::bits::TSuStoReg::Register,
+            caliptra_mcu_registers_generated::i3c::bits::TSuStoReg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -5668,7 +5740,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ExtcapHeader::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ExtcapHeader::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_ctrl_cfg_extcap_header");
@@ -5679,7 +5751,7 @@ impl I3c1Peripheral for I3c1Generated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::i3c::bits::ControllerConfig::Register,
+        caliptra_mcu_registers_generated::i3c::bits::ControllerConfig::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read i3c1::i3c_ec_ctrl_cfg_controller_config");

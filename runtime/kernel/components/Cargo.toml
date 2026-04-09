@@ -22,6 +22,6 @@ caliptra-mcu-config.workspace = true
 caliptra-mcu-mbox-comm.workspace = true
 caliptra-mcu-mbox-driver.workspace = true
 caliptra-mcu-tock-veer.workspace = true
-registers-generated.workspace = true
+caliptra-mcu-registers-generated.workspace = true
 romtime.workspace = true
 tock-registers.workspace = true

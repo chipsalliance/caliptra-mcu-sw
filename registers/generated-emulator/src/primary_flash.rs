@@ -25,7 +25,7 @@ pub trait PrimaryFlashPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read primary_flash::fl_interrupt_state");
@@ -39,7 +39,7 @@ pub trait PrimaryFlashPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -53,7 +53,7 @@ pub trait PrimaryFlashPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -69,7 +69,7 @@ pub trait PrimaryFlashPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -143,7 +143,7 @@ pub trait PrimaryFlashPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::FlControl::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read primary_flash::fl_control");
@@ -157,7 +157,7 @@ pub trait PrimaryFlashPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::FlControl::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -174,7 +174,7 @@ pub trait PrimaryFlashPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read primary_flash::op_status");
@@ -188,7 +188,7 @@ pub trait PrimaryFlashPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -205,7 +205,7 @@ pub trait PrimaryFlashPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read primary_flash::ctrl_regwen");
@@ -263,7 +263,7 @@ impl PrimaryFlashPeripheral for PrimaryFlashGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -276,7 +276,7 @@ impl PrimaryFlashPeripheral for PrimaryFlashGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptState::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -295,7 +295,7 @@ impl PrimaryFlashPeripheral for PrimaryFlashGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -308,7 +308,7 @@ impl PrimaryFlashPeripheral for PrimaryFlashGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlInterruptEnable::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -378,7 +378,7 @@ impl PrimaryFlashPeripheral for PrimaryFlashGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::FlControl::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlControl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read primary_flash::fl_control");
@@ -389,7 +389,7 @@ impl PrimaryFlashPeripheral for PrimaryFlashGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::FlControl::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::FlControl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -408,7 +408,7 @@ impl PrimaryFlashPeripheral for PrimaryFlashGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read primary_flash::op_status");
@@ -419,7 +419,7 @@ impl PrimaryFlashPeripheral for PrimaryFlashGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
+            caliptra_mcu_registers_generated::primary_flash_ctrl::bits::OpStatus::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -438,7 +438,7 @@ impl PrimaryFlashPeripheral for PrimaryFlashGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
+        caliptra_mcu_registers_generated::primary_flash_ctrl::bits::CtrlRegwen::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read primary_flash::ctrl_regwen");

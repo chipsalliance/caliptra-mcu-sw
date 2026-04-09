@@ -229,9 +229,10 @@ pub extern "C" fn rom_entry() -> ! {
 
         // Create MCI mbox0 transport for DOT recovery/override.
         let recovery_transport = {
-            let mci_base: romtime::StaticRef<registers_generated::mci::regs::Mci> = unsafe {
+            let mci_base: romtime::StaticRef<caliptra_mcu_registers_generated::mci::regs::Mci> = unsafe {
                 romtime::StaticRef::new(
-                    MCU_MEMORY_MAP.mci_offset as *const registers_generated::mci::regs::Mci,
+                    MCU_MEMORY_MAP.mci_offset
+                        as *const caliptra_mcu_registers_generated::mci::regs::Mci,
                 )
             };
             caliptra_mcu_rom_common::Mbox0RecoveryTransport::new(mci_base)

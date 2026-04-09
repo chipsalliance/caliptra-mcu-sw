@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_error::{McuError, McuResult};
+use caliptra_mcu_registers_generated::lc_ctrl;
 use core::fmt::Write;
-use registers_generated::lc_ctrl;
 use romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 

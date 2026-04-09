@@ -26,7 +26,7 @@ pub trait El2PicPeripheral {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::el2_pic_ctrl::bits::Meipl::Register,
+        caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meipl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -43,7 +43,7 @@ pub trait El2PicPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::el2_pic_ctrl::bits::Meipl::Register,
+            caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meipl::Register,
         >,
         index: usize,
     ) {
@@ -63,7 +63,7 @@ pub trait El2PicPeripheral {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::el2_pic_ctrl::bits::Meip::Register,
+        caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meip::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -81,7 +81,7 @@ pub trait El2PicPeripheral {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::el2_pic_ctrl::bits::Meie::Register,
+        caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meie::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -98,7 +98,7 @@ pub trait El2PicPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::el2_pic_ctrl::bits::Meie::Register,
+            caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meie::Register,
         >,
         index: usize,
     ) {
@@ -117,7 +117,7 @@ pub trait El2PicPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
+        caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read el2_pic::mpiccfg");
@@ -131,7 +131,7 @@ pub trait El2PicPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
+            caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -149,7 +149,7 @@ pub trait El2PicPeripheral {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
+        caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -166,7 +166,7 @@ pub trait El2PicPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
+            caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
         >,
         index: usize,
     ) {
@@ -249,7 +249,7 @@ impl El2PicPeripheral for El2PicGenerated {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::el2_pic_ctrl::bits::Meipl::Register,
+        caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meipl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -263,7 +263,7 @@ impl El2PicPeripheral for El2PicGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::el2_pic_ctrl::bits::Meipl::Register,
+            caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meipl::Register,
         >,
         index: usize,
     ) {
@@ -286,7 +286,7 @@ impl El2PicPeripheral for El2PicGenerated {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::el2_pic_ctrl::bits::Meip::Register,
+        caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meip::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -301,7 +301,7 @@ impl El2PicPeripheral for El2PicGenerated {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::el2_pic_ctrl::bits::Meie::Register,
+        caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meie::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -315,7 +315,7 @@ impl El2PicPeripheral for El2PicGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::el2_pic_ctrl::bits::Meie::Register,
+            caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meie::Register,
         >,
         index: usize,
     ) {
@@ -337,7 +337,7 @@ impl El2PicPeripheral for El2PicGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
+        caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read el2_pic::mpiccfg");
@@ -348,7 +348,7 @@ impl El2PicPeripheral for El2PicGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
+            caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Mpiccfg::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -369,7 +369,7 @@ impl El2PicPeripheral for El2PicGenerated {
         index: usize,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
+        caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -383,7 +383,7 @@ impl El2PicPeripheral for El2PicGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
+            caliptra_mcu_registers_generated::el2_pic_ctrl::bits::Meigwctrl::Register,
         >,
         index: usize,
     ) {

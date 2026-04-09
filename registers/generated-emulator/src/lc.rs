@@ -25,7 +25,7 @@ pub trait LcPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::AlertTest::Register,
+            caliptra_mcu_registers_generated::lc_ctrl::bits::AlertTest::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -42,7 +42,7 @@ pub trait LcPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::Status::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::status");
@@ -56,7 +56,7 @@ pub trait LcPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::claim_transition_if_regwen");
@@ -70,7 +70,7 @@ pub trait LcPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
+            caliptra_mcu_registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -84,7 +84,7 @@ pub trait LcPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::claim_transition_if");
@@ -98,7 +98,7 @@ pub trait LcPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
+            caliptra_mcu_registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -115,7 +115,7 @@ pub trait LcPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::TransitionRegwen::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionRegwen::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::transition_regwen");
@@ -129,7 +129,7 @@ pub trait LcPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::TransitionCmd::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionCmd::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::transition_cmd");
@@ -143,7 +143,7 @@ pub trait LcPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::TransitionCmd::Register,
+            caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionCmd::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -160,7 +160,7 @@ pub trait LcPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::transition_ctrl");
@@ -174,7 +174,7 @@ pub trait LcPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
+            caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -271,7 +271,7 @@ pub trait LcPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::TransitionTarget::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionTarget::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::transition_target");
@@ -285,7 +285,7 @@ pub trait LcPeripheral {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::TransitionTarget::Register,
+            caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionTarget::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -331,7 +331,7 @@ pub trait LcPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::LcState::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::LcState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::lc_state");
@@ -345,7 +345,7 @@ pub trait LcPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::LcTransitionCnt::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::LcTransitionCnt::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::lc_transition_cnt");
@@ -368,7 +368,7 @@ pub trait LcPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::HwRevision0::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::HwRevision0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::hw_revision0");
@@ -382,7 +382,7 @@ pub trait LcPeripheral {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::HwRevision1::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::HwRevision1::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Non-functional register stub: read lc::hw_revision1");
@@ -638,7 +638,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::AlertTest::Register,
+            caliptra_mcu_registers_generated::lc_ctrl::bits::AlertTest::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -662,7 +662,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::Status::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::Status::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::status");
@@ -673,7 +673,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!(
@@ -686,7 +686,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
+            caliptra_mcu_registers_generated::lc_ctrl::bits::ClaimTransitionIfRegwen::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -703,7 +703,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::claim_transition_if");
@@ -714,7 +714,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
+            caliptra_mcu_registers_generated::lc_ctrl::bits::ClaimTransitionIf::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -731,7 +731,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::TransitionRegwen::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionRegwen::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::transition_regwen");
@@ -742,7 +742,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::TransitionCmd::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionCmd::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::transition_cmd");
@@ -753,7 +753,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::TransitionCmd::Register,
+            caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionCmd::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -773,7 +773,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::transition_ctrl");
@@ -784,7 +784,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
+            caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionCtrl::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -886,7 +886,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::TransitionTarget::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionTarget::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::transition_target");
@@ -897,7 +897,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::lc_ctrl::bits::TransitionTarget::Register,
+            caliptra_mcu_registers_generated::lc_ctrl::bits::TransitionTarget::Register,
         >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
@@ -940,7 +940,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::LcState::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::LcState::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::lc_state");
@@ -951,7 +951,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::LcTransitionCnt::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::LcTransitionCnt::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::lc_transition_cnt");
@@ -968,7 +968,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::HwRevision0::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::HwRevision0::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::hw_revision0");
@@ -979,7 +979,7 @@ impl LcPeripheral for LcGenerated {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::lc_ctrl::bits::HwRevision1::Register,
+        caliptra_mcu_registers_generated::lc_ctrl::bits::HwRevision1::Register,
     > {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln!("[EMU] Generated default register handler: read lc::hw_revision1");

@@ -4,7 +4,7 @@ use caliptra_emu_bus::BusError;
 use caliptra_emu_bus::{Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
 use caliptra_emu_types::{RvAddr, RvSize};
 use caliptra_mcu_emulator_consts::MCU_MAILBOX0_SRAM_SIZE;
-use registers_generated::mci::bits::MboxExecute;
+use caliptra_mcu_registers_generated::mci::bits::MboxExecute;
 use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -256,7 +256,7 @@ impl MciMailboxImpl {
             .unwrap_or_else(|e| {
                 if matches!(e, BusError::InstrAccessFault | BusError::LoadAccessFault) {
                     self.hw_status.reg.set(
-                        registers_generated::mci::bits::MboxHwStatus::EccDoubleError::SET.value,
+                        caliptra_mcu_registers_generated::mci::bits::MboxHwStatus::EccDoubleError::SET.value,
                     );
                 }
                 panic!("Failed to read mcu_mbox0 SRAM at index {index}: {e:?}")
@@ -284,8 +284,10 @@ impl MciMailboxImpl {
 
     pub fn read_mcu_mbox0_csr_mbox_lock(
         &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<u32, registers_generated::mci::bits::MboxLock::Register>
-    {
+    ) -> caliptra_emu_bus::ReadWriteRegister<
+        u32,
+        caliptra_mcu_registers_generated::mci::bits::MboxLock::Register,
+    > {
         // If the lock is not held, we can grant it to the current requester
         if self.lock.reg.get() == 0 {
             // Grant lock to current requester
@@ -298,12 +300,12 @@ impl MciMailboxImpl {
             // Return 0 to indicate lock is now held
             caliptra_emu_bus::ReadWriteRegister::<
                 u32,
-                registers_generated::mci::bits::MboxLock::Register,
+                caliptra_mcu_registers_generated::mci::bits::MboxLock::Register,
             >::new(0)
         } else {
             caliptra_emu_bus::ReadWriteRegister::<
                 u32,
-                registers_generated::mci::bits::MboxLock::Register,
+                caliptra_mcu_registers_generated::mci::bits::MboxLock::Register,
             >::new(self.lock.reg.get())
         }
     }
@@ -327,7 +329,7 @@ impl MciMailboxImpl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetUserValid::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.target_user_valid.reg.get())
     }
@@ -336,7 +338,7 @@ impl MciMailboxImpl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetUserValid::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetUserValid::Register,
         >,
     ) {
         if !self.is_locked() {
@@ -373,7 +375,7 @@ impl MciMailboxImpl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxExecute::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.execute.reg.get())
     }
@@ -381,7 +383,7 @@ impl MciMailboxImpl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxExecute::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxExecute::Register,
         >,
     ) {
         if !self.is_locked() {
@@ -407,7 +409,7 @@ impl MciMailboxImpl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxTargetStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.target_status.reg.get())
     }
@@ -416,15 +418,17 @@ impl MciMailboxImpl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxTargetStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Register,
         >,
     ) {
         let prev = self.target_status.reg.get();
         let new_val = val.reg.get();
         self.target_status.reg.set(new_val);
         // If the DONE bit is set (rising edge), trigger TARGET_DONE event
-        let prev_done = prev & registers_generated::mci::bits::MboxTargetStatus::Done::SET.value;
-        let new_done = new_val & registers_generated::mci::bits::MboxTargetStatus::Done::SET.value;
+        let prev_done =
+            prev & caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Done::SET.value;
+        let new_done = new_val
+            & caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Done::SET.value;
         if prev_done == 0 && new_done != 0 {
             self.irq = true;
             self.last_irq_event = Some(IrqEventToMcu::Mbox0TargetDone);
@@ -436,7 +440,7 @@ impl MciMailboxImpl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxCmdStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.cmd_status.reg.get())
     }
@@ -445,7 +449,7 @@ impl MciMailboxImpl {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::mci::bits::MboxCmdStatus::Register,
+            caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Register,
         >,
     ) {
         self.cmd_status.reg.set(val.reg.get());
@@ -455,7 +459,7 @@ impl MciMailboxImpl {
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
-        registers_generated::mci::bits::MboxHwStatus::Register,
+        caliptra_mcu_registers_generated::mci::bits::MboxHwStatus::Register,
     > {
         caliptra_emu_bus::ReadWriteRegister::new(self.hw_status.reg.get())
     }
@@ -472,7 +476,7 @@ mod tests {
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
     use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
-    use registers_generated::mci::bits::{
+    use caliptra_mcu_registers_generated::mci::bits::{
         MboxCmdStatus, MboxExecute, MboxTargetStatus, Notif0IntrEnT, Notif0IntrT,
     };
 

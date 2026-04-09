@@ -12,4 +12,4 @@ caliptra-mcu-dma-driver.workspace = true
 caliptra-mcu-flash-driver.workspace = true
 caliptra-mcu-platforms-common.workspace = true
 kernel.workspace = true
-registers-generated.workspace = true
+caliptra-mcu-registers-generated.workspace = true

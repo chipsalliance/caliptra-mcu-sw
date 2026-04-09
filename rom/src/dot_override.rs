@@ -24,7 +24,7 @@ use caliptra_mcu_error::{McuError, McuResult};
 use crate::{
     EccP384PublicKey, RecoveryTransport, MLDSA87_PUB_KEY_SIZE_DWORDS, MLDSA87_SIGNATURE_SIZE_DWORDS,
 };
-use registers_generated::mci;
+use caliptra_mcu_registers_generated::mci;
 use romtime::StaticRef;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 

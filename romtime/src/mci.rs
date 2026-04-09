@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use crate::static_ref::StaticRef;
-use registers_generated::mci;
-use registers_generated::mci::bits::ResetRequest;
+use caliptra_mcu_registers_generated::mci;
+use caliptra_mcu_registers_generated::mci::bits::ResetRequest;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 /// MCU Reset Reason

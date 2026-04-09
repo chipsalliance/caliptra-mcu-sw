@@ -3,6 +3,7 @@
 use crate::run_kernel_op;
 use caliptra_mcu_mbox_comm::hil::{Mailbox, MailboxClient, MailboxStatus};
 use caliptra_mcu_mbox_driver::McuMailbox;
+use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_tock_veer::timers::InternalTimers;
 use core::cell::Cell;
 use kernel::debug;
@@ -12,7 +13,6 @@ use kernel::static_init;
 use kernel::utilities::cells::TakeCell;
 use kernel::utilities::registers::interfaces::{Readable, Writeable};
 use kernel::utilities::StaticRef;
-use registers_generated::mci;
 use romtime::println;
 
 const TEST_BUF_LEN: usize = 64;
@@ -172,11 +172,11 @@ impl DeferredCallClient for McuMailboxTester {
 
 // Represent an emulated MCI mailbox sender to support testing.
 pub struct EmulatedMbxSender<'a> {
-    regs: &'a registers_generated::mci::regs::Mci,
+    regs: &'a caliptra_mcu_registers_generated::mci::regs::Mci,
 }
 
 impl<'a> EmulatedMbxSender<'a> {
-    pub fn new(regs: &'a registers_generated::mci::regs::Mci) -> Self {
+    pub fn new(regs: &'a caliptra_mcu_registers_generated::mci::regs::Mci) -> Self {
         Self { regs }
     }
 

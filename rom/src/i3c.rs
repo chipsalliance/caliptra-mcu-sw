@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_error::McuError;
-use registers_generated::i3c;
-use registers_generated::i3c::bits::{
+use caliptra_mcu_registers_generated::i3c;
+use caliptra_mcu_registers_generated::i3c::bits::{
     DeviceStatus0, HcControl, IndirectFifoCtrl0, QueueThldCtrl, RecoveryStatus,
     RingHeadersSectionOffset, StbyCrCapabilities, StbyCrControl, StbyCrDeviceAddr,
     StbyCrVirtDeviceAddr, TtiQueueThldCtrl,
