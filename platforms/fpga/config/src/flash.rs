@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use mcu_config::flash::FlashPartition;
+use caliptra_mcu_config::flash::FlashPartition;
 
 pub const DRIVER_NUM_EMULATED_FLASH_CTRL: usize = 0x8000_0012;
 pub const BLOCK_SIZE: usize = 64 * 1024;

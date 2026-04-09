@@ -7,10 +7,10 @@ mod test {
     };
     use caliptra_image_types::ImageManifest;
     use caliptra_mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
+    use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use caliptra_mcu_flash_image::{MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER};
     use chrono::{TimeZone, Utc};
     use hex::ToHex;
-    use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
     };

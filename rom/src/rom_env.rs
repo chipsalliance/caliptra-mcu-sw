@@ -28,14 +28,14 @@ pub struct RomEnv {
     pub i3c1: crate::i3c::I3c,
     pub i3c1_base: StaticRef<i3c::regs::I3c>,
     pub soc_manager: CaliptraSoC,
-    pub straps: StaticRef<mcu_config::McuStraps>,
+    pub straps: StaticRef<caliptra_mcu_config::McuStraps>,
 }
 
 impl RomEnv {
     /// Create a new ROM environment with all peripherals initialized
     pub fn new() -> Self {
         // Get straps
-        let straps: StaticRef<mcu_config::McuStraps> =
+        let straps: StaticRef<caliptra_mcu_config::McuStraps> =
             unsafe { StaticRef::new(addr_of!(crate::MCU_STRAPS)) };
 
         // Get base addresses from MCU memory map

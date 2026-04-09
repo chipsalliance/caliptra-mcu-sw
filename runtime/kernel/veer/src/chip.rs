@@ -10,6 +10,7 @@
 use crate::pic::Pic;
 use crate::pmp::{VeeRPMP, VeeRProtectionMMLEPMP};
 use crate::timers::{InternalTimers, TimerInterrupts};
+use caliptra_mcu_config::McuMemoryMap;
 use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
 use core::fmt::Write;
 use core::ptr::addr_of;
@@ -17,7 +18,6 @@ use kernel::debug;
 use kernel::platform::chip::{Chip, InterruptService};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::StaticRef;
-use mcu_config::McuMemoryMap;
 use registers_generated::i3c::regs::I3c;
 use registers_generated::mci;
 use rv32i::csr::{mcause, mie::mie, CSR};

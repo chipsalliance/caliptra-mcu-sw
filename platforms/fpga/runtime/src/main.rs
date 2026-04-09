@@ -25,7 +25,7 @@ pub use board::*;
 #[cfg(target_arch = "riscv32")]
 mod tests;
 
-use mcu_config::{McuMemoryMap, McuStraps};
+use caliptra_mcu_config::{McuMemoryMap, McuStraps};
 
 // re-export this so the common runtime code can use it
 #[no_mangle]

@@ -222,6 +222,7 @@ mod flash_memory {
     extern crate alloc;
     use alloc::boxed::Box;
     use async_trait::async_trait;
+    use caliptra_mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
     use core::fmt::Debug;
     use libapi_caliptra::firmware_update::StagingMemory;
     use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
@@ -230,7 +231,6 @@ mod flash_memory {
         DefaultSyscalls,
     };
     use libtock_platform::ErrorCode;
-    use mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
     use mcu_config_emulator::flash::STAGING_PARTITION;
 
     use core::fmt::Write;

@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
+use caliptra_mcu_config::flash::FlashPartition;
 use core::mem::offset_of;
-use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
-use mcu_config::flash::FlashPartition;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const FLASH_PARTITIONS_COUNT: usize = 4; // Number of flash partitions

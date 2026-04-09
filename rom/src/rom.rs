@@ -52,8 +52,8 @@ pub trait BootFlow {
 }
 
 extern "C" {
-    pub static MCU_MEMORY_MAP: mcu_config::McuMemoryMap;
-    pub static MCU_STRAPS: mcu_config::McuStraps;
+    pub static MCU_MEMORY_MAP: caliptra_mcu_config::McuMemoryMap;
+    pub static MCU_STRAPS: caliptra_mcu_config::McuStraps;
 }
 
 pub struct Soc {

@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use mcu_config::McuMemoryMap;
+use caliptra_mcu_config::McuMemoryMap;
 use mcu_tock_veer::pmp::PMPRegionList;
 
 /// Input from platform: a memory region with its properties
@@ -399,21 +399,22 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
     let memory_map = config.memory_map;
 
     // Step 2a: Add MCU memory map regions to array (MMIO only)
-    let mut add_region = |offset: u32, size: u32, properties: mcu_config::MemoryRegionType| {
-        // Only add MMIO regions (side_effect = true)
-        if size > 0 && region_count < 32 && properties.side_effect {
-            all_regions[region_count] = Some(PlatformRegion {
-                start_addr: offset as *const u8,
-                size: size as usize,
-                is_mmio: true,          // Always true since we're filtering for MMIO
-                user_accessible: false, // MCU regions default to machine-only
-                read: true,             // MMIO regions are readable
-                write: true,            // MMIO regions are writable
-                execute: false,         // MMIO regions are non-executable
-            });
-            region_count += 1;
-        }
-    };
+    let mut add_region =
+        |offset: u32, size: u32, properties: caliptra_mcu_config::MemoryRegionType| {
+            // Only add MMIO regions (side_effect = true)
+            if size > 0 && region_count < 32 && properties.side_effect {
+                all_regions[region_count] = Some(PlatformRegion {
+                    start_addr: offset as *const u8,
+                    size: size as usize,
+                    is_mmio: true, // Always true since we're filtering for MMIO
+                    user_accessible: false, // MCU regions default to machine-only
+                    read: true,    // MMIO regions are readable
+                    write: true,   // MMIO regions are writable
+                    execute: false, // MMIO regions are non-executable
+                });
+                region_count += 1;
+            }
+        };
 
     // Add all MCU memory map regions (only MMIO ones will be included due to filtering)
     add_region(

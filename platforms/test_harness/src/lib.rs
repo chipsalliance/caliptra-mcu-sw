@@ -4,8 +4,8 @@
 
 pub use platform::*;
 
+use caliptra_mcu_config::{McuMemoryMap, McuStraps};
 use core::fmt::Write;
-use mcu_config::{McuMemoryMap, McuStraps};
 
 #[cfg(all(target_arch = "riscv32", feature = "fpga_realtime"))]
 core::arch::global_asm!(include_str!("fpga-start.s"));

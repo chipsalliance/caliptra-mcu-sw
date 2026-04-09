@@ -24,8 +24,10 @@ use crate::flash::flash_boot_cfg::FlashBootCfg;
 use crate::flash::flash_drv::{
     EmulatedFlashCtrl, PRIMARY_FLASH_CTRL_BASE, SECONDARY_FLASH_CTRL_BASE,
 };
-use mcu_config::boot::{BootConfig, BootConfigError, PartitionId, PartitionStatus, RollbackEnable};
-use mcu_config::{McuMemoryMap, McuStraps};
+use caliptra_mcu_config::boot::{
+    BootConfig, BootConfigError, PartitionId, PartitionStatus, RollbackEnable,
+};
+use caliptra_mcu_config::{McuMemoryMap, McuStraps};
 use mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     PARTITION_TABLE,

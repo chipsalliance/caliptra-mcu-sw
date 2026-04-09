@@ -214,7 +214,7 @@ caliptra-mcu-i3c-driver = { path = "runtime/kernel/drivers/i3c" }
 caliptra-mcu-libtockasync = { path = "runtime/userspace/libtockasync" }
 caliptra-mcu-builder = { path = "builder" }
 caliptra-mcu-components = { path = "runtime/kernel/components" }
-mcu-config = { path = "common/config" }
+caliptra-mcu-config = { path = "common/config" }
 mcu-config-emulator = { path = "platforms/emulator/config" }
 mcu-config-fpga = { path = "platforms/fpga/config" }
 mcu-error = { path = "error" }

@@ -7,4 +7,4 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-mcu-config.workspace = true
+caliptra-mcu-config.workspace = true

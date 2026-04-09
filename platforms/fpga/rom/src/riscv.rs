@@ -19,7 +19,7 @@ use core::fmt::Write;
 #[cfg(target_arch = "riscv32")]
 core::arch::global_asm!(include_str!("start.s"));
 
-use mcu_config::{McuMemoryMap, McuStraps};
+use caliptra_mcu_config::{McuMemoryMap, McuStraps};
 use mcu_rom_common::flash::flash_partition::FlashPartition;
 use mcu_rom_common::{
     LifecycleControllerState, LifecycleHashedToken, LifecycleToken, RomParameters,

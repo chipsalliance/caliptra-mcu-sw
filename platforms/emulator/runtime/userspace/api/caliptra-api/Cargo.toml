@@ -10,7 +10,7 @@ edition.workspace = true
 async-trait.workspace = true
 libsyscall-caliptra.workspace = true
 libtock_platform.workspace = true
-mcu-config.workspace = true
+caliptra-mcu-config.workspace = true
 mcu-config-emulator.workspace = true
 zerocopy.workspace = true
 
