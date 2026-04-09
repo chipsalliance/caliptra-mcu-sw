@@ -1362,6 +1362,12 @@ impl BootFlow for ColdBoot {
             mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
         }
 
+        soc.pk_hash_volatile_lock(&env.otp, _fuse_state.pk_hash_idx);
+        if env.otp.check_error().is_some() {
+            romtime::println!("[mcu-rom] OTP error: {}", HexWord(env.otp.status()));
+            env.otp.print_errors();
+        }
+
         let stash_rom_digest = params.stash_rom_digest.unwrap_or(false);
         Self::rom_digest_integrity(&mut env.soc_manager, stash_rom_digest);
 

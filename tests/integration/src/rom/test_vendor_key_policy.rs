@@ -4,13 +4,15 @@
 mod test {
     use anyhow::Result;
     use mcu_error::McuError;
-    use mcu_hw_model::{new, DefaultHwModel, InitParams, McuHwModel};
+    use mcu_hw_model::{new, DefaultHwModel, InitParams, McuHwModel, McuManager};
     use registers_generated::fuses;
     use romtime::{
         pqc_key_type_entry, vendor_ecc_revocation_entry, vendor_lms_revocation_entry,
         vendor_mldsa_revocation_entry, write_fuse_value, write_single_fuse_value, FuseLayout,
         PqcKeyType,
     };
+
+    use crate::test::{start_runtime_hw_model, TestParams};
 
     #[derive(Default, Clone, Copy)]
     struct SlotConfig {
@@ -69,19 +71,13 @@ mod test {
         otp
     }
 
-    fn setup_hw_model(
-        valid_mask: u16,
-        slot_configs: &[(usize, SlotConfig)],
-    ) -> Result<DefaultHwModel> {
-        let binaries = mcu_builder::FirmwareBinaries::from_env()?;
+    fn setup_hw_model(valid_mask: u16, slot_configs: &[(usize, SlotConfig)]) -> DefaultHwModel {
         let otp_memory = build_otp_memory(valid_mask, slot_configs);
 
-        new(InitParams {
-            caliptra_rom: &binaries.caliptra_rom,
-            mcu_rom: &binaries.mcu_rom,
-            otp_memory: Some(&otp_memory),
-            check_booted_to_runtime: false,
-            enable_mcu_uart_log: true,
+        start_runtime_hw_model(TestParams {
+            otp_memory: Some(otp_memory),
+            rom_only: true,
+            vendor_pqc_type: None,
             ..Default::default()
         })
     }
@@ -97,7 +93,7 @@ mod test {
                     ..SlotConfig::default()
                 },
             )],
-        )?;
+        );
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 0")?;
         Ok(())
     }
@@ -123,7 +119,7 @@ mod test {
                     },
                 ),
             ],
-        )?;
+        );
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 1")?;
         Ok(())
     }
@@ -137,7 +133,7 @@ mod test {
                     0,
                     SlotConfig {
                         pqc_type: Some(PqcKeyType::MLDSA),
-                        mldsa_revocation: 0b1_1111,
+                        mldsa_revocation: 0b1111,
                         ..SlotConfig::default()
                     },
                 ),
@@ -149,7 +145,7 @@ mod test {
                     },
                 ),
             ],
-        )?;
+        );
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 1")?;
         Ok(())
     }
@@ -166,7 +162,7 @@ mod test {
                     ..SlotConfig::default()
                 },
             )],
-        )?;
+        );
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 0")?;
         Ok(())
     }
@@ -182,7 +178,7 @@ mod test {
                     ..SlotConfig::default()
                 },
             )],
-        )?;
+        );
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 8")?;
         Ok(())
     }
@@ -198,14 +194,14 @@ mod test {
                     ..SlotConfig::default()
                 },
             )],
-        )?;
+        );
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 15")?;
         Ok(())
     }
 
     #[test]
     fn test_all_invalid_fails() -> Result<()> {
-        let mut hw = setup_hw_model(0xFFFF, &[])?;
+        let mut hw = setup_hw_model(0xFFFF, &[]);
         hw.step_until(|hw| hw.mci_fw_fatal_error().is_some());
         let fatal_error = hw.mci_fw_fatal_error().unwrap();
         assert_eq!(
@@ -237,13 +233,42 @@ mod test {
                     },
                 ),
             ],
-        )?;
+        );
         hw.step_until(|hw| hw.mci_fw_fatal_error().is_some());
         let fatal_error = hw.mci_fw_fatal_error().unwrap();
         assert_eq!(
             fatal_error,
             u32::from(McuError::ROM_PK_HASH_SELECTION_FAILED)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_vendor_pk_lock_applied() -> Result<()> {
+        let mut hw = setup_hw_model(
+            0x0000,
+            &[(
+                0,
+                SlotConfig {
+                    pqc_type: Some(PqcKeyType::LMS),
+                    ..SlotConfig::default()
+                },
+            )],
+        );
+        hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 0")?;
+        hw.step_until_output_contains(
+            "[mcu-fuse-write] Locking vendor PK hash slots from index 0",
+        )?;
+
+        // Step a few cycles to ensure the write is executed
+        for _ in 0..100 {
+            hw.step();
+        }
+
+        let lock_val = hw
+            .mcu_manager()
+            .with_otp(|otp| otp.vendor_pk_hash_volatile_lock().read());
+        assert_eq!(lock_val, 1);
         Ok(())
     }
 }

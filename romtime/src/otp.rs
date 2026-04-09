@@ -74,8 +74,9 @@ impl Otp {
         Otp { registers }
     }
 
-    pub fn volatile_lock(&self) {
-        self.registers.vendor_pk_hash_volatile_lock.set(1);
+    pub fn volatile_lock(&self, index: u32) {
+        // the register is 1-indexed in hardware
+        self.registers.vendor_pk_hash_volatile_lock.set(index + 1);
     }
 
     pub fn wait_for_not_pending(&self) -> McuResult<()> {
