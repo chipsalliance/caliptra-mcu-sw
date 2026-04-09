@@ -8,6 +8,15 @@ mod endorsement_certs;
 mod integration_example;
 
 use crate::spdm::device_measurements::ocp_eat::init_target_env_claims;
+use caliptra_mcu_spdm_lib::codec::MessageBuf;
+use caliptra_mcu_spdm_lib::context::{SpdmContext, MAX_SPDM_RESPONDER_BUF_SIZE};
+use caliptra_mcu_spdm_lib::error::SpdmError;
+use caliptra_mcu_spdm_lib::measurements::SpdmMeasurements;
+use caliptra_mcu_spdm_lib::protocol::*;
+use caliptra_mcu_spdm_lib::transport::common::SpdmTransport;
+use caliptra_mcu_spdm_lib::transport::common::TransportError;
+use caliptra_mcu_spdm_lib::transport::doe::DoeTransport;
+use caliptra_mcu_spdm_lib::transport::mctp::MctpTransport;
 use core::fmt::Write;
 use device_cert_store::{initialize_cert_store, SharedCertStore};
 use embassy_executor::Spawner;
@@ -16,15 +25,6 @@ use libsyscall_caliptra::mctp;
 use libsyscall_caliptra::DefaultSyscalls;
 use libtock_console::Console;
 use libtock_platform::ErrorCode;
-use spdm_lib::codec::MessageBuf;
-use spdm_lib::context::{SpdmContext, MAX_SPDM_RESPONDER_BUF_SIZE};
-use spdm_lib::error::SpdmError;
-use spdm_lib::measurements::SpdmMeasurements;
-use spdm_lib::protocol::*;
-use spdm_lib::transport::common::SpdmTransport;
-use spdm_lib::transport::common::TransportError;
-use spdm_lib::transport::doe::DoeTransport;
-use spdm_lib::transport::mctp::MctpTransport;
 
 // Caliptra supported SPDM and Secure SPDM versions
 const SPDM_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V12, SpdmVersion::V13];
@@ -177,40 +177,47 @@ async fn spdm_doe_responder() {
         integration_example::vdm_handlers::create_test_pci_sig_drivers();
 
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let mut tdisp_responder = spdm_lib::vdm_handler::pci_sig::tdisp::TdispResponder::new(
-        integration_example::vdm_handlers::tdisp_driver::SUPPORTED_TDISP_VERSIONS,
-        &mut tdisp_driver,
-    );
+    let mut tdisp_responder =
+        caliptra_mcu_spdm_lib::vdm_handler::pci_sig::tdisp::TdispResponder::new(
+            integration_example::vdm_handlers::tdisp_driver::SUPPORTED_TDISP_VERSIONS,
+            &mut tdisp_driver,
+        );
 
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
     let mut ide_km_responder =
-        spdm_lib::vdm_handler::pci_sig::ide_km::IdeKmResponder::new(&mut ide_km_driver);
+        caliptra_mcu_spdm_lib::vdm_handler::pci_sig::ide_km::IdeKmResponder::new(
+            &mut ide_km_driver,
+        );
 
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let protocol_handlers: [Option<&mut (dyn spdm_lib::vdm_handler::VdmProtocolHandler + Sync)>;
-        2] = [
+    let protocol_handlers: [Option<
+        &mut (dyn caliptra_mcu_spdm_lib::vdm_handler::VdmProtocolHandler + Sync),
+    >; 2] = [
         tdisp_responder
             .as_mut()
-            .map(|r| r as &mut (dyn spdm_lib::vdm_handler::VdmProtocolHandler + Sync)),
-        Some(&mut ide_km_responder as &mut (dyn spdm_lib::vdm_handler::VdmProtocolHandler + Sync)),
+            .map(|r| r as &mut (dyn caliptra_mcu_spdm_lib::vdm_handler::VdmProtocolHandler + Sync)),
+        Some(
+            &mut ide_km_responder
+                as &mut (dyn caliptra_mcu_spdm_lib::vdm_handler::VdmProtocolHandler + Sync),
+        ),
     ];
 
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let mut pci_sig_handler = spdm_lib::vdm_handler::pci_sig::PciSigCmdHandler::new(
+    let mut pci_sig_handler = caliptra_mcu_spdm_lib::vdm_handler::pci_sig::PciSigCmdHandler::new(
         0x0001, // TEST_PCI_SIG_VENDOR_ID
         protocol_handlers,
     );
 
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let mut handlers_array: [&mut dyn spdm_lib::vdm_handler::VdmHandler; 1] =
-        [&mut pci_sig_handler as &mut dyn spdm_lib::vdm_handler::VdmHandler];
+    let mut handlers_array: [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler; 1] =
+        [&mut pci_sig_handler as &mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler];
 
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
-    let vdm_handlers: Option<&mut [&mut dyn spdm_lib::vdm_handler::VdmHandler]> =
+    let vdm_handlers: Option<&mut [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler]> =
         Some(&mut handlers_array);
 
     #[cfg(not(feature = "test-doe-spdm-tdisp-ide-validator"))]
-    let vdm_handlers: Option<&mut [&mut dyn spdm_lib::vdm_handler::VdmHandler]> = None;
+    let vdm_handlers: Option<&mut [&mut dyn caliptra_mcu_spdm_lib::vdm_handler::VdmHandler]> = None;
 
     let mut ctx = match SpdmContext::new(
         SPDM_VERSIONS,

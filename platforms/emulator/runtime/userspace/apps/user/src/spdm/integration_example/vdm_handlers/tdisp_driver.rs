@@ -4,8 +4,8 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use spdm_lib::vdm_handler::pci_sig::tdisp::driver::{TdispDriver, TdispDriverResult};
-use spdm_lib::vdm_handler::pci_sig::tdisp::protocol::*;
+use caliptra_mcu_spdm_lib::vdm_handler::pci_sig::tdisp::driver::{TdispDriver, TdispDriverResult};
+use caliptra_mcu_spdm_lib::vdm_handler::pci_sig::tdisp::protocol::*;
 
 /// Supported TDISP versions for testing
 pub const SUPPORTED_TDISP_VERSIONS: &[TdispVersion] = &[TdispVersion::V10];

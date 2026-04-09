@@ -3,6 +3,7 @@
 use crate::soc_env::*;
 use arrayvec::ArrayString;
 use arrayvec::ArrayVec;
+use caliptra_mcu_spdm_lib::measurements::{MeasurementsError, MeasurementsResult};
 use caliptra_ocp_eat::ocp_profile::{
     IntegrityRegisterEntry, IntegrityRegisterIdChoice, TaggedConciseEvidence,
 };
@@ -17,7 +18,6 @@ use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use libapi_caliptra::evidence::device_state::DeviceState;
 use libapi_caliptra::evidence::ocp_eat_claims::generate_eat_claims;
 use libapi_caliptra::evidence::pcr_quote::PcrQuote;
-use spdm_lib::measurements::{MeasurementsError, MeasurementsResult};
 
 const NUM_FW_TARGET_ENV: usize = NUM_DEFAULT_FW_COMPONENTS + NUM_SOC_FW_COMPONENTS;
 const NUM_HW_TARGET_ENV: usize = 0; // For now, no HW IDs

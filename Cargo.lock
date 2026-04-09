@@ -1486,6 +1486,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-spdm-lib"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "async-trait",
+ "bitfield",
+ "caliptra-api",
+ "constant_time_eq 0.4.2",
+ "libapi-caliptra",
+ "libsyscall-caliptra",
+ "libtock_console",
+ "libtock_platform",
+ "rand 0.8.5",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-test-fw-exception-handler"
 version = "0.1.0"
 dependencies = [
@@ -4669,23 +4686,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spdm-lib"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "async-trait",
- "bitfield",
- "caliptra-api",
- "constant_time_eq 0.4.2",
- "libapi-caliptra",
- "libsyscall-caliptra",
- "libtock_console",
- "libtock_platform",
- "rand 0.8.5",
- "zerocopy",
-]
-
-[[package]]
 name = "spki"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5422,6 +5422,7 @@ dependencies = [
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
  "caliptra-mcu-romtime",
+ "caliptra-mcu-spdm-lib",
  "caliptra-ocp-eat",
  "critical-section",
  "embassy-executor",
@@ -5437,7 +5438,6 @@ dependencies = [
  "libtock_runtime",
  "libtock_unittest",
  "portable-atomic",
- "spdm-lib",
  "static_cell",
  "zerocopy",
 ]

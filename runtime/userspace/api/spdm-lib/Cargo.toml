@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "spdm-lib"
+name = "caliptra-mcu-spdm-lib"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
