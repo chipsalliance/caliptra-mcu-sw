@@ -1,4 +1,4 @@
-//! `libtock_unittest` provides testing tools needed by `libtock-rs`'s own unit
+//! `caliptra_mcu_libtock_unittest` provides testing tools needed by `libtock-rs`'s own unit
 //! tests as well as unit tests of code that uses `libtock-rs`.
 
 #![deny(unsafe_op_in_unsafe_fn)]

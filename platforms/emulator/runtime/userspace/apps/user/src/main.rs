@@ -47,8 +47,8 @@ fn print_to_console(buf: &str) {
 pub static EXECUTOR: LazyLock<TockExecutor> = LazyLock::new(TockExecutor::new);
 
 #[cfg(not(target_arch = "riscv32"))]
-pub(crate) fn kernel() -> libtock_unittest::fake::Kernel {
-    use libtock_unittest::fake;
+pub(crate) fn kernel() -> caliptra_mcu_libtock_unittest::fake::Kernel {
+    use caliptra_mcu_libtock_unittest::fake;
     let kernel = fake::Kernel::new();
     let console = fake::Console::new();
     kernel.add_driver(&console);

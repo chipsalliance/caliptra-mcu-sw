@@ -27,7 +27,7 @@ impl DriverInfo {
     /// # Example
     /// ```
     /// use caliptra_mcu_libtock_platform::CommandReturn;
-    /// use libtock_unittest::{DriverInfo, fake};
+    /// use caliptra_mcu_libtock_unittest::{DriverInfo, fake};
     /// struct FooDriver;
     /// impl fake::SyscallDriver for FooDriver {
     ///     fn info(&self) -> DriverInfo {

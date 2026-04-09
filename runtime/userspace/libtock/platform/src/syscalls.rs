@@ -5,7 +5,7 @@ use crate::{
 
 /// `Syscalls` provides safe abstractions over Tock's system calls. It is
 /// implemented for `libtock_runtime::TockSyscalls` and
-/// `libtock_unittest::fake::Kernel` (by way of `RawSyscalls`).
+/// `caliptra_mcu_libtock_unittest::fake::Kernel` (by way of `RawSyscalls`).
 pub trait Syscalls: RawSyscalls + Sized {
     // -------------------------------------------------------------------------
     // Yield

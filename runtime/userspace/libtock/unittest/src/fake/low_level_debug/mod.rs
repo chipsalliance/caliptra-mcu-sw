@@ -84,7 +84,7 @@ const WRONG_LOCATION: u32 = 0x02;
 impl LowLevelDebug {
     fn handle_message(&self, message: Message) {
         // Format the message the same way as the real LowLevelDebug.
-        // `libtock_unittest` doesn't support multiple processes, so we pretend
+        // `caliptra_mcu_libtock_unittest` doesn't support multiple processes, so we pretend
         // this is the first process (number 0).
         println!("LowLevelDebug: App 0x0 {}", message);
         let mut messages = self.messages.take();

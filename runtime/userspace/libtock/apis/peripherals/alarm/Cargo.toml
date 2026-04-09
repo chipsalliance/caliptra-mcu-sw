@@ -14,4 +14,4 @@ description = "libtock alarm driver"
 caliptra-mcu-libtock_platform = { path = "../../../platform" }
 
 [dev-dependencies]
-libtock_unittest = { path = "../../../unittest" }
+caliptra-mcu-libtock_unittest = { path = "../../../unittest" }

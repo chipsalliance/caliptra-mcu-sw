@@ -271,7 +271,7 @@ caliptra-mcu-libtock_platform = { path = "runtime/userspace/libtock/platform" }
 caliptra-mcu-libtock_rng = { path = "runtime/userspace/libtock/apis/peripherals/rng" }
 caliptra-mcu-libtock_runtime = { path = "runtime/userspace/libtock/runtime" }
 caliptra-mcu-libtock_small_panic = { path = "runtime/userspace/libtock/panic_handlers/small_panic" }
-libtock_unittest = { path = "runtime/userspace/libtock/unittest" }
+caliptra-mcu-libtock_unittest = { path = "runtime/userspace/libtock/unittest" }
 tbf-header = { path = "runtime/userspace/libtock/tbf-header" }
 
 caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-infra", rev = "3db904cf9cd704fcf890da32fd61dd30bfce8d11" }

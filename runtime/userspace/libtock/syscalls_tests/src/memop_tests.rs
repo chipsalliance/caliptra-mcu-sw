@@ -2,7 +2,7 @@
 //! `caliptra_mcu_libtock_platform::Syscalls`.
 
 use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
-use libtock_unittest::{fake, ExpectedSyscall, SyscallLogEntry};
+use caliptra_mcu_libtock_unittest::{fake, ExpectedSyscall, SyscallLogEntry};
 
 #[test]
 fn memop() {

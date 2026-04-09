@@ -2,7 +2,7 @@
 //! `caliptra_mcu_libtock_platform::Syscalls`.
 
 use caliptra_mcu_libtock_platform::Syscalls;
-use libtock_unittest::{command_return, fake, ExpectedSyscall, SyscallLogEntry};
+use caliptra_mcu_libtock_unittest::{command_return, fake, ExpectedSyscall, SyscallLogEntry};
 
 #[test]
 fn command() {

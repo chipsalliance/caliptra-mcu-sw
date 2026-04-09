@@ -24,7 +24,7 @@ const EXCLUDED_PACKAGES: &[&str] = &[
     "test-hello",
     "user-app",
     "example-app",
-    "libtock_unittest",
+    "caliptra_mcu_libtock_unittest",
     "syscalls_tests",
     // no_std firmware binaries targeting RISC-V; can't be run on the host
     "caliptra-mcu-test-fw-exception-handler",

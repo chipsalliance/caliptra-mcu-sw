@@ -4,7 +4,7 @@ use crate::Register;
 /// unit testing.
 ///
 /// It is implemented by `libtock_runtime::TockSyscalls` and
-/// `libtock_unittest::fake::Kernel`. **Components should not use `RawSyscalls`
+/// `caliptra_mcu_libtock_unittest::fake::Kernel`. **Components should not use `RawSyscalls`
 /// directly; instead, use the `Syscalls` trait, which provides higher-level
 /// interfaces to the system calls.**
 ///

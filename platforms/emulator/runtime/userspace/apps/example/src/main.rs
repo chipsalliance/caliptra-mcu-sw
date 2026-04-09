@@ -51,8 +51,8 @@ mod test_flash_io;
 mod riscv;
 
 #[cfg(not(target_arch = "riscv32"))]
-pub(crate) fn kernel() -> libtock_unittest::fake::Kernel {
-    use libtock_unittest::fake;
+pub(crate) fn kernel() -> caliptra_mcu_libtock_unittest::fake::Kernel {
+    use caliptra_mcu_libtock_unittest::fake;
     let kernel = fake::Kernel::new();
     let alarm = fake::Alarm::new(1_000_000);
     let console = fake::Console::new();
@@ -78,7 +78,7 @@ async fn start() {
 #[cfg(not(target_arch = "riscv32"))]
 #[embassy_executor::task]
 async fn start() {
-    async_main::<libtock_unittest::fake::Syscalls>().await;
+    async_main::<caliptra_mcu_libtock_unittest::fake::Syscalls>().await;
 }
 
 #[allow(unreachable_code)]
@@ -343,9 +343,9 @@ impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
 mod test {
     use super::{command, kernel, sleep};
     use caliptra_mcu_libtock_alarm::Milliseconds;
+    use caliptra_mcu_libtock_unittest::fake;
+    use caliptra_mcu_libtock_unittest::fake::Alarm;
     use caliptra_mcu_libtockasync::TockExecutor;
-    use libtock_unittest::fake;
-    use libtock_unittest::fake::Alarm;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::{LazyLock, Mutex};
 

@@ -1244,6 +1244,7 @@ dependencies = [
  "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtock_platform",
  "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
@@ -1253,7 +1254,6 @@ dependencies = [
  "embassy-sync",
  "embedded-alloc",
  "futures",
- "libtock_unittest",
  "zerocopy",
 ]
 
@@ -1280,9 +1280,9 @@ dependencies = [
  "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtock_platform",
  "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-libtockasync",
  "embassy-sync",
- "libtock_unittest",
 ]
 
 [[package]]
@@ -1305,7 +1305,7 @@ name = "caliptra-mcu-libtock_alarm"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libtock_platform",
- "libtock_unittest",
+ "caliptra-mcu-libtock_unittest",
 ]
 
 [[package]]
@@ -1313,7 +1313,7 @@ name = "caliptra-mcu-libtock_console"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libtock_platform",
- "libtock_unittest",
+ "caliptra-mcu-libtock_unittest",
 ]
 
 [[package]]
@@ -1331,7 +1331,7 @@ name = "caliptra-mcu-libtock_low_level_debug"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libtock_platform",
- "libtock_unittest",
+ "caliptra-mcu-libtock_unittest",
 ]
 
 [[package]]
@@ -1346,7 +1346,7 @@ name = "caliptra-mcu-libtock_rng"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libtock_platform",
- "libtock_unittest",
+ "caliptra-mcu-libtock_unittest",
 ]
 
 [[package]]
@@ -1366,6 +1366,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-libtock_unittest"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_platform",
+ "futures",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "caliptra-mcu-libtockasync"
 version = "0.1.0"
 dependencies = [
@@ -1374,10 +1383,10 @@ dependencies = [
  "caliptra-mcu-libtock_debug_panic",
  "caliptra-mcu-libtock_platform",
  "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
- "libtock_unittest",
  "portable-atomic",
 ]
 
@@ -1445,12 +1454,12 @@ dependencies = [
  "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtock_platform",
  "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mctp-vdm-common",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "libtock_unittest",
  "zerocopy",
 ]
 
@@ -1510,12 +1519,12 @@ dependencies = [
  "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtock_platform",
  "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "libtock_unittest",
 ]
 
 [[package]]
@@ -2694,13 +2703,13 @@ dependencies = [
  "caliptra-mcu-libtock_debug_panic",
  "caliptra-mcu-libtock_platform",
  "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-romtime",
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
- "libtock_unittest",
  "portable-atomic",
  "zerocopy",
 ]
@@ -3391,15 +3400,6 @@ name = "libc"
 version = "0.2.177"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2874a2af47a2325c2001a6e6fad9b16a53b802102b528163885171cf92b15976"
-
-[[package]]
-name = "libtock_unittest"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-libtock_platform",
- "futures",
- "thiserror 1.0.69",
-]
 
 [[package]]
 name = "libz-rs-sys"
@@ -4820,7 +4820,7 @@ name = "syscalls_tests"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libtock_platform",
- "libtock_unittest",
+ "caliptra-mcu-libtock_unittest",
 ]
 
 [[package]]
@@ -5422,6 +5422,7 @@ dependencies = [
  "caliptra-mcu-libtock_debug_panic",
  "caliptra-mcu-libtock_platform",
  "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-mbox-lib",
@@ -5436,7 +5437,6 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "libtock_unittest",
  "portable-atomic",
  "static_cell",
  "zerocopy",

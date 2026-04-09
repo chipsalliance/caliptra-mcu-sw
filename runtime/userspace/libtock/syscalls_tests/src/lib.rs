@@ -5,7 +5,7 @@
 //! `caliptra_mcu_libtock_platform causes two incompatible copies of `caliptra_mcu_libtock_platform` to be
 //! compiled:
 //!   1. The `caliptra_mcu_libtock_platform` with `cfg(test)` enabled
-//!   2. The `caliptra_mcu_libtock_platform` that `libtock_unittest` depends on, which has
+//!   2. The `caliptra_mcu_libtock_platform` that `caliptra_mcu_libtock_unittest` depends on, which has
 //!      `cfg(test)` disabled.
 //!
 //! Mixing types from the two `caliptra_mcu_libtock_platform` instantiations in tests results

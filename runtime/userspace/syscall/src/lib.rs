@@ -17,4 +17,4 @@ pub mod system;
 pub type DefaultSyscalls = caliptra_mcu_libtock_runtime::TockSyscalls;
 
 #[cfg(not(target_arch = "riscv32"))]
-pub type DefaultSyscalls = libtock_unittest::fake::Syscalls;
+pub type DefaultSyscalls = caliptra_mcu_libtock_unittest::fake::Syscalls;
