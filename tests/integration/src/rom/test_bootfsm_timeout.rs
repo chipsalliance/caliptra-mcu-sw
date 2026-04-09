@@ -3,14 +3,14 @@
 #[cfg(test)]
 mod test {
     use caliptra_mcu_error::McuError;
-    use mcu_hw_model::{InitParams, McuHwModel};
+    use caliptra_mcu_hw_model::{InitParams, McuHwModel};
     use mcu_rom_common::LifecycleControllerState;
 
     #[test]
     fn test_bootfsm_timeout() {
         let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env().unwrap();
 
-        let mut hw = mcu_hw_model::new(InitParams {
+        let mut hw = caliptra_mcu_hw_model::new(InitParams {
             caliptra_rom: &binaries.caliptra_rom,
             mcu_rom: &binaries.mcu_rom,
             // This will pause the BootFSM in BOOT_WAIT, so we won't reach DONE

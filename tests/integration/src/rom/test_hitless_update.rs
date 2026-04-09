@@ -2,7 +2,7 @@
 
 use crate::platform;
 use anyhow::Result;
-use mcu_hw_model::{new, InitParams, McuHwModel};
+use caliptra_mcu_hw_model::{new, InitParams, McuHwModel};
 use romtime::McuBootMilestones;
 
 // TODO(zhalvorsen): Enable this test for emulator when it is supported

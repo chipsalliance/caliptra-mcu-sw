@@ -5,7 +5,7 @@
 #[cfg(test)]
 mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
-    use mcu_hw_model::McuHwModel;
+    use caliptra_mcu_hw_model::McuHwModel;
     use random_port::PortPicker;
     use std::sync::atomic::Ordering;
 

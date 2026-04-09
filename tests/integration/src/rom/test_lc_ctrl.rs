@@ -7,7 +7,7 @@
 mod test {
     use crate::platform;
     use caliptra_mcu_builder::firmware;
-    use mcu_hw_model::{InitParams, McuHwModel, McuManager};
+    use caliptra_mcu_hw_model::{InitParams, McuHwModel, McuManager};
     use mcu_rom_common::LifecycleControllerState;
 
     fn load_roms() -> (Vec<u8>, Vec<u8>) {
@@ -69,7 +69,7 @@ mod test {
         let (caliptra_rom, mcu_rom) = load_roms();
         let wires0 = encode_wires(target, token, expect_error);
 
-        let mut hw = mcu_hw_model::new(InitParams {
+        let mut hw = caliptra_mcu_hw_model::new(InitParams {
             caliptra_rom: &caliptra_rom,
             mcu_rom: &mcu_rom,
             check_booted_to_runtime: false,

@@ -220,7 +220,7 @@ caliptra-mcu-config-fpga = { path = "platforms/fpga/config" }
 caliptra-mcu-error = { path = "error" }
 caliptra-mcu-firmware-bundler = { path = "firmware-bundler" }
 caliptra-mcu-fuses-generator = { path = "registers/fuses" }
-mcu-hw-model = { path = "hw/model" }
+caliptra-mcu-hw-model = { path = "hw/model" }
 mcu-test-fw-exception-handler = { path = "hw/model/test-fw/exception-handler" }
 mcu-test-fw-hitless-update-flow = { path = "hw/model/test-fw/hitless-update-flow" }
 mcu-test-fw-mailbox-responder = { path = "hw/model/test-fw/mailbox-responder" }

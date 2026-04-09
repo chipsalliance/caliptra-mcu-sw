@@ -17,7 +17,7 @@ mod test {
     use caliptra_image_types::{ImageManifest, ImageOwnerPrivKeys, OwnerPubKeyConfig};
     use caliptra_mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries};
     use caliptra_mcu_error::McuError;
-    use mcu_hw_model::McuHwModel;
+    use caliptra_mcu_hw_model::McuHwModel;
     use romtime::McuBootMilestones;
     use romtime::McuRomBootStatus;
     use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};

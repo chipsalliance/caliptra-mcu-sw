@@ -13,7 +13,9 @@ mod test {
     use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
     use caliptra_hw_model::HwModel;
     use caliptra_hw_model::DEFAULT_MANUF_DEBUG_UNLOCK_RAW_TOKEN;
-    use mcu_hw_model::jtag::{jtag_get_caliptra_mailbox_resp, jtag_send_caliptra_mailbox_cmd};
+    use caliptra_mcu_hw_model::jtag::{
+        jtag_get_caliptra_mailbox_resp, jtag_send_caliptra_mailbox_cmd,
+    };
     use mcu_rom_common::LifecycleControllerState;
 
     use zerocopy::IntoBytes;

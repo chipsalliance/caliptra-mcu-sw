@@ -68,7 +68,7 @@ store-failure-output = true
 [profile.nightly-ci]
 inherits = "nightly"
 default-filter = """
-(package(mcu-hw-model)
+(package(caliptra-mcu-hw-model)
     - test(model_emulated::test::test_new_unbooted)) |
 (package(tests-integration) and test(test_jtag_taps)) |
 (package(tests-integration) and test(test_lc_transitions)) |

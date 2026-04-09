@@ -11,7 +11,7 @@
 mod test {
     use crate::platform;
     use caliptra_mcu_builder::firmware;
-    use mcu_hw_model::{InitParams, McuHwModel};
+    use caliptra_mcu_hw_model::{InitParams, McuHwModel};
     use mcu_rom_common::LifecycleControllerState;
 
     fn load_roms() -> (Vec<u8>, Vec<u8>) {
@@ -38,7 +38,7 @@ mod test {
     fn test_otp_blank_check() {
         let (caliptra_rom, mcu_rom) = load_roms();
 
-        let mut hw = mcu_hw_model::new(InitParams {
+        let mut hw = caliptra_mcu_hw_model::new(InitParams {
             caliptra_rom: &caliptra_rom,
             mcu_rom: &mcu_rom,
             check_booted_to_runtime: false,

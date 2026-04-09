@@ -1156,6 +1156,55 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-hw-model"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitfield",
+ "caliptra-api",
+ "caliptra-api-types",
+ "caliptra-builder",
+ "caliptra-emu-bus",
+ "caliptra-emu-cpu",
+ "caliptra-emu-periph",
+ "caliptra-emu-types",
+ "caliptra-hw-model",
+ "caliptra-hw-model-types",
+ "caliptra-image-types",
+ "caliptra-mcu-builder",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-emulator-bmc",
+ "caliptra-mcu-emulator-caliptra",
+ "caliptra-mcu-emulator-periph",
+ "caliptra-mcu-emulator-registers-generated",
+ "caliptra-registers",
+ "caliptra-test-harness-types",
+ "caliptra-ureg",
+ "ecdsa",
+ "fips204",
+ "hex",
+ "int-enum",
+ "mcu-mbox-common",
+ "mcu-otp-lifecycle",
+ "mcu-rom-common",
+ "mcu-testing-common",
+ "nix 0.26.4",
+ "p384",
+ "poll-common",
+ "rand 0.8.5",
+ "registers-generated",
+ "romtime",
+ "semver",
+ "sha2",
+ "sha3",
+ "thiserror 2.0.17",
+ "tock-registers",
+ "uio",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-i3c-driver"
 version = "0.1.0"
 dependencies = [
@@ -3077,55 +3126,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-hw-model"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bitfield",
- "caliptra-api",
- "caliptra-api-types",
- "caliptra-builder",
- "caliptra-emu-bus",
- "caliptra-emu-cpu",
- "caliptra-emu-periph",
- "caliptra-emu-types",
- "caliptra-hw-model",
- "caliptra-hw-model-types",
- "caliptra-image-types",
- "caliptra-mcu-builder",
- "caliptra-mcu-config",
- "caliptra-mcu-config-fpga",
- "caliptra-mcu-emulator-bmc",
- "caliptra-mcu-emulator-caliptra",
- "caliptra-mcu-emulator-periph",
- "caliptra-mcu-emulator-registers-generated",
- "caliptra-registers",
- "caliptra-test-harness-types",
- "caliptra-ureg",
- "ecdsa",
- "fips204",
- "hex",
- "int-enum",
- "mcu-mbox-common",
- "mcu-otp-lifecycle",
- "mcu-rom-common",
- "mcu-testing-common",
- "nix 0.26.4",
- "p384",
- "poll-common",
- "rand 0.8.5",
- "registers-generated",
- "romtime",
- "semver",
- "sha2",
- "sha3",
- "thiserror 2.0.17",
- "tock-registers",
- "uio",
- "zerocopy",
-]
-
-[[package]]
 name = "mcu-image-header"
 version = "0.1.0"
 dependencies = [
@@ -4898,6 +4898,7 @@ dependencies = [
  "caliptra-mcu-error",
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-flash-image",
+ "caliptra-mcu-hw-model",
  "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
  "chrono",
@@ -4910,7 +4911,6 @@ dependencies = [
  "lazy_static",
  "log",
  "mctp-vdm-common",
- "mcu-hw-model",
  "mcu-image-header",
  "mcu-mbox-common",
  "mcu-rom-common",
@@ -5916,6 +5916,7 @@ dependencies = [
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-fusegen",
  "caliptra-mcu-fuses-generator",
+ "caliptra-mcu-hw-model",
  "cargo_metadata",
  "cc",
  "clap 4.5.51",
@@ -5923,7 +5924,6 @@ dependencies = [
  "ecdsa",
  "elf",
  "hex",
- "mcu-hw-model",
  "mcu-rom-common",
  "p384",
  "pldm-fw-pkg",

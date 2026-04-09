@@ -18,7 +18,7 @@ mod test {
     use caliptra_image_types::{
         ECC384_SCALAR_BYTE_SIZE, ECC384_SCALAR_WORD_SIZE, MLDSA87_PRIV_KEY_BYTE_SIZE,
     };
-    use mcu_hw_model::debug_unlock::{
+    use caliptra_mcu_hw_model::debug_unlock::{
         prod_debug_unlock_gen_signed_token, prod_debug_unlock_get_challenge,
         prod_debug_unlock_send_request, prod_debug_unlock_send_token,
         prod_debug_unlock_wait_for_in_progress,

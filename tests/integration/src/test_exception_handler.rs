@@ -7,7 +7,7 @@ mod test {
     use crate::{platform, test::TEST_LOCK};
     use caliptra_mcu_builder::firmware;
     use caliptra_mcu_error::McuError;
-    use mcu_hw_model::{InitParams, McuHwModel};
+    use caliptra_mcu_hw_model::{InitParams, McuHwModel};
 
     #[test]
     fn test_exception_handler() {
@@ -29,7 +29,7 @@ mod test {
             std::fs::read(&rom_file).unwrap()
         };
 
-        let mut hw = mcu_hw_model::new(InitParams {
+        let mut hw = caliptra_mcu_hw_model::new(InitParams {
             mcu_rom: &mcu_rom,
             check_booted_to_runtime: false,
             ..Default::default()

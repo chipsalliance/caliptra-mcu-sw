@@ -6,12 +6,12 @@ pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use aes_gcm::{aead::AeadMutInPlace, Aes256Gcm, Key, KeyInit};
     use caliptra_api::mailbox::CmHashAlgorithm;
-    use hkdf::Hkdf;
-    use hmac::{Hmac, Mac};
-    use mcu_hw_model::mcu_mbox_transport::{
+    use caliptra_mcu_hw_model::mcu_mbox_transport::{
         McuMailboxError, McuMailboxResponse, McuMailboxTransport,
     };
-    use mcu_hw_model::McuHwModel;
+    use caliptra_mcu_hw_model::McuHwModel;
+    use hkdf::Hkdf;
+    use hmac::{Hmac, Mac};
     use mcu_mbox_common::messages::{
         CmAesDecryptInitReq, CmAesDecryptUpdateReq, CmAesEncryptInitReq,
         CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq, CmAesGcmDecryptFinalReq,

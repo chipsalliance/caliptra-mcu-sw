@@ -2,7 +2,7 @@
 
 use crate::test::{start_runtime_hw_model, TestParams};
 use anyhow::Result;
-use mcu_hw_model::McuHwModel;
+use caliptra_mcu_hw_model::McuHwModel;
 use mcu_mbox_common::messages::FirmwareVersionReq;
 use romtime::McuBootMilestones;
 

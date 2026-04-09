@@ -40,7 +40,7 @@ mod test {
     use caliptra_mcu_builder::{
         CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET,
     };
-    use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
+    use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
     use mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
     use random_port::PortPicker;
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -78,7 +78,7 @@ mod test {
         /// ROM feature flag. If set, compiles a ROM with this feature enabled.
         pub rom_feature: Option<&'a str>,
         pub active_i3c1: bool,
-        pub lifecycle_controller_state: Option<mcu_hw_model::LifecycleControllerState>,
+        pub lifecycle_controller_state: Option<caliptra_mcu_hw_model::LifecycleControllerState>,
         /// Optional custom MCU ROM bytes (overrides the default/compiled ROM).
         pub custom_mcu_rom: Option<Vec<u8>>,
         /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
@@ -413,7 +413,7 @@ mod test {
                 (None, caliptra_fw, soc_manifest, mcu_runtime)
             };
 
-        mcu_hw_model::new(InitParams {
+        caliptra_mcu_hw_model::new(InitParams {
             fuses: Fuses {
                 fuse_pqc_key_type: params.vendor_pqc_type.map(|t| t as u32).unwrap_or(0),
                 vendor_pk_hash,

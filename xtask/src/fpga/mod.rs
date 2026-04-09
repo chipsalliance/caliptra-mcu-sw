@@ -5,9 +5,9 @@ use caliptra_image_gen::to_hw_format;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
 use caliptra_mcu_builder::FirmwareBinaries;
+use caliptra_mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
 use clap::Subcommand;
 use configurations::Configuration;
-use mcu_hw_model::{InitParams, McuHwModel, ModelFpgaRealtime};
 use mcu_rom_common::LifecycleControllerState;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -361,7 +361,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         }
     };
     let otp_memory = if otp_file.is_some() && otp_file.unwrap().exists() {
-        mcu_hw_model::read_otp_vmem_data(&std::fs::read(otp_file.unwrap())?)?
+        caliptra_mcu_hw_model::read_otp_vmem_data(&std::fs::read(otp_file.unwrap())?)?
     } else {
         vec![]
     };

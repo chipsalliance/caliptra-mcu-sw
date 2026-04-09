@@ -11,7 +11,7 @@ mod test {
     use caliptra_hw_model::jtag::CaliptraCoreReg;
     use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
     use caliptra_hw_model::HwModel;
-    use mcu_hw_model::McuHwModel;
+    use caliptra_mcu_hw_model::McuHwModel;
     use mcu_rom_common::LifecycleControllerState;
     use registers_generated::fuses::{
         SECRET_MANUF_PARTITION_BYTE_OFFSET, SECRET_MANUF_PARTITION_BYTE_SIZE,

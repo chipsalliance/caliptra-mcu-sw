@@ -8,9 +8,9 @@ edition = "2021"
 [features]
 parallel-build = ["caliptra-mcu-builder/parallel-build"]
 fpga_realtime = [
-	"mcu-hw-model/fpga_realtime",
+	"caliptra-mcu-hw-model/fpga_realtime",
 	"dep:caliptra-hw-model",
-	"dep:mcu-hw-model",
+	"dep:caliptra-mcu-hw-model",
 	"dep:mcu-rom-common",
 ]
 
@@ -36,7 +36,7 @@ caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-firmware-bundler.workspace = true
 caliptra-mcu-fusegen.workspace = true
 mcu-rom-common = { workspace = true, optional = true }
-mcu-hw-model = { workspace = true, optional = true }
+caliptra-mcu-hw-model = { workspace = true, optional = true }
 caliptra-mcu-fuses-generator.workspace = true
 p384.workspace = true
 pldm-fw-pkg.workspace = true

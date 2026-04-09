@@ -5,7 +5,7 @@
 #[cfg(test)]
 mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
-    use mcu_hw_model::McuHwModel;
+    use caliptra_mcu_hw_model::McuHwModel;
     use mcu_testing_common::i3c::DynamicI3cAddress;
     use mcu_testing_common::i3c_socket::BufferedStream;
     use mcu_testing_common::spdm_responder_validator::mctp::MctpTransport;

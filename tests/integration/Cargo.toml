@@ -7,7 +7,7 @@ edition = "2021"
 
 [features]
 default = []
-fpga_realtime = ["dep:uio", "mcu-hw-model/fpga_realtime"]
+fpga_realtime = ["dep:uio", "caliptra-mcu-hw-model/fpga_realtime"]
 itrng = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -45,7 +45,7 @@ caliptra-util-host-transport.workspace = true
 caliptra-mcu-error.workspace = true
 caliptra-otp-digest.workspace = true
 mcu-firmware-bundler.workspace = true
-mcu-hw-model.workspace = true
+caliptra-mcu-hw-model.workspace = true
 mcu-image-header.workspace = true
 mcu-mbox-common.workspace = true
 mcu-rom-common.workspace = true

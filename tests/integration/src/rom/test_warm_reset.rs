@@ -3,8 +3,8 @@
 use anyhow::Result;
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
-use mcu_hw_model::McuHwModel;
-use mcu_hw_model::{new, Fuses, InitParams};
+use caliptra_mcu_hw_model::McuHwModel;
+use caliptra_mcu_hw_model::{new, Fuses, InitParams};
 use romtime::McuBootMilestones;
 
 // TODO(zhalvorsen): Enable this test for emulator when it is supported

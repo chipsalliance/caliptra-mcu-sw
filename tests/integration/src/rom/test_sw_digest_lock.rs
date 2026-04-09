@@ -11,7 +11,7 @@ mod test {
     use crate::platform;
     use caliptra_hw_model::HwModel;
     use caliptra_mcu_builder::firmware;
-    use mcu_hw_model::{InitParams, McuHwModel};
+    use caliptra_mcu_hw_model::{InitParams, McuHwModel};
     use mcu_rom_common::LifecycleControllerState;
     use registers_generated::fuses;
 
@@ -40,7 +40,7 @@ mod test {
         let (caliptra_rom, mcu_rom) = load_roms();
 
         // Boot 1: write data + digest.
-        let mut hw = mcu_hw_model::new(InitParams {
+        let mut hw = caliptra_mcu_hw_model::new(InitParams {
             caliptra_rom: &caliptra_rom,
             mcu_rom: &mcu_rom,
             check_booted_to_runtime: false,
@@ -74,7 +74,7 @@ mod test {
             // (emulator doesn't persist OTP).
             let otp_after_boot1 = hw.read_otp_memory();
 
-            hw = mcu_hw_model::new(InitParams {
+            hw = caliptra_mcu_hw_model::new(InitParams {
                 caliptra_rom: &caliptra_rom,
                 mcu_rom: &mcu_rom,
                 check_booted_to_runtime: false,
