@@ -1180,6 +1180,7 @@ dependencies = [
  "caliptra-mcu-emulator-registers-generated",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-otp-lifecycle",
+ "caliptra-mcu-rom-common",
  "caliptra-registers",
  "caliptra-test-harness-types",
  "caliptra-ureg",
@@ -1187,7 +1188,6 @@ dependencies = [
  "fips204",
  "hex",
  "int-enum",
- "mcu-rom-common",
  "mcu-testing-common",
  "nix 0.26.4",
  "p384",
@@ -1285,11 +1285,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-rom-common"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "bitflags 2.10.0",
+ "caliptra-api",
+ "caliptra-api-types",
+ "caliptra-drivers",
+ "caliptra-mcu-config",
+ "caliptra-mcu-error",
+ "caliptra-mcu-flash-image",
+ "caliptra-mcu-otp-lifecycle",
+ "constant_time_eq 0.4.2",
+ "otp-digest",
+ "registers-generated",
+ "riscv-csr",
+ "romtime",
+ "rv32i",
+ "smlang",
+ "tock-registers",
+ "zerocopy",
+ "zeroize",
+]
+
+[[package]]
 name = "caliptra-mcu-test-fw-exception-handler"
 version = "0.1.0"
 dependencies = [
- "mcu-rom-common",
- "mcu-test-harness",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-test-harness",
 ]
 
 [[package]]
@@ -1297,9 +1322,19 @@ name = "caliptra-mcu-test-fw-hitless-update-flow"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-error",
- "mcu-rom-common",
- "mcu-test-harness",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-test-harness",
  "registers-generated",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-test-fw-lc-ctrl"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-test-harness",
  "romtime",
  "tock-registers",
 ]
@@ -1308,8 +1343,47 @@ dependencies = [
 name = "caliptra-mcu-test-fw-mailbox-responder"
 version = "0.1.0"
 dependencies = [
- "mcu-rom-common",
- "mcu-test-harness",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-test-harness",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-test-fw-otp-blank-check"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-error",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-test-harness",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-test-fw-sw-digest-lock"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-error",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-test-harness",
+ "registers-generated",
+ "romtime",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-test-harness"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-rom-common",
+ "caliptra-registers",
  "registers-generated",
  "romtime",
  "tock-registers",
@@ -3237,31 +3311,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-rom-common"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "bitflags 2.10.0",
- "caliptra-api",
- "caliptra-api-types",
- "caliptra-drivers",
- "caliptra-mcu-config",
- "caliptra-mcu-error",
- "caliptra-mcu-flash-image",
- "caliptra-mcu-otp-lifecycle",
- "constant_time_eq 0.4.2",
- "otp-digest",
- "registers-generated",
- "riscv-csr",
- "romtime",
- "rv32i",
- "smlang",
- "tock-registers",
- "zerocopy",
- "zeroize",
-]
-
-[[package]]
 name = "mcu-rom-emulator"
 version = "0.1.0"
 dependencies = [
@@ -3271,7 +3320,7 @@ dependencies = [
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-error",
  "caliptra-mcu-image-header",
- "mcu-rom-common",
+ "caliptra-mcu-rom-common",
  "registers-generated",
  "riscv-csr",
  "romtime",
@@ -3288,7 +3337,7 @@ dependencies = [
  "caliptra-mcu-builder",
  "caliptra-mcu-config",
  "caliptra-mcu-config-fpga",
- "mcu-rom-common",
+ "caliptra-mcu-rom-common",
  "registers-generated",
  "riscv-csr",
  "romtime",
@@ -3357,67 +3406,6 @@ dependencies = [
  "riscv-csr",
  "romtime",
  "rv32i",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-fw-lc-ctrl"
-version = "0.1.0"
-dependencies = [
- "mcu-rom-common",
- "mcu-test-harness",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-fw-otp-blank-check"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-error",
- "mcu-rom-common",
- "mcu-test-harness",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-fw-otp-scramble-check"
-version = "0.1.0"
-dependencies = [
- "mcu-error",
- "mcu-rom-common",
- "mcu-test-harness",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-fw-sw-digest-lock"
-version = "0.1.0"
-dependencies = [
- "caliptra-mcu-error",
- "mcu-rom-common",
- "mcu-test-harness",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-harness"
-version = "0.1.0"
-dependencies = [
- "caliptra-api",
- "caliptra-mcu-config",
- "caliptra-mcu-config-emulator",
- "caliptra-mcu-config-fpga",
- "caliptra-registers",
- "mcu-rom-common",
- "registers-generated",
- "romtime",
  "tock-registers",
 ]
 
@@ -4901,6 +4889,7 @@ dependencies = [
  "caliptra-mcu-hw-model",
  "caliptra-mcu-image-header",
  "caliptra-mcu-mbox-common",
+ "caliptra-mcu-rom-common",
  "caliptra-util-host-mctp-vdm-test-config",
  "caliptra-util-host-transport",
  "chrono",
@@ -4913,10 +4902,8 @@ dependencies = [
  "lazy_static",
  "log",
  "mctp-vdm-common",
- "mcu-rom-common",
  "mcu-testing-common",
  "openssl",
- "otp-digest",
  "p384",
  "pldm-common",
  "pldm-fw-pkg",
@@ -5917,6 +5904,7 @@ dependencies = [
  "caliptra-mcu-fusegen",
  "caliptra-mcu-fuses-generator",
  "caliptra-mcu-hw-model",
+ "caliptra-mcu-rom-common",
  "cargo_metadata",
  "cc",
  "clap 4.5.51",
@@ -5924,7 +5912,6 @@ dependencies = [
  "ecdsa",
  "elf",
  "hex",
- "mcu-rom-common",
  "p384",
  "pldm-fw-pkg",
  "proc-macro2",

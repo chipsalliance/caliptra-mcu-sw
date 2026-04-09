@@ -235,7 +235,7 @@ caliptra-mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/m
 caliptra-mcu-otp-lifecycle = { path = "common/otp-lifecycle" }
 caliptra-mcu-platforms-common = { path = "platforms/common" }
 caliptra-mcu-rom-common = { path = "rom" }
-mcu-test-harness = {path = "platforms/test_harness"}
+caliptra-mcu-test-harness = {path = "platforms/test_harness"}
 mcu-testing-common = { path = "common/testing" }
 mcu-tock-veer = { path = "runtime/kernel/veer" }
 mctp-vdm-common = { path = "common/mctp-vdm" }

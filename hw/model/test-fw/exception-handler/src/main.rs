@@ -9,7 +9,7 @@ extern crate caliptra_mcu_rom_common;
 
 #[no_mangle]
 pub extern "C" fn main() {
-    mcu_test_harness::set_printer();
+    caliptra_mcu_test_harness::set_printer();
     #[cfg(target_arch = "riscv32")]
     {
         unsafe { core::arch::asm!("unimp") };

@@ -9,8 +9,8 @@ edition.workspace = true
 default = []
 riscv = []
 emu = []
-fpga_realtime = ["mcu-test-harness/fpga_realtime"]
+fpga_realtime = ["caliptra-mcu-test-harness/fpga_realtime"]
 
 [dependencies]
 caliptra-mcu-rom-common.workspace = true
-mcu-test-harness.workspace = true
+caliptra-mcu-test-harness.workspace = true
