@@ -20,11 +20,11 @@ const EXCLUDED_PACKAGES: &[&str] = &[
     "mcu-rom-fpga",
     "mcu-runtime-emulator",
     "mcu-runtime-fpga",
-    "emulator",
+    "caliptra-mcu-emulator",
     "test-hello",
     "user-app",
     "example-app",
-    "caliptra_mcu_libtock_unittest",
+    "caliptra-mcu-libtock_unittest",
     "syscalls_tests",
     // no_std firmware binaries targeting RISC-V; can't be run on the host
     "caliptra-mcu-test-fw-exception-handler",
@@ -32,7 +32,7 @@ const EXCLUDED_PACKAGES: &[&str] = &[
     "caliptra-mcu-test-fw-lc-ctrl",
     "caliptra-mcu-test-fw-mailbox-responder",
     "caliptra-mcu-test-fw-otp-blank-check",
-    "mcu-test-fw-otp-scramble-check",
+    "caliptra-mcu-test-fw-otp-scramble-check",
     "caliptra-mcu-test-fw-sw-digest-lock",
 ];
 

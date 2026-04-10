@@ -462,13 +462,13 @@ fn scramble_key_for_addr(byte_addr: usize) -> Option<u128> {
             continue;
         }
         return match i {
-            1 => Some(otp_digest::OTP_SCRAMBLE_KEYS[0]),
-            2 => Some(otp_digest::OTP_SCRAMBLE_KEYS[1]),
-            3 => Some(otp_digest::OTP_SCRAMBLE_KEYS[2]),
-            4 => Some(otp_digest::OTP_SCRAMBLE_KEYS[3]),
-            5 => Some(otp_digest::OTP_SCRAMBLE_KEYS[4]),
-            7 => Some(otp_digest::OTP_SCRAMBLE_KEYS[6]),
-            13 => Some(otp_digest::OTP_SCRAMBLE_KEYS[5]),
+            1 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[0]),
+            2 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[1]),
+            3 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[2]),
+            4 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[3]),
+            5 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[4]),
+            7 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[6]),
+            13 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[5]),
             _ => None,
         };
     }
@@ -765,7 +765,8 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
                             let mut new_hi = current_hi | self.direct_access_buffer_hi;
                             if let Some(key) = scramble_key_for_addr(addr) {
                                 let plaintext = ((new_hi as u64) << 32) | new_lo as u64;
-                                let scrambled = otp_digest::otp_scramble(plaintext, key);
+                                let scrambled =
+                                    caliptra_mcu_otp_digest::otp_scramble(plaintext, key);
                                 new_lo = scrambled as u32;
                                 new_hi = (scrambled >> 32) as u32;
                             }
@@ -828,7 +829,7 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
                     if let Some(key) = scramble_key_for_addr(addr) {
                         let scrambled = ((self.direct_access_buffer_hi as u64) << 32)
                             | self.direct_access_buffer as u64;
-                        let plaintext = otp_digest::otp_unscramble(scrambled, key);
+                        let plaintext = caliptra_mcu_otp_digest::otp_unscramble(scrambled, key);
                         self.direct_access_buffer = plaintext as u32;
                         self.direct_access_buffer_hi = (plaintext >> 32) as u32;
                     }
@@ -1323,8 +1324,10 @@ mod test {
         );
 
         // Verify that otp_scramble produces the same result
-        let expected_scrambled =
-            otp_digest::otp_scramble(plaintext_u64, otp_digest::OTP_SCRAMBLE_KEYS[0]);
+        let expected_scrambled = caliptra_mcu_otp_digest::otp_scramble(
+            plaintext_u64,
+            caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[0],
+        );
         assert_eq!(
             raw_u64, expected_scrambled,
             "Raw OTP data should match otp_scramble output"

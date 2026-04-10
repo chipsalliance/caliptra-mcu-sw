@@ -54,7 +54,7 @@ pub const LIFECYCLE_TOKENS_MEM_SIZE: usize = 184; // 11 tokens of 16 bytes each 
 const OTP_IV: u64 = 0x90C7F21F6224F027;
 const OTP_CNST: u128 = 0xF98C48B1F93772844A22D4B78FE0266F;
 
-pub(crate) use emulator_periph::OTP_SCRAMBLE_KEYS;
+pub(crate) use caliptra_mcu_emulator_periph::OTP_SCRAMBLE_KEYS;
 
 const LC_TOKENS_KEY_IDX: usize = 6;
 

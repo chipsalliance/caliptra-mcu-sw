@@ -420,13 +420,7 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             generated.write_vendor_test_partition_read_lock(val);
         }
-    }
-    fn read_vendor_hashes_manuf_partition_read_lock(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
-    >{
+    }    fn read_vendor_hashes_manuf_partition_read_lock (& mut self) -> caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorHashesManufPartitionReadLock :: Register >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_manuf_partition_read_lock");
         }
@@ -437,10 +431,7 @@ pub trait OtpPeripheral {
     }
     fn write_vendor_hashes_manuf_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
-            u32,
-            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
-        >,
+        val : caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorHashesManufPartitionReadLock :: Register >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write otp::vendor_hashes_manuf_partition_read_lock = 0x{:08x}" , val . reg . get ());
@@ -448,13 +439,7 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             generated.write_vendor_hashes_manuf_partition_read_lock(val);
         }
-    }
-    fn read_vendor_hashes_prod_partition_read_lock(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
-    >{
+    }    fn read_vendor_hashes_prod_partition_read_lock (& mut self) -> caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorHashesProdPartitionReadLock :: Register >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_hashes_prod_partition_read_lock");
         }
@@ -465,10 +450,7 @@ pub trait OtpPeripheral {
     }
     fn write_vendor_hashes_prod_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
-            u32,
-            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
-        >,
+        val : caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorHashesProdPartitionReadLock :: Register >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write otp::vendor_hashes_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
@@ -476,13 +458,7 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             generated.write_vendor_hashes_prod_partition_read_lock(val);
         }
-    }
-    fn read_vendor_revocations_prod_partition_read_lock(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
-    >{
+    }    fn read_vendor_revocations_prod_partition_read_lock (& mut self) -> caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorRevocationsProdPartitionReadLock :: Register >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_revocations_prod_partition_read_lock");
         }
@@ -493,10 +469,7 @@ pub trait OtpPeripheral {
     }
     fn write_vendor_revocations_prod_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
-            u32,
-            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
-        >,
+        val : caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorRevocationsProdPartitionReadLock :: Register >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write otp::vendor_revocations_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
@@ -504,13 +477,7 @@ pub trait OtpPeripheral {
         if let Some(generated) = self.generated() {
             generated.write_vendor_revocations_prod_partition_read_lock(val);
         }
-    }
-    fn read_vendor_non_secret_prod_partition_read_lock(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
-    >{
+    }    fn read_vendor_non_secret_prod_partition_read_lock (& mut self) -> caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorNonSecretProdPartitionReadLock :: Register >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: read otp::vendor_non_secret_prod_partition_read_lock");
         }
@@ -521,10 +488,7 @@ pub trait OtpPeripheral {
     }
     fn write_vendor_non_secret_prod_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
-            u32,
-            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
-        >,
+        val : caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorNonSecretProdPartitionReadLock :: Register >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Non-functional register stub: write otp::vendor_non_secret_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
@@ -1966,13 +1930,7 @@ impl OtpPeripheral for OtpGenerated {
         new_val = (new_val & !(1 as caliptra_emu_types::RvData))
             | (write_val & (1 as caliptra_emu_types::RvData));
         self.vendor_test_partition_read_lock = new_val;
-    }
-    fn read_vendor_hashes_manuf_partition_read_lock(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
-    >{
+    }    fn read_vendor_hashes_manuf_partition_read_lock (& mut self) -> caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorHashesManufPartitionReadLock :: Register >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_manuf_partition_read_lock");
         }
@@ -1980,10 +1938,7 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn write_vendor_hashes_manuf_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
-            u32,
-            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesManufPartitionReadLock::Register,
-        >,
+        val : caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorHashesManufPartitionReadLock :: Register >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::vendor_hashes_manuf_partition_read_lock = 0x{:08x}" , val . reg . get ());
@@ -1994,13 +1949,7 @@ impl OtpPeripheral for OtpGenerated {
         new_val = (new_val & !(1 as caliptra_emu_types::RvData))
             | (write_val & (1 as caliptra_emu_types::RvData));
         self.vendor_hashes_manuf_partition_read_lock = new_val;
-    }
-    fn read_vendor_hashes_prod_partition_read_lock(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
-    >{
+    }    fn read_vendor_hashes_prod_partition_read_lock (& mut self) -> caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorHashesProdPartitionReadLock :: Register >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_hashes_prod_partition_read_lock");
         }
@@ -2008,10 +1957,7 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn write_vendor_hashes_prod_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
-            u32,
-            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorHashesProdPartitionReadLock::Register,
-        >,
+        val : caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorHashesProdPartitionReadLock :: Register >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::vendor_hashes_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
@@ -2022,13 +1968,7 @@ impl OtpPeripheral for OtpGenerated {
         new_val = (new_val & !(1 as caliptra_emu_types::RvData))
             | (write_val & (1 as caliptra_emu_types::RvData));
         self.vendor_hashes_prod_partition_read_lock = new_val;
-    }
-    fn read_vendor_revocations_prod_partition_read_lock(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
-    >{
+    }    fn read_vendor_revocations_prod_partition_read_lock (& mut self) -> caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorRevocationsProdPartitionReadLock :: Register >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_revocations_prod_partition_read_lock");
         }
@@ -2036,10 +1976,7 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn write_vendor_revocations_prod_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
-            u32,
-            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorRevocationsProdPartitionReadLock::Register,
-        >,
+        val : caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorRevocationsProdPartitionReadLock :: Register >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::vendor_revocations_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());
@@ -2050,13 +1987,7 @@ impl OtpPeripheral for OtpGenerated {
         new_val = (new_val & !(1 as caliptra_emu_types::RvData))
             | (write_val & (1 as caliptra_emu_types::RvData));
         self.vendor_revocations_prod_partition_read_lock = new_val;
-    }
-    fn read_vendor_non_secret_prod_partition_read_lock(
-        &mut self,
-    ) -> caliptra_emu_bus::ReadWriteRegister<
-        u32,
-        caliptra_mcu_registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
-    >{
+    }    fn read_vendor_non_secret_prod_partition_read_lock (& mut self) -> caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorNonSecretProdPartitionReadLock :: Register >{
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: read otp::vendor_non_secret_prod_partition_read_lock");
         }
@@ -2064,10 +1995,7 @@ impl OtpPeripheral for OtpGenerated {
     }
     fn write_vendor_non_secret_prod_partition_read_lock(
         &mut self,
-        val: caliptra_emu_bus::ReadWriteRegister<
-            u32,
-            caliptra_mcu_registers_generated::otp_ctrl::bits::VendorNonSecretProdPartitionReadLock::Register,
-        >,
+        val : caliptra_emu_bus :: ReadWriteRegister :: < u32 , caliptra_mcu_registers_generated :: otp_ctrl :: bits :: VendorNonSecretProdPartitionReadLock :: Register >,
     ) {
         if crate::stub_warnings::stub_warnings_enabled() {
             eprintln ! ("[EMU] Generated default register handler: write otp::vendor_non_secret_prod_partition_read_lock = 0x{:08x}" , val . reg . get ());

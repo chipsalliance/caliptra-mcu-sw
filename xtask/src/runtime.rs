@@ -61,7 +61,7 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     let mut cargo_run_args = vec![
         "run",
         "-p",
-        "emulator",
+        "caliptra-mcu-emulator",
         "--profile",
         "test",
         "--",

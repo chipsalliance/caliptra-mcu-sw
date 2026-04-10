@@ -11,8 +11,8 @@
 #![no_main]
 #![no_std]
 
-use mcu_rom_common::{fatal_error, RomEnv};
-use registers_generated::fuses;
+use caliptra_mcu_registers_generated::fuses;
+use caliptra_mcu_rom_common::{fatal_error, RomEnv};
 use tock_registers::interfaces::Readable;
 
 const GO_BIT: u32 = 1 << 0;
@@ -27,7 +27,7 @@ fn run() -> ! {
     let partition = fuses::VENDOR_SECRET_PROD_PARTITION;
     let dword_addr = partition.byte_offset / 8;
 
-    romtime::println!(
+    caliptra_mcu_romtime::println!(
         "[otp-scramble-check] Reading dword at byte offset 0x{:03x} via DAI",
         partition.byte_offset
     );
@@ -36,22 +36,22 @@ fn run() -> ! {
         Ok(val) => {
             let lo = val as u32;
             let hi = (val >> 32) as u32;
-            romtime::println!("[otp-scramble-check] DESCRAMBLED_LO={:08X}", lo);
-            romtime::println!("[otp-scramble-check] DESCRAMBLED_HI={:08X}", hi);
+            caliptra_mcu_romtime::println!("[otp-scramble-check] DESCRAMBLED_LO={:08X}", lo);
+            caliptra_mcu_romtime::println!("[otp-scramble-check] DESCRAMBLED_HI={:08X}", hi);
         }
         Err(_) => {
-            romtime::println!("[otp-scramble-check] DAI read failed");
-            fatal_error(mcu_error::McuError::ROM_OTP_READ_ERROR);
+            caliptra_mcu_romtime::println!("[otp-scramble-check] DAI read failed");
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR);
         }
     }
 
-    romtime::println!("[otp-scramble-check] PASS");
+    caliptra_mcu_romtime::println!("[otp-scramble-check] PASS");
     #[allow(clippy::empty_loop)]
     loop {}
 }
 
 #[no_mangle]
 pub extern "C" fn main() {
-    mcu_test_harness::set_printer();
+    caliptra_mcu_test_harness::set_printer();
     run();
 }

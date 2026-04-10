@@ -1742,6 +1742,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-test-fw-otp-scramble-check"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-error",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-test-harness",
+ "tock-registers",
+]
+
+[[package]]
 name = "caliptra-mcu-test-fw-sw-digest-lock"
 version = "0.1.0"
 dependencies = [
@@ -1780,6 +1792,64 @@ dependencies = [
  "crc",
  "hex",
  "rand 0.8.5",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-tests-integration"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "caliptra-api",
+ "caliptra-api-types",
+ "caliptra-auth-man-types",
+ "caliptra-builder",
+ "caliptra-hw-model",
+ "caliptra-hw-model-types",
+ "caliptra-image-fake-keys",
+ "caliptra-image-gen",
+ "caliptra-image-types",
+ "caliptra-mcu-builder",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-core-mctp-vdm-client",
+ "caliptra-mcu-core-util-host-mctp-vdm-test-config",
+ "caliptra-mcu-core-util-host-transport",
+ "caliptra-mcu-error",
+ "caliptra-mcu-firmware-bundler",
+ "caliptra-mcu-flash-image",
+ "caliptra-mcu-hw-model",
+ "caliptra-mcu-image-header",
+ "caliptra-mcu-mbox-common",
+ "caliptra-mcu-mctp-vdm-common",
+ "caliptra-mcu-otp-digest",
+ "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-fw-pkg",
+ "caliptra-mcu-pldm-ua",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-testing-common",
+ "chrono",
+ "crc",
+ "ecdsa",
+ "fips204",
+ "hex",
+ "hkdf",
+ "hmac",
+ "lazy_static",
+ "log",
+ "openssl",
+ "p384",
+ "rand 0.8.5",
+ "random-port",
+ "sha2",
+ "simple_logger",
+ "tempfile",
+ "uio",
+ "uuid",
  "zerocopy",
 ]
 
@@ -4862,63 +4932,6 @@ dependencies = [
 [[package]]
 name = "test-hello"
 version = "0.1.0"
-
-[[package]]
-name = "tests-integration"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "caliptra-api",
- "caliptra-api-types",
- "caliptra-auth-man-types",
- "caliptra-builder",
- "caliptra-hw-model",
- "caliptra-hw-model-types",
- "caliptra-image-fake-keys",
- "caliptra-image-gen",
- "caliptra-image-types",
- "caliptra-mcu-builder",
- "caliptra-mcu-config",
- "caliptra-mcu-config-emulator",
- "caliptra-mcu-config-fpga",
- "caliptra-mcu-core-mctp-vdm-client",
- "caliptra-mcu-core-util-host-mctp-vdm-test-config",
- "caliptra-mcu-core-util-host-transport",
- "caliptra-mcu-error",
- "caliptra-mcu-firmware-bundler",
- "caliptra-mcu-flash-image",
- "caliptra-mcu-hw-model",
- "caliptra-mcu-image-header",
- "caliptra-mcu-mbox-common",
- "caliptra-mcu-mctp-vdm-common",
- "caliptra-mcu-pldm-common",
- "caliptra-mcu-pldm-fw-pkg",
- "caliptra-mcu-pldm-ua",
- "caliptra-mcu-registers-generated",
- "caliptra-mcu-rom-common",
- "caliptra-mcu-romtime",
- "caliptra-mcu-testing-common",
- "chrono",
- "crc",
- "ecdsa",
- "fips204",
- "hex",
- "hkdf",
- "hmac",
- "lazy_static",
- "log",
- "openssl",
- "p384",
- "rand 0.8.5",
- "random-port",
- "sha2",
- "simple_logger",
- "tempfile",
- "uio",
- "uuid",
- "zerocopy",
-]
 
 [[package]]
 name = "textwrap"

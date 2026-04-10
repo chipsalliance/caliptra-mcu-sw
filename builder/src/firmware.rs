@@ -36,8 +36,8 @@ pub mod hw_model_tests {
     };
 
     pub const OTP_SCRAMBLE_CHECK: FwId = FwId {
-        crate_name: "mcu-test-fw-otp-scramble-check",
-        bin_name: "mcu-test-fw-otp-scramble-check",
+        crate_name: "caliptra-mcu-test-fw-otp-scramble-check",
+        bin_name: "caliptra-mcu-test-fw-otp-scramble-check",
         features: &["emu"],
     };
 

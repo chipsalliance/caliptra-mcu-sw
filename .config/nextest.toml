@@ -16,48 +16,48 @@ fail-fast = false
 slow-timeout = { period = "30s", terminate-after = 30 }
 # clundin: This test was introduced while the CI was broken. Filtering out until it is fixed.
 default-filter = """
-!(package(tests-integration) and test(test_soc_boot)
-| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_manifest)
-| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_mcu_image)
-| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_caliptra_image)
-| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_lock_idempotent   )
-| package(tests-integration) and test(test::test_mcu_svn_lt_fuse )
-| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_rotate_idempotent )
-| package(tests-integration) and test(test_active_i3c::test::test_boot_with_i3c1_active  )
-| package(tests-integration) and test(runtime::test_mcu_mailbox::test_invalid_mailbox_cm)
-| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_missing_caliptra_image  )
-| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful_fast )
-| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_disable   )
-| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_runtime_boots )
-| package(tests-integration) and test(test_dot::test::test_dot_recovery_backup_blob_success  )
-| package(tests-integration) and test(test_dot::test::test_dot_override_challenge_success)
-| package(tests-integration) and test(test_dot::test::test_dot_override_invalid_signatures_fail)
-| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_soc_image   )
-| package(tests-integration) and test(test::test_mcu_mbox_soc_requester_loopback )
-| package(tests-integration) and test(test::test_mcu_mbox_driver )
-| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_unlock)
-| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_bad_version   )
-| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_lock  )
-| package(tests-integration) and test(test_dot::test::test_fw_manifest_dot_unlock_second_boot_succeeds   )
-| package(tests-integration) and test(test::test_mctp_user_loopback  )
-| package(tests-integration) and test(test_dot::test::test_dot_unlocked_state_custom_owner_keys  )
-| package(tests-integration) and test(test::test_mcu_svn_gt_fuse )
-| package(tests-integration) and test(runtime::test_mcu_mailbox::test_firmware_version_cm)
-| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful  )
-| package(tests-integration) and test(test_dot)
-| package(tests-integration) and test(test_soc_boot)
-| package(tests-integration) and test(test_bare_metal::test::test_bare_metal_runtime_boo)
-| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful_fast)
-| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_missing_caliptra_image)
-| package(tests-integration) and test(test_active_i3c::test::test_boot_with_i3c1_active)
-| package(tests-integration) and test(test::test_mcu_svn_lt_fuse)
-| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_soc_imag)
-| package(tests-integration) and test(test::test_mctp_user_loopback)
-| package(tests-integration) and test(test::test_mcu_mbox_soc_requester_loopback)
-| package(tests-integration) and test(test::test_mcu_mbox_driver)
-| package(tests-integration) and test(test::test_mcu_svn_gt_fuse)
-| package(tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful)
-| package(mcu-hw-model) and test(model_emulated::test::test_new_unbooted))
+!(package(caliptra-mcu-tests-integration) and test(test_soc_boot)
+| package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_manifest)
+| package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_mcu_image)
+| package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_caliptra_image)
+| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_fw_manifest_dot_lock_idempotent   )
+| package(caliptra-mcu-tests-integration) and test(test::test_mcu_svn_lt_fuse )
+| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_fw_manifest_dot_rotate_idempotent )
+| package(caliptra-mcu-tests-integration) and test(test_active_i3c::test::test_boot_with_i3c1_active  )
+| package(caliptra-mcu-tests-integration) and test(runtime::test_mcu_mailbox::test_invalid_mailbox_cm)
+| package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_missing_caliptra_image  )
+| package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful_fast )
+| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_fw_manifest_dot_disable   )
+| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_fw_manifest_dot_runtime_boots )
+| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_dot_recovery_backup_blob_success  )
+| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_dot_override_challenge_success)
+| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_dot_override_invalid_signatures_fail)
+| package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_soc_image   )
+| package(caliptra-mcu-tests-integration) and test(test::test_mcu_mbox_soc_requester_loopback )
+| package(caliptra-mcu-tests-integration) and test(test::test_mcu_mbox_driver )
+| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_fw_manifest_dot_unlock)
+| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_fw_manifest_dot_bad_version   )
+| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_fw_manifest_dot_lock  )
+| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_fw_manifest_dot_unlock_second_boot_succeeds   )
+| package(caliptra-mcu-tests-integration) and test(test::test_mctp_user_loopback  )
+| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_dot_unlocked_state_custom_owner_keys  )
+| package(caliptra-mcu-tests-integration) and test(test::test_mcu_svn_gt_fuse )
+| package(caliptra-mcu-tests-integration) and test(runtime::test_mcu_mailbox::test_firmware_version_cm)
+| package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful  )
+| package(caliptra-mcu-tests-integration) and test(test_dot)
+| package(caliptra-mcu-tests-integration) and test(test_soc_boot)
+| package(caliptra-mcu-tests-integration) and test(test_bare_metal::test::test_bare_metal_runtime_boo)
+| package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful_fast)
+| package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_missing_caliptra_image)
+| package(caliptra-mcu-tests-integration) and test(test_active_i3c::test::test_boot_with_i3c1_active)
+| package(caliptra-mcu-tests-integration) and test(test::test_mcu_svn_lt_fuse)
+| package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_soc_imag)
+| package(caliptra-mcu-tests-integration) and test(test::test_mctp_user_loopback)
+| package(caliptra-mcu-tests-integration) and test(test::test_mcu_mbox_soc_requester_loopback)
+| package(caliptra-mcu-tests-integration) and test(test::test_mcu_mbox_driver)
+| package(caliptra-mcu-tests-integration) and test(test::test_mcu_svn_gt_fuse)
+| package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_successful)
+| package(caliptra-mcu-hw-model) and test(model_emulated::test::test_new_unbooted))
 """
 
 [profile.nightly-emulator.junit]
@@ -70,29 +70,29 @@ inherits = "nightly"
 default-filter = """
 (package(caliptra-mcu-hw-model)
     - test(model_emulated::test::test_new_unbooted)) |
-(package(tests-integration) and test(test_jtag_taps)) |
-(package(tests-integration) and test(test_lc_transitions)) |
-(package(tests-integration) and test(test_manuf_debug_unlock)) |
-(package(tests-integration) and test(test_prod_debug_unlock)) |
-(package(tests-integration) and test(test_uds)) |
-(package(tests-integration) and test(test_imaginary_flash_controller)) |
-(package(tests-integration) and test(test_fw_update_e2e)) |
-(package(tests-integration) and test(test_mctp_capsule_loopback)) |
-(package(tests-integration) and test(test_mctp_vdm_cmds)) |
-(package(tests-integration) and test(test_mcu_mbox_usermode)) |
-(package(tests-integration) and test(test_mcu_mbox_cmds)) |
-(package(tests-integration) and test(test_mcu_mbox_fips_self_test)) |
-(package(tests-integration) and test(test_mcu_mbox_fips_periodic)) |
-(package(tests-integration) and test(test_i3c_constant_writes)) |
-(package(tests-integration) and test(test_i3c_simple)) |
-(package(tests-integration) and test(test_i3c_services_ping)) |
-(package(tests-integration) and test(test_i3c_services_unknown_cmd)) |
-(package(tests-integration) and test(test_sw_digest_lock)) |
-(package(tests-integration) and test(test_otp_blank_check)) |
-(package(tests-integration) and test(test_otp_scramble_check)) |
-(package(tests-integration) and test(test_bootfsm_timeout)) |
-(package(tests-integration) and test(test_lc_ctrl)) |
-(package(tests-integration) and test(test_raw_lifecycle_boot))
+(package(caliptra-mcu-tests-integration) and test(test_jtag_taps)) |
+(package(caliptra-mcu-tests-integration) and test(test_lc_transitions)) |
+(package(caliptra-mcu-tests-integration) and test(test_manuf_debug_unlock)) |
+(package(caliptra-mcu-tests-integration) and test(test_prod_debug_unlock)) |
+(package(caliptra-mcu-tests-integration) and test(test_uds)) |
+(package(caliptra-mcu-tests-integration) and test(test_imaginary_flash_controller)) |
+(package(caliptra-mcu-tests-integration) and test(test_fw_update_e2e)) |
+(package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback)) |
+(package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_cmds)) |
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_self_test)) |
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_periodic)) |
+(package(caliptra-mcu-tests-integration) and test(test_i3c_constant_writes)) |
+(package(caliptra-mcu-tests-integration) and test(test_i3c_simple)) |
+(package(caliptra-mcu-tests-integration) and test(test_i3c_services_ping)) |
+(package(caliptra-mcu-tests-integration) and test(test_i3c_services_unknown_cmd)) |
+(package(caliptra-mcu-tests-integration) and test(test_sw_digest_lock)) |
+(package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
+(package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check)) |
+(package(caliptra-mcu-tests-integration) and test(test_bootfsm_timeout)) |
+(package(caliptra-mcu-tests-integration) and test(test_lc_ctrl)) |
+(package(caliptra-mcu-tests-integration) and test(test_raw_lifecycle_boot))
 """
 # disabled for now due to flakiness of firmware update
-# (package(tests-integration) and test(test_firmware_update_streaming_fpga)) |
+# (package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)) |
