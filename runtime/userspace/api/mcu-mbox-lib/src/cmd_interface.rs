@@ -2,12 +2,15 @@
 
 use crate::transport::McuMboxTransport;
 use caliptra_api::mailbox::{CommandId as CaliptraCommandId, MailboxReqHeader};
+use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use external_cmds_common::{
     DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, UnifiedCommandHandler, MAX_UID_LEN,
 };
 use libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use libsyscall_caliptra::mailbox::Mailbox;
+use libsyscall_caliptra::DefaultSyscalls;
+use libtock_console::Console;
 use libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
@@ -25,6 +28,8 @@ use mcu_mbox_common::messages::{
     McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
     McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
     McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuHmacResp, McuMailboxResp,
+    McuManufDebugUnlockTokenReq, McuManufDebugUnlockTokenResp, McuProdDebugUnlockReqReq,
+    McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq, McuProdDebugUnlockTokenResp,
     McuRandomGenerateReq, McuRandomGenerateResp, McuRandomStirReq, McuRandomStirResp,
     McuShaFinalReq, McuShaFinalResp, McuShaInitReq, McuShaInitResp, McuShaUpdateReq,
     DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
@@ -431,6 +436,37 @@ impl<'a> CmdInterface<'a> {
                 )
                 .await
             }
+            // Debug Unlock commands
+            CommandId::MC_MANUF_DEBUG_UNLOCK_TOKEN => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuManufDebugUnlockTokenResp>()];
+                self.handle_crypto_passthrough::<McuManufDebugUnlockTokenReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::MANUF_DEBUG_UNLOCK_REQ_TOKEN.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuProdDebugUnlockReqResp>()];
+                self.handle_crypto_passthrough::<McuProdDebugUnlockReqReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_REQ.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
+            CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
+                let mut resp_bytes = [0u8; core::mem::size_of::<McuProdDebugUnlockTokenResp>()];
+                self.handle_crypto_passthrough::<McuProdDebugUnlockTokenReq>(
+                    msg_buf,
+                    req_len,
+                    CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.into(),
+                    &mut resp_bytes,
+                )
+                .await
+            }
             // TODO: add more command handlers.
             // TODO: DOT runtime commands (DOT_CAK_INSTALL, DOT_LOCK, DOT_DISABLE,
             // DOT_UNLOCK_CHALLENGE, DOT_UNLOCK) are not yet handled here. These require
@@ -638,7 +674,22 @@ impl<'a> CmdInterface<'a> {
         caliptra_cmd_code: u32,
         resp_buf: &mut [u8],
     ) -> Result<(usize, MbxCmdStatus), MsgHandlerError> {
-        if req_len > core::mem::size_of::<T>() {
+        let type_size = core::mem::size_of::<T>();
+        let _ = writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[rt] crypto_passthrough: caliptra_cmd=0x{:08X} req_len={} type_size={} resp_buf_len={}",
+            caliptra_cmd_code,
+            req_len,
+            type_size,
+            resp_buf.len()
+        );
+        if req_len > type_size {
+            let _ = writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[rt] crypto_passthrough: InvalidParams req_len {} > type_size {}",
+                req_len,
+                type_size
+            );
             return Err(MsgHandlerError::InvalidParams);
         }
         let mut req = T::default();
@@ -658,10 +709,22 @@ impl<'a> CmdInterface<'a> {
 
         match status {
             Ok(resp_len) => {
+                let _ = writeln!(
+                    Console::<DefaultSyscalls>::writer(),
+                    "[rt] crypto_passthrough: success resp_len={}",
+                    resp_len
+                );
                 msg_buf[..resp_len].copy_from_slice(&resp_buf[..resp_len]);
                 Ok((resp_len, MbxCmdStatus::Complete))
             }
-            Err(_) => Ok((0, MbxCmdStatus::Failure)),
+            Err(e) => {
+                let _ = writeln!(
+                    Console::<DefaultSyscalls>::writer(),
+                    "[rt] crypto_passthrough: caliptra mbox error: {:?}",
+                    e
+                );
+                Ok((0, MbxCmdStatus::Failure))
+            }
         }
     }
 

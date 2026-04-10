@@ -1,9 +1,11 @@
 // Licensed under the Apache-2.0 license
 
+use core::fmt::Write;
 use core::mem::size_of;
 use libsyscall_caliptra::mci::Mci;
 use libsyscall_caliptra::mcu_mbox::{CmdCode, MbxCmdStatus, McuMbox};
 use libsyscall_caliptra::DefaultSyscalls;
+use libtock_console::Console;
 use mcu_mbox_common::messages::{verify_checksum, MailboxReqHeader, MailboxRespHeader};
 use zerocopy::FromBytes;
 
@@ -54,9 +56,34 @@ impl McuMboxTransport {
             .mbox
             .receive_command(buf, on_listening_cb)
             .await
-            .map_err(|_| TransportError::DriverRxError)?;
+            .map_err(|e| {
+                let _ = writeln!(
+                    Console::<DefaultSyscalls>::writer(),
+                    "[rt] receive_command failed: {:?}",
+                    e
+                );
+                TransportError::DriverRxError
+            })?;
+
+        let _ = writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[rt] Received command=0x{:08X} ({}{}{}{}) len={} buf_size={}",
+            cmd_opcode,
+            (cmd_opcode >> 24) as u8 as char,
+            (cmd_opcode >> 16) as u8 as char,
+            (cmd_opcode >> 8) as u8 as char,
+            cmd_opcode as u8 as char,
+            req_len,
+            buf.len()
+        );
 
         if req_len < size_of::<MailboxReqHeader>() {
+            let _ = writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[rt] InvalidRequest: req_len {} < header size {}",
+                req_len,
+                size_of::<MailboxReqHeader>()
+            );
             return Err(TransportError::InvalidRequest);
         }
 
@@ -65,6 +92,13 @@ impl McuMboxTransport {
         // Retrieve payload for checksum verification
         let payload = &buf[size_of::<u32>()..req_len];
         if !verify_checksum(hdr.chksum, cmd_opcode, payload) {
+            let _ = writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[rt] ChkSumMismatch: hdr.chksum=0x{:08X} cmd=0x{:08X} payload_len={}",
+                hdr.chksum,
+                cmd_opcode,
+                payload.len()
+            );
             return Err(TransportError::ChkSumMismatch);
         }
 

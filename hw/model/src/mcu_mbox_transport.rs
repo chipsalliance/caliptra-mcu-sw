@@ -5,7 +5,7 @@ use registers_generated::mci::bits::{MboxCmdStatus, MboxExecute, Notif0IntrTrigT
 use romtime::StaticRef;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
-const MCU_MAILBOX0_SRAM_SIZE: u32 = 4 * 1024; // MCU Mailbox0 SRAM size is 4KB on FPGA
+const MCU_MAILBOX0_SRAM_SIZE: u32 = 16 * 1024; // MCU Mailbox0 SRAM size is 16KB on FPGA
 
 pub struct McuMailboxResponse {
     pub status_code: u32,
