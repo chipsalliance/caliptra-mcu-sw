@@ -1,0 +1,44 @@
+[project]
+name = "peakrdl-tock"
+version = "0.1.0"
+description = "Generate Tock-style Rust register code (register_bitfields!/register_structs!) from SystemRDL."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+keywords = [
+    "SystemRDL",
+    "PeakRDL",
+    "Tock",
+    "registers",
+    "generator",
+    "Rust",
+    "embedded",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Plugins",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+]
+dependencies = [
+    "systemrdl-compiler>=1.27",
+]
+
+[project.urls]
+Source = "https://github.com/chipsalliance/caliptra-mcu-sw"
+
+[project.optional-dependencies]
+cli = [
+    "peakrdl-cli>=1.4.0",
+]
+
+[project.entry-points."peakrdl.exporters"]
+tock = "peakrdl_tock.__peakrdl__:Exporter"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

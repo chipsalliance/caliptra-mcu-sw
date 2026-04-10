@@ -51,6 +51,7 @@ members = [
     "registers/fuses",
     "registers/generated-emulator",
     "registers/generated-firmware",
+    "registers/generated-firmware-peakrdl",
     "registers/generator",
     "registers/systemrdl-new",
     "registers/systemrdl",

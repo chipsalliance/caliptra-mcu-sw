@@ -70,9 +70,7 @@ addrmap flash_ctrl {
     reg {
         field {
             sw = r;
-            desc = "This register ensures the contents of OP_CONTROL cannot be changed by software once a flash operation has begun. \
-                    This bit defaults to 1 and is set to 0 by hardware when flash operation is initiated. When the controller completes the flash operation, \
-                    It unlocks whenever the existing flash operation completes, regardless of success or error.";
+            desc = "This register ensures the contents of OP_CONTROL cannot be changed by software once a flash operation has begun. This bit defaults to 1 and is set to 0 by hardware when flash operation is initiated. When the controller completes the flash operation, it unlocks whenever the existing flash operation completes, regardless of success or error.";
 
         } EN[0:0];
     } CTRL_REGWEN @ 0x1C;

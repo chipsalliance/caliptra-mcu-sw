@@ -1,0 +1,51 @@
+Metadata-Version: 2.4
+Name: peakrdl-tock
+Version: 0.1.0
+Summary: Generate Tock-style Rust register code (register_bitfields!/register_structs!) from SystemRDL.
+License-Expression: Apache-2.0
+Project-URL: Source, https://github.com/chipsalliance/caliptra-mcu-sw
+Keywords: SystemRDL,PeakRDL,Tock,registers,generator,Rust,embedded
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Plugins
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Rust
+Classifier: Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: jinja2>=3.1
+Requires-Dist: systemrdl-compiler>=1.27
+Provides-Extra: cli
+Requires-Dist: peakrdl-cli>=1.4.0; extra == "cli"
+
+# PeakRDL-tock
+
+A [PeakRDL](https://peakrdl.readthedocs.io/) exporter plugin that generates
+[Tock](https://www.tockos.org/)-style Rust register definitions from
+[SystemRDL](https://www.accellera.org/downloads/standards/systemrdl) descriptions.
+
+The generated code uses the `tock-registers` crate macros:
+- `register_bitfields!` for bitfield definitions
+- `register_structs!` for memory-mapped register structs
+
+## Installation
+
+```bash
+pip install -e '.[cli]'
+```
+
+## Usage
+
+### Command line (via PeakRDL)
+
+```bash
+peakrdl tock input.rdl -o output_dir/ --top my_addrmap --base-addr 0x20000000
+```
+
+### Python API
+
+```python
+from peakrdl_tock import TockExporter
+
+exporter = TockExporter()
+exporter.export("input.rdl", "output_dir/", top_name="my_addrmap", base_addr=0x20000000)
+```
