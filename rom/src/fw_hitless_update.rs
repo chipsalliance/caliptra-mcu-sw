@@ -15,17 +15,16 @@ Abstract:
 #![allow(clippy::empty_loop)]
 
 #[cfg(target_arch = "riscv32")]
+use crate::device_ownership_transfer;
+#[cfg(target_arch = "riscv32")]
 use crate::MCU_MEMORY_MAP;
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters};
 use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
 use caliptra_mcu_error::McuError;
 use caliptra_mcu_romtime::HexWord;
 use core::fmt::Write;
-#[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
+#[cfg(target_arch = "riscv32")]
 use zerocopy::FromBytes;
-
-#[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
-use crate::device_ownership_transfer;
 
 pub struct FwHitlessUpdate {}
 
@@ -68,8 +67,7 @@ impl BootFlow for FwHitlessUpdate {
             let mut firmware_offset = _params.mcu_image_header_size as u32;
 
             // Dynamically skip past DOT manifest section if present.
-            #[cfg(feature = "fw-manifest-dot")]
-            if _params.fw_manifest_dot_enabled {
+            if cfg!(feature = "fw-manifest-dot") && _params.fw_manifest_dot_enabled {
                 let manifest_size =
                     core::mem::size_of::<device_ownership_transfer::FwManifestDotSection>();
                 let sram = core::slice::from_raw_parts(

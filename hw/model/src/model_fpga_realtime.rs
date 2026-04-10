@@ -359,7 +359,7 @@ impl McuHwModel for ModelFpgaRealtime {
             None
         };
 
-        let m = Self {
+        let mut m = Self {
             base,
 
             openocd: None,
@@ -375,6 +375,10 @@ impl McuHwModel for ModelFpgaRealtime {
             mcu_firmware: Some(params.mcu_firmware.to_vec()).filter(|f| !f.is_empty()),
             check_booted_to_runtime: params.check_booted_to_runtime,
         };
+
+        if let Some(dot_flash_data) = params.dot_flash_initial_contents.as_deref() {
+            m.write_dot_flash(dot_flash_data)?;
+        }
 
         Ok(m)
     }
@@ -581,11 +585,18 @@ impl McuHwModel for ModelFpgaRealtime {
     }
 
     fn read_dot_flash(&self) -> Vec<u8> {
-        todo!()
+        // DOT flash is backed by the secondary flash controller.
+        self.base.secondary_flash.clone()
     }
 
-    fn write_dot_flash(&mut self, _data: &[u8]) -> Result<()> {
-        todo!()
+    fn write_dot_flash(&mut self, data: &[u8]) -> Result<()> {
+        // DOT flash is backed by the secondary flash controller.
+        let flash = &mut self.base.secondary_flash;
+        if data.len() > flash.len() {
+            flash.resize(data.len(), 0xFF);
+        }
+        flash[..data.len()].copy_from_slice(data);
+        Ok(())
     }
 }
 

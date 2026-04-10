@@ -38,7 +38,7 @@ mod rom_env;
 pub use rom_env::*;
 mod i3c;
 mod i3c_mailbox;
-pub use i3c_mailbox::I3cMailboxHandler;
+pub use i3c_mailbox::{DotContext, I3cMailboxHandler};
 mod mailbox;
 mod recovery;
 
@@ -47,6 +47,7 @@ mod cold_boot;
 mod fw_boot;
 mod warm_boot;
 pub use cold_boot::ColdBoot;
+pub use cold_boot::I3cDotLockedRecoveryHandler;
 pub use fw_boot::FwBoot;
 pub use warm_boot::WarmBoot;
 

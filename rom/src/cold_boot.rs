@@ -30,6 +30,7 @@ use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use caliptra_mcu_error::McuError;
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::i3c::bits::RecIntfCfg;
+use caliptra_mcu_registers_generated::mci::bits::{MboxExecute, MboxLock};
 use caliptra_mcu_romtime::{CaliptraSoC, HexBytes, HexWord, McuBootMilestones, McuRomBootStatus};
 use core::fmt::Write;
 use core::ops::Deref;
@@ -178,78 +179,75 @@ impl ColdBoot {
     }
 }
 
-/// Attempts DOT recovery using available recovery mechanisms.
-/// The order is determined by `params.dot_recovery_policy`.
-/// If recovery succeeds, triggers a warm reset (never returns).
-/// If recovery fails or no handler is available, returns the last error (if any).
-fn attempt_dot_recovery(
+/// Run integrator-configured DOT locked-state recovery handlers in sequence.
+///
+/// Each handler that succeeds triggers a warm reset and never returns.
+/// The integrator controls the order and retry policy via
+/// `RomParameters::dot_locked_recovery_handlers`.
+fn attempt_dot_locked_recovery(
     env: &mut RomEnv,
     dot_fuses: &crate::DotFuses,
     params: &RomParameters,
     dot_flash: &dyn crate::hil::FlashStorage,
     key_type: CmStableKeyType,
-) -> Option<McuError> {
-    use crate::DotRecoveryPolicy;
+) -> McuError {
+    use crate::device_ownership_transfer::{DotLockedRecoveryContext, DotLockedRecoveryManager};
 
-    if params.dot_recovery_policy == DotRecoveryPolicy::None {
-        return None;
+    if params.dot_locked_recovery_handlers.is_empty() {
+        return McuError::ROM_COLD_BOOT_DOT_ERROR;
     }
 
-    let recovery_handler = params.dot_recovery_handler?;
-    caliptra_mcu_romtime::println!("[mcu-rom] Attempting DOT recovery via backup blob");
-    match device_ownership_transfer::dot_recovery_flow(
-        env,
+    let ctx = DotLockedRecoveryContext {
         dot_fuses,
-        recovery_handler,
         dot_flash,
         key_type,
-    ) {
+    };
+    let mut manager = DotLockedRecoveryManager::new(params.dot_locked_recovery_handlers);
+    match manager.run(env, &ctx) {
         Ok(()) => {
-            caliptra_mcu_romtime::println!("[mcu-rom] DOT backup recovery succeeded, resetting");
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom] DOT locked-state recovery succeeded, resetting"
+            );
             env.mci.trigger_warm_reset();
             fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
         }
-        Err(err) => {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] DOT backup recovery failed: {}",
-                HexWord(err.into())
-            );
-            Some(err)
-        }
+        Err(err) => err,
     }
 }
 
-/// Attempts DOT override using the recovery transport if available.
-/// DOT_OVERRIDE happens in recovery mode when the blob is corrupted/invalid.
-/// If override succeeds, triggers a warm reset (never returns).
-/// If override fails or no transport is available, returns to caller.
-fn attempt_dot_override(
-    env: &mut RomEnv,
-    dot_fuses: &crate::DotFuses,
-    params: &RomParameters,
-    dot_flash: &dyn crate::hil::FlashStorage,
-    key_type: CmStableKeyType,
-) {
-    if let Some(transport) = params.dot_recovery_transport {
-        if params.dot_recovery_wdt_timeout > 0 {
-            env.mci.configure_wdt(params.dot_recovery_wdt_timeout, 1);
-        }
-        caliptra_mcu_romtime::println!("[mcu-rom] Attempting DOT override via challenge/response");
-        match device_ownership_transfer::dot_override_challenge_flow(
-            env, dot_fuses, transport, dot_flash, key_type,
-        ) {
-            Ok(()) => {
-                caliptra_mcu_romtime::println!("[mcu-rom] DOT override succeeded, resetting");
-                env.mci.trigger_warm_reset();
-                fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
-            }
-            Err(err) => {
-                caliptra_mcu_romtime::println!(
-                    "[mcu-rom] DOT override failed: {}, continuing boot",
-                    HexWord(err.into())
-                );
-            }
-        }
+/// [`DotLockedRecoveryHandler`] that enters the I3C services mailbox loop.
+///
+/// The handler runs the interactive I3C command loop (DOT_RECOVERY,
+/// DOT_OVERRIDE, etc.) and returns success if the loop completes
+/// without error.
+pub struct I3cDotLockedRecoveryHandler {
+    pub i3c_base: caliptra_mcu_romtime::StaticRef<caliptra_mcu_registers_generated::i3c::regs::I3c>,
+    pub services: crate::I3cServicesModes,
+    pub i3c_target_addr: u8,
+}
+
+impl crate::device_ownership_transfer::DotLockedRecoveryHandler for I3cDotLockedRecoveryHandler {
+    fn attempt(
+        &self,
+        env: &mut RomEnv,
+        ctx: &crate::device_ownership_transfer::DotLockedRecoveryContext<'_>,
+    ) -> caliptra_mcu_error::McuResult<()> {
+        let dot_ctx = crate::DotContext {
+            soc_manager: &mut env.soc_manager,
+            mci: &env.mci,
+            otp: &env.otp,
+            dot_fuses: ctx.dot_fuses,
+            dot_flash: ctx.dot_flash,
+            key_type: ctx.key_type,
+        };
+        enter_i3c_services(
+            &env.mci,
+            self.i3c_base,
+            self.services,
+            self.i3c_target_addr,
+            Some(dot_ctx),
+        );
+        Ok(())
     }
 }
 
@@ -261,6 +259,8 @@ fn enter_i3c_services(
     mci: &caliptra_mcu_romtime::Mci,
     i3c_base: caliptra_mcu_romtime::StaticRef<caliptra_mcu_registers_generated::i3c::regs::I3c>,
     services: I3cServicesModes,
+    target_addr: u8,
+    dot_ctx: Option<crate::DotContext<'_>>,
 ) {
     // Extend the watchdog timeout for I3C services since the loop may run
     // for an extended period waiting for commands from the BMC.
@@ -281,14 +281,61 @@ fn enter_i3c_services(
     caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Recovery disabled");
 
     mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesStarted.into());
-    let mut handler = I3cMailboxHandler::new(i3c_base, services);
-    match handler.run() {
+
+    // Acquire the MCI mailbox lock so we can use its SRAM as a word-aligned
+    // reassembly buffer for multi-packet I3C commands.
+    //
+    // On HW the lock is forced to 1 on reset, so reading it will return
+    // 1 (locked). We release any stale lock by writing execute=0, then retry.
+    // See issue #1220.
+
+    // Reading the lock register atomically acquires it when it returns 0.
+    // Loop until acquired or give up after a bounded number of attempts.
+    // On the first failure we release a potentially stale lock.
+    let mut lock_acquired = false;
+    let mut released_stale = false;
+    for _ in 0..100 {
+        if mci.registers.mcu_mbox0_csr_mbox_lock.read(MboxLock::Lock) == 0 {
+            lock_acquired = true;
+            break;
+        }
+        // First failed attempt: release a possibly stale lock from a prior run
+        if !released_stale {
+            released_stale = true;
+            mci.registers
+                .mcu_mbox0_csr_mbox_execute
+                .write(MboxExecute::Execute::CLEAR);
+        }
+    }
+    if !lock_acquired {
+        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Warning: could not acquire mailbox lock");
+    }
+
+    let reassembly_buf = unsafe {
+        core::slice::from_raw_parts_mut(
+            mci.registers.mcu_mbox0_csr_mbox_sram.as_ptr() as *mut u32,
+            crate::i3c_mailbox::MAX_REASSEMBLY_WORDS,
+        )
+    };
+
+    let mut handler =
+        I3cMailboxHandler::new(i3c_base, services, target_addr, dot_ctx, reassembly_buf);
+    match handler.run(|| {
+        mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesReady.into());
+    }) {
         Ok(()) => {
             mci.set_flow_checkpoint(McuRomBootStatus::I3cServicesComplete.into());
         }
         Err(err) => {
             caliptra_mcu_romtime::println!("[mcu-rom] I3C services error: {}", HexWord(err.into()));
         }
+    }
+
+    // Release mailbox lock if we acquired it
+    if lock_acquired {
+        mci.registers
+            .mcu_mbox0_csr_mbox_execute
+            .write(MboxExecute::Execute::CLEAR);
     }
 }
 
@@ -322,6 +369,11 @@ impl BootFlow for ColdBoot {
             env.i3c1_base
         } else {
             env.i3c_base
+        };
+        let i3c_target_addr = if straps.active_i3c == 1 {
+            straps.i3c1_static_addr
+        } else {
+            straps.i3c_static_addr
         };
         caliptra_mcu_romtime::println!(
             "[mcu-rom] Active I3C core for recovery: {}",
@@ -599,26 +651,15 @@ impl BootFlow for ColdBoot {
 
             if dot_blob.iter().all(|&b| b == 0) || dot_blob.iter().all(|&b| b == 0xFF) {
                 if dot_fuses.enabled && dot_fuses.is_locked() {
-                    // DOT is in ODD state but blob is empty/corrupt.
-                    // Try backup-blob recovery first, then override.
                     let key_type = params
                         .dot_stable_key_type
                         .unwrap_or(CmStableKeyType::IDevId);
-                    let recovery_err =
-                        attempt_dot_recovery(env, &dot_fuses, &params, dot_flash, key_type);
-                    // Recovery success triggers a warm reset and never returns.
-                    // If recovery failed or was not configured, try override.
-                    attempt_dot_override(env, &dot_fuses, &params, dot_flash, key_type);
-                    // Try I3C services if DOT_RECOVERY enabled
-                    if let Some(services) = params.i3c_services {
-                        if services.contains(I3cServicesModes::DOT_RECOVERY) {
-                            enter_i3c_services(&env.mci, i3c_base, services);
-                        }
-                    }
                     caliptra_mcu_romtime::println!(
                         "[mcu-rom] DOT fuses are initialized but DOT blob is empty/corrupt"
                     );
-                    fatal_error(recovery_err.unwrap_or(McuError::ROM_COLD_BOOT_DOT_ERROR));
+                    let err =
+                        attempt_dot_locked_recovery(env, &dot_fuses, &params, dot_flash, key_type);
+                    fatal_error(err);
                 }
                 caliptra_mcu_romtime::println!("[mcu-rom] DOT blob is empty; skipping DOT flow");
                 device_ownership_transfer::load_owner_pkhash(&env.otp)
@@ -634,28 +675,15 @@ impl BootFlow for ColdBoot {
                 ) {
                     Ok(owner) => owner,
                     Err(err) => {
-                        // DOT flow failed (e.g., HMAC verification) - attempt recovery/override if in ODD state
                         if dot_fuses.is_locked() {
                             let key_type = params
                                 .dot_stable_key_type
                                 .unwrap_or(CmStableKeyType::IDevId);
-                            let recovery_err =
-                                attempt_dot_recovery(env, &dot_fuses, &params, dot_flash, key_type);
-                            // Recovery success triggers a warm reset and never returns.
-                            // If recovery failed or was not configured, try override.
-                            attempt_dot_override(env, &dot_fuses, &params, dot_flash, key_type);
-                            if let Some(e) = recovery_err {
-                                caliptra_mcu_romtime::println!(
-                                    "[mcu-rom] DOT recovery failed: {}",
-                                    HexWord(e.into())
-                                );
-                            }
-                            // Try I3C services if DOT_RECOVERY enabled
-                            if let Some(services) = params.i3c_services {
-                                if services.contains(I3cServicesModes::DOT_RECOVERY) {
-                                    enter_i3c_services(&env.mci, i3c_base, services);
-                                }
-                            }
+                            // Try locked-state recovery; if it succeeds it
+                            // resets and never returns.
+                            let _recovery_err = attempt_dot_locked_recovery(
+                                env, &dot_fuses, &params, dot_flash, key_type,
+                            );
                         }
                         caliptra_mcu_romtime::println!(
                             "[mcu-rom] Fatal error performing Device Ownership Transfer: {}",
@@ -679,7 +707,20 @@ impl BootFlow for ColdBoot {
         // Enter I3C services unconditionally if force_i3c_services is set
         if params.force_i3c_services {
             if let Some(services) = params.i3c_services {
-                enter_i3c_services(&env.mci, i3c_base, services);
+                let dot_ctx = params.dot_flash.map(|dot_flash| {
+                    let key_type = params
+                        .dot_stable_key_type
+                        .unwrap_or(CmStableKeyType::IDevId);
+                    crate::DotContext {
+                        soc_manager: &mut env.soc_manager,
+                        mci: &env.mci,
+                        otp: &env.otp,
+                        dot_fuses: &dot_fuses,
+                        dot_flash,
+                        key_type,
+                    }
+                });
+                enter_i3c_services(&env.mci, i3c_base, services, i3c_target_addr, dot_ctx);
             }
         }
 

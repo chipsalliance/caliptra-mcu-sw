@@ -729,6 +729,12 @@ pub struct RomParameters<'a> {
     /// the MCU watchdog is configured with this value before waiting for
     /// mbox0 commands during recovery or override. 0 = no watchdog.
     pub dot_recovery_wdt_timeout: u64,
+    /// Integrator-ordered list of DOT locked-state recovery handlers.
+    /// When DOT is in ODD state, the ROM iterates through these in order,
+    /// respecting each entry's error policy. The first handler that succeeds
+    /// triggers a warm reset. If empty, no locked-state recovery is attempted.
+    pub dot_locked_recovery_handlers:
+        &'a [crate::device_ownership_transfer::DotLockedRecoveryEntry<'a>],
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,

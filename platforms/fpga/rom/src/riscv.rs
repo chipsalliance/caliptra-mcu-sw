@@ -12,7 +12,7 @@ Abstract:
 
 --*/
 
-use crate::flash::flash_drv::{FpgaFlashCtrl, PRIMARY_FLASH_CTRL_BASE};
+use crate::flash::flash_drv::{FpgaFlashCtrl, PRIMARY_FLASH_CTRL_BASE, SECONDARY_FLASH_CTRL_BASE};
 use crate::io::{print_to_console, EXITER, FATAL_ERROR_HANDLER, FPGA_WRITER};
 use core::fmt::Write;
 
@@ -211,6 +211,10 @@ pub extern "C" fn rom_entry() -> ! {
 
     let hooks = LoggingRomHooks;
 
+    // DOT flash is backed by the secondary flash controller.
+    let secondary_flash_ctrl = FpgaFlashCtrl::initialize_flash_ctrl(SECONDARY_FLASH_CTRL_BASE);
+    let dot_flash: &dyn caliptra_mcu_rom_common::hil::FlashStorage = &secondary_flash_ctrl;
+
     caliptra_mcu_rom_common::rom_start(RomParameters {
         lifecycle_transition,
         burn_lifecycle_tokens,
@@ -218,6 +222,7 @@ pub extern "C" fn rom_entry() -> ! {
         otp_enable_integrity_check: true,
         otp_enable_consistency_check: true,
         flash_partition_driver: Some(&mut flash_partition),
+        dot_flash: Some(dot_flash),
         cptra_mbox_axi_users: mbox_axi_users,
         cptra_fuse_axi_user: axi_user0,
         cptra_trng_axi_user: axi_user0,

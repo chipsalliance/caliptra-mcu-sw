@@ -21,7 +21,7 @@ use caliptra_api::mailbox::{
     CmShaResp, CmStableKeyType, CommandId, EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader,
 };
 use caliptra_mcu_error::{McuError, McuResult};
-use caliptra_mcu_romtime::McuRomBootStatus;
+use caliptra_mcu_romtime::{HexWord, McuRomBootStatus};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
 const DOT_LABEL: &[u8; 23] = b"Caliptra DOT stable key";
@@ -225,7 +225,7 @@ pub fn dot_flow(
 
     let dot_effective_key = derive_stable_key_flow(env, dot_fuses, stable_key_type)?;
 
-    verify_dot_blob(env, blob, &dot_effective_key)?;
+    verify_dot_blob(&mut env.soc_manager, blob, &dot_effective_key)?;
 
     burn_dot_fuses(env, dot_fuses, blob)?;
 
@@ -272,6 +272,14 @@ fn cm_derive_stable_key(
     dot_fuses: &DotFuses,
     key_type: CmStableKeyType,
 ) -> McuResult<DotEffectiveKey> {
+    cm_derive_stable_key_impl(&mut env.soc_manager, dot_fuses, key_type)
+}
+
+pub(crate) fn cm_derive_stable_key_impl(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    dot_fuses: &DotFuses,
+    key_type: CmStableKeyType,
+) -> McuResult<DotEffectiveKey> {
     // Construct the label as fixed label + 16-bit fuse value.
     // Per spec, EVEN state (unlocked) derives with (n+1) for next DOT_BLOB sealing,
     // while ODD state (locked) derives with (n) for current DOT_BLOB authentication.
@@ -295,7 +303,7 @@ fn cm_derive_stable_key(
     };
     let mut req32: [u32; core::mem::size_of::<CmDeriveStableKeyReq>() / 4] = transmute!(req);
 
-    if let Err(err) = env.soc_manager.exec_mailbox_req_u32(
+    if let Err(err) = soc_manager.exec_mailbox_req_u32(
         CommandId::CM_DERIVE_STABLE_KEY.into(),
         &mut req32,
         &mut resp,
@@ -320,7 +328,11 @@ pub struct CmHmacDotBlobReq {
 }
 
 /// Calls Caliptra to compute an HMAC over DotBlobFields.
-fn cm_hmac(env: &mut RomEnv, key: &Cmk, fields: &DotBlobFields) -> McuResult<[u32; 16]> {
+pub(crate) fn cm_hmac(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    key: &Cmk,
+    fields: &DotBlobFields,
+) -> McuResult<[u32; 16]> {
     let mut resp = [0u32; core::mem::size_of::<CmHmacResp>() / 4];
     let req = CmHmacDotBlobReq {
         cmk: transmute!(key.0),
@@ -332,8 +344,7 @@ fn cm_hmac(env: &mut RomEnv, key: &Cmk, fields: &DotBlobFields) -> McuResult<[u3
     let mut req: [u32; core::mem::size_of::<CmHmacDotBlobReq>() / 4] = transmute!(req);
 
     if let Err(err) =
-        env.soc_manager
-            .exec_mailbox_req_u32(CommandId::CM_HMAC.into(), &mut req, &mut resp)
+        soc_manager.exec_mailbox_req_u32(CommandId::CM_HMAC.into(), &mut req, &mut resp)
     {
         caliptra_mcu_romtime::println!("[mcu-rom] Error computing HMAC: {:?}", err);
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
@@ -357,9 +368,12 @@ fn cm_hmac(env: &mut RomEnv, key: &Cmk, fields: &DotBlobFields) -> McuResult<[u3
 /// # Returns
 /// * `Ok(())` - If the DOT blob is authentic.
 /// * `Err(McuError)` - If HMAC verification fails (blob is corrupted or invalid).
-pub fn verify_dot_blob(env: &mut RomEnv, blob: &DotBlob, key: &DotEffectiveKey) -> McuResult<()> {
-    // compute the HMAC over everything except the HMAC itself
-    let verify = cm_hmac(env, &key.0, &blob.fields)?;
+pub fn verify_dot_blob(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    blob: &DotBlob,
+    key: &DotEffectiveKey,
+) -> McuResult<()> {
+    let verify = cm_hmac(soc_manager, &key.0, &blob.fields)?;
     if !constant_time_eq::constant_time_eq(verify.as_bytes(), blob.hmac.as_bytes()) {
         caliptra_mcu_romtime::println!("[mcu-rom] DOT blob HMAC did not match");
         return Err(McuError::ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR);
@@ -495,7 +509,7 @@ fn burn_dot_fuses(env: &mut RomEnv, dot_fuses: &DotFuses, blob: &DotBlob) -> Mcu
 /// # Returns
 /// * `Ok(())` - If the fuse was successfully burned.
 /// * `Err(McuError)` - If the OTP write operation fails.
-fn burn_dot_lock_fuse(otp: &Otp, dot_fuses: &DotFuses) -> McuResult<()> {
+pub(crate) fn burn_dot_lock_fuse(otp: &Otp, dot_fuses: &DotFuses) -> McuResult<()> {
     use caliptra_mcu_registers_generated::fuses;
     // Each state transition burns the next sequential bit in the dot_fuse_array.
     let next_bit = dot_fuses.burned as u32;
@@ -552,6 +566,19 @@ pub struct OverrideChallengeResponse<'a> {
     pub mldsa_pub_key: &'a [u32; MLDSA87_PUB_KEY_SIZE_DWORDS],
 }
 
+/// Authentication parameters for a DOT override challenge/response.
+///
+/// Bundles the parsed cryptographic material needed to verify an override
+/// response, shared by both the MCI mailbox and I3C services flows.
+pub(crate) struct OverrideAuth<'a> {
+    pub ecc_key: &'a EccP384PublicKey,
+    pub ecc_sig_r: &'a [u8; 48],
+    pub ecc_sig_s: &'a [u8; 48],
+    pub mldsa_pub_key: &'a [u32; MLDSA87_PUB_KEY_SIZE_DWORDS],
+    pub mldsa_signature: &'a [u32; MLDSA87_SIGNATURE_SIZE_DWORDS],
+    pub challenge: &'a [u8; 48],
+}
+
 /// Transport trait for DOT recovery and override communication.
 ///
 /// Abstracts the communication channel between ROM and the BMC for
@@ -571,6 +598,105 @@ pub trait RecoveryTransport {
 }
 
 // ---------------------------------------------------------------------------
+// Shared DOT override helpers (used by both MCI and I3C flows)
+// ---------------------------------------------------------------------------
+
+/// Interpret an `EccP384PublicKey` as a `&[u32]` slice for hashing.
+pub(crate) fn ecc_key_as_u32_slice(key: &EccP384PublicKey) -> &[u32] {
+    let bytes = zerocopy::IntoBytes::as_bytes(key);
+    // EccP384PublicKey is #[repr(C)] with [u32;12]+[u32;12], always aligned.
+    unsafe { core::slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / 4) }
+}
+
+/// Verify that the vendor public keys match `recovery_pk_hash` and that
+/// both signatures (ECDSA P-384 + MLDSA-87) are valid over the challenge.
+///
+/// This is the core cryptographic verification shared between the MCI
+/// mailbox override flow and the I3C services override flow.
+pub(crate) fn verify_override_response(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    recovery_pk_hash: &RecoveryPkHash,
+    auth: &OverrideAuth<'_>,
+) -> McuResult<()> {
+    // Verify PK hash matches OTP fuses
+    let ecc_key_u32 = ecc_key_as_u32_slice(auth.ecc_key);
+    let computed_hash = cm_sha384(soc_manager, &[ecc_key_u32, auth.mldsa_pub_key])?;
+
+    let fuse_hash_bytes: [u8; 48] = transmute!(recovery_pk_hash.0);
+    if !constant_time_eq::constant_time_eq(&computed_hash, &fuse_hash_bytes) {
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] Override response PK hash mismatch");
+        return Err(McuError::ROM_DOT_OVERRIDE_PK_HASH_MISMATCH);
+    }
+
+    // Verify ECDSA signature over SHA-384(challenge)
+    let challenge_u32: [u32; 12] = transmute!(*auth.challenge);
+    let challenge_hash = cm_sha384(soc_manager, &[&challenge_u32])?;
+
+    cm_ecdsa384_verify(
+        soc_manager,
+        auth.ecc_key,
+        auth.ecc_sig_r,
+        auth.ecc_sig_s,
+        &challenge_hash,
+    )
+    .inspect_err(|_e| {
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom-dot] Override ECDSA signature verification failed"
+        );
+    })?;
+
+    // Verify MLDSA-87 signature over raw challenge
+    cm_mldsa87_verify(
+        soc_manager,
+        auth.mldsa_pub_key,
+        auth.mldsa_signature,
+        &challenge_u32,
+    )
+    .inspect_err(|_e| {
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom-dot] Override MLDSA signature verification failed"
+        );
+    })?;
+
+    Ok(())
+}
+
+/// After a successful override verification, burn the DOT lock fuse and
+/// write an empty DOT blob sealed with the new EVEN-state key.
+pub(crate) fn apply_override(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    otp: &Otp,
+    dot_fuses: &DotFuses,
+    dot_flash: &dyn FlashStorage,
+    stable_key_type: CmStableKeyType,
+) -> McuResult<()> {
+    burn_dot_lock_fuse(otp, dot_fuses)?;
+
+    // Derive the EVEN-state key (fuse count + 1) for the new blob
+    let even_fuses = DotFuses {
+        enabled: dot_fuses.enabled,
+        burned: dot_fuses.burned + 1,
+        total: dot_fuses.total,
+        recovery_pk_hash: dot_fuses.recovery_pk_hash.clone(),
+    };
+    let even_key = cm_derive_stable_key_impl(soc_manager, &even_fuses, stable_key_type)?;
+
+    let mut new_blob = DotBlob {
+        fields: DotBlobFields::default(),
+        hmac: [0u32; 16],
+    };
+    new_blob.fields.version = 1;
+    let hmac = cm_hmac(soc_manager, &even_key.0, &new_blob.fields)?;
+    new_blob.hmac = hmac;
+
+    dot_flash
+        .write(new_blob.as_bytes(), 0)
+        .map_err(|_| McuError::ROM_DOT_RECOVERY_FLASH_WRITE_ERROR)?;
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Caliptra crypto helper: SHA-384 (one-shot CM_SHA command)
 // ---------------------------------------------------------------------------
 
@@ -580,7 +706,10 @@ const SHA384_DIGEST_SIZE: usize = 48;
 /// Computes SHA-384 hash by streaming `&[u32]` data parts to Caliptra's
 /// CM_SHA command via `exec_mailbox_req_u32_parts`.  This avoids copying
 /// large buffers (e.g. MLDSA public keys) onto the stack.
-fn cm_sha384(env: &mut RomEnv, data_parts: &[&[u32]]) -> McuResult<[u8; SHA384_DIGEST_SIZE]> {
+pub(crate) fn cm_sha384(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    data_parts: &[&[u32]],
+) -> McuResult<[u8; SHA384_DIGEST_SIZE]> {
     let total_data_bytes: usize = data_parts.iter().map(|p| p.len() * 4).sum();
 
     let mut hdr: [u32; core::mem::size_of::<CmShaReqHdr>() / 4] = transmute!(CmShaReqHdr {
@@ -591,7 +720,7 @@ fn cm_sha384(env: &mut RomEnv, data_parts: &[&[u32]]) -> McuResult<[u8; SHA384_D
 
     let mut resp32: [u32; core::mem::size_of::<CmShaResp>() / 4] = transmute!(CmShaResp::default());
 
-    if let Err(err) = env.soc_manager.exec_mailbox_req_u32_parts(
+    if let Err(err) = soc_manager.exec_mailbox_req_u32_parts(
         CommandId::CM_SHA.into(),
         &mut hdr,
         data_parts,
@@ -614,7 +743,9 @@ fn cm_sha384(env: &mut RomEnv, data_parts: &[&[u32]]) -> McuResult<[u8; SHA384_D
 }
 
 /// Generates random bytes using Caliptra's CM_RANDOM_GENERATE command.
-fn cm_random_generate(env: &mut RomEnv) -> McuResult<[u8; 48]> {
+pub(crate) fn cm_random_generate(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+) -> McuResult<[u8; 48]> {
     #[repr(C)]
     #[derive(Default, IntoBytes, FromBytes, KnownLayout, Immutable)]
     struct CmRandomReq {
@@ -651,7 +782,7 @@ fn cm_random_generate(env: &mut RomEnv) -> McuResult<[u8; 48]> {
     let mut resp32: [u32; core::mem::size_of::<CmRandomResp>() / 4] =
         transmute!(CmRandomResp::default());
 
-    if let Err(err) = env.soc_manager.exec_mailbox_req_u32(
+    if let Err(err) = soc_manager.exec_mailbox_req_u32(
         CommandId::CM_RANDOM_GENERATE.into(),
         &mut req32,
         &mut resp32,
@@ -666,8 +797,8 @@ fn cm_random_generate(env: &mut RomEnv) -> McuResult<[u8; 48]> {
 /// Verifies an ECDSA P-384 signature using Caliptra's ECDSA384_SIGNATURE_VERIFY command.
 ///
 /// This ROM command takes raw public key coordinates (not a CMK handle).
-fn cm_ecdsa384_verify(
-    env: &mut RomEnv,
+pub(crate) fn cm_ecdsa384_verify(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     pub_key: &EccP384PublicKey,
     signature_r: &[u8; 48],
     signature_s: &[u8; 48],
@@ -699,7 +830,7 @@ fn cm_ecdsa384_verify(
     let mut resp32: [u32; core::mem::size_of::<MailboxRespHeader>() / 4] =
         transmute!(MailboxRespHeader::default());
 
-    if let Err(err) = env.soc_manager.exec_mailbox_req_u32(
+    if let Err(err) = soc_manager.exec_mailbox_req_u32(
         CommandId::ECDSA384_SIGNATURE_VERIFY.into(),
         &mut req32,
         &mut resp32,
@@ -714,8 +845,8 @@ fn cm_ecdsa384_verify(
 ///
 /// The public key and signature are passed as `&[u32]` slices and streamed
 /// directly to the mailbox to avoid an ~11 KB stack allocation.
-fn cm_mldsa87_verify(
-    env: &mut RomEnv,
+pub(crate) fn cm_mldsa87_verify(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     pub_key: &[u32],
     signature: &[u32],
     message: &[u32],
@@ -750,7 +881,7 @@ fn cm_mldsa87_verify(
     let mut resp32: [u32; core::mem::size_of::<MailboxRespHeader>() / 4] =
         transmute!(MailboxRespHeader::default());
 
-    if let Err(err) = env.soc_manager.exec_mailbox_req_u32_parts(
+    if let Err(err) = soc_manager.exec_mailbox_req_u32_parts(
         CommandId::MLDSA87_SIGNATURE_VERIFY.into(),
         &mut hdr,
         data_parts,
@@ -778,6 +909,39 @@ pub trait DotRecoveryHandler {
     fn read_recovery_blob(&self) -> McuResult<[u8; DOT_BLOB_SIZE]>;
 }
 
+/// A `DotRecoveryHandler` that returns a blob already held in memory.
+/// Used by the I3C services handler where the blob has been fully received
+/// and reassembled before recovery begins.
+pub struct BufferedRecoveryHandler {
+    pub blob: [u8; DOT_BLOB_SIZE],
+}
+
+impl DotRecoveryHandler for BufferedRecoveryHandler {
+    fn read_recovery_blob(&self) -> McuResult<[u8; DOT_BLOB_SIZE]> {
+        Ok(self.blob)
+    }
+}
+
+/// Authenticate a recovery blob and write it to flash.
+///
+/// This is the shared core of DOT_RECOVERY used by both
+/// `dot_recovery_flow` (MCI path) and the I3C services handler.
+pub(crate) fn verify_and_write_recovery_blob(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+    dot_fuses: &DotFuses,
+    blob_bytes: &[u8; DOT_BLOB_SIZE],
+    dot_flash: &dyn FlashStorage,
+    stable_key_type: CmStableKeyType,
+) -> McuResult<()> {
+    let backup_blob: DotBlob = transmute!(*blob_bytes);
+    let dot_effective_key = cm_derive_stable_key_impl(soc_manager, dot_fuses, stable_key_type)?;
+    verify_dot_blob(soc_manager, &backup_blob, &dot_effective_key)?;
+    dot_flash
+        .write(blob_bytes, 0)
+        .map_err(|_| McuError::ROM_DOT_RECOVERY_FLASH_WRITE_ERROR)?;
+    Ok(())
+}
+
 /// Performs DOT recovery by authenticating a backup blob and writing it to flash.
 ///
 /// This implements the DOT_RECOVERY flow from the spec:
@@ -799,37 +963,19 @@ pub fn dot_recovery_flow(
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DotRecoveryStarted.into());
 
-    // Get backup DOT blob from recovery agent
     let backup_blob_bytes = recovery_handler.read_recovery_blob()?;
-    let backup_blob: DotBlob = transmute!(backup_blob_bytes);
 
-    // Derive DOT_EFFECTIVE_KEY for the current fuse state
-    let dot_effective_key = derive_stable_key_flow(env, dot_fuses, stable_key_type)?;
-
-    // Authenticate the backup blob with HMAC
-    if let Err(err) = verify_dot_blob(env, &backup_blob, &dot_effective_key) {
-        caliptra_mcu_romtime::println!("[mcu-rom-dot] Recovery blob authentication failed");
+    verify_and_write_recovery_blob(
+        &mut env.soc_manager,
+        dot_fuses,
+        &backup_blob_bytes,
+        dot_flash,
+        stable_key_type,
+    )
+    .inspect_err(|_e| {
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
-        return Err(err);
-    }
-    caliptra_mcu_romtime::println!("[mcu-rom-dot] Recovery blob authenticated successfully");
-    env.mci
-        .set_flow_checkpoint(McuRomBootStatus::DotRecoveryBlobAuthenticated.into());
-
-    // Write authenticated blob to flash
-    if let Err(err) = dot_flash.write(&backup_blob_bytes, 0) {
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom-dot] Failed to write recovery blob to flash: {:?}",
-            err
-        );
-        env.mci
-            .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
-        return Err(McuError::ROM_DOT_RECOVERY_FLASH_WRITE_ERROR);
-    }
-    caliptra_mcu_romtime::println!("[mcu-rom-dot] Recovery blob written to flash");
-    env.mci
-        .set_flow_checkpoint(McuRomBootStatus::DotRecoveryBlobWritten.into());
+    })?;
 
     caliptra_mcu_romtime::println!("[mcu-rom-dot] DOT recovery complete, reset required");
     env.mci
@@ -882,14 +1028,9 @@ pub fn dot_override_challenge_flow(
     })?;
 
     // Verify vendor public key hash matches recovery PK hash in OTP fuses (ECC + MLDSA)
-    let ecc_key_u32: &[u32] = {
-        let ecc_bytes = request.ecc_pub_key.as_bytes();
-        unsafe {
-            core::slice::from_raw_parts(ecc_bytes.as_ptr() as *const u32, ecc_bytes.len() / 4)
-        }
-    };
-    let computed_hash =
-        cm_sha384(env, &[ecc_key_u32, request.mldsa_pub_key]).inspect_err(|_e| {
+    let ecc_key_u32 = ecc_key_as_u32_slice(&request.ecc_pub_key);
+    let computed_hash = cm_sha384(&mut env.soc_manager, &[ecc_key_u32, request.mldsa_pub_key])
+        .inspect_err(|_e| {
             env.mci
                 .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
         })?;
@@ -903,7 +1044,7 @@ pub fn dot_override_challenge_flow(
     }
 
     // Generate and send challenge
-    let challenge = cm_random_generate(env).inspect_err(|_e| {
+    let challenge = cm_random_generate(&mut env.soc_manager).inspect_err(|_e| {
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
     })?;
@@ -921,99 +1062,36 @@ pub fn dot_override_challenge_flow(
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
     })?;
 
-    // Re-verify that the public keys in the response match the OTP hash.
-    // The override response carries fresh copies of both keys; without this
-    // check an attacker could substitute their own keys + matching signatures.
-    let response_ecc_u32: &[u32] = {
-        let ecc_bytes = response.ecc_pub_key.as_bytes();
-        unsafe {
-            core::slice::from_raw_parts(ecc_bytes.as_ptr() as *const u32, ecc_bytes.len() / 4)
-        }
+    let auth = OverrideAuth {
+        ecc_key: &response.ecc_pub_key,
+        ecc_sig_r: &response.ecc_signature_r,
+        ecc_sig_s: &response.ecc_signature_s,
+        mldsa_pub_key: response.mldsa_pub_key,
+        mldsa_signature: response.mldsa_signature,
+        challenge: &challenge,
     };
-    let response_pk_hash = cm_sha384(env, &[response_ecc_u32, response.mldsa_pub_key])
-        .inspect_err(|_e| {
-            env.mci
-                .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
-        })?;
-    if !constant_time_eq::constant_time_eq(&response_pk_hash, &fuse_hash_bytes) {
-        caliptra_mcu_romtime::println!("[mcu-rom-dot] Override response PK hash mismatch");
-        env.mci
-            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
-        return Err(McuError::ROM_DOT_OVERRIDE_PK_HASH_MISMATCH);
-    }
 
-    let challenge_u32: [u32; 12] = transmute!(challenge);
-    let challenge_hash = cm_sha384(env, &[&challenge_u32]).inspect_err(|_e| {
+    verify_override_response(&mut env.soc_manager, recovery_pk_hash, &auth).inspect_err(|_e| {
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
     })?;
 
-    if let Err(_e) = cm_ecdsa384_verify(
-        env,
-        &response.ecc_pub_key,
-        &response.ecc_signature_r,
-        &response.ecc_signature_s,
-        &challenge_hash,
-    ) {
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom-dot] Override ECDSA signature verification failed"
-        );
-        env.mci
-            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
-        return Err(McuError::ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED);
-    }
-
-    caliptra_mcu_romtime::println!("[mcu-rom-dot] ECDSA verified, verifying MLDSA signature...");
-    if let Err(_e) = cm_mldsa87_verify(
-        env,
-        response.mldsa_pub_key,
-        response.mldsa_signature,
-        &challenge_u32,
-    ) {
-        caliptra_mcu_romtime::println!(
-            "[mcu-rom-dot] Override MLDSA signature verification failed"
-        );
-        env.mci
-            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
-        return Err(McuError::ROM_DOT_OVERRIDE_SIG_VERIFY_FAILED);
-    }
-
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DotOverrideSigVerified.into());
 
-    // Burn DOT fuse (n→n+1) to transition ODD→EVEN
-    if let Err(e) = burn_dot_lock_fuse(&env.otp, dot_fuses) {
+    // Burn DOT fuse and write empty blob
+    apply_override(
+        &mut env.soc_manager,
+        &env.otp,
+        dot_fuses,
+        dot_flash,
+        stable_key_type,
+    )
+    .inspect_err(|_e| {
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
-        return Err(e);
-    }
-    env.mci
-        .set_flow_checkpoint(McuRomBootStatus::DotOverrideFuseBurned.into());
+    })?;
 
-    // Write a new empty DOT blob HMAC'd with the EVEN-state key.
-    // The fuse has been burned so the device is now EVEN (unlocked). Derive
-    // the key that the next boot will use to verify this blob.
-    let even_fuses = DotFuses {
-        enabled: dot_fuses.enabled,
-        burned: dot_fuses.burned + 1,
-        total: dot_fuses.total,
-        recovery_pk_hash: dot_fuses.recovery_pk_hash.clone(),
-    };
-    let even_key = derive_stable_key_flow(env, &even_fuses, stable_key_type)?;
-
-    let mut new_blob = DotBlob {
-        fields: DotBlobFields::default(),
-        hmac: [0u32; 16],
-    };
-    new_blob.fields.version = 1;
-    let hmac = cm_hmac(env, &even_key.0, &new_blob.fields)?;
-    new_blob.hmac = hmac;
-
-    if let Err(_err) = dot_flash.write(new_blob.as_bytes(), 0) {
-        env.mci
-            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
-        return Err(McuError::ROM_DOT_RECOVERY_FLASH_WRITE_ERROR);
-    }
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DotOverrideBlobWritten.into());
 
@@ -1075,7 +1153,7 @@ fn create_and_seal_dot_blob(
     };
 
     // Compute HMAC over the blob fields (everything except the HMAC tag).
-    let hmac_tag = cm_hmac(env, &dot_effective_key.0, &blob.fields)?;
+    let hmac_tag = cm_hmac(&mut env.soc_manager, &dot_effective_key.0, &blob.fields)?;
     blob.hmac = hmac_tag;
 
     // Write the sealed DOT blob to flash.
@@ -1345,4 +1423,131 @@ pub fn process_fw_manifest_dot_commands(
 
     caliptra_mcu_romtime::println!("[mcu-rom-dot] Manifest DOT processing complete");
     Ok(())
+}
+
+/// Policy for handling errors from a [`DotLockedRecoveryHandler`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DotLockedRecoveryErrorPolicy {
+    /// On error, skip this handler and try the next one.
+    Continue,
+    /// Retry up to N times, then fall through to the next handler.
+    Retry(core::num::NonZeroU8),
+}
+
+/// A handler that attempts to recover from DOT locked state.
+///
+/// Integrators provide an ordered list of these handlers so the ROM tries
+/// each recovery mechanism in the integrator-chosen order.  If a handler
+/// succeeds it should write the DOT blob to flash and return `Ok(())`;
+/// the caller will then trigger a warm reset.
+pub trait DotLockedRecoveryHandler {
+    /// Attempt to recover from DOT locked state.
+    fn attempt(&self, env: &mut RomEnv, ctx: &DotLockedRecoveryContext<'_>) -> McuResult<()>;
+}
+
+/// Shared context passed to every [`DotLockedRecoveryHandler`].
+pub struct DotLockedRecoveryContext<'a> {
+    pub dot_fuses: &'a DotFuses,
+    pub dot_flash: &'a dyn FlashStorage,
+    pub key_type: CmStableKeyType,
+}
+
+/// A [`DotLockedRecoveryHandler`] paired with its error-handling policy.
+pub struct DotLockedRecoveryEntry<'a> {
+    pub handler: &'a dyn DotLockedRecoveryHandler,
+    pub policy: DotLockedRecoveryErrorPolicy,
+}
+
+/// Manages a sequence of [`DotLockedRecoveryEntry`]s, iterating through them
+/// according to each entry's error policy.
+pub struct DotLockedRecoveryManager<'a> {
+    entries: &'a [DotLockedRecoveryEntry<'a>],
+    current: usize,
+    retries: u8,
+}
+
+impl<'a> DotLockedRecoveryManager<'a> {
+    pub fn new(entries: &'a [DotLockedRecoveryEntry<'a>]) -> Self {
+        Self {
+            entries,
+            current: 0,
+            retries: 0,
+        }
+    }
+
+    /// Run through the handler chain.  Stops and returns `Ok(())` on the
+    /// first successful handler.  Returns the last error if all are
+    /// exhausted.
+    pub fn run(&mut self, env: &mut RomEnv, ctx: &DotLockedRecoveryContext<'_>) -> McuResult<()> {
+        let mut last_err = McuError::ROM_COLD_BOOT_DOT_ERROR;
+        while self.current < self.entries.len() {
+            let entry = &self.entries[self.current];
+            match entry.handler.attempt(env, ctx) {
+                Ok(()) => return Ok(()),
+                Err(err) => {
+                    last_err = err;
+                    caliptra_mcu_romtime::println!(
+                        "[mcu-rom-dot] locked-state handler failed: {}",
+                        HexWord(err.into())
+                    );
+                    self.retries += 1;
+                    match entry.policy {
+                        DotLockedRecoveryErrorPolicy::Continue => {
+                            self.current += 1;
+                            self.retries = 0;
+                        }
+                        DotLockedRecoveryErrorPolicy::Retry(n) => {
+                            if self.retries >= n.get() {
+                                self.current += 1;
+                                self.retries = 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Err(last_err)
+    }
+}
+
+/// A [`DotLockedRecoveryHandler`] that recovers via a backup DOT blob
+/// obtained from a [`DotRecoveryHandler`].
+pub struct BackupBlobRecoveryHandler<'a> {
+    pub recovery_handler: &'a dyn DotRecoveryHandler,
+}
+
+impl DotLockedRecoveryHandler for BackupBlobRecoveryHandler<'_> {
+    fn attempt(&self, env: &mut RomEnv, ctx: &DotLockedRecoveryContext<'_>) -> McuResult<()> {
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] Attempting backup-blob recovery");
+        dot_recovery_flow(
+            env,
+            ctx.dot_fuses,
+            self.recovery_handler,
+            ctx.dot_flash,
+            ctx.key_type,
+        )
+    }
+}
+
+/// A [`DotLockedRecoveryHandler`] that recovers via the DOT override
+/// challenge/response protocol using a [`RecoveryTransport`].
+pub struct OverrideChallengeRecoveryHandler<'a> {
+    pub transport: &'a dyn crate::RecoveryTransport,
+    pub wdt_timeout: u64,
+}
+
+impl DotLockedRecoveryHandler for OverrideChallengeRecoveryHandler<'_> {
+    fn attempt(&self, env: &mut RomEnv, ctx: &DotLockedRecoveryContext<'_>) -> McuResult<()> {
+        if self.wdt_timeout > 0 {
+            env.mci.configure_wdt(self.wdt_timeout, 1);
+        }
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] Attempting override challenge/response");
+        dot_override_challenge_flow(
+            env,
+            ctx.dot_fuses,
+            self.transport,
+            ctx.dot_flash,
+            ctx.key_type,
+        )
+    }
 }

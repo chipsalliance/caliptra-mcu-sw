@@ -42,6 +42,13 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_i3c_simple)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_ping)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_unknown_cmd)) |
+(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_status)) |
+(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_recovery_invalid_payload)) |
+(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_unlock_challenge)) |
+(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_without_challenge)) |
+(package(caliptra-mcu-tests-integration) and test(test_i3c_services_error_mid_packet_then_recover)) |
+(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_error_then_continue)) |
+(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_full_flow)) |
 (package(caliptra-mcu-tests-integration) and test(test_sw_digest_lock)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check)) |

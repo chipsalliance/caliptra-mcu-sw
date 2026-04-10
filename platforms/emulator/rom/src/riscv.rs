@@ -309,21 +309,33 @@ pub extern "C" fn rom_entry() -> ! {
             }
             blob
         };
-        let recovery_handler = TestDotRecoveryHandler {
-            blob: recovery_backup_blob,
+
+        // Store recovery handler and transport in statics so the
+        // DotLockedRecoveryHandler wrappers can reference them with
+        // 'static lifetime.
+        static mut RECOVERY_HANDLER: core::mem::MaybeUninit<TestDotRecoveryHandler> =
+            core::mem::MaybeUninit::uninit();
+        let recovery_handler = unsafe {
+            RECOVERY_HANDLER.write(TestDotRecoveryHandler {
+                blob: recovery_backup_blob,
+            })
         };
 
-        // Create MCI mbox0 transport for DOT recovery/override.
-        let recovery_transport = {
-            let mci_base: caliptra_mcu_romtime::StaticRef<
-                caliptra_mcu_registers_generated::mci::regs::Mci,
-            > = unsafe {
-                caliptra_mcu_romtime::StaticRef::new(
-                    MCU_MEMORY_MAP.mci_offset
-                        as *const caliptra_mcu_registers_generated::mci::regs::Mci,
-                )
-            };
-            caliptra_mcu_rom_common::Mbox0RecoveryTransport::new(mci_base)
+        let mci_base: caliptra_mcu_romtime::StaticRef<
+            caliptra_mcu_registers_generated::mci::regs::Mci,
+        > = unsafe {
+            caliptra_mcu_romtime::StaticRef::new(
+                MCU_MEMORY_MAP.mci_offset
+                    as *const caliptra_mcu_registers_generated::mci::regs::Mci,
+            )
+        };
+        static mut RECOVERY_TRANSPORT: core::mem::MaybeUninit<
+            caliptra_mcu_rom_common::Mbox0RecoveryTransport,
+        > = core::mem::MaybeUninit::uninit();
+        let recovery_transport = unsafe {
+            RECOVERY_TRANSPORT.write(caliptra_mcu_rom_common::Mbox0RecoveryTransport::new(
+                mci_base,
+            ))
         };
 
         let hooks = LoggingRomHooks;
@@ -337,12 +349,12 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
             dot_recovery_handler: if cfg!(feature = "test-dot-recovery") {
-                Some(&recovery_handler)
+                Some(&*recovery_handler)
             } else {
                 None
             },
             dot_recovery_transport: if cfg!(feature = "test-dot-recovery") {
-                Some(&recovery_transport)
+                Some(&*recovery_transport)
             } else {
                 None
             },
@@ -356,6 +368,76 @@ pub extern "C" fn rom_entry() -> ! {
                 Some(&hooks)
             } else {
                 None
+            },
+            dot_locked_recovery_handlers: if cfg!(feature = "test-dot-recovery") {
+                static mut BLOB_HANDLER: core::mem::MaybeUninit<
+                    caliptra_mcu_rom_common::BackupBlobRecoveryHandler<'static>,
+                > = core::mem::MaybeUninit::uninit();
+                let blob_h = unsafe {
+                    BLOB_HANDLER.write(caliptra_mcu_rom_common::BackupBlobRecoveryHandler {
+                        recovery_handler: &*recovery_handler,
+                    })
+                };
+                static mut OVERRIDE_HANDLER: core::mem::MaybeUninit<
+                    caliptra_mcu_rom_common::OverrideChallengeRecoveryHandler<'static>,
+                > = core::mem::MaybeUninit::uninit();
+                let override_h = unsafe {
+                    OVERRIDE_HANDLER.write(
+                        caliptra_mcu_rom_common::OverrideChallengeRecoveryHandler {
+                            transport: &*recovery_transport,
+                            wdt_timeout: 0,
+                        },
+                    )
+                };
+                static mut HANDLER_ENTRIES: core::mem::MaybeUninit<
+                    [caliptra_mcu_rom_common::DotLockedRecoveryEntry<'static>; 2],
+                > = core::mem::MaybeUninit::uninit();
+                unsafe {
+                    HANDLER_ENTRIES
+                        .write([
+                            caliptra_mcu_rom_common::DotLockedRecoveryEntry {
+                                handler: blob_h,
+                                policy:
+                                    caliptra_mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
+                            },
+                            caliptra_mcu_rom_common::DotLockedRecoveryEntry {
+                                handler: override_h,
+                                policy:
+                                    caliptra_mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
+                            },
+                        ])
+                        .as_slice()
+                }
+            } else if cfg!(feature = "test-i3c-services") {
+                let i3c_base = unsafe {
+                    caliptra_mcu_romtime::StaticRef::new(
+                        MCU_MEMORY_MAP.i3c_offset
+                            as *const caliptra_mcu_registers_generated::i3c::regs::I3c,
+                    )
+                };
+                static mut I3C_HANDLER: core::mem::MaybeUninit<
+                    caliptra_mcu_rom_common::I3cDotLockedRecoveryHandler,
+                > = core::mem::MaybeUninit::uninit();
+                let handler = unsafe {
+                    I3C_HANDLER.write(caliptra_mcu_rom_common::I3cDotLockedRecoveryHandler {
+                        i3c_base,
+                        services: caliptra_mcu_rom_common::I3cServicesModes::DOT_RECOVERY,
+                        i3c_target_addr: 0x5a,
+                    })
+                };
+                static mut HANDLER_ENTRIES: core::mem::MaybeUninit<
+                    [caliptra_mcu_rom_common::DotLockedRecoveryEntry<'static>; 1],
+                > = core::mem::MaybeUninit::uninit();
+                unsafe {
+                    HANDLER_ENTRIES
+                        .write([caliptra_mcu_rom_common::DotLockedRecoveryEntry {
+                            handler,
+                            policy: caliptra_mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
+                        }])
+                        .as_slice()
+                }
+            } else {
+                &[]
             },
             ..Default::default()
         });
