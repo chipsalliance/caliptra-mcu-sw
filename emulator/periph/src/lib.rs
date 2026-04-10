@@ -26,7 +26,7 @@ mod mci;
 mod mcu_mbox0;
 mod network_root_bus;
 mod otp;
-pub use otp_digest::{otp_digest, otp_scramble, otp_unscramble};
+pub use otp_digest::{otp_digest, otp_scramble, otp_unscramble, OTP_SCRAMBLE_KEYS};
 mod reset_reason;
 mod root_bus;
 mod uart;

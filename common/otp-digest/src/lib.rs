@@ -12,6 +12,26 @@ fn present_64bit_encrypt(plain: u64, key: u128) -> u64 {
     Present::new_128(&key.to_le_bytes()).encrypt_block(plain)
 }
 
+/// Per-partition scrambling keys from the caliptra-ss RTL (otp_ctrl_part_pkg.sv).
+/// These are in reverse order from the RTL.
+/// Index mapping to secret partitions:
+///   0: SecretManufPartition (UDS)
+///   1: SecretProdPartition0 (Field Entropy 0)
+///   2: SecretProdPartition1 (Field Entropy 1)
+///   3: SecretProdPartition2 (Field Entropy 2)
+///   4: SecretProdPartition3 (Field Entropy 3)
+///   5: VendorSecretProdPartition
+///   6: SecretLcTransitionPartition
+pub const OTP_SCRAMBLE_KEYS: [u128; 7] = [
+    0x3BA121C5E097DDEB7768B4C666E9C3DA,
+    0xEFFA6D736C5EFF49AE7B70F9C46E5A62,
+    0x85A9E830BC059BA9286D6E2856A05CC3,
+    0xBEAD91D5FA4E09150E95F517CB98955B,
+    0x4D5A89AA9109294AE048B657396B4B83,
+    0x277195FC471E4B26B6641214B61D1B43,
+    0x0B7474D640F8A7F5D60822E1FAEC5C72,
+];
+
 pub fn otp_scramble(data: u64, key: u128) -> u64 {
     Present::new_128(&key.to_le_bytes()).encrypt_block(data)
 }
