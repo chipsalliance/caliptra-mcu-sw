@@ -154,8 +154,15 @@ impl ExamplarUsbDriver {
         Ok(())
     }
 
+    /// Wait until the host has consumed the current IN packet.
+    ///
+    /// Spins until Rdy0 is cleared by hardware, which happens when the
+    /// host ACKs the IN data. This is preferred over polling Sent0
+    /// because Rdy0 is a per-transfer indicator (set by firmware, cleared
+    /// by hardware on ACK) with no stale-state risk, whereas Sent0 is a
+    /// separate W1C flag that can carry stale state between transfers.
     fn wait_in_sent(&self) {
-        while !self.regs.in_sent.is_set(InSent::Sent0) {}
+        while self.regs.configin_0[0].is_set(Configin0::Rdy0) {}
         self.regs.in_sent.set(InSent::Sent0::SET.value);
     }
 

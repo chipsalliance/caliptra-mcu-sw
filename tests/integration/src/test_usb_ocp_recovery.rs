@@ -8,29 +8,66 @@
 
 #[cfg(test)]
 mod test {
-    use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
+    use crate::test::{build_test_binaries, start_runtime_hw_model, TestParams, TEST_LOCK};
+    use emulator_periph::UsbHostController;
     use mcu_hw_model::usb_ctrl::*;
-    use mcu_hw_model::McuHwModel;
+    use mcu_hw_model::{DefaultHwModel, McuHwModel};
     use ocp::protocol::device_status::{DeviceStatusValue, ProtocolError};
     use ocp::protocol::prot_cap::{self, RecoveryProtocolCapabilities};
     use ocp::protocol::recovery_status::DeviceRecoveryStatus;
     use ocp::protocol::RecoveryCommand;
     use random_port::PortPicker;
+    use romtime::McuBootMilestones;
     use std::sync::atomic::Ordering;
 
+    /// Timeout for quick USB transactions (enumeration, reads).
     const TIMEOUT: usize = 1_000_000;
 
-    /// Start the emulator with the USB OCP recovery feature and enumerate USB.
-    /// Returns the hw model with USB already enumerated.
-    fn start_usb_ocp_recovery() -> mcu_hw_model::DefaultHwModel {
+    /// Timeout for image load operations.  Between recovery stages Caliptra
+    /// must process the previous image, which can take many emulator cycles.
+    /// The poll_* retry loops step the emulator while waiting, giving both
+    /// the MCU ROM and Caliptra core time to progress.
+    const IMAGE_LOAD_TIMEOUT: usize = 6_000_000;
+
+    /// Build all binaries needed for the load-image tests in a single
+    /// compilation pass and return both the hw model and the recovery
+    /// images (caliptra_fw, soc_manifest, mcu_runtime).
+    fn build_and_start_usb_ocp_recovery() -> (DefaultHwModel, Vec<u8>, Vec<u8>, Vec<u8>) {
+        let bins = build_test_binaries(&TestParams {
+            rom_feature: Some("test-usb-ocp-recovery"),
+            ..Default::default()
+        });
+
         let mut hw = start_runtime_hw_model(TestParams {
             rom_feature: Some("test-usb-ocp-recovery"),
-            i3c_port: PortPicker::new().pick().ok(),
+            custom_mcu_rom: Some(bins.mcu_rom),
+            i3c_port: Some(PortPicker::new().pick().unwrap()),
             flash_boot: true,
             rom_only: true,
             ..Default::default()
         });
 
+        let images = (bins.caliptra_fw, bins.soc_manifest, bins.mcu_runtime);
+        start_usb_ocp_recovery_enumerate(&mut hw);
+        (hw, images.0, images.1, images.2)
+    }
+
+    /// Start the emulator with the USB OCP recovery feature and enumerate USB.
+    /// Returns the hw model with USB already enumerated.
+    fn start_usb_ocp_recovery() -> DefaultHwModel {
+        let mut hw = start_runtime_hw_model(TestParams {
+            rom_feature: Some("test-usb-ocp-recovery"),
+            i3c_port: Some(PortPicker::new().pick().unwrap()),
+            flash_boot: true,
+            rom_only: true,
+            ..Default::default()
+        });
+        start_usb_ocp_recovery_enumerate(&mut hw);
+        hw
+    }
+
+    /// Wait for the firmware to enable USB and complete enumeration.
+    fn start_usb_ocp_recovery_enumerate(hw: &mut DefaultHwModel) {
         let host = hw.usb_host_controller.clone();
 
         // Wait for firmware to enable USB.
@@ -51,9 +88,7 @@ mod test {
         host.bus_reset();
 
         // Complete USB enumeration.
-        enumerate(&mut hw, &host, TIMEOUT);
-
-        hw
+        enumerate(hw, &host, TIMEOUT);
     }
 
     /// Happy path: Read PROT_CAP and DEVICE_STATUS to verify the OCP state
@@ -156,6 +191,137 @@ mod test {
             ProtocolError::UnsupportedCommand as u8,
             "protocol error should be UnsupportedCommand"
         );
+
+        lock.fetch_add(1, Ordering::Relaxed);
+    }
+
+    // ---- Image load helpers ------------------------------------------------
+
+    /// Push a complete image via the indirect (memory-window) interface and
+    /// activate.
+    ///
+    /// Selects CMS 0 with IMO 0, writes image data in 64-byte chunks via
+    /// INDIRECT_DATA, then sends RECOVERY_CTRL to activate.
+    fn send_image_indirect(hw: &mut DefaultHwModel, host: &UsbHostController, image: &[u8]) {
+        ocp_select_indirect_cms(hw, host, 0, 0, IMAGE_LOAD_TIMEOUT);
+        for chunk in image.chunks(64) {
+            ocp_write_indirect_data(hw, host, chunk, IMAGE_LOAD_TIMEOUT);
+        }
+        ocp_activate_recovery(hw, host, 0, IMAGE_LOAD_TIMEOUT);
+    }
+
+    /// Stream a complete image via the FIFO interface and activate.
+    ///
+    /// Selects CMS 1 and declares the image size in 4-byte units via
+    /// INDIRECT_FIFO_CTRL, writes image data in 64-byte chunks via
+    /// INDIRECT_FIFO_DATA, then sends RECOVERY_CTRL to activate.
+    fn send_image_fifo(hw: &mut DefaultHwModel, host: &UsbHostController, image: &[u8]) {
+        assert!(image.len() % 4 == 0, "image must be 4-byte aligned");
+        let image_size_4b = (image.len() / 4) as u32;
+
+        ocp_select_fifo_cms(hw, host, 1, image_size_4b, IMAGE_LOAD_TIMEOUT);
+        for chunk in image.chunks(64) {
+            ocp_write_fifo_data(hw, host, chunk, IMAGE_LOAD_TIMEOUT);
+        }
+        ocp_activate_recovery(hw, host, 1, IMAGE_LOAD_TIMEOUT);
+    }
+
+    /// Assert the device is in RecoveryMode and AwaitingImage.
+    fn assert_awaiting_image(hw: &mut DefaultHwModel, host: &UsbHostController) {
+        let status = ocp_read_data(hw, host, RecoveryCommand::DeviceStatus, 7, TIMEOUT);
+        assert_eq!(
+            status[0],
+            DeviceStatusValue::RecoveryMode as u8,
+            "device should be in RecoveryMode"
+        );
+
+        let rec_status = ocp_read_data(hw, host, RecoveryCommand::RecoveryStatus, 2, TIMEOUT);
+        assert_eq!(
+            rec_status[0] & 0x0F,
+            DeviceRecoveryStatus::AwaitingImage as u8,
+            "recovery status should be AwaitingImage"
+        );
+    }
+
+    // ---- Image load tests --------------------------------------------------
+
+    /// Pad a byte vector to 4-byte alignment.
+    fn pad_to_4b(data: &mut Vec<u8>) {
+        while data.len() % 4 != 0 {
+            data.push(0);
+        }
+    }
+
+    /// Load recovery images via the indirect (memory-window) interface and
+    /// verify the ROM completes the recovery boot flow.
+    ///
+    /// Sends the three recovery images (caliptra_fw, soc_manifest,
+    /// mcu_runtime) as separate stages, matching the streaming boot path.
+    #[test]
+    fn test_usb_ocp_recovery_load_image_indirect() {
+        let lock = TEST_LOCK.lock().unwrap();
+
+        let (mut hw, caliptra_fw, soc_manifest, mcu_runtime) = build_and_start_usb_ocp_recovery();
+        let host = hw.usb_host_controller.clone();
+
+        assert_awaiting_image(&mut hw, &host);
+
+        // Send each image as a separate recovery stage.  Between stages the
+        // ROM's I3C state machine activates the image and loops back to
+        // AwaitingImage.  The poll_* retry loops step the emulator so the
+        // ROM progresses through the I3C side while the host waits to send
+        // the next image.
+        for image in [&caliptra_fw, &soc_manifest, &mcu_runtime] {
+            send_image_indirect(&mut hw, &host, image);
+            println!("Got to image");
+        }
+
+        // Wait for the firmware boot flow to complete by polling the MCI
+        // milestone register. We cannot use finish_runtime_hw_model() /
+        // step_until_exit_success() here because the emulator's EmuCtrl
+        // exit handler calls std::process::exit(), which would kill the
+        // entire test runner process instead of just this test.
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+        });
+
+        lock.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Load recovery images via the FIFO interface and verify the ROM
+    /// completes the recovery boot flow.
+    ///
+    /// Sends the three recovery images (caliptra_fw, soc_manifest,
+    /// mcu_runtime) as separate stages via FIFO streaming.
+    #[test]
+    fn test_usb_ocp_recovery_load_image_fifo() {
+        let lock = TEST_LOCK.lock().unwrap();
+
+        let (mut hw, mut caliptra_fw, mut soc_manifest, mut mcu_runtime) =
+            build_and_start_usb_ocp_recovery();
+
+        pad_to_4b(&mut caliptra_fw);
+        pad_to_4b(&mut soc_manifest);
+        pad_to_4b(&mut mcu_runtime);
+
+        let host = hw.usb_host_controller.clone();
+
+        assert_awaiting_image(&mut hw, &host);
+
+        for image in [&caliptra_fw, &soc_manifest, &mcu_runtime] {
+            send_image_fifo(&mut hw, &host, image);
+        }
+
+        // Wait for the firmware boot flow to complete by polling the MCI
+        // milestone register. We cannot use finish_runtime_hw_model() /
+        // step_until_exit_success() here because the emulator's EmuCtrl
+        // exit handler calls std::process::exit(), which would kill the
+        // entire test runner process instead of just this test.
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+        });
 
         lock.fetch_add(1, Ordering::Relaxed);
     }

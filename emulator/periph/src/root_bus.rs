@@ -49,6 +49,8 @@ pub struct McuRootBusOffsets {
     pub direct_read_flash_size: u32,
     pub dot_flash_offset: u32,
     pub dot_flash_size: u32,
+    pub staging_sram_offset: u32,
+    pub staging_sram_size: u32,
 }
 
 impl Default for McuRootBusOffsets {
@@ -71,6 +73,8 @@ impl Default for McuRootBusOffsets {
             direct_read_flash_size: DIRECT_READ_FLASH_SIZE,
             dot_flash_offset: 0x8100_0000,
             dot_flash_size: DOT_FLASH_SIZE,
+            staging_sram_offset: 0xb00c_0000,
+            staging_sram_size: 1024 * 1024,
         }
     }
 }
@@ -101,6 +105,7 @@ pub struct McuRootBus {
     pub mcu_mailbox1: McuMailbox0Internal,
     pub direct_read_flash: Rc<RefCell<Ram>>,
     pub dot_flash: Rc<RefCell<Ram>>,
+    pub staging_sram: Rc<RefCell<Ram>>,
     pub mci_irq: Rc<RefCell<Irq>>,
     event_sender: Option<mpsc::Sender<Event>>,
     offsets: McuRootBusOffsets,
@@ -132,6 +137,7 @@ impl McuRootBus {
         let external_test_sram = Ram::new(vec![0; EXTERNAL_TEST_SRAM_SIZE as usize]);
         let direct_read_flash = Ram::new(vec![0; DIRECT_READ_FLASH_SIZE as usize]);
         let dot_flash = Ram::new(vec![0; DOT_FLASH_SIZE as usize]);
+        let staging_sram = Ram::new(vec![0; args.offsets.staging_sram_size as usize]);
         let mci_irq = pic.register_irq(McuRootBus::MCI_IRQ);
         let mcu_mailbox0 = McuMailbox0Internal::new(&clock.clone());
         let mcu_mailbox1 = McuMailbox0Internal::new(&clock.clone());
@@ -147,6 +153,7 @@ impl McuRootBus {
             external_test_sram: Rc::new(RefCell::new(external_test_sram)),
             direct_read_flash: Rc::new(RefCell::new(direct_read_flash)),
             dot_flash: Rc::new(RefCell::new(dot_flash)),
+            staging_sram: Rc::new(RefCell::new(staging_sram)),
             offsets: args.offsets,
             mci_irq: Rc::new(RefCell::new(mci_irq)),
             mcu_mailbox0,
@@ -227,6 +234,14 @@ impl Bus for McuRootBus {
                 .borrow_mut()
                 .read(size, addr - self.offsets.dot_flash_offset);
         }
+        if addr >= self.offsets.staging_sram_offset
+            && addr < self.offsets.staging_sram_offset + self.offsets.staging_sram_size
+        {
+            return self
+                .staging_sram
+                .borrow_mut()
+                .read(size, addr - self.offsets.staging_sram_offset);
+        }
         Err(BusError::LoadAccessFault)
     }
 
@@ -284,6 +299,15 @@ impl Bus for McuRootBus {
                 val,
             );
         }
+        if addr >= self.offsets.staging_sram_offset
+            && addr < self.offsets.staging_sram_offset + self.offsets.staging_sram_size
+        {
+            return self.staging_sram.borrow_mut().write(
+                size,
+                addr - self.offsets.staging_sram_offset,
+                val,
+            );
+        }
         Err(BusError::StoreAccessFault)
     }
 
@@ -296,6 +320,7 @@ impl Bus for McuRootBus {
         self.pic_regs.poll();
         self.external_test_sram.borrow_mut().poll();
         self.direct_read_flash.borrow_mut().poll();
+        self.staging_sram.borrow_mut().poll();
     }
 
     fn warm_reset(&mut self) {
@@ -307,6 +332,7 @@ impl Bus for McuRootBus {
         self.pic_regs.warm_reset();
         self.external_test_sram.borrow_mut().warm_reset();
         self.direct_read_flash.borrow_mut().warm_reset();
+        self.staging_sram.borrow_mut().warm_reset();
     }
 
     fn update_reset(&mut self) {
@@ -318,6 +344,7 @@ impl Bus for McuRootBus {
         self.pic_regs.update_reset();
         self.external_test_sram.borrow_mut().update_reset();
         self.direct_read_flash.borrow_mut().update_reset();
+        self.staging_sram.borrow_mut().update_reset();
     }
 
     fn register_outgoing_events(&mut self, sender: mpsc::Sender<Event>) {

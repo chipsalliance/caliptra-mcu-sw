@@ -144,6 +144,142 @@ pub fn ocp_write(command: ocp::protocol::RecoveryCommand, w_length: u16) -> Setu
     }
 }
 
+/// Perform a complete OCP Recovery read command: SETUP + IN data + OUT ZLP status.
+///
+/// Returns the response data payload.
+pub fn ocp_read_data(
+    model: &mut impl McuHwModel,
+    host: &UsbHostController,
+    command: ocp::protocol::RecoveryCommand,
+    len: u16,
+    iterations: usize,
+) -> Vec<u8> {
+    let setup = ocp_read(command, len);
+    poll_setup(model, host, &setup, iterations);
+    let data = poll_in(model, host, iterations);
+    poll_out(model, host, &[], iterations);
+    data
+}
+
+/// Perform a complete OCP Recovery write command: SETUP + OUT data + IN ZLP status.
+pub fn ocp_write_data(
+    model: &mut impl McuHwModel,
+    host: &UsbHostController,
+    command: ocp::protocol::RecoveryCommand,
+    data: &[u8],
+    iterations: usize,
+) {
+    let setup = ocp_write(command, data.len() as u16);
+    poll_setup(model, host, &setup, iterations);
+    poll_out(model, host, data, iterations);
+    let _zlp = poll_in(model, host, iterations);
+}
+
+/// Write INDIRECT_CTRL to select an indirect CMS region and set the IMO.
+pub fn ocp_select_indirect_cms(
+    model: &mut impl McuHwModel,
+    host: &UsbHostController,
+    cms: u8,
+    imo: u32,
+    iterations: usize,
+) {
+    let imo_bytes = imo.to_le_bytes();
+    let data = [
+        cms,
+        0x00,
+        imo_bytes[0],
+        imo_bytes[1],
+        imo_bytes[2],
+        imo_bytes[3],
+    ];
+    ocp_write_data(
+        model,
+        host,
+        ocp::protocol::RecoveryCommand::IndirectCtrl,
+        &data,
+        iterations,
+    );
+}
+
+/// Write INDIRECT_DATA payload at the current IMO (auto-increments).
+pub fn ocp_write_indirect_data(
+    model: &mut impl McuHwModel,
+    host: &UsbHostController,
+    data: &[u8],
+    iterations: usize,
+) {
+    ocp_write_data(
+        model,
+        host,
+        ocp::protocol::RecoveryCommand::IndirectData,
+        data,
+        iterations,
+    );
+}
+
+/// Write INDIRECT_FIFO_CTRL to select a FIFO CMS region and set the image size.
+///
+/// `image_size_4b` is the image size in 4-byte units.
+pub fn ocp_select_fifo_cms(
+    model: &mut impl McuHwModel,
+    host: &UsbHostController,
+    cms: u8,
+    image_size_4b: u32,
+    iterations: usize,
+) {
+    let size_bytes = image_size_4b.to_le_bytes();
+    let data = [
+        cms,
+        0x00,
+        size_bytes[0],
+        size_bytes[1],
+        size_bytes[2],
+        size_bytes[3],
+    ];
+    ocp_write_data(
+        model,
+        host,
+        ocp::protocol::RecoveryCommand::IndirectFifoCtrl,
+        &data,
+        iterations,
+    );
+}
+
+/// Write INDIRECT_FIFO_DATA payload (streamed into FIFO).
+pub fn ocp_write_fifo_data(
+    model: &mut impl McuHwModel,
+    host: &UsbHostController,
+    data: &[u8],
+    iterations: usize,
+) {
+    ocp_write_data(
+        model,
+        host,
+        ocp::protocol::RecoveryCommand::IndirectFifoData,
+        data,
+        iterations,
+    );
+}
+
+/// Write RECOVERY_CTRL to activate a recovery image from a memory-window CMS.
+///
+/// Sends CMS index, ImageSelection::MemoryWindow (0x01), and Activate (0x0F).
+pub fn ocp_activate_recovery(
+    model: &mut impl McuHwModel,
+    host: &UsbHostController,
+    cms: u8,
+    iterations: usize,
+) {
+    let data = [cms, 0x01, 0x0F];
+    ocp_write_data(
+        model,
+        host,
+        ocp::protocol::RecoveryCommand::RecoveryCtrl,
+        &data,
+        iterations,
+    );
+}
+
 fn desc_value(dt: ocp::usb::descriptors::DescriptorType, idx: u8) -> u16 {
     ((dt as u16) << 8) | idx as u16
 }
