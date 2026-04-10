@@ -3,15 +3,15 @@
 #[cfg(feature = "test-mctp-vdm-cmds")]
 mod cmd_handler_mock;
 
+use caliptra_mcu_libsyscall_caliptra::system::System;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_console::Console;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use core::fmt::Write;
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::signal::Signal;
-use libsyscall_caliptra::system::System;
-use libsyscall_caliptra::DefaultSyscalls;
-use libtock_console::Console;
-use libtock_platform::ErrorCode;
 #[cfg(feature = "test-mctp-vdm-cmds")]
 use static_cell::StaticCell;
 
@@ -33,14 +33,16 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
     {
         // Use static storage to ensure 'static lifetime for handler, transport, and cmd_interface.
         static HANDLER: StaticCell<cmd_handler_mock::NonCryptoCmdHandlerMock> = StaticCell::new();
-        static TRANSPORT: StaticCell<mctp_vdm_lib::transport::MctpVdmTransport> = StaticCell::new();
-        static CMD_INTERFACE: StaticCell<mctp_vdm_lib::cmd_interface::CmdInterface<'static>> =
+        static TRANSPORT: StaticCell<caliptra_mcu_mctp_vdm_lib::transport::MctpVdmTransport> =
             StaticCell::new();
+        static CMD_INTERFACE: StaticCell<
+            caliptra_mcu_mctp_vdm_lib::cmd_interface::CmdInterface<'static>,
+        > = StaticCell::new();
 
         let handler: &'static cmd_handler_mock::NonCryptoCmdHandlerMock =
             HANDLER.init(cmd_handler_mock::NonCryptoCmdHandlerMock::default());
-        let transport: &'static mut mctp_vdm_lib::transport::MctpVdmTransport =
-            TRANSPORT.init(mctp_vdm_lib::transport::MctpVdmTransport::default());
+        let transport: &'static mut caliptra_mcu_mctp_vdm_lib::transport::MctpVdmTransport =
+            TRANSPORT.init(caliptra_mcu_mctp_vdm_lib::transport::MctpVdmTransport::default());
 
         // Check if the transport driver exists
         if !transport.exists() {
@@ -53,10 +55,11 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
         }
 
         // Create the command interface with static storage
-        let cmd_interface: &'static mut mctp_vdm_lib::cmd_interface::CmdInterface<'static> =
-            CMD_INTERFACE.init(mctp_vdm_lib::cmd_interface::CmdInterface::new(
-                transport, handler,
-            ));
+        let cmd_interface: &'static mut caliptra_mcu_mctp_vdm_lib::cmd_interface::CmdInterface<
+            'static,
+        > = CMD_INTERFACE.init(caliptra_mcu_mctp_vdm_lib::cmd_interface::CmdInterface::new(
+            transport, handler,
+        ));
 
         writeln!(
             console_writer,
@@ -64,7 +67,7 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
         )
         .unwrap();
 
-        if let Err(e) = mctp_vdm_lib::daemon::spawn_vdm_responder(
+        if let Err(e) = caliptra_mcu_mctp_vdm_lib::daemon::spawn_vdm_responder(
             crate::EXECUTOR.get().spawner(),
             cmd_interface,
         ) {

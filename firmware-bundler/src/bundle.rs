@@ -8,7 +8,7 @@ use std::cmp::Ordering;
 use anyhow::{bail, Result};
 use zerocopy::IntoBytes;
 
-use mcu_image_header::McuImageHeader;
+use caliptra_mcu_image_header::McuImageHeader;
 
 use crate::{
     args::{BundleArgs, Common},

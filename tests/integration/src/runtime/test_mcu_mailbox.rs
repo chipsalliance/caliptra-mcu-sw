@@ -2,9 +2,9 @@
 
 use crate::test::{start_runtime_hw_model, TestParams};
 use anyhow::Result;
-use mcu_hw_model::McuHwModel;
-use mcu_mbox_common::messages::FirmwareVersionReq;
-use romtime::McuBootMilestones;
+use caliptra_mcu_hw_model::McuHwModel;
+use caliptra_mcu_mbox_common::messages::FirmwareVersionReq;
+use caliptra_mcu_romtime::McuBootMilestones;
 
 #[test]
 fn test_invalid_mailbox_cmd() -> Result<()> {
@@ -47,7 +47,7 @@ fn test_firmware_version_cmd() -> Result<()> {
     let cmd = FirmwareVersionReq::default();
     let resp = hw.mailbox_execute_req(cmd)?;
 
-    let expected_version = mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[0];
+    let expected_version = caliptra_mcu_mbox_common::config::TEST_FIRMWARE_VERSIONS[0];
     assert_eq!(resp.hdr.data_len, expected_version.len() as u32);
     let resp_version_str = std::str::from_utf8(&resp.version[..resp.hdr.data_len as usize])
         .expect("Version string is not valid UTF-8");

@@ -7,11 +7,11 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
-use ocp::error::OcpError;
-use ocp::interface::RecoveryDeviceConfig;
-use ocp::protocol::device_id::{DeviceDescriptor, DeviceId, PciVendorDescriptor};
-use ocp::protocol::RecoveryCommand;
-use ocp::usb::driver::{RecoveryRequest, UsbDeviceDriver, UsbDriverError};
+use caliptra_mcu_ocp::error::OcpError;
+use caliptra_mcu_ocp::interface::RecoveryDeviceConfig;
+use caliptra_mcu_ocp::protocol::device_id::{DeviceDescriptor, DeviceId, PciVendorDescriptor};
+use caliptra_mcu_ocp::protocol::RecoveryCommand;
+use caliptra_mcu_ocp::usb::driver::{RecoveryRequest, UsbDeviceDriver, UsbDriverError};
 
 enum MockRequest {
     Read { len: u16 },

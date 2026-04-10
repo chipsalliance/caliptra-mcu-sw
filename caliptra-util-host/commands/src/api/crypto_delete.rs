@@ -8,9 +8,9 @@
 //! - `caliptra_cmd_delete` - Delete an encrypted CMK from storage
 
 use crate::api::{CaliptraApiError, CaliptraResult};
-use caliptra_util_host_command_types::crypto_delete::{DeleteRequest, DeleteResponse};
-use caliptra_util_host_command_types::crypto_hmac::Cmk;
-use caliptra_util_host_command_types::CaliptraCommandId;
+use caliptra_mcu_core_util_host_command_types::crypto_delete::{DeleteRequest, DeleteResponse};
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::Cmk;
+use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 use caliptra_util_host_session::CaliptraSession;
 
 /// Delete an encrypted CMK from storage

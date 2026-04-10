@@ -2,7 +2,9 @@
 
 //! This provides the dma syscall driver
 
-use capsules_runtime::dma::hil::{Dma as DmaHal, DmaClient, DmaError, DmaRoute, DmaStatus};
+use caliptra_mcu_capsules_runtime::dma::hil::{
+    Dma as DmaHal, DmaClient, DmaError, DmaRoute, DmaStatus,
+};
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::OptionalCell;

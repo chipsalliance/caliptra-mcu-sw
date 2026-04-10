@@ -44,7 +44,7 @@ pub enum NetworkCommands {
     /// Run a network application
     Run {
         /// Package name to run
-        #[arg(short, long, default_value = "lwip-rs-example")]
+        #[arg(short, long, default_value = "caliptra-mcu-lwip-rs-example")]
         package: String,
 
         /// Build in release mode before running
@@ -283,7 +283,7 @@ pub fn run(cmd: NetworkCommands) -> Result<()> {
         }
 
         NetworkCommands::RomBuild => {
-            mcu_builder::network_rom_build(None)?;
+            caliptra_mcu_builder::network_rom_build(None)?;
         }
     }
 

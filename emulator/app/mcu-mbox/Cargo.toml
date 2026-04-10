@@ -1,13 +1,13 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "emulator-mcu-mbox"
+name = "caliptra-mcu-emulator-mcu-mbox"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-emulator-consts.workspace = true
-emulator-periph.workspace = true
+caliptra-mcu-emulator-consts.workspace = true
+caliptra-mcu-emulator-periph.workspace = true
 caliptra-emu-bus.workspace = true
-registers-generated.workspace = true
+caliptra-mcu-registers-generated.workspace = true
 tock-registers.workspace = true

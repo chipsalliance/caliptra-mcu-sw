@@ -35,7 +35,7 @@
 //! 4. MCU comes out of reset and reads RESET_REASON to determine boot flow
 
 use caliptra_emu_bus::ReadWriteRegister;
-use registers_generated::mci::bits::ResetReason;
+use caliptra_mcu_registers_generated::mci::bits::ResetReason;
 use tock_registers::interfaces::{ReadWriteable, Readable};
 
 /// Emulates the MCI RESET_REASON register behavior

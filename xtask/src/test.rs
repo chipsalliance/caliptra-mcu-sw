@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, bail, Result};
-use mcu_builder::{rom_build, PROJECT_ROOT, TARGET};
+use caliptra_mcu_builder::{rom_build, PROJECT_ROOT, TARGET};
 use std::process::Command;
 
 use crate::emulator_cbinding;
@@ -15,18 +15,18 @@ pub(crate) struct TestArgs<'a> {
 }
 
 const EXCLUDED_PACKAGES: &[&str] = &[
-    "bare-metal-runtime",
-    "mcu-rom-emulator",
-    "mcu-rom-fpga",
-    "mcu-runtime-emulator",
-    "mcu-runtime-fpga",
-    "emulator",
-    "test-hello",
-    "user-app",
-    "example-app",
-    "libtock_unittest",
-    "syscalls_tests",
-    "network-rom",
+    "caliptra-mcu-bare-metal-runtime",
+    "caliptra-mcu-rom-emulator",
+    "caliptra-mcu-rom-fpga",
+    "caliptra-mcu-runtime-emulator",
+    "caliptra-mcu-runtime-fpga",
+    "caliptra-mcu-emulator",
+    "caliptra-mcu-test-hello",
+    "caliptra-mcu-user-app",
+    "caliptra-mcu-example-app",
+    "caliptra-mcu-libtock_unittest",
+    "caliptra-mcu-syscalls_tests",
+    "caliptra-mcu-network-rom",
 ];
 
 pub(crate) fn test(args: TestArgs) -> Result<()> {
@@ -132,7 +132,7 @@ fn build_hello_binary() -> Result<()> {
     let status = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
         .env("RUSTFLAGS", "-C link-arg=-Ttests/hello/link.ld")
-        .args(["b", "-p", "test-hello", "--target", TARGET])
+        .args(["b", "-p", "caliptra-mcu-test-hello", "--target", TARGET])
         .status()?;
 
     if !status.success() {
@@ -181,7 +181,7 @@ fn test_hello() -> Result<()> {
     let args = get_emulator_args();
     let output = Command::new("cargo")
         .current_dir(&*PROJECT_ROOT)
-        .args(["run", "-p", "emulator", "--"])
+        .args(["run", "-p", "caliptra-mcu-emulator", "--"])
         .args(&args)
         .output()?;
 
@@ -201,7 +201,7 @@ pub(crate) fn test_hello_c_emulator() -> Result<()> {
         .join("target")
         .join("debug")
         .join("emulator_cbinding")
-        .join("emulator");
+        .join("caliptra-mcu-emulator");
 
     // Get the common emulator arguments
     let args = get_emulator_args();
@@ -234,7 +234,7 @@ pub(crate) fn test_panic_missing() -> Result<()> {
             .join("target")
             .join(TARGET)
             .join("release")
-            .join("mcu-rom-emulator");
+            .join("caliptra-mcu-rom-emulator");
         let rom_elf = std::fs::read(rom_elf)?;
         let symbols = elf_symbols(&rom_elf)?;
         if symbols.iter().any(|s| s.contains("panic_is_possible")) {

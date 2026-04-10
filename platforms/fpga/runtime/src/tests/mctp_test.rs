@@ -1,17 +1,17 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_capsules_runtime::mctp::mux::MuxMCTPDriver;
+use caliptra_mcu_capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
+use caliptra_mcu_capsules_runtime::test::mctp::MockMctp;
+use caliptra_mcu_capsules_runtime::test::mctp::TestClient;
+use caliptra_mcu_components::mock_mctp::MockMctpComponent;
+use caliptra_mcu_components::mock_mctp_component_static;
+use caliptra_mcu_romtime::println;
+use caliptra_mcu_tock_veer::timers::InternalTimers;
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
-use capsules_runtime::mctp::mux::MuxMCTPDriver;
-use capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
-use capsules_runtime::test::mctp::MockMctp;
-use capsules_runtime::test::mctp::TestClient;
 use core::fmt::Write;
 use kernel::component::Component;
 use kernel::static_init;
-use mcu_components::mock_mctp::MockMctpComponent;
-use mcu_components::mock_mctp_component_static;
-use mcu_tock_veer::timers::InternalTimers;
-use romtime::println;
 
 pub fn test_mctp_capsule_loopback(
     mux_mctp: &'static MuxMCTPDriver<

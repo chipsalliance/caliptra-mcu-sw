@@ -1,26 +1,26 @@
 // Licensed under the Apache-2.0 license
 #![allow(clippy::result_unit_err)]
-use core::time::Duration;
-use log::{error, LevelFilter};
-use pldm_common::message::firmware_update::query_devid::{
+use caliptra_mcu_pldm_common::message::firmware_update::query_devid::{
     QueryDeviceIdentifiersRequest, QueryDeviceIdentifiersResponse,
 };
-use pldm_common::protocol::base::PldmMsgHeader;
-use pldm_fw_pkg::FirmwareManifest;
-use pldm_ua::events::PldmEvents;
-use pldm_ua::transport::{
+use caliptra_mcu_pldm_common::protocol::base::PldmMsgHeader;
+use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
+use caliptra_mcu_pldm_ua::events::PldmEvents;
+use caliptra_mcu_pldm_ua::transport::{
     EndpointId, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket, TxPacket,
     MAX_PLDM_PAYLOAD_SIZE,
 };
+use core::time::Duration;
+use log::{error, LevelFilter};
 use simple_logger::SimpleLogger;
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use pldm_common::codec::PldmCodec;
-use pldm_ua::daemon::{Options, PldmDaemon};
-use pldm_ua::{discovery_sm, update_sm};
+use caliptra_mcu_pldm_common::codec::PldmCodec;
+use caliptra_mcu_pldm_ua::daemon::{Options, PldmDaemon};
+use caliptra_mcu_pldm_ua::{discovery_sm, update_sm};
 
 pub struct MockPldmSocket {
     source: EndpointId,
@@ -226,10 +226,10 @@ pub fn setup<
     let transport = MockTransport::new();
 
     // Define the update agent endpoint id
-    let ua_sid = pldm_ua::transport::EndpointId(0x01);
+    let ua_sid = caliptra_mcu_pldm_ua::transport::EndpointId(0x01);
 
     // Define the device endpoint id
-    let fd_sid = pldm_ua::transport::EndpointId(0x02);
+    let fd_sid = caliptra_mcu_pldm_ua::transport::EndpointId(0x02);
 
     // Create socket used by the PLDM daemon (update agent)
     let ua_sock = transport.create_socket(ua_sid, fd_sid).unwrap();
@@ -299,7 +299,9 @@ pub struct CustomDiscoverySm {}
 impl discovery_sm::StateMachineActions for CustomDiscoverySm {
     fn on_start_discovery(
         &self,
-        ctx: &mut pldm_ua::discovery_sm::InnerContext<impl PldmSocket + Send + 'static>,
+        ctx: &mut caliptra_mcu_pldm_ua::discovery_sm::InnerContext<
+            impl PldmSocket + Send + 'static,
+        >,
     ) -> Result<(), ()> {
         ctx.event_queue
             .send(PldmEvents::Update(update_sm::Events::StartUpdate))
@@ -317,7 +319,7 @@ impl discovery_sm::StateMachineActions for CustomDiscoverySm {
 #[test]
 fn test_pldm_daemon_setup() {
     let setup = setup(Options {
-        pldm_fw_pkg: Some(FirmwareManifest::default()),
+        caliptra_mcu_pldm_fw_pkg: Some(FirmwareManifest::default()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: update_sm::DefaultActions {},
         fd_tid: 0x02,

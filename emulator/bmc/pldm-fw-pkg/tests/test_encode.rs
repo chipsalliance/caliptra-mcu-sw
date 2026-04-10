@@ -3,7 +3,7 @@
 Licensed under the Apache-2.0 license.
 
 --*/
-use pldm_fw_pkg::FirmwareManifest;
+use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
 use std::path::PathBuf;
 
 #[test]

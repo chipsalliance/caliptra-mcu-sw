@@ -7,7 +7,7 @@ use crate::tests::spdm_responder_validator::common::{
 };
 use crate::tests::spdm_responder_validator::transport::{Transport, SOCKET_TRANSPORT_TYPE_PCI_DOE};
 use crate::tests::spdm_responder_validator::SpdmTestType;
-use mcu_testing_common::{sleep_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
+use caliptra_mcu_testing_common::{sleep_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
 use std::net::TcpListener;
 use std::process::exit;
 use std::sync::atomic::Ordering;

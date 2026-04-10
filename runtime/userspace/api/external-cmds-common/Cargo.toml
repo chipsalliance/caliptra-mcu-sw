@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "external-cmds-common"
+name = "caliptra-mcu-external-cmds-common"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

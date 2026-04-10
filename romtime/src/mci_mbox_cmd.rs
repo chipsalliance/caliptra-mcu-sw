@@ -12,14 +12,14 @@
 use crate::otp_provision::{fuse_lock_partition_dai, fuse_read_dai_params, fuse_write_dai};
 use crate::{HexWord, Mci, Otp};
 use caliptra_api::mailbox::populate_checksum;
-use core::cmp::Ordering;
-use core::mem::size_of;
-use mcu_error::McuError;
-use mcu_mbox_common::messages::{
+use caliptra_mcu_error::McuError;
+use caliptra_mcu_mbox_common::messages::{
     verify_checksum, CommandId, FuseLockPartitionReq, FuseReadReq, MailboxReqHeader,
     MailboxRespHeader, MAX_FUSE_DATA_WORDS,
 };
-use registers_generated::mci;
+use caliptra_mcu_registers_generated::mci;
+use core::cmp::Ordering;
+use core::mem::size_of;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 

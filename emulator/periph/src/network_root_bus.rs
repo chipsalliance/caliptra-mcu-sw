@@ -19,8 +19,8 @@ use caliptra_emu_bus::Event;
 use caliptra_emu_bus::{Bus, BusError, Clock, Ram, Rom};
 use caliptra_emu_cpu::{Pic, PicMmioRegisters};
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
-use emulator_registers_generated::ethernet::EthernetBus;
-use network_config::DEFAULT_NETWORK_MEMORY_MAP;
+use caliptra_mcu_emulator_registers_generated::ethernet::EthernetBus;
+use caliptra_mcu_network_config::DEFAULT_NETWORK_MEMORY_MAP;
 use std::{
     cell::RefCell,
     path::PathBuf,

@@ -1,6 +1,6 @@
-//! Safe constructors for `libtock_platform::CommandReturn` variants.
+//! Safe constructors for `caliptra_mcu_libtock_platform::CommandReturn` variants.
 
-use libtock_platform::{return_variant, CommandReturn, ErrorCode};
+use caliptra_mcu_libtock_platform::{return_variant, CommandReturn, ErrorCode};
 
 pub fn failure(error_code: ErrorCode) -> CommandReturn {
     // Safety: return_variant is a failure, so r1 must be a valid ErrorCode,

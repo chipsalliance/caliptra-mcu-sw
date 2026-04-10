@@ -1,4 +1,4 @@
-use libtock_platform::{CommandReturn, ErrorCode};
+use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 
 use core::cell::{Cell, RefCell};
 use std::collections::HashMap;

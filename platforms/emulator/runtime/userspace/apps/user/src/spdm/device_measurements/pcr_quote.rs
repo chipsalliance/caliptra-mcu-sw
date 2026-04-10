@@ -4,9 +4,9 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use libapi_caliptra::crypto::asym::AsymAlgo;
-use libapi_caliptra::evidence::pcr_quote::PcrQuote;
-use spdm_lib::measurements::{
+use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
+use caliptra_mcu_libapi_caliptra::evidence::pcr_quote::PcrQuote;
+use caliptra_mcu_spdm_lib::measurements::{
     MeasurementValueInfo, MeasurementsError, MeasurementsResult, SpdmMeasurementValue,
 };
 

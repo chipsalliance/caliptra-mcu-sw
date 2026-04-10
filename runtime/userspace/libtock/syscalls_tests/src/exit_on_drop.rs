@@ -1,5 +1,5 @@
-use libtock_platform::exit_on_drop::ExitOnDrop;
-use libtock_unittest::fake;
+use caliptra_mcu_libtock_platform::exit_on_drop::ExitOnDrop;
+use caliptra_mcu_libtock_unittest::fake;
 
 // Unwinds if `unwind` is true, otherwise just returns.
 fn maybe_unwind(unwind: bool) {
@@ -11,12 +11,12 @@ fn maybe_unwind(unwind: bool) {
 #[cfg(not(miri))]
 #[test]
 fn exit() {
-    let exit = libtock_unittest::exit_test("exit_on_drop::exit", || {
+    let exit = caliptra_mcu_libtock_unittest::exit_test("exit_on_drop::exit", || {
         let exit_on_drop: ExitOnDrop<fake::Syscalls> = Default::default();
         maybe_unwind(true);
         core::mem::forget(exit_on_drop);
     });
-    assert_eq!(exit, libtock_unittest::ExitCall::Terminate(0));
+    assert_eq!(exit, caliptra_mcu_libtock_unittest::ExitCall::Terminate(0));
 }
 
 #[test]

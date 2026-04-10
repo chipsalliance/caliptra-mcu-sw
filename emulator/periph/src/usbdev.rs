@@ -7,8 +7,8 @@ use tock_registers::interfaces::Readable;
 
 use caliptra_emu_bus::ReadWriteRegister;
 use caliptra_emu_cpu::Irq;
-use emulator_registers_generated::usbdev::{UsbdevGenerated, UsbdevPeripheral};
-use registers_generated::usbdev::bits::*;
+use caliptra_mcu_emulator_registers_generated::usbdev::{UsbdevGenerated, UsbdevPeripheral};
+use caliptra_mcu_registers_generated::usbdev::bits::*;
 
 const AV_SETUP_FIFO_DEPTH: usize = 4;
 const AV_OUT_FIFO_DEPTH: usize = 8;
@@ -275,7 +275,7 @@ impl UsbDevState {
 /// // Pass `periph` to AutoRootBus, keep `host` for the test harness.
 /// ```
 ///
-/// [`AutoRootBus`]: emulator_registers_generated::root_bus::AutoRootBus
+/// [`AutoRootBus`]: caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus
 pub struct UsbDevPeriph {
     state: Arc<Mutex<UsbDevState>>,
     irq: Option<Irq>,
@@ -637,10 +637,10 @@ mod tests {
     use super::*;
     use caliptra_emu_bus::Bus;
     use caliptra_emu_types::RvSize;
-    use emulator_registers_generated::root_bus::AutoRootBus;
+    use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
     use tock_registers::interfaces::Writeable;
 
-    const USBDEV_BASE: u32 = registers_generated::usbdev::USBDEV_ADDR;
+    const USBDEV_BASE: u32 = caliptra_mcu_registers_generated::usbdev::USBDEV_ADDR;
     const INTR_STATE_OFFSET: u32 = 0x00;
     const INTR_ENABLE_OFFSET: u32 = 0x04;
     const INTR_TEST_OFFSET: u32 = 0x08;

@@ -4,13 +4,13 @@
 // This is a simplified version of the emulator's flash driver, but contains
 // only the parts that the FPGA model implements.
 
-use core::ops::{Index, IndexMut};
-use mcu_rom_common::flash::hil::{FlashDrvError, FlashStorage};
-use registers_generated::primary_flash_ctrl::{
+use caliptra_mcu_registers_generated::primary_flash_ctrl::{
     bits::{FlControl, OpStatus},
     regs::PrimaryFlashCtrl,
 };
-use romtime::StaticRef;
+use caliptra_mcu_rom_common::flash::hil::{FlashDrvError, FlashStorage};
+use caliptra_mcu_romtime::StaticRef;
+use core::ops::{Index, IndexMut};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 /// FPGA wrapper primary flash controller address

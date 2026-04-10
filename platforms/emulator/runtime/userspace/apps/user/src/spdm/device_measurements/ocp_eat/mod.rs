@@ -8,10 +8,10 @@ pub use claims::init_target_env_claims;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use libapi_caliptra::certificate::KEY_LABEL_SIZE;
-use libapi_caliptra::crypto::asym::AsymAlgo;
-use libapi_caliptra::signed_eat::SignedEat;
-use spdm_lib::measurements::{
+use caliptra_mcu_libapi_caliptra::certificate::KEY_LABEL_SIZE;
+use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
+use caliptra_mcu_libapi_caliptra::signed_eat::SignedEat;
+use caliptra_mcu_spdm_lib::measurements::{
     MeasurementValueInfo, MeasurementsError, MeasurementsResult, SpdmMeasurementValue,
 };
 

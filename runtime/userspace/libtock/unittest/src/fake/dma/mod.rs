@@ -1,7 +1,7 @@
 use crate::fake::SyscallDriver;
 use crate::{DriverInfo, DriverShareRef};
 use crate::{RoAllowBuffer, RwAllowBuffer};
-use libtock_platform::{CommandReturn, ErrorCode};
+use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 use std::cell::RefCell;
 
 pub struct FakeDMADriver {

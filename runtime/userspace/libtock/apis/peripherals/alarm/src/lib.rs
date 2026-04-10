@@ -1,9 +1,9 @@
 #![no_std]
 
+use caliptra_mcu_libtock_platform as platform;
+use caliptra_mcu_libtock_platform::share;
+use caliptra_mcu_libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use core::cell::Cell;
-use libtock_platform as platform;
-use libtock_platform::share;
-use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 
 /// The alarm driver
 ///

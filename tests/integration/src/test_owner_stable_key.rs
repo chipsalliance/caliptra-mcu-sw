@@ -5,9 +5,9 @@
 #[cfg(test)]
 mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
-    use mcu_hw_model::McuHwModel;
-    use registers_generated::fuses;
-    use romtime::McuRomBootStatus;
+    use caliptra_mcu_hw_model::McuHwModel;
+    use caliptra_mcu_registers_generated::fuses;
+    use caliptra_mcu_romtime::McuRomBootStatus;
 
     /// Test that stable owner key derivation succeeds during cold boot.
     #[test]

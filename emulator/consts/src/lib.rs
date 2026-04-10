@@ -13,7 +13,7 @@ Abstract:
 --*/
 
 use caliptra_emu_cpu::{CpuArgs, CpuOrgArgs};
-use network_config::DEFAULT_NETWORK_MEMORY_MAP;
+use caliptra_mcu_network_config::DEFAULT_NETWORK_MEMORY_MAP;
 
 pub const DEFAULT_CPU_ARGS: CpuArgs = CpuArgs {
     org: CpuOrgArgs {

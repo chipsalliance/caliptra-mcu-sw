@@ -2,8 +2,9 @@
 /// guaranteed to still be valid.
 #[derive(Clone, Copy)]
 pub struct Upcall {
-    pub fn_pointer: Option<unsafe extern "C" fn(u32, u32, u32, libtock_platform::Register)>,
-    pub data: libtock_platform::Register,
+    pub fn_pointer:
+        Option<unsafe extern "C" fn(u32, u32, u32, caliptra_mcu_libtock_platform::Register)>,
+    pub data: caliptra_mcu_libtock_platform::Register,
 }
 
 impl Upcall {

@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "registers-generated"
+name = "caliptra-mcu-registers-generated"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

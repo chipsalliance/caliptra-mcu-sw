@@ -13,10 +13,10 @@ Abstract:
 --*/
 
 use crate::Soc;
+use caliptra_mcu_registers_generated::{i3c, lc_ctrl, mci, otp_ctrl, soc};
+use caliptra_mcu_romtime::{CaliptraSoC, Mci, StaticRef};
+use caliptra_mcu_romtime::{Lifecycle, Otp};
 use core::ptr::addr_of;
-use registers_generated::{i3c, lc_ctrl, mci, otp_ctrl, soc};
-use romtime::{CaliptraSoC, Mci, StaticRef};
-use romtime::{Lifecycle, Otp};
 
 /// ROM Environment containing all peripherals and managers
 pub struct RomEnv {
@@ -29,14 +29,14 @@ pub struct RomEnv {
     pub i3c1: crate::i3c::I3c,
     pub i3c1_base: StaticRef<i3c::regs::I3c>,
     pub soc_manager: CaliptraSoC,
-    pub straps: StaticRef<mcu_config::McuStraps>,
+    pub straps: StaticRef<caliptra_mcu_config::McuStraps>,
 }
 
 impl RomEnv {
     /// Create a new ROM environment with all peripherals initialized
     pub fn new() -> Self {
         // Get straps
-        let straps: StaticRef<mcu_config::McuStraps> =
+        let straps: StaticRef<caliptra_mcu_config::McuStraps> =
             unsafe { StaticRef::new(addr_of!(crate::MCU_STRAPS)) };
 
         // Get base addresses from MCU memory map

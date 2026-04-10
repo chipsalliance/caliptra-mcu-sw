@@ -8,7 +8,7 @@
 use std::cell::Cell;
 
 use crate::{DriverInfo, DriverShareRef};
-use libtock_platform::{CommandReturn, ErrorCode};
+use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ProximityCommand {

@@ -2,11 +2,11 @@
 mod config;
 
 extern crate alloc;
+use caliptra_mcu_libsyscall_caliptra::dma::DMAMapping;
+use caliptra_mcu_libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_console::Console;
 use core::fmt::Write;
-use libsyscall_caliptra::dma::DMAMapping;
-use libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
-use libsyscall_caliptra::DefaultSyscalls;
-use libtock_console::Console;
 
 #[cfg(any(
     feature = "test-firmware-update-streaming",
@@ -18,9 +18,9 @@ use crate::EXECUTOR;
     feature = "test-firmware-update-streaming",
     feature = "test-firmware-update-flash"
 ))]
-use libapi_caliptra::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
+use caliptra_mcu_libapi_caliptra::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
 
-use libtock_platform::ErrorCode;
+use caliptra_mcu_libtock_platform::ErrorCode;
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 
 #[allow(dead_code)]
@@ -90,10 +90,12 @@ mod external_memory {
     extern crate alloc;
     use alloc::boxed::Box;
     use async_trait::async_trait;
+    use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
+    use caliptra_mcu_libsyscall_caliptra::dma::{
+        DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
+    };
+    use caliptra_mcu_libtock_platform::ErrorCode;
     use core::fmt::Debug;
-    use libapi_caliptra::firmware_update::StagingMemory;
-    use libsyscall_caliptra::dma::{DMAMapping, DMASource, DMATransaction, DMA as DMASyscall};
-    use libtock_platform::ErrorCode;
 
     use crate::image_loader::EMULATED_DMA_MAPPING;
 
@@ -170,11 +172,11 @@ mod dummy_flash {
     extern crate alloc;
     use alloc::boxed::Box;
     use async_trait::async_trait;
+    use caliptra_mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL;
+    use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
+    use caliptra_mcu_libsyscall_caliptra::flash::{FlashCapacity, SpiFlash as FlashSyscall};
+    use caliptra_mcu_libtock_platform::ErrorCode;
     use core::fmt::Debug;
-    use libapi_caliptra::firmware_update::StagingMemory;
-    use libsyscall_caliptra::flash::{FlashCapacity, SpiFlash as FlashSyscall};
-    use libtock_platform::ErrorCode;
-    use mcu_config_fpga::flash::DRIVER_NUM_EMULATED_FLASH_CTRL;
 
     pub struct ExternalFlash {
         flash_syscall: FlashSyscall,
@@ -222,19 +224,19 @@ mod flash_memory {
     extern crate alloc;
     use alloc::boxed::Box;
     use async_trait::async_trait;
-    use core::fmt::Debug;
-    use libapi_caliptra::firmware_update::StagingMemory;
-    use libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
-    use libsyscall_caliptra::{
+    use caliptra_mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
+    use caliptra_mcu_config_emulator::flash::STAGING_PARTITION;
+    use caliptra_mcu_libapi_caliptra::firmware_update::StagingMemory;
+    use caliptra_mcu_libapi_emulated_caliptra::image_loading::flash_boot_cfg::FlashBootConfig;
+    use caliptra_mcu_libsyscall_caliptra::{
         flash::{FlashCapacity, SpiFlash as FlashSyscall},
         DefaultSyscalls,
     };
-    use libtock_platform::ErrorCode;
-    use mcu_config::boot::{BootConfigAsync, PartitionId, PartitionStatus};
-    use mcu_config_emulator::flash::STAGING_PARTITION;
+    use caliptra_mcu_libtock_platform::ErrorCode;
+    use core::fmt::Debug;
 
+    use caliptra_mcu_libtock_console::Console;
     use core::fmt::Write;
-    use libtock_console::Console;
 
     pub struct ExternalFlash {
         flash_syscall: FlashSyscall,

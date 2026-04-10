@@ -1,8 +1,8 @@
 [package]
 edition = "2021"
-name = "syscalls_tests"
+name = "caliptra-mcu-syscalls_tests"
 version = "0.1.0"
 
 [dependencies]
-libtock_platform = { path = "../platform" }
-libtock_unittest = { path = "../unittest" }
+caliptra-mcu-libtock_platform = { path = "../platform" }
+caliptra-mcu-libtock_unittest = { path = "../unittest" }

@@ -5,8 +5,8 @@
 //! a function `get_led` used to retrieve the state of an LED.
 
 use crate::DriverInfo;
+use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 use core::cell::Cell;
-use libtock_platform::{CommandReturn, ErrorCode};
 
 pub struct Leds<const LEDS_COUNT: usize> {
     leds: [Cell<bool>; LEDS_COUNT],

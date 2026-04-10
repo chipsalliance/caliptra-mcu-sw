@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "pldm-lib"
+name = "caliptra-mcu-pldm-lib"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -10,16 +10,16 @@ edition.workspace = true
 async-trait.workspace = true
 embassy-executor.workspace = true
 embassy-sync.workspace = true
-libsyscall-caliptra.workspace = true
-libtockasync.workspace = true
-libtock_alarm.workspace = true
-libtock_console.workspace = true
-libtock_platform.workspace = true
-libtock_runtime.workspace = true
-pldm-common.workspace = true
+caliptra-mcu-libsyscall-caliptra.workspace = true
+caliptra-mcu-libtockasync.workspace = true
+caliptra-mcu-libtock_alarm.workspace = true
+caliptra-mcu-libtock_console.workspace = true
+caliptra-mcu-libtock_platform.workspace = true
+caliptra-mcu-libtock_runtime.workspace = true
+caliptra-mcu-pldm-common.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
-libtock_unittest.workspace = true
+caliptra-mcu-libtock_unittest.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }

@@ -2,8 +2,11 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
-use doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
+use caliptra_mcu_doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
 
+use caliptra_mcu_registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
+use caliptra_mcu_registers_generated::doe_mbox::regs::DoeMbox;
+use caliptra_mcu_registers_generated::doe_mbox::DOE_MBOX_ADDR;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use kernel::hil::time::{Alarm, AlarmClient, Time};
@@ -11,9 +14,6 @@ use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::{debug, ErrorCode};
-use registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
-use registers_generated::doe_mbox::regs::DoeMbox;
-use registers_generated::doe_mbox::DOE_MBOX_ADDR;
 
 pub const DOE_MBOX_BASE: StaticRef<DoeMbox> =
     unsafe { StaticRef::new(DOE_MBOX_ADDR as *const DoeMbox) };

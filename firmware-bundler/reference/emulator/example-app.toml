@@ -27,15 +27,15 @@ size = 0x2_0000
 
 # This section is optional.
 [rom]
-name = "mcu-rom-emulator"
+name = "caliptra-mcu-rom-emulator"
 stack = 0x2d00
 exception_stack = 0x200
 
 [kernel]
-name = "mcu-runtime-emulator"
+name = "caliptra-mcu-runtime-emulator"
 stack = 0x0_7000
 
 [[app]]
-name = "example-app"
+name = "caliptra-mcu-example-app"
 stack = 0x10000
 

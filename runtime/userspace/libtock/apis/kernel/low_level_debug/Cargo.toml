@@ -1,5 +1,5 @@
 [package]
-name = "libtock_low_level_debug"
+name = "caliptra-mcu-libtock_low_level_debug"
 version = "0.1.0"
 authors = ["Tock Project Developers <tock-dev@googlegroups.com>"]
 license = "Apache-2.0 OR MIT"
@@ -8,7 +8,7 @@ repository = "https://www.github.com/tock/libtock-rs"
 description = "libtock low-level debug drivers"
 
 [dependencies]
-libtock_platform = { path = "../../../platform" }
+caliptra-mcu-libtock_platform = { path = "../../../platform" }
 
 [dev-dependencies]
-libtock_unittest = { path = "../../../unittest" }
+caliptra-mcu-libtock_unittest = { path = "../../../unittest" }

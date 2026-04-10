@@ -1,11 +1,11 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_libsyscall_caliptra::mailbox::MailboxError;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_ocp_eat::EatError;
-use libsyscall_caliptra::mailbox::MailboxError;
-use libtock_platform::ErrorCode;
 
 #[cfg(feature = "ocp-lock")]
-use romtime::ocp_lock::Error as OcpLockError;
+use caliptra_mcu_romtime::ocp_lock::Error as OcpLockError;
 
 pub type CaliptraApiResult<T> = Result<T, CaliptraApiError>;
 

@@ -3,8 +3,8 @@
 //! # MCI: An Interface for accessing the Manufacturer Controller Interface (MCI)
 
 use crate::DefaultSyscalls;
+use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
 use core::marker::PhantomData;
-use libtock_platform::{ErrorCode, Syscalls};
 
 pub struct Mci<S: Syscalls = DefaultSyscalls> {
     syscall: PhantomData<S>,

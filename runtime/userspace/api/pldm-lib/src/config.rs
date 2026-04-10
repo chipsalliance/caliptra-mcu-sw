@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use crate::control_context::ProtocolCapability;
+use caliptra_mcu_pldm_common::protocol::base::{PldmControlCmd, PldmSupportedType};
+use caliptra_mcu_pldm_common::protocol::firmware_update::{FwUpdateCmd, PldmFdTime};
 use embassy_sync::lazy_lock::LazyLock;
-use pldm_common::protocol::base::{PldmControlCmd, PldmSupportedType};
-use pldm_common::protocol::firmware_update::{FwUpdateCmd, PldmFdTime};
 
 pub const PLDM_PROTOCOL_CAP_COUNT: usize = 2;
 pub const FD_MAX_XFER_SIZE: usize = 512; // Arbitrary limit and change as needed.

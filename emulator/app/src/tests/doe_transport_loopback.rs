@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
-use mcu_testing_common::{sleep_emulator_ticks, MCU_RUNNING};
+use caliptra_mcu_testing_common::{sleep_emulator_ticks, MCU_RUNNING};
 use rand::Rng;
 const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_DWORDS: usize = 2; // minimum size of test vectors

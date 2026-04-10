@@ -21,8 +21,8 @@ use caliptra_image_gen::{
 use caliptra_image_types::{
     FwVerificationPqcKeyType, ImageBundle, ImageManifest, ImageRevision, IMAGE_MANIFEST_BYTE_SIZE,
 };
+use caliptra_mcu_flash_image::MCU_RT_IDENTIFIER;
 use cargo_metadata::MetadataCommand;
-use flash_image::MCU_RT_IDENTIFIER;
 use hex::ToHex;
 use std::{num::ParseIntError, path::PathBuf, str::FromStr};
 use zerocopy::{transmute, FromBytes, IntoBytes};
@@ -302,7 +302,7 @@ impl CaliptraBuilder {
                 component_id: MCU_RT_IDENTIFIER,
                 exec_bit: 2,
                 // MCU staging address in SRAM region (FPGA memory map)
-                staging_addr: mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset as u64,
+                staging_addr: caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.sram_offset as u64,
                 ..Default::default()
             }
         };

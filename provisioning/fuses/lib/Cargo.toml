@@ -1,13 +1,13 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "provisioning-fuses"
+name = "caliptra-mcu-provisioning-fuses"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-registers-generated = { workspace = true }
+caliptra-mcu-registers-generated = { workspace = true }
 
 [build-dependencies]
-fusegen.workspace = true
+caliptra-mcu-fusegen.workspace = true
 anyhow.workspace = true

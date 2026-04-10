@@ -5,13 +5,13 @@ use std::process::{exit, Command};
 use std::sync::atomic::Ordering;
 use std::thread::{self, sleep};
 
-use caliptra_mailbox_server::ServerConfig;
-use caliptra_util_host_mailbox_test_config::{
+use caliptra_mcu_core_mailbox_server::ServerConfig;
+use caliptra_mcu_core_util_host_mailbox_test_config::{
     DeviceCapabilitiesConfig, DeviceConfig, DeviceInfoConfig, FirmwareVersionConfig, NetworkConfig,
     ServerConfig as ConfigServerConfig, TestConfig, ValidationConfig,
 };
-use emulator_mcu_mbox::mcu_mailbox_transport::{McuMailboxError, McuMailboxTransport};
-use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+use caliptra_mcu_emulator_mcu_mbox::mcu_mailbox_transport::{McuMailboxError, McuMailboxTransport};
+use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
 use tempfile::NamedTempFile;
 
 const TEST_DEVICE_ID: u16 = 0x0010;
@@ -130,7 +130,8 @@ pub fn run_mbox_responder(mbox: McuMailboxTransport) {
         let server_config = ServerConfig::default();
         println!("Starting mailbox server on {}", server_config.bind_addr);
 
-        let mut server = caliptra_mailbox_server::MailboxServer::new(server_config).unwrap();
+        let mut server =
+            caliptra_mcu_core_mailbox_server::MailboxServer::new(server_config).unwrap();
 
         // Run server with a simple echo handler
         server

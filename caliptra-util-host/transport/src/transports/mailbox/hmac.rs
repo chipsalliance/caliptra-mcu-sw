@@ -15,11 +15,11 @@ use alloc::vec::Vec;
 
 use super::checksum::calc_checksum;
 use super::command_traits::*;
-use caliptra_util_host_command_types::crypto_hmac::{
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::{
     CmKeyUsage, Cmk, HmacAlgorithm, HmacKdfCounterRequest, HmacKdfCounterResponse, HmacRequest,
     HmacResponse, CMK_SIZE, MAX_HMAC_INPUT_SIZE, MAX_HMAC_SIZE,
 };
-use caliptra_util_host_command_types::CommonResponse;
+use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[repr(C)]

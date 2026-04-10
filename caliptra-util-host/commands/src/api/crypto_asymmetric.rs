@@ -14,14 +14,14 @@
 //! - `caliptra_cmd_ecdh_finish` - Complete ECDH key exchange and derive shared secret
 
 use crate::api::{CaliptraApiError, CaliptraResult};
-use caliptra_util_host_command_types::crypto_asymmetric::{
+use caliptra_mcu_core_util_host_command_types::crypto_asymmetric::{
     EcdhFinishRequest, EcdhFinishResponse, EcdhGenerateRequest, EcdhGenerateResponse,
     EcdsaPublicKeyRequest, EcdsaPublicKeyResponse, EcdsaSignRequest, EcdsaSignResponse,
     EcdsaVerifyRequest, EcdsaVerifyResponse, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE,
     CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, ECC384_SCALAR_BYTE_SIZE,
 };
-use caliptra_util_host_command_types::crypto_hmac::{CmKeyUsage, Cmk};
-use caliptra_util_host_command_types::CaliptraCommandId;
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::{CmKeyUsage, Cmk};
+use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 use caliptra_util_host_session::CaliptraSession;
 
 /// Get the public key from an ECDSA CMK

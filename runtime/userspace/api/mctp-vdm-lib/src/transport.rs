@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
 use crate::error::VdmLibError;
-use libsyscall_caliptra::mctp::{driver_num, Mctp, MessageInfo};
-use mctp_vdm_common::util::mctp_transport::{
+use caliptra_mcu_libsyscall_caliptra::mctp::{driver_num, Mctp, MessageInfo};
+use caliptra_mcu_mctp_vdm_common::util::mctp_transport::{
     MctpCommonHeader, MCTP_COMMON_HEADER_OFFSET, MCTP_VDM_MSG_TYPE,
 };
 

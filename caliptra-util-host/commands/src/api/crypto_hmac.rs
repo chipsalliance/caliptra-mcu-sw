@@ -11,11 +11,11 @@
 //! - `caliptra_cmd_hmac_kdf_counter` - Derive a key using HMAC-based KDF in counter mode
 
 use crate::api::{CaliptraApiError, CaliptraResult};
-use caliptra_util_host_command_types::crypto_hmac::{
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::{
     CmKeyUsage, Cmk, HmacAlgorithm, HmacKdfCounterRequest, HmacKdfCounterResponse, HmacRequest,
     HmacResponse,
 };
-use caliptra_util_host_command_types::CaliptraCommandId;
+use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 use caliptra_util_host_session::CaliptraSession;
 
 /// Compute an HMAC over data

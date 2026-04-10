@@ -5,8 +5,8 @@
 ///
 /// # Example
 /// ```
-/// use libtock_platform::exit_on_drop::ExitOnDrop;
-/// fn function_that_must_not_unwind<S: libtock_platform::Syscalls>() {
+/// use caliptra_mcu_libtock_platform::exit_on_drop::ExitOnDrop;
+/// fn function_that_must_not_unwind<S: caliptra_mcu_libtock_platform::Syscalls>() {
 ///     let exit_on_drop: ExitOnDrop::<S> = Default::default();
 ///     /* Do something that might unwind here. */
 ///     core::mem::forget(exit_on_drop);

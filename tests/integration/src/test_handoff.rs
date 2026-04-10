@@ -4,7 +4,7 @@
 mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
     use crate::test_hek::test::setup_otp_hek;
-    use mcu_hw_model::McuHwModel;
+    use caliptra_mcu_hw_model::McuHwModel;
 
     #[test]
     fn test_handoff_integrity() {

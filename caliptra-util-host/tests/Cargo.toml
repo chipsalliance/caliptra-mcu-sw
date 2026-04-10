@@ -8,9 +8,9 @@ edition.workspace = true
 [dependencies]
 # New modular architecture dependencies
 caliptra-util-host-session.workspace = true
-caliptra-util-host-transport.workspace = true
+caliptra-mcu-core-util-host-transport.workspace = true
 caliptra-util-host-commands.workspace = true
-caliptra-util-host-command-types.workspace = true
+caliptra-mcu-core-util-host-command-types.workspace = true
 zerocopy.workspace = true
 
 # Integration tests are now organized in src/lib.rs as a library

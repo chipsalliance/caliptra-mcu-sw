@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "compliance-test"
+name = "caliptra-mcu-compliance-test"
 version = "0.1.0"
 edition = "2021"
 
@@ -12,5 +12,5 @@ clap.workspace = true
 caliptra-emu-types.workspace = true
 caliptra-emu-bus.workspace = true
 caliptra-emu-cpu.workspace = true
-emulator-consts.workspace = true
+caliptra-mcu-emulator-consts.workspace = true
 getrandom.workspace = true

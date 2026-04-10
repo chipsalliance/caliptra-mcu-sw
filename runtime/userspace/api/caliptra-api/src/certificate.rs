@@ -18,7 +18,7 @@ use dpe::context::ContextHandle;
 use dpe::response::{SignP384Resp, SignResp};
 use dpe::DpeProfile;
 
-use libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromZeros, IntoBytes, TryFromBytes};
 
 pub const IDEV_ECC_CSR_MAX_SIZE: usize = GetIdevCsrResp::DATA_MAX_SIZE;

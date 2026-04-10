@@ -19,12 +19,12 @@ use std::panic::{catch_unwind, Location, UnwindSafe};
 ///
 /// #[cfg(not(miri))]
 /// fn main() {
-///     use libtock_platform::Syscalls;
-///     let _kernel = libtock_unittest::fake::Kernel::new();
-///     let exit = libtock_unittest::exit_test("tests::foo", || {
-///         libtock_unittest::fake::Syscalls::exit_terminate(0);
+///     use caliptra_mcu_libtock_platform::Syscalls;
+///     let _kernel = caliptra_mcu_libtock_unittest::fake::Kernel::new();
+///     let exit = caliptra_mcu_libtock_unittest::exit_test("tests::foo", || {
+///         caliptra_mcu_libtock_unittest::fake::Syscalls::exit_terminate(0);
 ///     });
-///     assert_eq!(exit, libtock_unittest::ExitCall::Terminate(0));
+///     assert_eq!(exit, caliptra_mcu_libtock_unittest::ExitCall::Terminate(0));
 /// }
 /// ```
 ///

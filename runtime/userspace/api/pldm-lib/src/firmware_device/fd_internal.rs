@@ -1,13 +1,13 @@
 // Licensed under the Apache-2.0 license
 
 use crate::control_context::Tid;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::mutex::Mutex;
-use pldm_common::message::firmware_update::get_status::GetStatusReasonCode;
-use pldm_common::protocol::firmware_update::{
+use caliptra_mcu_pldm_common::message::firmware_update::get_status::GetStatusReasonCode;
+use caliptra_mcu_pldm_common::protocol::firmware_update::{
     FirmwareDeviceState, PldmFdTime, UpdateOptionFlags, PLDM_FWUP_MAX_PADDING_SIZE,
 };
-use pldm_common::util::fw_component::FirmwareComponent;
+use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::mutex::Mutex;
 
 /// Result of prepare_download_request batch operation
 pub struct DownloadRequestInfo {

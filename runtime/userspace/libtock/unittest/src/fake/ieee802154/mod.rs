@@ -1,7 +1,7 @@
 //! Fake implementation of the raw IEEE 802.15.4 API.
 
+use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 use core::cell::Cell;
-use libtock_platform::{CommandReturn, ErrorCode};
 use std::{
     cell::RefCell,
     collections::VecDeque,

@@ -3,24 +3,24 @@
 #[cfg(test)]
 mod common;
 
-use common::CustomDiscoverySm;
-use pldm_common::message::firmware_update::{
+use caliptra_mcu_pldm_common::message::firmware_update::{
     get_fw_params::GetFirmwareParametersResponse,
     pass_component::PassComponentTableResponse,
     query_devid::QueryDeviceIdentifiersResponse,
     request_update::RequestUpdateResponse,
     update_component::{UpdateComponentRequest, UpdateComponentResponse},
 };
-use pldm_common::protocol::base::PldmBaseCompletionCode;
-use pldm_common::protocol::firmware_update::{
+use caliptra_mcu_pldm_common::protocol::base::PldmBaseCompletionCode;
+use caliptra_mcu_pldm_common::protocol::firmware_update::{
     ComponentClassification, ComponentCompatibilityResponse, ComponentCompatibilityResponseCode,
     ComponentResponseCode, FwUpdateCmd, UpdateOptionFlags,
 };
-use pldm_fw_pkg::manifest::{
+use caliptra_mcu_pldm_fw_pkg::manifest::{
     ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
 };
-use pldm_fw_pkg::FirmwareManifest;
-use pldm_ua::{daemon::Options, events::PldmEvents, transport::PldmSocket, update_sm};
+use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
+use caliptra_mcu_pldm_ua::{daemon::Options, events::PldmEvents, transport::PldmSocket, update_sm};
+use common::CustomDiscoverySm;
 
 // Test UUID
 pub const TEST_UUID: [u8; 16] = [
@@ -34,8 +34,11 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
         &mut self,
         ctx: &mut update_sm::InnerContext<impl PldmSocket>,
     ) -> Result<(), ()> {
-        ctx.device_id = Some(ctx.pldm_fw_pkg.firmware_device_id_records[0].clone());
-        ctx.components = ctx.pldm_fw_pkg.component_image_information.clone();
+        ctx.device_id = Some(ctx.caliptra_mcu_pldm_fw_pkg.firmware_device_id_records[0].clone());
+        ctx.components = ctx
+            .caliptra_mcu_pldm_fw_pkg
+            .component_image_information
+            .clone();
         for _ in &ctx.components {
             ctx.component_response_codes
                 .push(ComponentResponseCode::CompCanBeUpdated);
@@ -76,7 +79,7 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
     fn on_get_firmware_parameters_response(
         &mut self,
         ctx: &mut update_sm::InnerContext<impl PldmSocket>,
-        _response: pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
+        _response: caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
     ) -> Result<(), ()> {
         ctx.event_queue
             .send(PldmEvents::Update(update_sm::Events::SendRequestUpdate))
@@ -134,13 +137,14 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
 
 #[test]
 fn test_update_one_component() {
-    let pldm_fw_pkg = FirmwareManifest {
+    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
         firmware_device_id_records: vec![FirmwareDeviceIdRecord {
             initial_descriptor: Descriptor {
                 descriptor_type: DescriptorType::Uuid,
                 descriptor_data: TEST_UUID.to_vec(),
             },
-            component_image_set_version_string_type: pldm_fw_pkg::manifest::StringType::Utf8,
+            component_image_set_version_string_type:
+                caliptra_mcu_pldm_fw_pkg::manifest::StringType::Utf8,
             component_image_set_version_string: Some("1.1.0".to_string()),
             applicable_components: Some(vec![0]),
             ..Default::default()
@@ -156,7 +160,7 @@ fn test_update_one_component() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
@@ -190,13 +194,14 @@ fn test_update_one_component() {
 
 #[test]
 fn test_update_two_components() {
-    let pldm_fw_pkg = FirmwareManifest {
+    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
         firmware_device_id_records: vec![FirmwareDeviceIdRecord {
             initial_descriptor: Descriptor {
                 descriptor_type: DescriptorType::Uuid,
                 descriptor_data: TEST_UUID.to_vec(),
             },
-            component_image_set_version_string_type: pldm_fw_pkg::manifest::StringType::Utf8,
+            component_image_set_version_string_type:
+                caliptra_mcu_pldm_fw_pkg::manifest::StringType::Utf8,
             component_image_set_version_string: Some("1.1.0".to_string()),
             applicable_components: Some(vec![0]),
             ..Default::default()
@@ -220,7 +225,7 @@ fn test_update_two_components() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,

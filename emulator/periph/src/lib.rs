@@ -26,17 +26,19 @@ mod mci;
 mod mcu_mbox0;
 mod network_root_bus;
 mod otp;
-pub use otp_digest::{otp_digest, otp_scramble, otp_unscramble, OTP_SCRAMBLE_KEYS};
+pub use caliptra_mcu_otp_digest::{
+    caliptra_mcu_otp_digest, otp_scramble, otp_unscramble, OTP_SCRAMBLE_KEYS,
+};
 mod reset_reason;
 mod root_bus;
 mod uart;
 mod usbdev;
 
 pub use axicdma::AxiCDMA;
+pub use caliptra_mcu_emulator_registers_generated::ethernet::EthernetBus;
 pub use caliptra_to_ext_bus::CaliptraToExtBus;
 pub use doe_mbox::{DoeMboxPeriph, DummyDoeMbox};
 pub use emu_ctrl::EmuCtrl;
-pub use emulator_registers_generated::ethernet::EthernetBus;
 #[cfg(target_os = "linux")]
 pub use ethernet::LinuxTapDevice;
 pub use ethernet::{DummyTapDevice, Ethernet, TapDevice};
@@ -56,11 +58,11 @@ pub use usbdev::{UsbDevPeriph, UsbHostController, UsbTransactionError};
 /// Stub I3C1 peripheral backed by generated register defaults so that
 /// firmware accesses to the i3c1 address range see realistic reset
 /// values (e.g. TTI capability bits) instead of causing a bus fault.
-pub struct StubI3c1(emulator_registers_generated::i3c1::I3c1Generated);
+pub struct StubI3c1(caliptra_mcu_emulator_registers_generated::i3c1::I3c1Generated);
 
 impl StubI3c1 {
     pub fn new() -> Self {
-        Self(emulator_registers_generated::i3c1::I3c1Generated::default())
+        Self(caliptra_mcu_emulator_registers_generated::i3c1::I3c1Generated::default())
     }
 }
 
@@ -70,8 +72,10 @@ impl Default for StubI3c1 {
     }
 }
 
-impl emulator_registers_generated::i3c1::I3c1Peripheral for StubI3c1 {
-    fn generated(&mut self) -> Option<&mut emulator_registers_generated::i3c1::I3c1Generated> {
+impl caliptra_mcu_emulator_registers_generated::i3c1::I3c1Peripheral for StubI3c1 {
+    fn generated(
+        &mut self,
+    ) -> Option<&mut caliptra_mcu_emulator_registers_generated::i3c1::I3c1Generated> {
         Some(&mut self.0)
     }
 }

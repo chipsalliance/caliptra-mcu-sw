@@ -16,10 +16,10 @@ use crate::{fatal_error, Cmk, RomEnv};
 use caliptra_api::mailbox::{
     CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmStableKeyType, CommandId,
 };
-use mcu_error::{McuError, McuResult};
-use registers_generated::{fuses, soc};
-use romtime::otp::{Otp, HEK_OFFSETS, HEK_SEED_SIZE, HEK_ZER_MARKER_OFFSET};
-use romtime::{McuRomBootStatus, StaticRef};
+use caliptra_mcu_error::{McuError, McuResult};
+use caliptra_mcu_registers_generated::{fuses, soc};
+use caliptra_mcu_romtime::otp::{Otp, HEK_OFFSETS, HEK_SEED_SIZE, HEK_ZER_MARKER_OFFSET};
+use caliptra_mcu_romtime::{McuRomBootStatus, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 use zerocopy::transmute;
 
@@ -59,7 +59,9 @@ fn fill_hek_seed(registers: StaticRef<soc::regs::Soc>, value: u32) {
 }
 
 pub(crate) fn set_hek_fuses(registers: StaticRef<soc::regs::Soc>, otp: &Otp) {
-    romtime::println!("[mcu-fuse-write] Attempting to write stable owner key HEK fuses");
+    caliptra_mcu_romtime::println!(
+        "[mcu-fuse-write] Attempting to write stable owner key HEK fuses"
+    );
 
     let mut seed = [0u8; 48];
     for slot in 0..HEK_OFFSETS.len() {
@@ -96,21 +98,23 @@ pub(crate) fn set_hek_fuses(registers: StaticRef<soc::regs::Soc>, otp: &Otp) {
 
         if computed_digest == expected_digest {
             write_hek_seed(registers, &seed[..HEK_SEED_SIZE]);
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[mcu-fuse-write] Finished writing stable owner key HEK fuse slot {}",
                 slot
             );
             return;
         }
 
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-fuse-write] HEK software digest mismatch! Slot {}",
             slot
         );
     }
 
     fill_hek_seed(registers, 0);
-    romtime::println!("[mcu-fuse-write] No valid stable owner key HEK fuse slot found");
+    caliptra_mcu_romtime::println!(
+        "[mcu-fuse-write] No valid stable owner key HEK fuse slot found"
+    );
 }
 
 fn read_personalization_seed(
@@ -127,7 +131,7 @@ fn read_personalization_seed(
 }
 
 pub(crate) fn derive_stable_owner_key(env: &mut RomEnv) -> McuResult<Cmk> {
-    romtime::println!("[mcu-rom] Deriving stable owner key");
+    caliptra_mcu_romtime::println!("[mcu-rom] Deriving stable owner key");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::StableOwnerKeyDerivationStarted.into());
 
@@ -145,14 +149,14 @@ pub(crate) fn derive_stable_owner_key(env: &mut RomEnv) -> McuResult<Cmk> {
         &mut req32,
         &mut resp,
     ) {
-        romtime::println!("[mcu-rom] Error deriving stable owner key: {:?}", err);
+        caliptra_mcu_romtime::println!("[mcu-rom] Error deriving stable owner key: {:?}", err);
         return Err(McuError::ROM_COLD_BOOT_STABLE_OWNER_KEY_DERIVATION_ERROR);
     }
 
     let resp: CmDeriveStableKeyResp = transmute!(resp);
     let cmk = Cmk(transmute!(resp.cmk));
 
-    romtime::println!("[mcu-rom] Stable owner key derived successfully");
+    caliptra_mcu_romtime::println!("[mcu-rom] Stable owner key derived successfully");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::StableOwnerKeyDerivationComplete.into());
     Ok(cmk)

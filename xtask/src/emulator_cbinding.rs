@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::Result;
-use mcu_builder::{target_dir, PROJECT_ROOT};
+use caliptra_mcu_builder::{target_dir, PROJECT_ROOT};
 use std::process::Command;
 
 const CBINDING_DIR: &str = "emulator/cbinding";
@@ -64,9 +64,9 @@ where
 /// Get the static library name with the correct extension for the target platform
 fn get_lib_name() -> &'static str {
     if cfg!(target_os = "windows") {
-        "emulator_cbinding.lib"
+        "caliptra_mcu_emulator_cbinding.lib"
     } else {
-        "libemulator_cbinding.a"
+        "libcaliptra_mcu_emulator_cbinding.a"
     }
 }
 
@@ -78,7 +78,7 @@ pub(crate) fn build_lib(release: bool) -> Result<()> {
         build_type
     );
 
-    let mut args = vec!["build", "-p", "emulator-cbinding"];
+    let mut args = vec!["build", "-p", "caliptra-mcu-emulator-cbinding"];
     if release {
         args.push("--release");
     }
@@ -175,8 +175,8 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
     // Use platform-specific compiler and linker flags
     #[cfg(windows)]
     {
-        let emulator_exe = cbinding_dir.join("emulator.exe");
-        let lib_path = target_build_dir.join("emulator_cbinding.lib");
+        let emulator_exe = cbinding_dir.join("caliptra-mcu-emulator.exe");
+        let lib_path = target_build_dir.join("caliptra_mcu_emulator_cbinding.lib");
         cmd.arg("/std:c11")
             .arg(if release { "/O2" } else { "/Od" })
             .arg("emulator.c")
@@ -201,12 +201,12 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
             .arg(if release { "-O2" } else { "-O0" })
             .arg("-I.")
             .arg("-o")
-            .arg("emulator")
+            .arg("caliptra-mcu-emulator")
             .arg("emulator.c")
             .arg("cfi_stubs.o")
             .arg("-L")
             .arg(lib_dir)
-            .arg("-lemulator_cbinding")
+            .arg("-lcaliptra_mcu_emulator_cbinding")
             .args(["-lpthread", "-ldl", "-lm", "-lrt"]);
     }
 
@@ -219,9 +219,9 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
     }
 
     let emulator_path = if cfg!(windows) {
-        cbinding_dir.join("emulator.exe")
+        cbinding_dir.join("caliptra-mcu-emulator.exe")
     } else {
-        cbinding_dir.join("emulator")
+        cbinding_dir.join("caliptra-mcu-emulator")
     };
 
     if !emulator_path.exists() {
@@ -250,9 +250,9 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
     }
 
     let emulator_dst = if cfg!(windows) {
-        target_cbinding_dir.join("emulator.exe")
+        target_cbinding_dir.join("caliptra-mcu-emulator.exe")
     } else {
-        target_cbinding_dir.join("emulator")
+        target_cbinding_dir.join("caliptra-mcu-emulator")
     };
 
     if emulator_path.exists() {
@@ -280,10 +280,10 @@ pub(crate) fn build_emulator(release: bool) -> Result<()> {
     println!("  - {}", lib_name);
     println!("  - emulator_cbinding.h");
     if cfg!(windows) {
-        println!("  - emulator.exe");
+        println!("  - caliptra-mcu-emulator.exe");
         println!("  - cfi_stubs.obj");
     } else {
-        println!("  - emulator");
+        println!("  - caliptra-mcu-emulator");
         println!("  - cfi_stubs.o");
     }
     Ok(())
@@ -305,9 +305,9 @@ pub(crate) fn clean(release: bool) -> Result<()> {
     // Clean C artifacts from original locations (in case they weren't moved)
     let cbinding_dir = PROJECT_ROOT.join(CBINDING_DIR);
     let emulator_binary = if cfg!(windows) {
-        cbinding_dir.join("emulator.exe")
+        cbinding_dir.join("caliptra-mcu-emulator.exe")
     } else {
-        cbinding_dir.join("emulator")
+        cbinding_dir.join("caliptra-mcu-emulator")
     };
     let header_file = cbinding_dir.join("emulator_cbinding.h");
     let cfi_stubs_obj = if cfg!(windows) {
@@ -332,7 +332,7 @@ pub(crate) fn clean(release: bool) -> Result<()> {
     }
 
     // Clean specific Rust artifacts for emulator-cbinding only
-    let mut args = vec!["clean", "-p", "emulator-cbinding"];
+    let mut args = vec!["clean", "-p", "caliptra-mcu-emulator-cbinding"];
     if release {
         args.push("--release");
     }

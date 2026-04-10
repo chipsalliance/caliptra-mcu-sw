@@ -1,6 +1,6 @@
 use crate::{fake, ExpectedSyscall, SyscallLogEntry};
+use caliptra_mcu_libtock_platform::{return_variant, ErrorCode};
 use fake::syscalls::allow_ro_impl::*;
-use libtock_platform::{return_variant, ErrorCode};
 use std::convert::TryInto;
 use std::panic::catch_unwind;
 

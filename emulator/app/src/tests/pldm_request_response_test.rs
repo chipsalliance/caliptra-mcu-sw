@@ -2,19 +2,19 @@
 //! This module tests the PLDM request/response interaction between the emulator and the device.
 //! The emulator sends out different PLDM requests and expects a corresponding response for those requests.
 
-use mcu_testing_common::mctp_transport::MctpPldmSocket;
-use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
-use pldm_common::codec::PldmCodec;
-use pldm_common::message::control::*;
-use pldm_common::message::firmware_update::get_fw_params::{
+use caliptra_mcu_pldm_common::codec::PldmCodec;
+use caliptra_mcu_pldm_common::message::control::*;
+use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::{
     FirmwareParameters, GetFirmwareParametersRequest, GetFirmwareParametersResponse,
 };
-use pldm_common::message::firmware_update::query_devid::{
+use caliptra_mcu_pldm_common::message::firmware_update::query_devid::{
     QueryDeviceIdentifiersRequest, QueryDeviceIdentifiersResponse,
 };
-use pldm_common::protocol::base::*;
-use pldm_common::protocol::firmware_update::*;
-use pldm_ua::transport::PldmSocket;
+use caliptra_mcu_pldm_common::protocol::base::*;
+use caliptra_mcu_pldm_common::protocol::firmware_update::*;
+use caliptra_mcu_pldm_ua::transport::PldmSocket;
+use caliptra_mcu_testing_common::mctp_transport::MctpPldmSocket;
+use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
 use std::process::exit;
 use std::sync::atomic::Ordering;
 

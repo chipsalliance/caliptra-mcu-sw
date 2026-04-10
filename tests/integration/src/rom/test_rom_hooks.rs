@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
-    use mcu_hw_model::McuHwModel;
+    use caliptra_mcu_hw_model::McuHwModel;
     use std::sync::atomic::Ordering;
 
     /// Bits in `mci_reg_fw_extended_error_info[0]` corresponding to hooks

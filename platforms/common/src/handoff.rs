@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_romtime::handoff::HandoffData;
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::ptr::{addr_of, addr_of_mut};
-use romtime::handoff::HandoffData;
 
 /// Marker for read-only access to the handoff table.
 pub struct ReadOnly;
@@ -23,7 +23,7 @@ impl<Access> Deref for HandOff<Access> {
         // Safety: Linker MUST place this static object in the `.handoff` section.
         // Safety: We know HANDOFF is valid because the `Self` constructor checked the FHT marker
         // and version.
-        unsafe { &*addr_of!(romtime::handoff::HANDOFF) }
+        unsafe { &*addr_of!(caliptra_mcu_romtime::handoff::HANDOFF) }
     }
 }
 
@@ -32,7 +32,7 @@ impl DerefMut for HandOff<ReadWrite> {
         // Safety: Linker MUST place this static object in the `.handoff` section.
         // Safety: We know HANDOFF is valid because the `Self` constructor checked the FHT marker
         // and version.
-        unsafe { &mut *addr_of_mut!(romtime::handoff::HANDOFF) }
+        unsafe { &mut *addr_of_mut!(caliptra_mcu_romtime::handoff::HANDOFF) }
     }
 }
 
@@ -41,16 +41,16 @@ impl HandOff<ReadOnly> {
     /// This returns a read-only handle to the static handoff data.
     pub fn new() -> Option<Self> {
         // Safety: Linker MUST place this static object in the `.handoff` section.
-        let data = unsafe { &mut *addr_of_mut!(romtime::handoff::HANDOFF) };
-        romtime::println!(
+        let data = unsafe { &mut *addr_of_mut!(caliptra_mcu_romtime::handoff::HANDOFF) };
+        caliptra_mcu_romtime::println!(
             "[mcu-runtime] Checking handoff at {:p}",
-            addr_of!(romtime::handoff::HANDOFF)
+            addr_of!(caliptra_mcu_romtime::handoff::HANDOFF)
         );
-        if data.rom.fht_marker != romtime::handoff::FHT_MARKER {
+        if data.rom.fht_marker != caliptra_mcu_romtime::handoff::FHT_MARKER {
             return None;
         }
-        if data.rom.fht_major_ver != romtime::handoff::FHT_MAJOR_VERSION {
-            romtime::println!(
+        if data.rom.fht_major_ver != caliptra_mcu_romtime::handoff::FHT_MAJOR_VERSION {
+            caliptra_mcu_romtime::println!(
                 "[mcu-runtime] ERROR: Invalid handoff major version: {}",
                 data.rom.fht_major_ver
             );
@@ -81,6 +81,6 @@ impl<Access> HandOff<Access> {
     /// Get the address of the handoff table.
     pub fn addr(&self) -> *const HandoffData {
         // Safety: Linker MUST place this static object in the `.handoff` section.
-        addr_of!(romtime::handoff::HANDOFF)
+        addr_of!(caliptra_mcu_romtime::handoff::HANDOFF)
     }
 }

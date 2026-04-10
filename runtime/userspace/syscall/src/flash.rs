@@ -3,9 +3,9 @@
 // Flash userspace library
 
 use crate::DefaultSyscalls;
+use caliptra_mcu_libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
+use caliptra_mcu_libtockasync::TockSubscribe;
 use core::marker::PhantomData;
-use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
-use libtockasync::TockSubscribe;
 
 pub struct SpiFlash<S: Syscalls = DefaultSyscalls> {
     syscall: PhantomData<S>,

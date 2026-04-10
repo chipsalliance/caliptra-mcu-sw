@@ -1,15 +1,15 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "mcu-platforms-common"
+name = "caliptra-mcu-platforms-common"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-mcu-tock-veer.workspace = true
-mcu-config.workspace = true
-romtime.workspace = true
-i3c-driver.workspace = true
+caliptra-mcu-tock-veer.workspace = true
+caliptra-mcu-config.workspace = true
+caliptra-mcu-romtime.workspace = true
+caliptra-mcu-i3c-driver.workspace = true
 kernel.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]

@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "libtockasync"
+name = "caliptra-mcu-libtockasync"
 description = "Async executor and tools for applications running under Tock"
 version.workspace = true
 authors.workspace = true
@@ -10,15 +10,15 @@ edition.workspace = true
 [dependencies]
 critical-section.workspace = true
 embassy-executor.workspace = true
-libtock.workspace = true
-libtock_console.workspace = true
-libtock_debug_panic.workspace = true
-libtock_platform.workspace = true
-libtock_runtime.workspace = true
+caliptra-mcu-libtock.workspace = true
+caliptra-mcu-libtock_console.workspace = true
+caliptra-mcu-libtock_debug_panic.workspace = true
+caliptra-mcu-libtock_platform.workspace = true
+caliptra-mcu-libtock_runtime.workspace = true
 portable-atomic.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
-libtock_unittest.workspace = true
+caliptra-mcu-libtock_unittest.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }

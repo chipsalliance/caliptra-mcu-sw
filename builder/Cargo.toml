@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "mcu-builder"
+name = "caliptra-mcu-builder"
 edition = "2021"
 
 [dependencies]
@@ -16,17 +16,17 @@ caliptra-image-types.workspace = true
 cargo_metadata.workspace = true
 chrono.workspace = true
 elf.workspace = true
-flash-image.workspace = true
+caliptra-mcu-flash-image.workspace = true
 hex.workspace = true
-mcu-config.workspace = true
-mcu-config-emulator.workspace = true
-mcu-config-fpga.workspace = true
-mcu-firmware-bundler.workspace = true
-pldm-fw-pkg.workspace = true
+caliptra-mcu-config.workspace = true
+caliptra-mcu-config-emulator.workspace = true
+caliptra-mcu-config-fpga.workspace = true
+caliptra-mcu-firmware-bundler.workspace = true
+caliptra-mcu-pldm-fw-pkg.workspace = true
 serde.workspace = true
 semver.workspace = true
 subst.workspace = true
-tbf-header.workspace = true
+caliptra-mcu-tbf-header.workspace = true
 tempfile.workspace = true
 uuid.workspace = true
 walkdir.workspace = true

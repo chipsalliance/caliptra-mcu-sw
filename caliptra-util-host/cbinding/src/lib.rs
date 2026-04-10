@@ -8,7 +8,7 @@
 //!
 //! This library provides C-compatible wrapper functions for the actual caliptra-util-host library.
 
-use caliptra_util_host_command_types::device_info::GetDeviceIdResponse;
+use caliptra_mcu_core_util_host_command_types::device_info::GetDeviceIdResponse;
 use caliptra_util_host_session::CaliptraSession;
 
 // Core C binding modules

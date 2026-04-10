@@ -1,6 +1,6 @@
 use super::command_impl::*;
 use crate::{command_return, fake, DriverInfo, ExpectedSyscall, SyscallLogEntry};
-use libtock_platform::{
+use caliptra_mcu_libtock_platform::{
     return_variant, syscall_class, CommandReturn, ErrorCode, RawSyscalls, ReturnVariant,
 };
 use std::convert::TryInto;

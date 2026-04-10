@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use mcu_error::McuError;
-use registers_generated::i3c;
-use registers_generated::i3c::bits::{InterruptStatus, Status, TtiResetControl};
-use romtime::StaticRef;
+use caliptra_mcu_error::McuError;
+use caliptra_mcu_registers_generated::i3c;
+use caliptra_mcu_registers_generated::i3c::bits::{InterruptStatus, Status, TtiResetControl};
+use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{Readable, Writeable};
 
 /// I3C Mandatory Data Byte for service IBI notifications.
@@ -71,9 +71,9 @@ enum DispatchResult {
 /// `&mut RomEnv`, so that `enter_i3c_services` can independently borrow
 /// `&Mci` for boot-status checkpoints without creating a duplicate handle.
 pub struct DotContext<'a> {
-    pub soc_manager: &'a mut romtime::CaliptraSoC,
-    pub mci: &'a romtime::Mci,
-    pub otp: &'a romtime::otp::Otp,
+    pub soc_manager: &'a mut caliptra_mcu_romtime::CaliptraSoC,
+    pub mci: &'a caliptra_mcu_romtime::Mci,
+    pub otp: &'a caliptra_mcu_romtime::otp::Otp,
     pub dot_fuses: &'a crate::DotFuses,
     pub dot_flash: &'a dyn crate::hil::FlashStorage,
     pub key_type: caliptra_api::mailbox::CmStableKeyType,
@@ -118,7 +118,7 @@ impl<'a> I3cMailboxHandler<'a> {
         dot_ctx: Option<DotContext<'a>>,
         reassembly_buf: &'a mut [u32],
     ) -> Self {
-        use registers_generated::i3c::bits::StbyCrDeviceAddr;
+        use caliptra_mcu_registers_generated::i3c::bits::StbyCrDeviceAddr;
         // Prefer the dynamic address assigned by the controller; fall back
         // to the caller-provided static address.
         let dev_addr = registers.stdby_ctrl_mode_stby_cr_device_addr.extract();
@@ -157,7 +157,7 @@ impl<'a> I3cMailboxHandler<'a> {
 
         on_ready();
 
-        romtime::println!("[mcu-rom-i3c-svc] Ready for commands");
+        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Ready for commands");
 
         for _ in 0..MAX_POLL_ITERATIONS {
             if let Some((cmd, payload_len)) = self.try_receive_reassembled_command() {
@@ -168,7 +168,7 @@ impl<'a> I3cMailboxHandler<'a> {
             }
         }
 
-        romtime::println!("[mcu-rom-i3c-svc] I3C services timed out");
+        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] I3C services timed out");
         Err(McuError::ROM_COLD_BOOT_DOT_ERROR)
     }
 
@@ -184,7 +184,7 @@ impl<'a> I3cMailboxHandler<'a> {
     fn dispatch(&mut self, cmd: u8, payload_len: usize) -> DispatchResult {
         match cmd {
             CMD_PING => {
-                romtime::println!("[mcu-rom-i3c-svc] PING received");
+                caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] PING received");
                 self.send_response(STATUS_SUCCESS, &PONG_PAYLOAD);
                 DispatchResult::Continue
             }
@@ -195,7 +195,7 @@ impl<'a> I3cMailboxHandler<'a> {
             }
             CMD_DOT_OVERRIDE if self.dot_enabled() => self.handle_dot_override(payload_len),
             _ => {
-                romtime::println!("[mcu-rom-i3c-svc] Unknown command: {:#x}", cmd);
+                caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Unknown command: {:#x}", cmd);
                 self.send_status(STATUS_INVALID_CMD);
                 DispatchResult::Continue
             }
@@ -206,7 +206,7 @@ impl<'a> I3cMailboxHandler<'a> {
 
     /// Handle DOT_STATUS: return current DOT fuse state.
     fn handle_dot_status(&mut self) -> DispatchResult {
-        romtime::println!("[mcu-rom-i3c-svc] DOT_STATUS received");
+        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] DOT_STATUS received");
         let ctx = self.dot_ctx.as_ref().unwrap();
         // Response: [status, enabled, locked, burned_lo, burned_hi]
         let enabled = ctx.dot_fuses.enabled as u8;
@@ -221,11 +221,11 @@ impl<'a> I3cMailboxHandler<'a> {
 
     /// Handle DOT_RECOVERY: receive backup blob and run recovery flow.
     fn handle_dot_recovery(&mut self, payload_len: usize) -> DispatchResult {
-        romtime::println!("[mcu-rom-i3c-svc] DOT_RECOVERY received");
+        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] DOT_RECOVERY received");
 
         let blob_size = crate::DOT_BLOB_SIZE;
         if payload_len < blob_size {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[mcu-rom-i3c-svc] DOT_RECOVERY payload too small: {} < {}",
                 payload_len,
                 blob_size
@@ -251,16 +251,18 @@ impl<'a> I3cMailboxHandler<'a> {
 
         match result {
             Ok(()) => {
-                romtime::println!("[mcu-rom-i3c-svc] DOT_RECOVERY succeeded, triggering reset");
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom-i3c-svc] DOT_RECOVERY succeeded, triggering reset"
+                );
                 self.send_status(STATUS_SUCCESS);
                 let ctx = self.dot_ctx.as_ref().unwrap();
                 ctx.mci.trigger_warm_reset();
                 return DispatchResult::Done;
             }
             Err(err) => {
-                romtime::println!(
+                caliptra_mcu_romtime::println!(
                     "[mcu-rom-i3c-svc] DOT_RECOVERY failed: {}",
-                    romtime::HexWord(err.into())
+                    caliptra_mcu_romtime::HexWord(err.into())
                 );
                 self.send_status(STATUS_ERROR);
             }
@@ -273,11 +275,11 @@ impl<'a> I3cMailboxHandler<'a> {
     ///
     /// Payload: ECC P-384 PK (96 bytes) + MLDSA-87 PK (2592 bytes) = 2688 bytes
     fn handle_dot_unlock_challenge(&mut self, payload_len: usize) -> DispatchResult {
-        romtime::println!("[mcu-rom-i3c-svc] DOT_UNLOCK_CHALLENGE received");
+        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] DOT_UNLOCK_CHALLENGE received");
 
         let expected_payload = 96 + crate::MLDSA87_PUB_KEY_SIZE_DWORDS * 4;
         if payload_len < expected_payload {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[mcu-rom-i3c-svc] DOT_UNLOCK_CHALLENGE payload too small: {} < {}",
                 payload_len,
                 expected_payload
@@ -300,7 +302,9 @@ impl<'a> I3cMailboxHandler<'a> {
 
         // Verify device is in locked state
         if !ctx.dot_fuses.is_locked() {
-            romtime::println!("[mcu-rom-i3c-svc] DOT_UNLOCK_CHALLENGE: device not locked");
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom-i3c-svc] DOT_UNLOCK_CHALLENGE: device not locked"
+            );
             self.send_status(STATUS_ERROR);
             return DispatchResult::Continue;
         }
@@ -308,7 +312,9 @@ impl<'a> I3cMailboxHandler<'a> {
         let recovery_pk_hash = match ctx.dot_fuses.recovery_pk_hash.as_ref() {
             Some(hash) => hash,
             None => {
-                romtime::println!("[mcu-rom-i3c-svc] No vendor recovery PK hash in OTP");
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom-i3c-svc] No vendor recovery PK hash in OTP"
+                );
                 self.send_status(STATUS_ERROR);
                 return DispatchResult::Continue;
             }
@@ -323,9 +329,9 @@ impl<'a> I3cMailboxHandler<'a> {
         ) {
             Ok(h) => h,
             Err(err) => {
-                romtime::println!(
+                caliptra_mcu_romtime::println!(
                     "[mcu-rom-i3c-svc] PK hash computation failed: {}",
-                    romtime::HexWord(err.into())
+                    caliptra_mcu_romtime::HexWord(err.into())
                 );
                 self.send_status(STATUS_ERROR);
                 return DispatchResult::Continue;
@@ -334,20 +340,20 @@ impl<'a> I3cMailboxHandler<'a> {
 
         let fuse_hash_bytes: [u8; 48] = zerocopy::transmute!(recovery_pk_hash.0);
         if !constant_time_eq::constant_time_eq(&computed_hash, &fuse_hash_bytes) {
-            romtime::println!("[mcu-rom-i3c-svc] Vendor recovery PK hash mismatch");
+            caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Vendor recovery PK hash mismatch");
             self.send_status(STATUS_ERROR);
             return DispatchResult::Continue;
         }
-        romtime::println!("[mcu-rom-i3c-svc] Vendor PK hash verified");
+        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Vendor PK hash verified");
 
         // Generate random challenge
         let challenge = match crate::device_ownership_transfer::cm_random_generate(ctx.soc_manager)
         {
             Ok(c) => c,
             Err(err) => {
-                romtime::println!(
+                caliptra_mcu_romtime::println!(
                     "[mcu-rom-i3c-svc] Challenge generation failed: {}",
-                    romtime::HexWord(err.into())
+                    caliptra_mcu_romtime::HexWord(err.into())
                 );
                 self.send_status(STATUS_ERROR);
                 return DispatchResult::Continue;
@@ -359,9 +365,9 @@ impl<'a> I3cMailboxHandler<'a> {
         // Send challenge as response
         self.send_response(STATUS_SUCCESS, &challenge);
         self.override_state = OverrideState::ChallengeSent { challenge };
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom-i3c-svc] Challenge sent, waiting for DOT_OVERRIDE: {}",
-            romtime::HexBytes(&challenge),
+            caliptra_mcu_romtime::HexBytes(&challenge),
         );
         DispatchResult::Continue
     }
@@ -374,13 +380,15 @@ impl<'a> I3cMailboxHandler<'a> {
     ///   bytes 192..2783: MLDSA-87 public key (2592 bytes)
     ///   bytes 2784..7411: MLDSA-87 signature (4628 bytes)
     fn handle_dot_override(&mut self, payload_len: usize) -> DispatchResult {
-        romtime::println!("[mcu-rom-i3c-svc] DOT_OVERRIDE received");
+        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] DOT_OVERRIDE received");
 
         // Verify we're in the correct state
         let challenge = match &self.override_state {
             OverrideState::ChallengeSent { challenge } => *challenge,
             OverrideState::Idle => {
-                romtime::println!("[mcu-rom-i3c-svc] DOT_OVERRIDE without prior challenge");
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom-i3c-svc] DOT_OVERRIDE without prior challenge"
+                );
                 self.send_status(STATUS_ERROR);
                 return DispatchResult::Continue;
             }
@@ -394,7 +402,7 @@ impl<'a> I3cMailboxHandler<'a> {
             + crate::MLDSA87_PUB_KEY_SIZE_DWORDS * 4
             + crate::MLDSA87_SIGNATURE_SIZE_DWORDS * 4;
         if payload_len < expected_payload {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[mcu-rom-i3c-svc] DOT_OVERRIDE payload too small: {} < {}",
                 payload_len,
                 expected_payload
@@ -462,7 +470,7 @@ impl<'a> I3cMailboxHandler<'a> {
             return DispatchResult::Continue;
         }
 
-        romtime::println!("[mcu-rom-i3c-svc] Both signatures verified");
+        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Both signatures verified");
 
         let key_type = ctx.key_type;
         if crate::device_ownership_transfer::apply_override(
@@ -474,12 +482,12 @@ impl<'a> I3cMailboxHandler<'a> {
         )
         .is_err()
         {
-            romtime::println!("[mcu-rom-i3c-svc] Failed to apply DOT override");
+            caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] Failed to apply DOT override");
             self.send_status(STATUS_ERROR);
             return DispatchResult::Continue;
         }
 
-        romtime::println!("[mcu-rom-i3c-svc] DOT override complete, triggering reset");
+        caliptra_mcu_romtime::println!("[mcu-rom-i3c-svc] DOT override complete, triggering reset");
         self.send_status(STATUS_SUCCESS);
         let ctx = self.dot_ctx.as_ref().unwrap();
         ctx.mci.trigger_warm_reset();
@@ -517,10 +525,10 @@ impl<'a> I3cMailboxHandler<'a> {
         // MCTP-over-I3C transport binding (transport_binding.rs).
         let addr_byte = (self.pec_addr << 1) | 1; // R/W bit = 1 for read
         let mut crc = 0u8;
-        crc = romtime::crc8(crc, addr_byte);
+        crc = caliptra_mcu_romtime::crc8(crc, addr_byte);
         let mut k = 0;
         while k < data.len() {
-            crc = romtime::crc8(crc, data[k]);
+            crc = caliptra_mcu_romtime::crc8(crc, data[k]);
             k += 1;
         }
 
@@ -597,7 +605,9 @@ impl<'a> I3cMailboxHandler<'a> {
         // These TTI reset bits are persistent ("hold-in-reset"), not
         // self-clearing, so the IBI queue stays disabled for the
         // remainder of the services loop.
-        romtime::println!("[mcu-rom-i3c-svc] IBI not acknowledged, flushing IBI queue");
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom-i3c-svc] IBI not acknowledged, flushing IBI queue"
+        );
         regs.tti_tti_reset_control
             .write(TtiResetControl::IbiQueueRst::SET + TtiResetControl::IbiRetryCtrRst::SET);
     }
@@ -642,7 +652,7 @@ impl<'a> I3cMailboxHandler<'a> {
             return None;
         }
 
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom-i3c-svc] Packet: cmd=0x{:02x} len={} seq={}/{} data_len={}",
             cmd,
             pkt_payload_len,
@@ -682,7 +692,7 @@ impl<'a> I3cMailboxHandler<'a> {
             self.reassembly_len += n_bytes;
             self.reassembly_next_seq += 1;
         } else {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[mcu-rom-i3c-svc] Packet seq mismatch: got {}/{}, expected {}/{}",
                 seq_num,
                 total_seqs,

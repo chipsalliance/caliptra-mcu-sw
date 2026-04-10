@@ -7,8 +7,8 @@
 //!
 //! It also provides the function `set_pressed` that set the button's state.
 
+use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 use core::cell::Cell;
-use libtock_platform::{CommandReturn, ErrorCode};
 use std::convert::TryFrom;
 
 use crate::{DriverInfo, DriverShareRef};

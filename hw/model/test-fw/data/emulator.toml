@@ -31,5 +31,5 @@ stack = 0x2d00
 exception_stack = 0x200
 
 [kernel]
-name = "mcu-runtime-emulator"
+name = "caliptra-mcu-runtime-emulator"
 stack = 0x0_7000

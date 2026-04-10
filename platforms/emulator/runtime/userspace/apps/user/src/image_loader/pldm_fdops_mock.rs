@@ -4,23 +4,23 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use core::cell::RefCell;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::lazy_lock::LazyLock;
-use embassy_sync::signal::Signal;
-use pldm_common::message::firmware_update::apply_complete::ApplyResult;
-use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
-use pldm_common::message::firmware_update::get_status::ProgressPercent;
-use pldm_common::message::firmware_update::transfer_complete::TransferResult;
-use pldm_common::message::firmware_update::verify_complete::VerifyResult;
-use pldm_common::protocol::firmware_update::{
+use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
+use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
+use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult;
+use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
+use caliptra_mcu_pldm_common::protocol::firmware_update::{
     ComponentActivationMethods, ComponentClassification, ComponentParameterEntry,
     ComponentResponseCode, Descriptor, DescriptorType, FirmwareDeviceCapability,
     PldmFirmwareString, PldmFirmwareVersion, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
     PLDM_FWUP_MAX_PADDING_SIZE,
 };
-use pldm_common::util::fw_component::FirmwareComponent;
-use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
+use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
+use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
+use core::cell::RefCell;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::lazy_lock::LazyLock;
+use embassy_sync::signal::Signal;
 
 const FD_DESCRIPTORS_COUNT: usize = 1;
 const FD_FW_COMPONENTS_COUNT: usize = 1;
@@ -126,7 +126,7 @@ impl FdOps for FdOpsObject {
 
     async fn get_xfer_size(&self, ua_transfer_size: usize) -> Result<usize, FdOpsError> {
         Ok(PLDM_FWUP_BASELINE_TRANSFER_SIZE
-            .max(ua_transfer_size.min(pldm_lib::config::FD_MAX_XFER_SIZE)))
+            .max(ua_transfer_size.min(caliptra_mcu_pldm_lib::config::FD_MAX_XFER_SIZE)))
     }
 
     fn handle_component(

@@ -5,7 +5,7 @@
 //! This module provides shared test infrastructure including mock mailbox
 //! implementations and common test data structures.
 
-use caliptra_util_host_transport::{MailboxDriver, MailboxError};
+use caliptra_mcu_core_util_host_transport::{MailboxDriver, MailboxError};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 // Buffer length constants

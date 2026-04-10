@@ -1,5 +1,5 @@
 [package]
-name = "libtock_alarm"
+name = "caliptra-mcu-libtock_alarm"
 version = "0.1.0"
 authors = [
     "Tock Project Developers <tock-dev@googlegroups.com>",
@@ -11,7 +11,7 @@ repository = "https://www.github.com/tock/libtock-rs"
 description = "libtock alarm driver"
 
 [dependencies]
-libtock_platform = { path = "../../../platform" }
+caliptra-mcu-libtock_platform = { path = "../../../platform" }
 
 [dev-dependencies]
-libtock_unittest = { path = "../../../unittest" }
+caliptra-mcu-libtock_unittest = { path = "../../../unittest" }

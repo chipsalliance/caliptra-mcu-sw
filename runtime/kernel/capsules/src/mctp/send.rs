@@ -3,6 +3,7 @@
 use crate::mctp::base_protocol::{MCTPHeader, MCTP_HDR_SIZE, MCTP_TAG_MASK, MCTP_TAG_OWNER};
 use crate::mctp::mux::MuxMCTPDriver;
 use crate::mctp::transport_binding::MCTPTransportBinding;
+use caliptra_mcu_romtime::println;
 use core::cell::Cell;
 use core::fmt::Write;
 use kernel::collections::list::{ListLink, ListNode};
@@ -10,7 +11,6 @@ use kernel::hil::time::Alarm;
 use kernel::utilities::cells::{MapCell, OptionalCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
-use romtime::println;
 
 /// The trait that provides an interface to send the MCTP messages to MCTP kernel stack.
 pub trait MCTPSender<'a> {

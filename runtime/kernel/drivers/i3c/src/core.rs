@@ -4,6 +4,10 @@
 
 use crate::hil::I3CTargetInfo;
 use crate::hil::{RxClient, TxClient};
+use caliptra_mcu_registers_generated::i3c::bits::{
+    InterruptEnable, InterruptStatus, Status, StbyCrDeviceAddr,
+};
+use caliptra_mcu_registers_generated::i3c::regs::I3c;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
@@ -12,8 +16,6 @@ use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
-use registers_generated::i3c::bits::{InterruptEnable, InterruptStatus, Status, StbyCrDeviceAddr};
-use registers_generated::i3c::regs::I3c;
 use tock_registers::{register_bitfields, LocalRegisterCopy};
 
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
@@ -88,14 +90,14 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     pub fn enable_interrupts(&self) {
-        romtime::println!("[mcu-runtime-i3c] Enabling I3C interrupts");
+        caliptra_mcu_romtime::println!("[mcu-runtime-i3c] Enabling I3C interrupts");
         self.registers
             .tti_interrupt_enable
             .modify(InterruptEnable::RxDescStatEn::SET + InterruptEnable::IbiDoneEn::SET);
     }
 
     pub fn disable_interrupts(&self) {
-        romtime::println!("[mcu-runtime-i3c] Disabling I3C interrupts");
+        caliptra_mcu_romtime::println!("[mcu-runtime-i3c] Disabling I3C interrupts");
         self.registers.tti_interrupt_enable.set(0);
     }
 
@@ -289,7 +291,7 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         // we have to wait for the last IBI to be done before we can send another packet
         // otherwise we can confuse the I3C controller's buffers
         if self.tx_buffer.is_some() || self.pending_ibi.is_some() {
-            romtime::println!("[mcu-runtime-i3c] transmit_read called but previous IBI still pending or tx_buffer in use: {} {}", self.tx_buffer.is_some(), self.pending_ibi.is_some());
+            caliptra_mcu_romtime::println!("[mcu-runtime-i3c] transmit_read called but previous IBI still pending or tx_buffer in use: {} {}", self.tx_buffer.is_some(), self.pending_ibi.is_some());
             return Err((ErrorCode::BUSY, tx_buf));
         }
         self.tx_buffer.replace(tx_buf);

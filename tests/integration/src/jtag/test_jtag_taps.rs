@@ -6,9 +6,9 @@ mod test {
 
     use caliptra_hw_model::lcc::{LcCtrlReg, LcCtrlStatus};
     use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap};
-    use mcu_builder::FirmwareBinaries;
-    use mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel};
-    use romtime::LifecycleControllerState;
+    use caliptra_mcu_builder::FirmwareBinaries;
+    use caliptra_mcu_hw_model::{DefaultHwModel, InitParams, McuHwModel};
+    use caliptra_mcu_romtime::LifecycleControllerState;
 
     #[test]
     fn test_lcc_tap() {

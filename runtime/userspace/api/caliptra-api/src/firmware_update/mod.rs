@@ -17,28 +17,30 @@ use caliptra_api::mailbox::{
 use caliptra_auth_man_types::{
     AuthManifestImageMetadata, AuthManifestImageMetadataCollection, AuthorizationManifest,
 };
-use embassy_executor::Spawner;
-use flash_image::{
+use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
     SOC_MANIFEST_IDENTIFIER,
 };
-use libsyscall_caliptra::dma::AXIAddr;
-use libsyscall_caliptra::dma::{DMAMapping, DMASource, DMATransaction, DMA as DMASyscall};
-use libsyscall_caliptra::mailbox::Mailbox;
-use libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
-use libtock_platform::ErrorCode;
-use libtockasync::TockExecutor;
-use pldm_common::message::firmware_update::apply_complete::ApplyResult;
-use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
-use pldm_common::message::firmware_update::verify_complete::VerifyResult;
-use pldm_common::protocol::firmware_update::Descriptor;
-use pldm_lib::daemon::PldmService;
+use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
+use caliptra_mcu_libsyscall_caliptra::dma::{
+    DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
+};
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
+use caliptra_mcu_libtock_platform::ErrorCode;
+use caliptra_mcu_libtockasync::TockExecutor;
+use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
+use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
+use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
+use caliptra_mcu_pldm_lib::daemon::PldmService;
+use embassy_executor::Spawner;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_console::Console;
 use core::fmt::Write;
 use core::mem::offset_of;
-use libsyscall_caliptra::DefaultSyscalls;
-use libtock_console::Console;
 
 use crate::crypto::hash::{HashAlgoType, HashContext};
 

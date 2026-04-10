@@ -5,9 +5,9 @@
 //! The resulting byte stream can be retrieved via `take_bytes`
 //! for use in unit tests.
 
+use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 use core::cell::{Cell, RefCell};
 use core::cmp;
-use libtock_platform::{CommandReturn, ErrorCode};
 
 use crate::{DriverInfo, DriverShareRef, RoAllowBuffer, RwAllowBuffer};
 

@@ -5,7 +5,7 @@
 //! These tests verify the HMAC API functions and types work correctly.
 
 use crate::common::{test_constants::*, MockMailbox};
-use caliptra_util_host_command_types::crypto_hmac::{
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::{
     CmKeyUsage, Cmk, HmacAlgorithm, HmacKdfCounterRequest, HmacRequest, CMK_SIZE,
     MAX_HMAC_INPUT_SIZE,
 };
@@ -13,7 +13,7 @@ use caliptra_util_host_commands::api::crypto_hmac::{
     caliptra_cmd_hmac, caliptra_cmd_hmac_kdf_counter,
 };
 use caliptra_util_host_session::CaliptraSession;
-use caliptra_util_host_transport::Mailbox;
+use caliptra_mcu_core_util_host_transport::Mailbox;
 
 /// Test HMAC SHA384 command
 #[test]
@@ -23,12 +23,12 @@ fn test_hmac_sha384_basic() {
     let mut mock_mailbox = MockMailbox::new(TEST_DEVICE_ID_1);
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     let mut session = CaliptraSession::new(
         1,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 
@@ -62,12 +62,12 @@ fn test_hmac_sha512_basic() {
     let mut mock_mailbox = MockMailbox::new(TEST_DEVICE_ID_1);
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     let mut session = CaliptraSession::new(
         1,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 
@@ -101,13 +101,13 @@ fn test_hmac_disconnected_session() {
     let mut mock_mailbox = MockMailbox::new(TEST_DEVICE_ID_1);
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     // Create session but don't connect
     let mut session = CaliptraSession::new(
         1,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 
@@ -138,12 +138,12 @@ fn test_hmac_kdf_counter_basic() {
     let mut mock_mailbox = MockMailbox::new(TEST_DEVICE_ID_1);
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     let mut session = CaliptraSession::new(
         1,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 

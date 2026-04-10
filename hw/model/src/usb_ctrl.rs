@@ -6,8 +6,8 @@
 //! USB device responds, panicking on timeout or unexpected errors.
 
 use crate::McuHwModel;
-use emulator_periph::{UsbHostController, UsbTransactionError};
-use ocp::usb::setup::{BmRequestType, SetupPacket, StandardRequest};
+use caliptra_mcu_emulator_periph::{UsbHostController, UsbTransactionError};
+use caliptra_mcu_ocp::usb::setup::{BmRequestType, SetupPacket, StandardRequest};
 use zerocopy::IntoBytes;
 
 /// Perform an IN transaction on EP0, retrying on NAK.
@@ -123,7 +123,10 @@ pub fn std_request_out(request: StandardRequest, w_value: u16) -> SetupPacket {
 }
 
 /// Build an OCP Recovery read SETUP packet (Device-to-Host, Class, Interface).
-pub fn ocp_read(command: ocp::protocol::RecoveryCommand, w_length: u16) -> SetupPacket {
+pub fn ocp_read(
+    command: caliptra_mcu_ocp::protocol::RecoveryCommand,
+    w_length: u16,
+) -> SetupPacket {
     SetupPacket {
         bm_request_type: BmRequestType(0xA1),
         b_request: 0x00,
@@ -134,7 +137,10 @@ pub fn ocp_read(command: ocp::protocol::RecoveryCommand, w_length: u16) -> Setup
 }
 
 /// Build an OCP Recovery write SETUP packet (Host-to-Device, Class, Interface).
-pub fn ocp_write(command: ocp::protocol::RecoveryCommand, w_length: u16) -> SetupPacket {
+pub fn ocp_write(
+    command: caliptra_mcu_ocp::protocol::RecoveryCommand,
+    w_length: u16,
+) -> SetupPacket {
     SetupPacket {
         bm_request_type: BmRequestType(0x21),
         b_request: 0x00,
@@ -150,7 +156,7 @@ pub fn ocp_write(command: ocp::protocol::RecoveryCommand, w_length: u16) -> Setu
 pub fn ocp_read_data(
     model: &mut impl McuHwModel,
     host: &UsbHostController,
-    command: ocp::protocol::RecoveryCommand,
+    command: caliptra_mcu_ocp::protocol::RecoveryCommand,
     len: u16,
     iterations: usize,
 ) -> Vec<u8> {
@@ -165,7 +171,7 @@ pub fn ocp_read_data(
 pub fn ocp_write_data(
     model: &mut impl McuHwModel,
     host: &UsbHostController,
-    command: ocp::protocol::RecoveryCommand,
+    command: caliptra_mcu_ocp::protocol::RecoveryCommand,
     data: &[u8],
     iterations: usize,
 ) {
@@ -195,7 +201,7 @@ pub fn ocp_select_indirect_cms(
     ocp_write_data(
         model,
         host,
-        ocp::protocol::RecoveryCommand::IndirectCtrl,
+        caliptra_mcu_ocp::protocol::RecoveryCommand::IndirectCtrl,
         &data,
         iterations,
     );
@@ -211,7 +217,7 @@ pub fn ocp_write_indirect_data(
     ocp_write_data(
         model,
         host,
-        ocp::protocol::RecoveryCommand::IndirectData,
+        caliptra_mcu_ocp::protocol::RecoveryCommand::IndirectData,
         data,
         iterations,
     );
@@ -239,7 +245,7 @@ pub fn ocp_select_fifo_cms(
     ocp_write_data(
         model,
         host,
-        ocp::protocol::RecoveryCommand::IndirectFifoCtrl,
+        caliptra_mcu_ocp::protocol::RecoveryCommand::IndirectFifoCtrl,
         &data,
         iterations,
     );
@@ -255,7 +261,7 @@ pub fn ocp_write_fifo_data(
     ocp_write_data(
         model,
         host,
-        ocp::protocol::RecoveryCommand::IndirectFifoData,
+        caliptra_mcu_ocp::protocol::RecoveryCommand::IndirectFifoData,
         data,
         iterations,
     );
@@ -274,13 +280,13 @@ pub fn ocp_activate_recovery(
     ocp_write_data(
         model,
         host,
-        ocp::protocol::RecoveryCommand::RecoveryCtrl,
+        caliptra_mcu_ocp::protocol::RecoveryCommand::RecoveryCtrl,
         &data,
         iterations,
     );
 }
 
-fn desc_value(dt: ocp::usb::descriptors::DescriptorType, idx: u8) -> u16 {
+fn desc_value(dt: caliptra_mcu_ocp::usb::descriptors::DescriptorType, idx: u8) -> u16 {
     ((dt as u16) << 8) | idx as u16
 }
 
@@ -293,7 +299,7 @@ fn desc_value(dt: ocp::usb::descriptors::DescriptorType, idx: u8) -> u16 {
 /// Call [`UsbHostController::bus_reset`] before this function so the
 /// firmware can proceed past its link-reset wait.
 pub fn enumerate(model: &mut impl McuHwModel, host: &UsbHostController, iterations: usize) {
-    use ocp::usb::descriptors::DescriptorType;
+    use caliptra_mcu_ocp::usb::descriptors::DescriptorType;
 
     // GET_DESCRIPTOR(Device), wLength=18
     let setup = std_request_in(

@@ -3,12 +3,12 @@
 #[cfg(test)]
 mod test {
     use caliptra_builder::firmware as caliptra_firmware;
-    use mcu_builder::firmware;
-    use mcu_hw_model::{InitParams, McuHwModel};
+    use caliptra_mcu_builder::firmware;
+    use caliptra_mcu_hw_model::{InitParams, McuHwModel};
 
     #[test]
     fn test_axi_bypass() {
-        let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
+        let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env().unwrap();
         let mcu_rom = binaries
             .test_rom(&firmware::hw_model_tests::AXI_BYPASS)
             .unwrap();
@@ -21,7 +21,7 @@ mod test {
             enable_mcu_uart_log: true,
             ..Default::default()
         };
-        let mut model = mcu_hw_model::new(init_params).unwrap();
+        let mut model = caliptra_mcu_hw_model::new(init_params).unwrap();
         model.step_until_exit_success().unwrap();
     }
 }

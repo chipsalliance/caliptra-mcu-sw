@@ -3,11 +3,11 @@
 #![allow(static_mut_refs)]
 
 extern crate alloc;
+use caliptra_mcu_libtock::console::Console;
+use caliptra_mcu_libtock::runtime::set_main;
 use core::fmt::Write;
 use core::mem::MaybeUninit;
 use embedded_alloc::Heap;
-use libtock::console::Console;
-use libtock::runtime::set_main;
 
 const HEAP_SIZE: usize = 0x40;
 #[global_allocator]
@@ -41,7 +41,7 @@ fn main() {
     // platform/emulator/runtime
     unsafe {
         #[allow(static_mut_refs)]
-        romtime::set_printer(&mut EMULATOR_WRITER);
+        caliptra_mcu_romtime::set_printer(&mut EMULATOR_WRITER);
     }
 
     // setup the global allocator for futures
@@ -52,5 +52,5 @@ fn main() {
     let mut console_writer = Console::writer();
     writeln!(console_writer, "Hello world! from main").unwrap();
 
-    libtockasync::start_async(crate::start());
+    caliptra_mcu_libtockasync::start_async(crate::start());
 }

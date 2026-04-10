@@ -13,7 +13,7 @@ use std::process::Command;
 ///
 /// Returns the path to the built binary.
 pub fn network_rom_build(feature: Option<&str>) -> Result<String> {
-    let pkg_name = "network-rom";
+    let pkg_name = "caliptra-mcu-network-rom";
     let bin_name = match feature {
         Some(f) => format!("network-rom-feature-{}.bin", f),
         None => "network-rom.bin".to_string(),

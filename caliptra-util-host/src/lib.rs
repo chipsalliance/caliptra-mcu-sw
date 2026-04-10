@@ -57,7 +57,7 @@
 //!
 //! ```rust,ignore
 //! use caliptra_util_host_session::CaliptraSession;
-//! use caliptra_util_host_transport::{Mailbox, MailboxDriver};
+//! use caliptra_mcu_core_util_host_transport::{Mailbox, MailboxDriver};
 //! use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_id;
 //!
 //! // Implement or use a mailbox driver (e.g., UDP-based)
@@ -89,13 +89,13 @@
 //! ```
 
 // Re-export main public APIs for convenience
-pub use caliptra_util_host_command_types::{
+pub use caliptra_mcu_core_util_host_command_types::{
     CaliptraCommandId, GetDeviceCapabilitiesRequest, GetDeviceCapabilitiesResponse,
     GetDeviceIdRequest, GetDeviceIdResponse, GetDeviceInfoRequest, GetDeviceInfoResponse,
     GetFirmwareVersionRequest, GetFirmwareVersionResponse,
 };
 // Re-export SHA types
-pub use caliptra_util_host_command_types::crypto_hash::{
+pub use caliptra_mcu_core_util_host_command_types::crypto_hash::{
     ShaAlgorithm, ShaFinalRequest, ShaFinalResponse, ShaInitRequest, ShaInitResponse,
     ShaUpdateRequest, ShaUpdateResponse, MAX_HASH_SIZE, MAX_SHA_INPUT_SIZE, SHA_CONTEXT_SIZE,
 };
@@ -108,8 +108,8 @@ pub use caliptra_util_host_commands::api::crypto_hash::{
     caliptra_cmd_sha_final, caliptra_cmd_sha_hash, caliptra_cmd_sha_init, caliptra_cmd_sha_update,
 };
 pub use caliptra_util_host_session::CaliptraSession;
-pub use caliptra_util_host_transport::{Mailbox, Transport};
+pub use caliptra_mcu_core_util_host_transport::{Mailbox, Transport};
 
 // Re-export error types
 pub use caliptra_util_host_session::SessionError;
-pub use caliptra_util_host_transport::TransportError;
+pub use caliptra_mcu_core_util_host_transport::TransportError;

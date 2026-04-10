@@ -3,10 +3,10 @@
 //! This module tests the MCU MBOX request/response interaction between the emulator and the device.
 //! The emulator sends out different MCU MBOX requests and expects a corresponding response for those requests.
 
-use emulator_mcu_mbox::mcu_mailbox_transport::{
+use caliptra_mcu_emulator_mcu_mbox::mcu_mailbox_transport::{
     McuMailboxError, McuMailboxResponse, McuMailboxTransport,
 };
-use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
 use std::process::exit;
 use std::sync::atomic::Ordering;
 use std::thread::sleep;

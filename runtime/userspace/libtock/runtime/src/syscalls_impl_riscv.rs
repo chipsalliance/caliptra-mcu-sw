@@ -1,5 +1,5 @@
+use caliptra_mcu_libtock_platform::{RawSyscalls, Register};
 use core::arch::asm;
-use libtock_platform::{RawSyscalls, Register};
 
 unsafe impl RawSyscalls for crate::TockSyscalls {
     // This yield implementation is currently limited to RISC-V versions without

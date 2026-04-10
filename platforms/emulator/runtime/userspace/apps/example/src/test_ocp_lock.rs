@@ -2,12 +2,12 @@
 
 use caliptra_api::mailbox::{CapabilitiesResp, CommandId, HpkeAlgorithms, MailboxReqHeader};
 use caliptra_api::Capabilities;
+use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
+use caliptra_mcu_libapi_caliptra::ocp_lock::OcpLock;
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_libsyscall_caliptra::system::System;
+use caliptra_mcu_romtime::println;
 use core::mem::size_of;
-use libapi_caliptra::mailbox_api::execute_mailbox_cmd;
-use libapi_caliptra::ocp_lock::OcpLock;
-use libsyscall_caliptra::mailbox::Mailbox;
-use libsyscall_caliptra::system::System;
-use romtime::println;
 use zerocopy::{FromBytes, IntoBytes};
 
 pub(crate) async fn test_get_algorithms() {

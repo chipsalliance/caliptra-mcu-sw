@@ -4,10 +4,10 @@
 mod test {
     use anyhow::Result;
     use caliptra_api::SocManager;
-    use mcu_error::McuError;
-    use mcu_hw_model::{new, DefaultHwModel, InitParams, McuHwModel, McuManager};
-    use registers_generated::fuses;
-    use romtime::{
+    use caliptra_mcu_error::McuError;
+    use caliptra_mcu_hw_model::{new, DefaultHwModel, InitParams, McuHwModel, McuManager};
+    use caliptra_mcu_registers_generated::fuses;
+    use caliptra_mcu_romtime::{
         pqc_key_type_entry, vendor_ecc_revocation_entry, vendor_lms_revocation_entry,
         vendor_mldsa_revocation_entry, write_fuse_value, write_single_fuse_value, FuseLayout,
         PqcKeyType,

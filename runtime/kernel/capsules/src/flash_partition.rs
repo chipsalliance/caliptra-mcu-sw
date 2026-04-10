@@ -66,7 +66,7 @@ impl Default for App {
 
 pub struct FlashPartition<'a> {
     // The underlying flash storage driver.
-    driver: &'a dyn flash_driver::hil::FlashStorage<'a>,
+    driver: &'a dyn caliptra_mcu_flash_driver::hil::FlashStorage<'a>,
     // The driver number for this partition.
     driver_num: usize,
     // Per-app state.
@@ -88,7 +88,7 @@ pub struct FlashPartition<'a> {
 
 impl<'a> FlashPartition<'a> {
     pub fn new(
-        driver: &'a dyn flash_driver::hil::FlashStorage<'a>,
+        driver: &'a dyn caliptra_mcu_flash_driver::hil::FlashStorage<'a>,
         driver_num: usize,
         grant: Grant<
             App,
@@ -261,7 +261,7 @@ impl<'a> FlashPartition<'a> {
     }
 }
 
-impl flash_driver::hil::FlashStorageClient for FlashPartition<'_> {
+impl caliptra_mcu_flash_driver::hil::FlashStorageClient for FlashPartition<'_> {
     fn read_done(&self, buffer: &'static mut [u8], length: usize) {
         // Switch on which user of this capsule generated this callback.
         if let Some(processid) = self.current_app.take() {

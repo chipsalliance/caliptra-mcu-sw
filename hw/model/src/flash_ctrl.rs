@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use registers_generated::mci;
-use registers_generated::mci::bits::{MboxExecute, MboxTargetStatus};
-use romtime::StaticRef;
+use caliptra_mcu_registers_generated::mci;
+use caliptra_mcu_registers_generated::mci::bits::{MboxExecute, MboxTargetStatus};
+use caliptra_mcu_romtime::StaticRef;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Result as IoResult, Seek, Write};
 use std::path::PathBuf;

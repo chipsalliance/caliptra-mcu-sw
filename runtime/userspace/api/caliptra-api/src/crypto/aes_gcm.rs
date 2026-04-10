@@ -11,8 +11,8 @@ use caliptra_api::mailbox::{
     CmAesGcmSpdmEncryptInitResp, Cmk, MailboxReqHeader, Request,
     CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
 };
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use core::mem::size_of;
-use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
 
 pub type Aes256GcmIv = [u32; 3];

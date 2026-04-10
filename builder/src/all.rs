@@ -3,16 +3,18 @@
 use anyhow::{bail, Context, Result};
 use caliptra_builder::FwId;
 use caliptra_image_types::ImageManifest;
-use chrono::{TimeZone, Utc};
-use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
-use mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION};
-use pldm_fw_pkg::{
+use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
+use caliptra_mcu_config_emulator::flash::{
+    PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION,
+};
+use caliptra_mcu_pldm_fw_pkg::{
     manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     },
     FirmwareManifest,
 };
+use chrono::{TimeZone, Utc};
 use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -66,7 +68,7 @@ const FEATURES_REQUIRING_FLASH_BOOT: &[&str] =
 
 /// MCI base address for SoC image load addresses.
 /// Uses FPGA memory map since the emulator's AXI simulation uses FPGA-like addresses.
-const MCI_BASE_AXI_ADDRESS: u64 = mcu_config_fpga::FPGA_MEMORY_MAP.mci_offset as u64;
+const MCI_BASE_AXI_ADDRESS: u64 = caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.mci_offset as u64;
 
 /// Build the emulator with a specific feature flag.
 /// Returns the path to the built emulator binary, or None if the feature is not supported by the emulator.
@@ -79,7 +81,7 @@ pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
     cmd.current_dir(&*PROJECT_ROOT).args([
         "build",
         "-p",
-        "emulator",
+        "caliptra-mcu-emulator",
         "--profile",
         "test",
         "--features",
@@ -105,7 +107,10 @@ pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
     }
 
     // The emulator binary is at target/debug/emulator (profile "test" uses the debug directory)
-    let emulator_path = PROJECT_ROOT.join("target").join("debug").join("emulator");
+    let emulator_path = PROJECT_ROOT
+        .join("target")
+        .join("debug")
+        .join("caliptra-mcu-emulator");
 
     if !emulator_path.exists() {
         bail!("Emulator binary not found at {:?}", emulator_path);
@@ -115,7 +120,7 @@ pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
 }
 
 /// MCU MBOX SRAM1 offset from MCI base.
-/// Matches mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET (0x80_0000).
+/// Matches caliptra_mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET (0x80_0000).
 const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
 
 /// Creates default SoC images for tests that require them.

@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use emulator_consts::MCU_MAILBOX0_SRAM_SIZE;
-use emulator_periph::McuMailbox0External;
-use registers_generated::mci::bits::MboxExecute;
+use caliptra_mcu_emulator_consts::MCU_MAILBOX0_SRAM_SIZE;
+use caliptra_mcu_emulator_periph::McuMailbox0External;
+use caliptra_mcu_registers_generated::mci::bits::MboxExecute;
 use tock_registers::interfaces::Readable;
 
 #[derive(Clone)]
@@ -80,10 +80,12 @@ impl McuMailboxTransport {
 
         let status_val = status_code
             .reg
-            .read(registers_generated::mci::bits::MboxCmdStatus::Status);
+            .read(caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Status);
         let mut data = Vec::new();
 
-        if status_val == registers_generated::mci::bits::MboxCmdStatus::Status::CmdComplete.value {
+        if status_val
+            == caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Status::CmdComplete.value
+        {
             // Read the data from MBOX_SRAM only if command is completed
             let len = self
                 .mbox
@@ -112,7 +114,7 @@ impl McuMailboxTransport {
             data,
         })
         /*
-        if status_val == registers_generated::mci::bits::MboxCmdStatus::Status::CmdComplete.value {
+        if status_val == caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Status::CmdComplete.value {
             Ok(McuMailboxResponse {
                 status_code: status_val,
                 data,
@@ -129,8 +131,8 @@ impl McuMailboxTransport {
             .unwrap()
             .read_mcu_mbox0_csr_mbox_cmd_status()
             .reg
-            .read(registers_generated::mci::bits::MboxCmdStatus::Status)
-            != registers_generated::mci::bits::MboxCmdStatus::Status::CmdBusy.value
+            .read(caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Status)
+            != caliptra_mcu_registers_generated::mci::bits::MboxCmdStatus::Status::CmdBusy.value
     }
 
     pub fn finalize(&self) {

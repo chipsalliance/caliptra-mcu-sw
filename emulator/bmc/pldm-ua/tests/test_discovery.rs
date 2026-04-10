@@ -5,16 +5,20 @@ mod common;
 use std::thread::sleep;
 use std::time::Duration;
 
-use pldm_common::protocol::base::{PldmControlCmd, PldmSupportedType, TransferRespFlag};
-use pldm_common::protocol::firmware_update::FwUpdateCmd;
-use pldm_common::protocol::version::{PLDM_BASE_PROTOCOL_VERSION, PLDM_FW_UPDATE_PROTOCOL_VERSION};
-use pldm_ua::events::PldmEvents;
-use pldm_ua::{discovery_sm, update_sm};
+use caliptra_mcu_pldm_common::protocol::base::{
+    PldmControlCmd, PldmSupportedType, TransferRespFlag,
+};
+use caliptra_mcu_pldm_common::protocol::firmware_update::FwUpdateCmd;
+use caliptra_mcu_pldm_common::protocol::version::{
+    PLDM_BASE_PROTOCOL_VERSION, PLDM_FW_UPDATE_PROTOCOL_VERSION,
+};
+use caliptra_mcu_pldm_ua::events::PldmEvents;
+use caliptra_mcu_pldm_ua::{discovery_sm, update_sm};
 
-use pldm_common::message::control::*;
-use pldm_fw_pkg::FirmwareManifest;
-use pldm_ua::daemon::Options;
-use pldm_ua::transport::PldmSocket;
+use caliptra_mcu_pldm_common::message::control::*;
+use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
+use caliptra_mcu_pldm_ua::daemon::Options;
+use caliptra_mcu_pldm_ua::transport::PldmSocket;
 
 const COMPLETION_CODE_SUCCESSFUL: u8 = 0x00;
 
@@ -52,7 +56,7 @@ impl update_sm::StateMachineActions for UpdateSmStopAfterRequest {
 #[test]
 fn test_discovery() {
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(FirmwareManifest::default()),
+        caliptra_mcu_pldm_fw_pkg: Some(FirmwareManifest::default()),
         discovery_sm_actions: discovery_sm::DefaultActions {},
         update_sm_actions: UpdateSmStopAfterRequest {
             is_fw_update_started: false,
@@ -203,7 +207,7 @@ fn test_discovery() {
 #[test]
 fn test_discovery_with_retry() {
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(FirmwareManifest::default()),
+        caliptra_mcu_pldm_fw_pkg: Some(FirmwareManifest::default()),
         discovery_sm_actions: discovery_sm::DefaultActions {},
         update_sm_actions: UpdateSmStopAfterRequest {
             is_fw_update_started: false,

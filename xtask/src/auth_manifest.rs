@@ -2,9 +2,9 @@
 
 use anyhow::Result;
 use caliptra_auth_man_types::AuthorizationManifest;
+use caliptra_mcu_builder::{CaliptraBuilder, ImageCfg};
 use clap::Subcommand;
 use hex::ToHex;
-use mcu_builder::{CaliptraBuilder, ImageCfg};
 use zerocopy::FromBytes;
 
 #[derive(Subcommand)]

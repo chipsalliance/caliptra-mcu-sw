@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
-    use mcu_hw_model::{McuHwModel, McuManager};
+    use caliptra_mcu_hw_model::{McuHwModel, McuManager};
     use std::sync::atomic::Ordering;
 
     const MAX_ZEROIZATION_CYCLES: u64 = 500_000_000;
@@ -57,7 +57,7 @@ mod test {
         // memory that is separate from the MCU emulator's OTP partitions,
         // so this check is only meaningful on real hardware.
         if cfg!(feature = "fpga_realtime") {
-            use registers_generated::fuses::{
+            use caliptra_mcu_registers_generated::fuses::{
                 SECRET_MANUF_PARTITION_BYTE_OFFSET, SECRET_MANUF_PARTITION_BYTE_SIZE,
                 SECRET_PROD_PARTITION_0_BYTE_OFFSET, SECRET_PROD_PARTITION_0_BYTE_SIZE,
                 SECRET_PROD_PARTITION_1_BYTE_OFFSET, SECRET_PROD_PARTITION_1_BYTE_SIZE,

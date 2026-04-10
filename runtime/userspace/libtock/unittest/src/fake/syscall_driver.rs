@@ -1,5 +1,5 @@
 use crate::{DriverInfo, DriverShareRef, RoAllowBuffer, RwAllowBuffer};
-use libtock_platform::{CommandReturn, ErrorCode};
+use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 
 /// The `fake::SyscallDriver` trait is implemented by fake versions of Tock's
 /// kernel APIs. It is used by `fake::Kernel` to route system calls to the fake
@@ -24,7 +24,7 @@ pub trait SyscallDriver: 'static {
     // -------------------------------------------------------------------------
 
     /// Process a Command system call. Fake drivers should use the methods in
-    /// `libtock_unittest::command_return` to construct the return value.
+    /// `caliptra_mcu_libtock_unittest::command_return` to construct the return value.
     fn command(&self, command_id: u32, argument0: u32, argument1: u32) -> CommandReturn;
 
     // -------------------------------------------------------------------------

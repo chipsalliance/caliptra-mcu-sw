@@ -14,13 +14,13 @@
 #[cfg(test)]
 mod test {
     use crate::platform;
-    use mcu_builder::firmware;
-    use mcu_hw_model::{InitParams, McuHwModel};
-    use registers_generated::fuses;
-    use romtime::LifecycleControllerState;
+    use caliptra_mcu_builder::firmware;
+    use caliptra_mcu_hw_model::{InitParams, McuHwModel};
+    use caliptra_mcu_registers_generated::fuses;
+    use caliptra_mcu_romtime::LifecycleControllerState;
 
     fn load_roms() -> (Vec<u8>, Vec<u8>) {
-        if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+        if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
             (
                 binaries.caliptra_rom.clone(),
                 binaries
@@ -28,7 +28,7 @@ mod test {
                     .unwrap(),
             )
         } else {
-            let rom_file = mcu_builder::test_rom_build(
+            let rom_file = caliptra_mcu_builder::test_rom_build(
                 Some(platform()),
                 &firmware::hw_model_tests::OTP_SCRAMBLE_CHECK,
             )
@@ -61,7 +61,7 @@ mod test {
         otp_data[partition.byte_offset..partition.byte_offset + 8]
             .copy_from_slice(&seed_value.to_le_bytes());
 
-        let mut hw = mcu_hw_model::new(InitParams {
+        let mut hw = caliptra_mcu_hw_model::new(InitParams {
             caliptra_rom: &caliptra_rom,
             mcu_rom: &mcu_rom,
             otp_memory: Some(&otp_data),
@@ -106,8 +106,8 @@ mod test {
         );
 
         // Compute expected descrambled value using our Rust PRESENT.
-        let key = otp_digest::OTP_SCRAMBLE_KEYS[5];
-        let expected = otp_digest::otp_unscramble(raw_value, key);
+        let key = caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[5];
+        let expected = caliptra_mcu_otp_digest::otp_unscramble(raw_value, key);
 
         assert_eq!(
             dai_value, expected,

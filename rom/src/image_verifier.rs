@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use romtime::otp::Otp;
+use caliptra_mcu_romtime::otp::Otp;
 
 /// Verifies the authenticity and integrity of the provided image header
 /// against the device's fuse state.

@@ -6,11 +6,11 @@
 
 use core::fmt::Write;
 
+use caliptra_mcu_libtockasync::TockExecutor;
 #[allow(unused)]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
-use libtockasync::TockExecutor;
 #[cfg(any(
     feature = "test-firmware-update-streaming",
     feature = "test-firmware-update-flash"
@@ -47,8 +47,8 @@ fn print_to_console(buf: &str) {
 pub static EXECUTOR: LazyLock<TockExecutor> = LazyLock::new(TockExecutor::new);
 
 #[cfg(not(target_arch = "riscv32"))]
-pub(crate) fn kernel() -> libtock_unittest::fake::Kernel {
-    use libtock_unittest::fake;
+pub(crate) fn kernel() -> caliptra_mcu_libtock_unittest::fake::Kernel {
+    use caliptra_mcu_libtock_unittest::fake;
     let kernel = fake::Kernel::new();
     let console = fake::Console::new();
     kernel.add_driver(&console);
@@ -64,14 +64,14 @@ fn main() {
     // build a fake kernel so that the app will at least start without Tock
     let _kernel = kernel();
     // call the main function
-    libtockasync::start_async(start());
+    caliptra_mcu_libtockasync::start_async(start());
 }
 
 #[embassy_executor::task]
 async fn start() {
     unsafe {
         #[allow(static_mut_refs)]
-        romtime::set_printer(&mut EMULATOR_WRITER);
+        caliptra_mcu_romtime::set_printer(&mut EMULATOR_WRITER);
     }
     async_main().await;
 }
@@ -105,7 +105,7 @@ pub(crate) async fn async_main() {
     EXECUTOR
         .get()
         .spawner()
-        .spawn(mcu_mbox_lib::fips_periodic::fips_periodic_task())
+        .spawn(caliptra_mcu_mbox_lib::fips_periodic::fips_periodic_task())
         .unwrap();
 
     #[cfg(feature = "test-mctp-vdm-cmds")]

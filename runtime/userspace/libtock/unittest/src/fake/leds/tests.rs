@@ -1,6 +1,6 @@
 use crate::fake;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use fake::leds::*;
-use libtock_platform::ErrorCode;
 
 // Tests the command implementation.
 #[test]
@@ -25,10 +25,10 @@ fn command() {
 }
 
 // Integration test that verifies Leds works with fake::Kernel and
-// libtock_platform::Syscalls.
+// caliptra_mcu_libtock_platform::Syscalls.
 #[test]
 fn kernel_integration() {
-    use libtock_platform::Syscalls;
+    use caliptra_mcu_libtock_platform::Syscalls;
     let kernel = fake::Kernel::new();
     let leds = Leds::<10>::new();
     kernel.add_driver(&leds);

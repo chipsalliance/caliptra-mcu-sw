@@ -9,13 +9,13 @@
 #[cfg(test)]
 mod test {
     use crate::platform;
-    use mcu_builder::firmware;
-    use mcu_hw_model::{InitParams, McuHwModel};
-    use registers_generated::fuses;
-    use romtime::LifecycleControllerState;
+    use caliptra_mcu_builder::firmware;
+    use caliptra_mcu_hw_model::{InitParams, McuHwModel};
+    use caliptra_mcu_registers_generated::fuses;
+    use caliptra_mcu_romtime::LifecycleControllerState;
 
     fn load_roms() -> (Vec<u8>, Vec<u8>) {
-        if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+        if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
             (
                 binaries.caliptra_rom.clone(),
                 binaries
@@ -23,7 +23,7 @@ mod test {
                     .unwrap(),
             )
         } else {
-            let rom_file = mcu_builder::test_rom_build(
+            let rom_file = caliptra_mcu_builder::test_rom_build(
                 Some(platform()),
                 &firmware::hw_model_tests::SW_DIGEST_LOCK,
             )
@@ -39,7 +39,7 @@ mod test {
         // Boot 1: write data + digest.
         let otp_after_boot1;
         {
-            let mut hw = mcu_hw_model::new(InitParams {
+            let mut hw = caliptra_mcu_hw_model::new(InitParams {
                 caliptra_rom: &caliptra_rom,
                 mcu_rom: &mcu_rom,
                 check_booted_to_runtime: false,
@@ -69,7 +69,7 @@ mod test {
         // Boot 2: verify digest. Pass OTP from boot 1 so emulator sees the
         // written data. On FPGA, OTP SRAM persists automatically.
         {
-            let mut hw = mcu_hw_model::new(InitParams {
+            let mut hw = caliptra_mcu_hw_model::new(InitParams {
                 caliptra_rom: &caliptra_rom,
                 mcu_rom: &mcu_rom,
                 check_booted_to_runtime: false,

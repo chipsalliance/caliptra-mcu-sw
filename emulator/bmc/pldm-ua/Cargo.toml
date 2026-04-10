@@ -1,15 +1,15 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "pldm-ua"
+name = "caliptra-mcu-pldm-ua"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 
 [dependencies]
 log.workspace = true
-pldm-common.workspace = true
-pldm-fw-pkg.workspace = true
+caliptra-mcu-pldm-common.workspace = true
+caliptra-mcu-pldm-fw-pkg.workspace = true
 smlang.workspace = true
 
 [dev-dependencies]

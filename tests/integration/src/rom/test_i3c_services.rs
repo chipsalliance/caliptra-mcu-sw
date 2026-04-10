@@ -8,13 +8,13 @@
 #[cfg(test)]
 mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
-    use mcu_hw_model::McuHwModel;
-    use mcu_testing_common::i3c_socket::BufferedStream;
+    use caliptra_mcu_hw_model::McuHwModel;
+    use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
     use random_port::PortPicker;
     use std::net::{SocketAddr, TcpStream};
     use std::sync::atomic::Ordering;
 
-    use romtime::McuRomBootStatus;
+    use caliptra_mcu_romtime::McuRomBootStatus;
 
     const I3C_SERVICES_READY_CHECKPOINT: u16 = McuRomBootStatus::I3cServicesReady as u16;
 
@@ -84,7 +84,7 @@ mod test {
     /// Boot into I3C services with DOT flash configured so DOT commands
     /// are available. Uses force_i3c_services + test-i3c-services feature.
     fn boot_and_send_i3c_cmd_with_dot(cmd: u8, payload: &[u8], expected_output: &str) -> String {
-        use mcu_rom_common::DOT_BLOB_SIZE;
+        use caliptra_mcu_rom_common::DOT_BLOB_SIZE;
 
         let i3c_port = PortPicker::new().random(true).pick().unwrap();
 
@@ -231,9 +231,9 @@ mod test {
         ignore = "FPGA does not support otp_memory provisioning for DOT fuses"
     )]
     fn test_i3c_services_dot_override_full_flow() {
+        use caliptra_mcu_rom_common::DOT_BLOB_SIZE;
         use ecdsa::signature::hazmat::PrehashSigner;
         use fips204::traits::Signer;
-        use mcu_rom_common::DOT_BLOB_SIZE;
         use p384::ecdsa::SigningKey;
         use sha2::{Digest, Sha384};
 
@@ -459,7 +459,7 @@ mod test {
     /// continues to accept subsequent commands.
     #[test]
     fn test_i3c_services_dot_error_then_continue() {
-        use mcu_rom_common::DOT_BLOB_SIZE;
+        use caliptra_mcu_rom_common::DOT_BLOB_SIZE;
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, Ordering::Relaxed);
@@ -563,8 +563,8 @@ mod test {
     }
 
     fn create_challenge_recovery_otp_memory(pk_hash: &[u8; 48]) -> Vec<u8> {
-        use otp_digest::{otp_scramble, OTP_SCRAMBLE_KEYS};
-        use registers_generated::fuses;
+        use caliptra_mcu_otp_digest::{otp_scramble, OTP_SCRAMBLE_KEYS};
+        use caliptra_mcu_registers_generated::fuses;
 
         let required_size = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset
             + fuses::VENDOR_RECOVERY_PK_HASH.byte_size

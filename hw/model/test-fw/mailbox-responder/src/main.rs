@@ -5,9 +5,9 @@
 #![no_main]
 #![no_std]
 
-use mcu_rom_common::RomEnv;
-use registers_generated::mci;
-use romtime::McuBootMilestones;
+use caliptra_mcu_registers_generated::mci;
+use caliptra_mcu_rom_common::RomEnv;
+use caliptra_mcu_romtime::McuBootMilestones;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 fn run() -> ! {
@@ -99,6 +99,6 @@ fn run() -> ! {
 
 #[no_mangle]
 pub extern "C" fn main() {
-    mcu_test_harness::set_printer();
+    caliptra_mcu_test_harness::set_printer();
     run();
 }

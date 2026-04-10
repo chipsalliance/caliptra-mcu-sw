@@ -1,13 +1,13 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "pldm-fw-pkg"
+name = "caliptra-mcu-pldm-fw-pkg"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 
 [[bin]]
-name = "pldm-fw-pkg"
+name = "caliptra-mcu-pldm-fw-pkg"
 path = "src/main.rs"
 
 [dependencies]

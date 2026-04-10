@@ -21,7 +21,7 @@ use core::panic::PanicInfo;
 #[cfg(target_arch = "riscv32")]
 use core::arch::global_asm;
 
-use network_drivers::{exit_emulator, println};
+use caliptra_mcu_network_drivers::{exit_emulator, println};
 
 // Include the startup assembly code
 #[cfg(target_arch = "riscv32")]
@@ -31,7 +31,7 @@ global_asm!(include_str!("start.s"));
 #[cfg(target_arch = "riscv32")]
 #[no_mangle]
 pub extern "C" fn main() -> ! {
-    use network_drivers::EthernetDriver;
+    use caliptra_mcu_network_drivers::EthernetDriver;
 
     println!();
     println!("=====================================");
@@ -44,7 +44,7 @@ pub extern "C" fn main() -> ! {
     {
         // Create Ethernet driver
         let eth = EthernetDriver::new();
-        network_app_rom_test::dhcp_test::run(eth);
+        caliptra_mcu_network_app_rom_test::dhcp_test::run(eth);
     }
 
     exit_emulator(0x00);

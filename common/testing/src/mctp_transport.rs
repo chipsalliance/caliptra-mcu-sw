@@ -8,12 +8,12 @@
 use crate::i3c::DynamicI3cAddress;
 use crate::i3c_socket::BufferedStream;
 use crate::mctp_util::common::MctpUtil;
-use core::time::Duration;
-use pldm_common::util::mctp_transport::{MctpCommonHeader, MCTP_PLDM_MSG_TYPE};
-use pldm_ua::transport::{
+use caliptra_mcu_pldm_common::util::mctp_transport::{MctpCommonHeader, MCTP_PLDM_MSG_TYPE};
+use caliptra_mcu_pldm_ua::transport::{
     EndpointId, Payload, PldmSocket, PldmTransport, PldmTransportError, RxPacket,
     MAX_PLDM_PAYLOAD_SIZE,
 };
+use core::time::Duration;
 use std::net::{SocketAddr, TcpStream};
 use std::sync::{Arc, Condvar, Mutex};
 

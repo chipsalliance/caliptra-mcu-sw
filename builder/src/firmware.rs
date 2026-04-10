@@ -6,62 +6,62 @@ pub mod hw_model_tests {
     use super::*;
 
     pub const MAILBOX_RESPONDER: FwId = FwId {
-        crate_name: "mcu-test-fw-mailbox-responder",
-        bin_name: "mcu-test-fw-mailbox-responder",
+        crate_name: "caliptra-mcu-test-fw-mailbox-responder",
+        bin_name: "caliptra-mcu-test-fw-mailbox-responder",
         features: &["emu"],
     };
 
     pub const HITLESS_UPDATE_FLOW: FwId = FwId {
-        crate_name: "mcu-test-fw-hitless-update-flow",
-        bin_name: "mcu-test-fw-hitless-update-flow",
+        crate_name: "caliptra-mcu-test-fw-hitless-update-flow",
+        bin_name: "caliptra-mcu-test-fw-hitless-update-flow",
         features: &["emu"],
     };
 
     pub const AXI_BYPASS: FwId = FwId {
-        crate_name: "mcu-test-fw-axi-bypass",
-        bin_name: "mcu-test-fw-axi-bypass",
+        crate_name: "caliptra-mcu-test-fw-axi-bypass",
+        bin_name: "caliptra-mcu-test-fw-axi-bypass",
         features: &["emu"],
     };
 
     pub const EXCEPTION_HANDLER: FwId = FwId {
-        crate_name: "mcu-test-fw-exception-handler",
-        bin_name: "mcu-test-fw-exception-handler",
+        crate_name: "caliptra-mcu-test-fw-exception-handler",
+        bin_name: "caliptra-mcu-test-fw-exception-handler",
         features: &["emu"],
     };
 
     pub const USB_RESPONDER: FwId = FwId {
-        crate_name: "mcu-test-fw-usb-responder",
-        bin_name: "mcu-test-fw-usb-responder",
+        crate_name: "caliptra-mcu-test-fw-usb-responder",
+        bin_name: "caliptra-mcu-test-fw-usb-responder",
         features: &["emu"],
     };
 
     pub const USB_OCP_RECOVERY: FwId = FwId {
-        crate_name: "mcu-test-fw-usb-ocp-recovery",
-        bin_name: "mcu-test-fw-usb-ocp-recovery",
+        crate_name: "caliptra-mcu-test-fw-usb-ocp-recovery",
+        bin_name: "caliptra-mcu-test-fw-usb-ocp-recovery",
         features: &["emu"],
     };
 
     pub const SW_DIGEST_LOCK: FwId = FwId {
-        crate_name: "mcu-test-fw-sw-digest-lock",
-        bin_name: "mcu-test-fw-sw-digest-lock",
+        crate_name: "caliptra-mcu-test-fw-sw-digest-lock",
+        bin_name: "caliptra-mcu-test-fw-sw-digest-lock",
         features: &["emu"],
     };
 
     pub const OTP_BLANK_CHECK: FwId = FwId {
-        crate_name: "mcu-test-fw-otp-blank-check",
-        bin_name: "mcu-test-fw-otp-blank-check",
+        crate_name: "caliptra-mcu-test-fw-otp-blank-check",
+        bin_name: "caliptra-mcu-test-fw-otp-blank-check",
         features: &["emu"],
     };
 
     pub const OTP_SCRAMBLE_CHECK: FwId = FwId {
-        crate_name: "mcu-test-fw-otp-scramble-check",
-        bin_name: "mcu-test-fw-otp-scramble-check",
+        crate_name: "caliptra-mcu-test-fw-otp-scramble-check",
+        bin_name: "caliptra-mcu-test-fw-otp-scramble-check",
         features: &["emu"],
     };
 
     pub const LC_CTRL: FwId = FwId {
-        crate_name: "mcu-test-fw-lc-ctrl",
-        bin_name: "mcu-test-fw-lc-ctrl",
+        crate_name: "caliptra-mcu-test-fw-lc-ctrl",
+        bin_name: "caliptra-mcu-test-fw-lc-ctrl",
         features: &["emu"],
     };
 }

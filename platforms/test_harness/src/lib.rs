@@ -4,8 +4,8 @@
 
 pub use platform::*;
 
+use caliptra_mcu_config::{McuMemoryMap, McuStraps};
 use core::fmt::Write;
-use mcu_config::{McuMemoryMap, McuStraps};
 
 #[cfg(all(target_arch = "riscv32", feature = "fpga_realtime"))]
 core::arch::global_asm!(include_str!("fpga-start.s"));
@@ -19,10 +19,10 @@ mod platform {
     use super::*;
     #[no_mangle]
     #[used]
-    pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_fpga::FPGA_MEMORY_MAP;
+    pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_fpga::FPGA_MEMORY_MAP;
     #[no_mangle]
     #[used]
-    pub static MCU_STRAPS: McuStraps = mcu_config_fpga::FPGA_MCU_STRAPS;
+    pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_fpga::FPGA_MCU_STRAPS;
 
     pub(crate) struct FpgaWriter {}
     pub(crate) static mut WRITER: FpgaWriter = FpgaWriter {};
@@ -50,10 +50,10 @@ mod platform {
     use super::*;
     #[no_mangle]
     #[used]
-    pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_emulator::EMULATOR_MEMORY_MAP;
+    pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP;
     #[no_mangle]
     #[used]
-    pub static MCU_STRAPS: McuStraps = mcu_config_emulator::EMULATOR_MCU_STRAPS;
+    pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_emulator::EMULATOR_MCU_STRAPS;
 
     pub(crate) struct EmulatorWriter {}
     pub(crate) static mut WRITER: EmulatorWriter = EmulatorWriter {};
@@ -75,10 +75,10 @@ mod platform {
     }
 }
 
-/// Must be called prior to using `romtime::println` or similar functions
+/// Must be called prior to using `caliptra_mcu_romtime::println` or similar functions
 pub fn set_printer() {
     unsafe {
         #[allow(static_mut_refs)]
-        romtime::set_printer(&mut WRITER);
+        caliptra_mcu_romtime::set_printer(&mut WRITER);
     }
 }

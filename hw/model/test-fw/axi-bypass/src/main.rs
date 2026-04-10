@@ -5,8 +5,7 @@
 #![no_main]
 #![no_std]
 
-use mcu_rom_common::RomEnv;
-use registers_generated::i3c::bits::{
+use caliptra_mcu_registers_generated::i3c::bits::{
     DeviceStatus0::DevStatus,
     IndirectFifoCtrl0,
     IndirectFifoStatus0::{Empty, Full},
@@ -14,7 +13,8 @@ use registers_generated::i3c::bits::{
     RecIntfRegW1cAccess,
     RecoveryStatus::DevRecStatus,
 };
-use romtime::McuRomBootStatus;
+use caliptra_mcu_rom_common::RomEnv;
+use caliptra_mcu_romtime::McuRomBootStatus;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 const BYPASS_CFG_AXI_DIRECT: u32 = 0x1;
@@ -147,6 +147,6 @@ fn wait_for_recovery_status(env: &mut RomEnv) -> u32 {
 
 #[no_mangle]
 pub extern "C" fn main() {
-    mcu_test_harness::set_printer();
+    caliptra_mcu_test_harness::set_printer();
     run();
 }

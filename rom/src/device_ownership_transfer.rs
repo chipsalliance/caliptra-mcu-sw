@@ -19,9 +19,9 @@ use caliptra_api::mailbox::{
     CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacResp, CmShaReqHdr,
     CmShaResp, CmStableKeyType, CommandId, EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader,
 };
-use mcu_error::{McuError, McuResult};
-use romtime::otp::Otp;
-use romtime::{HexWord, McuRomBootStatus};
+use caliptra_mcu_error::{McuError, McuResult};
+use caliptra_mcu_romtime::otp::Otp;
+use caliptra_mcu_romtime::{HexWord, McuRomBootStatus};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
 
 const DOT_LABEL: &[u8; 23] = b"Caliptra DOT stable key";
@@ -53,7 +53,7 @@ impl DotFuses {
 
     /// Load DOT fuses from OTP using the generated FuseEntryInfo constants.
     pub fn load_from_otp(otp: &Otp) -> McuResult<Self> {
-        use registers_generated::fuses;
+        use caliptra_mcu_registers_generated::fuses;
 
         // dot_initialized: LinearOr(1 bit, 3x) → logical 0 or 1
         let enabled = otp.read_entry(fuses::DOT_INITIALIZED)? != 0;
@@ -215,7 +215,7 @@ pub fn dot_flow(
     blob: &DotBlob,
     stable_key_type: CmStableKeyType,
 ) -> McuResult<Option<OwnerPkHash>> {
-    romtime::println!("[mcu-rom-dot] Performing Device Ownership Transfer flow");
+    caliptra_mcu_romtime::println!("[mcu-rom-dot] Performing Device Ownership Transfer flow");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferStarted.into());
 
@@ -227,7 +227,7 @@ pub fn dot_flow(
 
     let dot_owner = dot_determine_owner(env, dot_fuses, blob)?;
 
-    romtime::println!("[mcu-rom] Device Ownership Transfer complete");
+    caliptra_mcu_romtime::println!("[mcu-rom] Device Ownership Transfer complete");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferComplete.into());
 
@@ -254,11 +254,11 @@ pub fn derive_stable_key_flow(
     dot_fuses: &DotFuses,
     key_type: CmStableKeyType,
 ) -> McuResult<DotEffectiveKey> {
-    romtime::println!("[mcu-rom] Deriving DOT stable key");
+    caliptra_mcu_romtime::println!("[mcu-rom] Deriving DOT stable key");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipDeriveStableKey.into());
     let dot_effective_key = cm_derive_stable_key(env, dot_fuses, key_type)?;
-    romtime::println!("[mcu-rom] DOT stable key derived successfully");
+    caliptra_mcu_romtime::println!("[mcu-rom] DOT stable key derived successfully");
     Ok(dot_effective_key)
 }
 
@@ -272,7 +272,7 @@ fn cm_derive_stable_key(
 }
 
 pub(crate) fn cm_derive_stable_key_impl(
-    soc_manager: &mut romtime::CaliptraSoC,
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     dot_fuses: &DotFuses,
     key_type: CmStableKeyType,
 ) -> McuResult<DotEffectiveKey> {
@@ -308,7 +308,7 @@ pub(crate) fn cm_derive_stable_key_impl(
         &mut req32,
         &mut resp,
     ) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom] Error deriving DOT stable key: {}",
             HexWord(crate::err_code(&err))
         );
@@ -332,7 +332,7 @@ pub struct CmHmacDotBlobReq {
 
 /// Calls Caliptra to compute an HMAC over DotBlobFields.
 pub(crate) fn cm_hmac(
-    soc_manager: &mut romtime::CaliptraSoC,
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     key: &Cmk,
     fields: &DotBlobFields,
 ) -> McuResult<[u32; 16]> {
@@ -349,7 +349,7 @@ pub(crate) fn cm_hmac(
     if let Err(err) =
         soc_manager.exec_mailbox_req_u32(CommandId::CM_HMAC.into(), &mut req, &mut resp)
     {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom] Error computing HMAC: {}",
             HexWord(crate::err_code(&err))
         );
@@ -375,13 +375,13 @@ pub(crate) fn cm_hmac(
 /// * `Ok(())` - If the DOT blob is authentic.
 /// * `Err(McuError)` - If HMAC verification fails (blob is corrupted or invalid).
 pub fn verify_dot_blob(
-    soc_manager: &mut romtime::CaliptraSoC,
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     blob: &DotBlob,
     key: &DotEffectiveKey,
 ) -> McuResult<()> {
     let verify = cm_hmac(soc_manager, &key.0, &blob.fields)?;
     if !constant_time_eq::constant_time_eq(verify.as_bytes(), blob.hmac.as_bytes()) {
-        romtime::println!("[mcu-rom] DOT blob HMAC did not match");
+        caliptra_mcu_romtime::println!("[mcu-rom] DOT blob HMAC did not match");
         return Err(McuError::ROM_COLD_BOOT_DOT_BLOB_CORRUPT_ERROR);
     }
     Ok(())
@@ -412,12 +412,12 @@ fn dot_determine_owner(
     dot_fuses: &DotFuses,
     blob: &DotBlob,
 ) -> McuResult<Option<OwnerPkHash>> {
-    romtime::println!("[mcu-rom-dot] Determining device owner");
+    caliptra_mcu_romtime::println!("[mcu-rom-dot] Determining device owner");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipDetermineOwner.into());
 
     if !dot_fuses.enabled {
-        romtime::println!("[mcu-rom-dot] DOT not enabled, no owner from DOT");
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] DOT not enabled, no owner from DOT");
         return Ok(None);
     }
 
@@ -425,12 +425,12 @@ fn dot_determine_owner(
         // Device is in ODD state (Locked or Disabled)
         if let Some(cak) = blob.cak() {
             // Locked state: CAK present in DOT blob
-            romtime::println!("[mcu-rom-dot] Device locked, using CAK from DOT blob");
+            caliptra_mcu_romtime::println!("[mcu-rom-dot] Device locked, using CAK from DOT blob");
             Ok(Some(cak.clone()))
         } else {
             // Disabled state: ODD with no CAK means ownership is locked but no code
             // authentication is enforced. The owner retains control via LAK.
-            romtime::println!("[mcu-rom-dot] Device in Disabled state (ODD, no CAK)");
+            caliptra_mcu_romtime::println!("[mcu-rom-dot] Device in Disabled state (ODD, no CAK)");
             Ok(None)
         }
     } else {
@@ -438,7 +438,9 @@ fn dot_determine_owner(
         // In EVEN state, ownership comes from Ownership_Storage (volatile), not from
         // DOT_BLOB. The DOT_BLOB in EVEN state is only used for verification/sealing
         // purposes during state transitions, not for determining the current owner.
-        romtime::println!("[mcu-rom-dot] Device in EVEN state, no persistent owner from DOT");
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom-dot] Device in EVEN state, no persistent owner from DOT"
+        );
         Ok(None)
     }
 }
@@ -466,12 +468,12 @@ fn dot_determine_owner(
 /// * `Ok(())` - If fuse burning succeeds or no transition is needed.
 /// * `Err(McuError)` - If fuse burning fails.
 fn burn_dot_fuses(env: &mut RomEnv, dot_fuses: &DotFuses, blob: &DotBlob) -> McuResult<()> {
-    romtime::println!("[mcu-rom-dot] Checking for DOT fuse burn requirements");
+    caliptra_mcu_romtime::println!("[mcu-rom-dot] Checking for DOT fuse burn requirements");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipBurnFuses.into());
 
     if !dot_fuses.enabled {
-        romtime::println!("[mcu-rom-dot] DOT not enabled, no fuse burning needed");
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] DOT not enabled, no fuse burning needed");
         return Ok(());
     }
 
@@ -485,14 +487,16 @@ fn burn_dot_fuses(env: &mut RomEnv, dot_fuses: &DotFuses, blob: &DotBlob) -> Mcu
         dot_fuses.is_unlocked() && blob.cak().is_some() && blob.lak().is_some();
 
     if needs_lock_transition {
-        romtime::println!("[mcu-rom-dot] DOT state transition needed: unlocked -> locked");
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom-dot] DOT state transition needed: unlocked -> locked"
+        );
 
         burn_dot_lock_fuse(&env.otp, dot_fuses)?;
 
-        romtime::println!("[mcu-rom-dot] DOT lock fuse burned successfully");
-        romtime::println!("[mcu-rom-dot] Transition to locked state complete");
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] DOT lock fuse burned successfully");
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] Transition to locked state complete");
     } else {
-        romtime::println!("[mcu-rom-dot] No DOT state transition required");
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] No DOT state transition required");
     }
 
     Ok(())
@@ -512,11 +516,11 @@ fn burn_dot_fuses(env: &mut RomEnv, dot_fuses: &DotFuses, blob: &DotBlob) -> Mcu
 /// * `Ok(())` - If the fuse was successfully burned.
 /// * `Err(McuError)` - If the OTP write operation fails.
 pub(crate) fn burn_dot_lock_fuse(otp: &Otp, dot_fuses: &DotFuses) -> McuResult<()> {
-    use registers_generated::fuses;
+    use caliptra_mcu_registers_generated::fuses;
     // Each state transition burns the next sequential bit in the dot_fuse_array.
     let next_bit = dot_fuses.burned as u32;
     if next_bit >= (dot_fuses.total as u32) {
-        romtime::println!("[mcu-rom-dot] No more DOT fuse bits available");
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] No more DOT fuse bits available");
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
 
@@ -531,7 +535,7 @@ pub(crate) fn burn_dot_lock_fuse(otp: &Otp, dot_fuses: &DotFuses) -> McuResult<(
 
     let new_value = current_value | (1u32 << bit_in_word);
 
-    romtime::println!(
+    caliptra_mcu_romtime::println!(
         "[mcu-rom-dot] Burning DOT lock fuse at word addr {:#x}, value {:#x} -> {:#x}",
         fuse_array_word_addr,
         current_value,
@@ -616,7 +620,7 @@ pub(crate) fn ecc_key_as_u32_slice(key: &EccP384PublicKey) -> &[u32] {
 /// This is the core cryptographic verification shared between the MCI
 /// mailbox override flow and the I3C services override flow.
 pub(crate) fn verify_override_response(
-    soc_manager: &mut romtime::CaliptraSoC,
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     recovery_pk_hash: &RecoveryPkHash,
     auth: &OverrideAuth<'_>,
 ) -> McuResult<()> {
@@ -626,7 +630,7 @@ pub(crate) fn verify_override_response(
 
     let fuse_hash_bytes: [u8; 48] = transmute!(recovery_pk_hash.0);
     if !constant_time_eq::constant_time_eq(&computed_hash, &fuse_hash_bytes) {
-        romtime::println!("[mcu-rom-dot] Override response PK hash mismatch");
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] Override response PK hash mismatch");
         return Err(McuError::ROM_DOT_OVERRIDE_PK_HASH_MISMATCH);
     }
 
@@ -642,7 +646,9 @@ pub(crate) fn verify_override_response(
         &challenge_hash,
     )
     .inspect_err(|_e| {
-        romtime::println!("[mcu-rom-dot] Override ECDSA signature verification failed");
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom-dot] Override ECDSA signature verification failed"
+        );
     })?;
 
     // Verify MLDSA-87 signature over raw challenge
@@ -653,7 +659,9 @@ pub(crate) fn verify_override_response(
         &challenge_u32,
     )
     .inspect_err(|_e| {
-        romtime::println!("[mcu-rom-dot] Override MLDSA signature verification failed");
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom-dot] Override MLDSA signature verification failed"
+        );
     })?;
 
     Ok(())
@@ -662,7 +670,7 @@ pub(crate) fn verify_override_response(
 /// After a successful override verification, burn the DOT lock fuse and
 /// write an empty DOT blob sealed with the new EVEN-state key.
 pub(crate) fn apply_override(
-    soc_manager: &mut romtime::CaliptraSoC,
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     otp: &Otp,
     dot_fuses: &DotFuses,
     dot_flash: &dyn FlashStorage,
@@ -705,7 +713,7 @@ const SHA384_DIGEST_SIZE: usize = 48;
 /// CM_SHA command via `exec_mailbox_req_u32_parts`.  This avoids copying
 /// large buffers (e.g. MLDSA public keys) onto the stack.
 pub(crate) fn cm_sha384(
-    soc_manager: &mut romtime::CaliptraSoC,
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     data_parts: &[&[u32]],
 ) -> McuResult<[u8; SHA384_DIGEST_SIZE]> {
     let total_data_bytes: usize = data_parts.iter().map(|p| p.len() * 4).sum();
@@ -724,7 +732,7 @@ pub(crate) fn cm_sha384(
         data_parts,
         &mut resp32,
     ) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom-dot] CM_SHA failed: {}",
             HexWord(crate::err_code(&err))
         );
@@ -744,7 +752,9 @@ pub(crate) fn cm_sha384(
 }
 
 /// Generates random bytes using Caliptra's CM_RANDOM_GENERATE command.
-pub(crate) fn cm_random_generate(soc_manager: &mut romtime::CaliptraSoC) -> McuResult<[u8; 48]> {
+pub(crate) fn cm_random_generate(
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
+) -> McuResult<[u8; 48]> {
     #[repr(C)]
     #[derive(Default, IntoBytes, FromBytes, KnownLayout, Immutable)]
     struct CmRandomReq {
@@ -786,7 +796,7 @@ pub(crate) fn cm_random_generate(soc_manager: &mut romtime::CaliptraSoC) -> McuR
         &mut req32,
         &mut resp32,
     ) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom-dot] CM_RANDOM_GENERATE failed: {}",
             HexWord(crate::err_code(&err))
         );
@@ -800,7 +810,7 @@ pub(crate) fn cm_random_generate(soc_manager: &mut romtime::CaliptraSoC) -> McuR
 ///
 /// This ROM command takes raw public key coordinates (not a CMK handle).
 pub(crate) fn cm_ecdsa384_verify(
-    soc_manager: &mut romtime::CaliptraSoC,
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     pub_key: &EccP384PublicKey,
     signature_r: &[u8; 48],
     signature_s: &[u8; 48],
@@ -837,7 +847,7 @@ pub(crate) fn cm_ecdsa384_verify(
         &mut req32,
         &mut resp32,
     ) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom-dot] ECDSA384_SIGNATURE_VERIFY failed: {}",
             HexWord(crate::err_code(&err))
         );
@@ -851,7 +861,7 @@ pub(crate) fn cm_ecdsa384_verify(
 /// The public key and signature are passed as `&[u32]` slices and streamed
 /// directly to the mailbox to avoid an ~11 KB stack allocation.
 pub(crate) fn cm_mldsa87_verify(
-    soc_manager: &mut romtime::CaliptraSoC,
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     pub_key: &[u32],
     signature: &[u32],
     message: &[u32],
@@ -892,7 +902,7 @@ pub(crate) fn cm_mldsa87_verify(
         data_parts,
         &mut resp32,
     ) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom-dot] MLDSA87_SIGNATURE_VERIFY failed: {}",
             HexWord(crate::err_code(&err))
         );
@@ -935,7 +945,7 @@ impl DotRecoveryHandler for BufferedRecoveryHandler {
 /// This is the shared core of DOT_RECOVERY used by both
 /// `dot_recovery_flow` (MCI path) and the I3C services handler.
 pub(crate) fn verify_and_write_recovery_blob(
-    soc_manager: &mut romtime::CaliptraSoC,
+    soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     dot_fuses: &DotFuses,
     blob_bytes: &[u8; DOT_BLOB_SIZE],
     dot_flash: &dyn FlashStorage,
@@ -967,7 +977,7 @@ pub fn dot_recovery_flow(
     dot_flash: &dyn FlashStorage,
     stable_key_type: CmStableKeyType,
 ) -> McuResult<()> {
-    romtime::println!("[mcu-rom-dot] Starting DOT recovery flow");
+    caliptra_mcu_romtime::println!("[mcu-rom-dot] Starting DOT recovery flow");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DotRecoveryStarted.into());
 
@@ -985,7 +995,7 @@ pub fn dot_recovery_flow(
             .set_flow_checkpoint(McuRomBootStatus::DotRecoveryFailed.into());
     })?;
 
-    romtime::println!("[mcu-rom-dot] DOT recovery complete, reset required");
+    caliptra_mcu_romtime::println!("[mcu-rom-dot] DOT recovery complete, reset required");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DotRecoveryComplete.into());
 
@@ -1011,7 +1021,7 @@ pub fn dot_override_challenge_flow(
     dot_flash: &dyn FlashStorage,
     stable_key_type: CmStableKeyType,
 ) -> McuResult<()> {
-    romtime::println!("[mcu-rom-dot] Starting DOT override flow");
+    caliptra_mcu_romtime::println!("[mcu-rom-dot] Starting DOT override flow");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DotOverrideStarted.into());
 
@@ -1045,7 +1055,7 @@ pub fn dot_override_challenge_flow(
 
     let fuse_hash_bytes: [u8; 48] = transmute!(recovery_pk_hash.0);
     if !constant_time_eq::constant_time_eq(&computed_hash, &fuse_hash_bytes) {
-        romtime::println!("[mcu-rom-dot] Vendor recovery PK hash mismatch");
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] Vendor recovery PK hash mismatch");
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
         return Err(McuError::ROM_DOT_OVERRIDE_PK_HASH_MISMATCH);
@@ -1103,7 +1113,7 @@ pub fn dot_override_challenge_flow(
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DotOverrideBlobWritten.into());
 
-    romtime::println!("[mcu-rom-dot] DOT override complete");
+    caliptra_mcu_romtime::println!("[mcu-rom-dot] DOT override complete");
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DotOverrideComplete.into());
 
@@ -1120,7 +1130,9 @@ pub fn write_recovery_dot_blob(
     dot_fuses: &DotFuses,
     dot_flash: Option<&dyn crate::flash::hil::FlashStorage>,
 ) -> McuResult<()> {
-    romtime::println!("[mcu-rom-dot] Writing recovery DOT blob for blank/corrupt flash");
+    caliptra_mcu_romtime::println!(
+        "[mcu-rom-dot] Writing recovery DOT blob for blank/corrupt flash"
+    );
     create_and_seal_dot_blob(
         env,
         dot_fuses,
@@ -1165,9 +1177,9 @@ fn create_and_seal_dot_blob(
     // Write the sealed DOT blob to flash.
     if let Some(flash) = dot_flash {
         if let Err(err) = flash.write(blob.as_bytes(), 0) {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[mcu-rom-dot] Failed to write DOT blob to flash: {}",
-                romtime::HexWord(usize::from(err) as u32)
+                caliptra_mcu_romtime::HexWord(usize::from(err) as u32)
             );
             return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
         }
@@ -1303,19 +1315,19 @@ pub fn process_fw_manifest_dot_commands(
     }
 
     if !section.verify_checksum() {
-        romtime::println!("[mcu-rom-dot] Firmware manifest DOT checksum mismatch");
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] Firmware manifest DOT checksum mismatch");
         return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
     }
 
     if section.version != 1 {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom-dot] Unsupported fw manifest DOT version: {}",
             section.version
         );
         return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
     }
 
-    romtime::println!("[mcu-rom-dot] Processing manifest DOT commands");
+    caliptra_mcu_romtime::println!("[mcu-rom-dot] Processing manifest DOT commands");
 
     let num_commands = section.num_commands as usize;
     if num_commands > MAX_FW_MANIFEST_DOT_COMMANDS {
@@ -1333,7 +1345,9 @@ pub fn process_fw_manifest_dot_commands(
         .any(|&c| c == FW_MANIFEST_DOT_CMD_LOCK || c == FW_MANIFEST_DOT_CMD_DISABLE);
     let has_unlock = cmds.iter().any(|&c| c == FW_MANIFEST_DOT_CMD_UNLOCK);
     if has_lock && has_unlock {
-        romtime::println!("[mcu-rom-dot] Fatal: both LOCK/DISABLE and UNLOCK present in manifest");
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom-dot] Fatal: both LOCK/DISABLE and UNLOCK present in manifest"
+        );
         return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
     }
 
@@ -1419,13 +1433,13 @@ pub fn process_fw_manifest_dot_commands(
             }
 
             _ => {
-                romtime::println!("[mcu-rom-dot] Unknown DOT command: {}", cmd);
+                caliptra_mcu_romtime::println!("[mcu-rom-dot] Unknown DOT command: {}", cmd);
                 return Err(McuError::ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR);
             }
         }
     }
 
-    romtime::println!("[mcu-rom-dot] Manifest DOT processing complete");
+    caliptra_mcu_romtime::println!("[mcu-rom-dot] Manifest DOT processing complete");
     Ok(())
 }
 
@@ -1490,7 +1504,7 @@ impl<'a> DotLockedRecoveryManager<'a> {
                 Ok(()) => return Ok(()),
                 Err(err) => {
                     last_err = err;
-                    romtime::println!(
+                    caliptra_mcu_romtime::println!(
                         "[mcu-rom-dot] locked-state handler failed: {}",
                         HexWord(err.into())
                     );
@@ -1522,7 +1536,7 @@ pub struct BackupBlobRecoveryHandler<'a> {
 
 impl DotLockedRecoveryHandler for BackupBlobRecoveryHandler<'_> {
     fn attempt(&self, env: &mut RomEnv, ctx: &DotLockedRecoveryContext<'_>) -> McuResult<()> {
-        romtime::println!("[mcu-rom-dot] Attempting backup-blob recovery");
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] Attempting backup-blob recovery");
         dot_recovery_flow(
             env,
             ctx.dot_fuses,
@@ -1545,7 +1559,7 @@ impl DotLockedRecoveryHandler for OverrideChallengeRecoveryHandler<'_> {
         if self.wdt_timeout > 0 {
             env.mci.configure_wdt(self.wdt_timeout, 1);
         }
-        romtime::println!("[mcu-rom-dot] Attempting override challenge/response");
+        caliptra_mcu_romtime::println!("[mcu-rom-dot] Attempting override challenge/response");
         dot_override_challenge_flow(
             env,
             ctx.dot_fuses,

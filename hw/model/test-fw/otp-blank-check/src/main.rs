@@ -13,8 +13,8 @@
 #![no_main]
 #![no_std]
 
-use mcu_rom_common::{fatal_error, RomEnv};
-use registers_generated::fuses;
+use caliptra_mcu_registers_generated::fuses;
+use caliptra_mcu_rom_common::{fatal_error, RomEnv};
 
 fn run() -> ! {
     let env = RomEnv::new();
@@ -24,12 +24,12 @@ fn run() -> ! {
     let base_word = partition.byte_offset / 4;
 
     // Write 0x0F to a blank word.
-    romtime::println!("[otp-blank-check] Writing 0x0000000F to word {}", base_word);
+    caliptra_mcu_romtime::println!("[otp-blank-check] Writing 0x0000000F to word {}", base_word);
     match otp.write_word(base_word, 0x0000_000F) {
         Ok(_) => {}
         Err(_) => {
-            romtime::println!("[otp-blank-check] First write unexpectedly failed");
-            fatal_error(mcu_error::McuError::ROM_OTP_WRITE_WORD_ERROR);
+            caliptra_mcu_romtime::println!("[otp-blank-check] First write unexpectedly failed");
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_WRITE_WORD_ERROR);
         }
     }
 
@@ -37,26 +37,32 @@ fn run() -> ! {
     match otp.read_word(base_word) {
         Ok(val) => {
             if val != 0x0000_000F {
-                romtime::println!("[otp-blank-check] Read back wrong value after first write");
-                fatal_error(mcu_error::McuError::ROM_OTP_READ_ERROR);
+                caliptra_mcu_romtime::println!(
+                    "[otp-blank-check] Read back wrong value after first write"
+                );
+                fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR);
             }
         }
         Err(_) => {
-            romtime::println!("[otp-blank-check] Read after first write failed");
-            fatal_error(mcu_error::McuError::ROM_OTP_READ_ERROR);
+            caliptra_mcu_romtime::println!("[otp-blank-check] Read after first write failed");
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR);
         }
     }
-    romtime::println!("[otp-blank-check] First write verified OK");
+    caliptra_mcu_romtime::println!("[otp-blank-check] First write verified OK");
 
     // Attempt a write that would clear bits — must fail with blank-check error.
-    romtime::println!("[otp-blank-check] Attempting write of 0x00000001 (should fail)");
+    caliptra_mcu_romtime::println!(
+        "[otp-blank-check] Attempting write of 0x00000001 (should fail)"
+    );
     match otp.write_word(base_word, 0x0000_0001) {
         Ok(_) => {
-            romtime::println!("[otp-blank-check] Second write succeeded but should have failed");
-            fatal_error(mcu_error::McuError::ROM_OTP_WRITE_WORD_ERROR);
+            caliptra_mcu_romtime::println!(
+                "[otp-blank-check] Second write succeeded but should have failed"
+            );
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_WRITE_WORD_ERROR);
         }
         Err(_) => {
-            romtime::println!("[otp-blank-check] Second write correctly failed");
+            caliptra_mcu_romtime::println!("[otp-blank-check] Second write correctly failed");
         }
     }
 
@@ -64,26 +70,26 @@ fn run() -> ! {
     match otp.read_word(base_word) {
         Ok(val) => {
             if val != 0x0000_000F {
-                romtime::println!(
+                caliptra_mcu_romtime::println!(
                     "[otp-blank-check] Original value not preserved, got {:#010x}",
                     val
                 );
-                fatal_error(mcu_error::McuError::ROM_OTP_READ_ERROR);
+                fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR);
             }
         }
         Err(_) => {
-            romtime::println!("[otp-blank-check] Final readback failed");
-            fatal_error(mcu_error::McuError::ROM_OTP_READ_ERROR);
+            caliptra_mcu_romtime::println!("[otp-blank-check] Final readback failed");
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR);
         }
     }
 
-    romtime::println!("[otp-blank-check] PASS");
+    caliptra_mcu_romtime::println!("[otp-blank-check] PASS");
     #[allow(clippy::empty_loop)]
     loop {}
 }
 
 #[no_mangle]
 pub extern "C" fn main() {
-    mcu_test_harness::set_printer();
+    caliptra_mcu_test_harness::set_printer();
     run();
 }

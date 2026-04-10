@@ -1,4 +1,4 @@
-use libtock_platform::{syscall_class, yield_id, RawSyscalls, Register};
+use caliptra_mcu_libtock_platform::{syscall_class, yield_id, RawSyscalls, Register};
 use std::convert::TryInto;
 
 unsafe impl RawSyscalls for crate::fake::Syscalls {

@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "mcu-test-harness"
+name = "caliptra-mcu-test-harness"
 version.workspace = true
 edition.workspace = true
 
@@ -12,10 +12,10 @@ fpga_realtime = []
 [dependencies]
 caliptra-api.workspace = true
 caliptra-registers.workspace = true
-mcu-config.workspace = true
-mcu-config-emulator.workspace = true
-mcu-config-fpga.workspace = true
-mcu-rom-common.workspace = true
-registers-generated.workspace = true
-romtime.workspace = true
+caliptra-mcu-config.workspace = true
+caliptra-mcu-config-emulator.workspace = true
+caliptra-mcu-config-fpga.workspace = true
+caliptra-mcu-rom-common.workspace = true
+caliptra-mcu-registers-generated.workspace = true
+caliptra-mcu-romtime.workspace = true
 tock-registers.workspace = true

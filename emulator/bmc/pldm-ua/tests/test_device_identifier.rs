@@ -3,18 +3,18 @@
 #[cfg(test)]
 mod common;
 
-use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
-use pldm_common::message::firmware_update::query_devid::{
+use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
+use caliptra_mcu_pldm_common::message::firmware_update::query_devid::{
     QueryDeviceIdentifiersRequest, QueryDeviceIdentifiersResponse,
 };
-use pldm_common::protocol::base::PldmBaseCompletionCode;
-use pldm_common::protocol::firmware_update::FwUpdateCmd;
-use pldm_fw_pkg::manifest::{Descriptor, DescriptorType, FirmwareDeviceIdRecord};
-use pldm_fw_pkg::FirmwareManifest;
+use caliptra_mcu_pldm_common::protocol::base::PldmBaseCompletionCode;
+use caliptra_mcu_pldm_common::protocol::firmware_update::FwUpdateCmd;
+use caliptra_mcu_pldm_fw_pkg::manifest::{Descriptor, DescriptorType, FirmwareDeviceIdRecord};
+use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
 
-use pldm_ua::daemon::Options;
-use pldm_ua::transport::PldmSocket;
-use pldm_ua::update_sm;
+use caliptra_mcu_pldm_ua::daemon::Options;
+use caliptra_mcu_pldm_ua::transport::PldmSocket;
+use caliptra_mcu_pldm_ua::update_sm;
 
 // Test UUID
 const TEST_UUID: [u8; 16] = [
@@ -30,9 +30,9 @@ const TEST_UUID3: [u8; 16] = [
 ];
 
 fn encode_descriptor(
-    pkg_descriptor: &pldm_fw_pkg::manifest::Descriptor,
-) -> Result<pldm_common::protocol::firmware_update::Descriptor, ()> {
-    let descriptor = pldm_common::protocol::firmware_update::Descriptor {
+    pkg_descriptor: &caliptra_mcu_pldm_fw_pkg::manifest::Descriptor,
+) -> Result<caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor, ()> {
+    let descriptor = caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor {
         descriptor_type: pkg_descriptor.descriptor_type as u16,
         descriptor_length: pkg_descriptor.descriptor_data.len() as u16,
         descriptor_data: {
@@ -48,7 +48,7 @@ fn encode_descriptor(
 
 #[test]
 fn test_valid_device_identifier_one_descriptor() {
-    let pldm_fw_pkg = FirmwareManifest {
+    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
         firmware_device_id_records: vec![FirmwareDeviceIdRecord {
             initial_descriptor: Descriptor {
                 descriptor_type: DescriptorType::Uuid,
@@ -61,7 +61,7 @@ fn test_valid_device_identifier_one_descriptor() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: common::CustomDiscoverySm {},
         update_sm_actions: update_sm::DefaultActions {},
         fd_tid: 0x02,
@@ -72,8 +72,10 @@ fn test_valid_device_identifier_one_descriptor() {
         .receive_request(&setup.fd_sock, FwUpdateCmd::QueryDeviceIdentifiers as u8)
         .unwrap();
 
-    let initial_descriptor =
-        encode_descriptor(&pldm_fw_pkg.firmware_device_id_records[0].initial_descriptor).unwrap();
+    let initial_descriptor = encode_descriptor(
+        &caliptra_mcu_pldm_fw_pkg.firmware_device_id_records[0].initial_descriptor,
+    )
+    .unwrap();
 
     let response = QueryDeviceIdentifiersResponse::new(
         request.hdr.instance_id(),
@@ -95,7 +97,7 @@ fn test_valid_device_identifier_one_descriptor() {
 
 #[test]
 fn test_valid_device_identifier_not_matched() {
-    let pldm_fw_pkg = FirmwareManifest {
+    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
         firmware_device_id_records: vec![FirmwareDeviceIdRecord {
             initial_descriptor: Descriptor {
                 descriptor_type: DescriptorType::Uuid,
@@ -108,7 +110,7 @@ fn test_valid_device_identifier_not_matched() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: common::CustomDiscoverySm {},
         update_sm_actions: update_sm::DefaultActions {},
         fd_tid: 0x02,
@@ -148,7 +150,7 @@ fn test_valid_device_identifier_not_matched() {
 
 #[test]
 fn test_multiple_device_identifiers() {
-    let pldm_fw_pkg = FirmwareManifest {
+    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
         firmware_device_id_records: vec![FirmwareDeviceIdRecord {
             initial_descriptor: Descriptor {
                 descriptor_type: DescriptorType::Uuid,
@@ -171,7 +173,7 @@ fn test_multiple_device_identifiers() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: common::CustomDiscoverySm {},
         update_sm_actions: update_sm::DefaultActions {},
         fd_tid: 0x02,
@@ -221,7 +223,7 @@ fn test_multiple_device_identifiers() {
 
 #[test]
 fn test_send_get_fw_parameter_after_response() {
-    let pldm_fw_pkg = FirmwareManifest {
+    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
         firmware_device_id_records: vec![FirmwareDeviceIdRecord {
             initial_descriptor: Descriptor {
                 descriptor_type: DescriptorType::Uuid,
@@ -237,14 +239,14 @@ fn test_send_get_fw_parameter_after_response() {
         fn on_get_firmware_parameters_response(
             &mut self,
             _ctx: &mut update_sm::InnerContext<impl PldmSocket>,
-            _response : pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
+            _response : caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
         ) -> Result<(), ()> {
             Ok(())
         }
     }
 
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: common::CustomDiscoverySm {},
         update_sm_actions: UpdateSmIgnoreFirmwareParamsResponse {},
         fd_tid: 0x02,
@@ -255,8 +257,10 @@ fn test_send_get_fw_parameter_after_response() {
         .receive_request(&setup.fd_sock, FwUpdateCmd::QueryDeviceIdentifiers as u8)
         .unwrap();
 
-    let initial_descriptor =
-        encode_descriptor(&pldm_fw_pkg.firmware_device_id_records[0].initial_descriptor).unwrap();
+    let initial_descriptor = encode_descriptor(
+        &caliptra_mcu_pldm_fw_pkg.firmware_device_id_records[0].initial_descriptor,
+    )
+    .unwrap();
 
     let response = QueryDeviceIdentifiersResponse::new(
         request.hdr.instance_id(),
@@ -270,12 +274,12 @@ fn test_send_get_fw_parameter_after_response() {
     setup.send_response(&setup.fd_sock, &response);
 
     // Receive the GetFwParameters request
-    let request: pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersRequest =
+    let request: caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersRequest =
         setup.receive_request(&setup.fd_sock, FwUpdateCmd::GetFirmwareParameters as u8).unwrap();
 
     // Send the GetFwParameters response
     let response =
-        pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse::new(
+        caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse::new(
             request.hdr.instance_id(),
             PldmBaseCompletionCode::Success as u8,
             &FirmwareParameters {

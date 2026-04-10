@@ -200,100 +200,100 @@ zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_de
 zip = { version = "4.3.0", default-features = false, features = ["chrono", "deflate"] }
 
 # local dependencies
-caliptra-util-host-mailbox-test-config = { path = "caliptra-util-host/apps/mailbox/config" }
-caliptra-mailbox-server = { path = "caliptra-util-host/apps/mailbox/server" }
-capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
-capsules-runtime = { path = "runtime/kernel/capsules" }
-dma-driver = { path = "platforms/emulator/runtime/kernel/drivers/dma" }
-doe-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/doe_mbox" }
-doe-transport = { path = "runtime/kernel/drivers/doe"}
-emulator = { path = "emulator/app" }
-emulator-bmc = { path = "emulator/bmc" }
-emulator-caliptra = { "path" = "emulator/caliptra" }
-emulator-consts = { "path" = "emulator/consts" }
-emulator-mcu-mbox = { path = "emulator/app/mcu-mbox"}
-emulator-periph = { path = "emulator/periph" }
-emulator-registers-generated = { path = "registers/generated-emulator" }
-flash-ctrl-emulator = { path = "platforms/emulator/runtime/kernel/drivers/flash_ctrl"}
-flash-ctrl-fpga = { path = "platforms/fpga/runtime/drivers/flash_ctrl"}
-flash-driver = { path = "runtime/kernel/drivers/flash" }
-flash-image = { path = "common/flash-image" }
-fusegen = { path = "provisioning/fuses/fusegen" }
-i3c-driver = { path = "runtime/kernel/drivers/i3c" }
-libtockasync = { path = "runtime/userspace/libtockasync" }
-mcu-builder = { path = "builder" }
-mcu-components = { path = "runtime/kernel/components" }
-mcu-config = { path = "common/config" }
-mcu-config-emulator = { path = "platforms/emulator/config" }
-mcu-config-fpga = { path = "platforms/fpga/config" }
-mcu-error = { path = "error" }
-mcu-firmware-bundler = { path = "firmware-bundler" }
-mcu-fuses-generator = { path = "registers/fuses" }
-mcu-hw-model = { path = "hw/model" }
-mcu-test-fw-axi-bypass = { path = "hw/model/test-fw/axi-bypass" }
-mcu-test-fw-exception-handler = { path = "hw/model/test-fw/exception-handler" }
-mcu-test-fw-hitless-update-flow = { path = "hw/model/test-fw/hitless-update-flow" }
-mcu-test-fw-lc-ctrl = { path = "hw/model/test-fw/lc-ctrl" }
-mcu-test-fw-mailbox-responder = { path = "hw/model/test-fw/mailbox-responder" }
-mcu-test-fw-otp-blank-check = { path = "hw/model/test-fw/otp-blank-check" }
-mcu-test-fw-otp-scramble-check = { path = "hw/model/test-fw/otp-scramble-check" }
-mcu-test-fw-sw-digest-lock = { path = "hw/model/test-fw/sw-digest-lock" }
-mcu-test-fw-usb-ocp-recovery = { path = "hw/model/test-fw/usb-ocp-recovery" }
-mcu-test-fw-usb-responder = { path = "hw/model/test-fw/usb-responder" }
-mcu-image-header = { path = "platforms/emulator/mcu-image-header" }
-mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
-mcu-mbox-common = { path = "common/mcu-mbox" }
-mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" }
-mcu-otp-lifecycle = { path = "common/otp-lifecycle" }
-mcu-platforms-common = { path = "platforms/common" }
-mcu-rom-common = { path = "rom" }
-mcu-usb-emulator = { path = "platforms/emulator/rom/usb" }
-mcu-test-harness = {path = "platforms/test_harness"}
-lwip-rs = { path = "network/net/lwip-rs" }
-ocp = { path = "common/ocp" }
-network-app-rom-test = { path = "network/app/test" }
-network-config = { path = "network/config" }
-network-drivers = { path = "network/drivers" }
-network-hil = { path = "network/hil" }
-network-rom = { path = "network/rom" }
-mcu-testing-common = { path = "common/testing" }
-mcu-tock-veer = { path = "runtime/kernel/veer" }
-mctp-vdm-common = { path = "common/mctp-vdm" }
-otp-digest = { path = "common/otp-digest" }
-pldm-common = { path = "common/pldm"}
-pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
-pldm-ua = { path = "emulator/bmc/pldm-ua"}
-poll-common = { path = "common/poll"}
-provisioning-fuses = { path = "provisioning/fuses/lib" }
-registers-generated = { path = "registers/generated-firmware" }
-registers-generator = { path = "registers/generator" }
-registers-systemrdl = { path = "registers/systemrdl" }
-registers-systemrdl-new = { path = "registers/systemrdl-new" }
-romtime = { path = "romtime" }
-xtask = { path = "xtask" }
+caliptra-mcu-core-util-host-mailbox-test-config = { path = "caliptra-util-host/apps/mailbox/config" }
+caliptra-mcu-core-mailbox-server = { path = "caliptra-util-host/apps/mailbox/server" }
+caliptra-mcu-capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
+caliptra-mcu-capsules-runtime = { path = "runtime/kernel/capsules" }
+caliptra-mcu-dma-driver = { path = "platforms/emulator/runtime/kernel/drivers/dma" }
+caliptra-mcu-doe-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/doe_mbox" }
+caliptra-mcu-doe-transport = { path = "runtime/kernel/drivers/doe"}
+caliptra-mcu-emulator = { path = "emulator/app" }
+caliptra-mcu-emulator-bmc = { path = "emulator/bmc" }
+caliptra-mcu-emulator-caliptra = { "path" = "emulator/caliptra" }
+caliptra-mcu-emulator-consts = { "path" = "emulator/consts" }
+caliptra-mcu-emulator-mcu-mbox = { path = "emulator/app/mcu-mbox"}
+caliptra-mcu-emulator-periph = { path = "emulator/periph" }
+caliptra-mcu-emulator-registers-generated = { path = "registers/generated-emulator" }
+caliptra-mcu-flash-ctrl-emulator = { path = "platforms/emulator/runtime/kernel/drivers/flash_ctrl"}
+caliptra-mcu-flash-ctrl-fpga = { path = "platforms/fpga/runtime/drivers/flash_ctrl"}
+caliptra-mcu-flash-driver = { path = "runtime/kernel/drivers/flash" }
+caliptra-mcu-flash-image = { path = "common/flash-image" }
+caliptra-mcu-fusegen = { path = "provisioning/fuses/fusegen" }
+caliptra-mcu-i3c-driver = { path = "runtime/kernel/drivers/i3c" }
+caliptra-mcu-libtockasync = { path = "runtime/userspace/libtockasync" }
+caliptra-mcu-builder = { path = "builder" }
+caliptra-mcu-components = { path = "runtime/kernel/components" }
+caliptra-mcu-config = { path = "common/config" }
+caliptra-mcu-config-emulator = { path = "platforms/emulator/config" }
+caliptra-mcu-config-fpga = { path = "platforms/fpga/config" }
+caliptra-mcu-error = { path = "error" }
+caliptra-mcu-firmware-bundler = { path = "firmware-bundler" }
+caliptra-mcu-fuses-generator = { path = "registers/fuses" }
+caliptra-mcu-hw-model = { path = "hw/model" }
+caliptra-mcu-test-fw-axi-bypass = { path = "hw/model/test-fw/axi-bypass" }
+caliptra-mcu-test-fw-exception-handler = { path = "hw/model/test-fw/exception-handler" }
+caliptra-mcu-test-fw-hitless-update-flow = { path = "hw/model/test-fw/hitless-update-flow" }
+caliptra-mcu-test-fw-lc-ctrl = { path = "hw/model/test-fw/lc-ctrl" }
+caliptra-mcu-test-fw-mailbox-responder = { path = "hw/model/test-fw/mailbox-responder" }
+caliptra-mcu-test-fw-otp-blank-check = { path = "hw/model/test-fw/otp-blank-check" }
+caliptra-mcu-test-fw-otp-scramble-check = { path = "hw/model/test-fw/otp-scramble-check" }
+caliptra-mcu-test-fw-sw-digest-lock = { path = "hw/model/test-fw/sw-digest-lock" }
+caliptra-mcu-test-fw-usb-ocp-recovery = { path = "hw/model/test-fw/usb-ocp-recovery" }
+caliptra-mcu-test-fw-usb-responder = { path = "hw/model/test-fw/usb-responder" }
+caliptra-mcu-image-header = { path = "platforms/emulator/mcu-image-header" }
+caliptra-mcu-mbox-comm = { path = "runtime/kernel/drivers/mcu_mbox" }
+caliptra-mcu-mbox-common = { path = "common/mcu-mbox" }
+caliptra-mcu-mbox-driver = { path = "platforms/emulator/runtime/kernel/drivers/mcu_mbox" }
+caliptra-mcu-otp-lifecycle = { path = "common/otp-lifecycle" }
+caliptra-mcu-platforms-common = { path = "platforms/common" }
+caliptra-mcu-rom-common = { path = "rom" }
+caliptra-mcu-usb-emulator = { path = "platforms/emulator/rom/usb" }
+caliptra-mcu-test-harness = {path = "platforms/test_harness"}
+caliptra-mcu-lwip-rs = { path = "network/net/lwip-rs" }
+caliptra-mcu-ocp = { path = "common/ocp" }
+caliptra-mcu-network-app-rom-test = { path = "network/app/test" }
+caliptra-mcu-network-config = { path = "network/config" }
+caliptra-mcu-network-drivers = { path = "network/drivers" }
+caliptra-mcu-network-hil = { path = "network/hil" }
+caliptra-mcu-network-rom = { path = "network/rom" }
+caliptra-mcu-testing-common = { path = "common/testing" }
+caliptra-mcu-tock-veer = { path = "runtime/kernel/veer" }
+caliptra-mcu-mctp-vdm-common = { path = "common/mctp-vdm" }
+caliptra-mcu-otp-digest = { path = "common/otp-digest" }
+caliptra-mcu-pldm-common = { path = "common/pldm"}
+caliptra-mcu-pldm-fw-pkg = { path = "emulator/bmc/pldm-fw-pkg" }
+caliptra-mcu-pldm-ua = { path = "emulator/bmc/pldm-ua"}
+caliptra-mcu-poll-common = { path = "common/poll"}
+caliptra-mcu-provisioning-fuses = { path = "provisioning/fuses/lib" }
+caliptra-mcu-registers-generated = { path = "registers/generated-firmware" }
+caliptra-mcu-registers-generator = { path = "registers/generator" }
+caliptra-mcu-registers-systemrdl = { path = "registers/systemrdl" }
+caliptra-mcu-registers-systemrdl-new = { path = "registers/systemrdl-new" }
+caliptra-mcu-romtime = { path = "romtime" }
+caliptra-mcu-xtask = { path = "xtask" }
 
 # App related dependencies
-external-cmds-common = { path = "runtime/userspace/api/external-cmds-common" }
-mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
-mctp-vdm-lib = { path = "runtime/userspace/api/mctp-vdm-lib" }
-pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
-spdm-lib = { path = "runtime/userspace/api/spdm-lib", default-features = false }
-libsyscall-caliptra = { path = "runtime/userspace/syscall" }
-libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }
-libapi-emulated-caliptra = { path = "platforms/emulator/runtime/userspace/api/caliptra-api" }
+caliptra-mcu-external-cmds-common = { path = "runtime/userspace/api/external-cmds-common" }
+caliptra-mcu-mbox-lib = { path = "runtime/userspace/api/mcu-mbox-lib" }
+caliptra-mcu-mctp-vdm-lib = { path = "runtime/userspace/api/mctp-vdm-lib" }
+caliptra-mcu-pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
+caliptra-mcu-spdm-lib = { path = "runtime/userspace/api/spdm-lib", default-features = false }
+caliptra-mcu-libsyscall-caliptra = { path = "runtime/userspace/syscall" }
+caliptra-mcu-libapi-caliptra = { path = "runtime/userspace/api/caliptra-api" }
+caliptra-mcu-libapi-emulated-caliptra = { path = "platforms/emulator/runtime/userspace/api/caliptra-api" }
 
 # libtock dependencies
-libtock = { path = "runtime/userspace/libtock" }
-libtock_alarm = { path = "runtime/userspace/libtock/apis/peripherals/alarm" }
-libtock_console = { path = "runtime/userspace/libtock/apis/interface/console" }
-libtock_debug_panic = { path = "runtime/userspace/libtock/panic_handlers/debug_panic" }
-libtock_low_level_debug = { path = "runtime/userspace/libtock/apis/kernel/low_level_debug" }
-libtock_platform = { path = "runtime/userspace/libtock/platform" }
-libtock_rng = { path = "runtime/userspace/libtock/apis/peripherals/rng" }
-libtock_runtime = { path = "runtime/userspace/libtock/runtime" }
-libtock_small_panic = { path = "runtime/userspace/libtock/panic_handlers/small_panic" }
-libtock_unittest = { path = "runtime/userspace/libtock/unittest" }
-tbf-header = { path = "runtime/userspace/libtock/tbf-header" }
+caliptra-mcu-libtock = { path = "runtime/userspace/libtock" }
+caliptra-mcu-libtock_alarm = { path = "runtime/userspace/libtock/apis/peripherals/alarm" }
+caliptra-mcu-libtock_console = { path = "runtime/userspace/libtock/apis/interface/console" }
+caliptra-mcu-libtock_debug_panic = { path = "runtime/userspace/libtock/panic_handlers/debug_panic" }
+caliptra-mcu-libtock_low_level_debug = { path = "runtime/userspace/libtock/apis/kernel/low_level_debug" }
+caliptra-mcu-libtock_platform = { path = "runtime/userspace/libtock/platform" }
+caliptra-mcu-libtock_rng = { path = "runtime/userspace/libtock/apis/peripherals/rng" }
+caliptra-mcu-libtock_runtime = { path = "runtime/userspace/libtock/runtime" }
+caliptra-mcu-libtock_small_panic = { path = "runtime/userspace/libtock/panic_handlers/small_panic" }
+caliptra-mcu-libtock_unittest = { path = "runtime/userspace/libtock/unittest" }
+caliptra-mcu-tbf-header = { path = "runtime/userspace/libtock/tbf-header" }
 
 # caliptra-sw dependencies; keep git revs in sync
 caliptra-api = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "a6e877530a7f123bd76f44a2c30c01805b62a357" }

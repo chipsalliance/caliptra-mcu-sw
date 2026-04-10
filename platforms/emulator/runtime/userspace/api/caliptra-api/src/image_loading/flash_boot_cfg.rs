@@ -1,16 +1,16 @@
 // Licensed under the Apache-2.0 license
 
-use libsyscall_caliptra::flash::SpiFlash;
-use libsyscall_caliptra::DefaultSyscalls;
-use libtock_platform::ErrorCode;
-use mcu_config::boot::{
+use caliptra_mcu_config::boot::{
     BootConfigAsync, BootConfigError, PartitionId, PartitionStatus, RollbackEnable,
 };
-use mcu_config::flash::FlashPartition;
-use mcu_config_emulator::flash::{
+use caliptra_mcu_config::flash::FlashPartition;
+use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     PARTITION_TABLE,
 };
+use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_platform::ErrorCode;
 use zerocopy::{FromBytes, IntoBytes};
 
 pub struct FlashBootConfig {

@@ -25,7 +25,7 @@
 //! - `caliptra_aes_gcm_decrypt` - One-shot authenticated decrypt
 
 use crate::api::{CaliptraApiError, CaliptraResult};
-use caliptra_util_host_command_types::crypto_aes::{
+use caliptra_mcu_core_util_host_command_types::crypto_aes::{
     AesDecryptInitRequest, AesDecryptInitResponse, AesDecryptUpdateRequest,
     AesDecryptUpdateResponse, AesEncryptInitRequest, AesEncryptInitResponse,
     AesEncryptUpdateRequest, AesEncryptUpdateResponse, AesGcmDecryptFinalRequest,
@@ -35,8 +35,8 @@ use caliptra_util_host_command_types::crypto_aes::{
     AesGcmEncryptUpdateRequest, AesGcmEncryptUpdateResponse, AesMode, AES_CONTEXT_SIZE,
     AES_GCM_CONTEXT_SIZE, AES_GCM_IV_SIZE, AES_GCM_TAG_SIZE, AES_IV_SIZE, MAX_AES_DATA_SIZE,
 };
-use caliptra_util_host_command_types::crypto_hmac::Cmk;
-use caliptra_util_host_command_types::CaliptraCommandId;
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::Cmk;
+use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 use caliptra_util_host_session::CaliptraSession;
 
 extern crate alloc;

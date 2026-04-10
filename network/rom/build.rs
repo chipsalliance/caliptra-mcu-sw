@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license.
 
-use network_config::DEFAULT_NETWORK_MEMORY_MAP;
+use caliptra_mcu_network_config::DEFAULT_NETWORK_MEMORY_MAP;
 use std::env;
 use std::fs;
 use std::path::PathBuf;

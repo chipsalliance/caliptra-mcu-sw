@@ -18,18 +18,19 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use caliptra_emu_bus::ReadWriteRegister;
-use emulator_registers_generated::lc::LcGenerated;
-use registers_generated::lc_ctrl;
+use caliptra_mcu_emulator_registers_generated::lc::LcGenerated;
+use caliptra_mcu_registers_generated::lc_ctrl;
 use tock_registers::interfaces::Readable;
 
 #[cfg(test)]
 use crate::otp_scramble;
 use crate::otp_unscramble;
 
-// OTP partition offsets (from registers_generated::fuses).
+// OTP partition offsets (from caliptra_mcu_registers_generated::fuses).
 const SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET: usize =
-    registers_generated::fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET;
-const LIFE_CYCLE_BYTE_OFFSET: usize = registers_generated::fuses::LIFE_CYCLE_BYTE_OFFSET;
+    caliptra_mcu_registers_generated::fuses::SECRET_LC_TRANSITION_PARTITION_BYTE_OFFSET;
+const LIFE_CYCLE_BYTE_OFFSET: usize =
+    caliptra_mcu_registers_generated::fuses::LIFE_CYCLE_BYTE_OFFSET;
 
 // OTP scramble key for the LC tokens partition (OTP_SCRAMBLE_KEYS[6]).
 // Source: caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson
@@ -55,7 +56,7 @@ const STATUS_TOKEN_ERROR: u32 = 1 << 6;
 const STATUS_OTP_ERROR: u32 = 1 << 8;
 
 // Lifecycle state indices from the shared otp-lifecycle crate.
-use mcu_otp_lifecycle::LifecycleControllerState as LcState;
+use caliptra_mcu_otp_lifecycle::LifecycleControllerState as LcState;
 const RAW: u32 = LcState::Raw as u32;
 const TEST_UNLOCKED0: u32 = LcState::TestUnlocked0 as u32;
 const TEST_LOCKED0: u32 = LcState::TestLocked0 as u32;
@@ -85,7 +86,7 @@ fn decode_lc_state_mnemonic(mnemonic: u32) -> Option<u32> {
     }
 }
 
-use mcu_otp_lifecycle::hash_lc_token;
+use caliptra_mcu_otp_lifecycle::hash_lc_token;
 
 /// What token (if any) a valid transition requires.
 enum TokenRequirement {
@@ -200,11 +201,11 @@ impl LcCtrl {
         if let Some(otp) = &self.otp_partitions {
             let otp = otp.borrow();
             let start = LIFE_CYCLE_BYTE_OFFSET;
-            let end = start + mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE;
+            let end = start + caliptra_mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE;
             if end <= otp.len() && otp[start..end].iter().any(|&b| b != 0) {
-                let mut mem = [0u8; mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE];
+                let mut mem = [0u8; caliptra_mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE];
                 mem.copy_from_slice(&otp[start..end]);
-                if let Ok((state_idx, count)) = mcu_otp_lifecycle::lc_decode_memory(&mem) {
+                if let Ok((state_idx, count)) = caliptra_mcu_otp_lifecycle::lc_decode_memory(&mem) {
                     self.lc_state_index = state_idx as u32;
                     self.lc_transition_cnt = count as u32;
                 }
@@ -249,7 +250,8 @@ impl LcCtrl {
         let Some(otp) = &self.otp_partitions else {
             return;
         };
-        let Ok(mem) = mcu_otp_lifecycle::lc_generate_memory(state_index, transition_count) else {
+        let Ok(mem) = caliptra_mcu_otp_lifecycle::lc_generate_memory(state_index, transition_count)
+        else {
             return;
         };
         let mut otp = otp.borrow_mut();
@@ -325,7 +327,7 @@ impl LcCtrl {
     }
 }
 
-impl emulator_registers_generated::lc::LcPeripheral for LcCtrl {
+impl caliptra_mcu_emulator_registers_generated::lc::LcPeripheral for LcCtrl {
     fn generated(&mut self) -> Option<&mut LcGenerated> {
         Some(&mut self.generated)
     }
@@ -420,7 +422,7 @@ impl emulator_registers_generated::lc::LcPeripheral for LcCtrl {
 mod tests {
     use super::*;
 
-    use mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE;
+    use caliptra_mcu_otp_lifecycle::LIFECYCLE_MEM_SIZE;
 
     /// Build OTP partition data with provisioned tokens and a given LC state.
     fn make_otp_data(state_index: u8, transition_count: u8, raw_token: &[u8; 16]) -> Vec<u8> {
@@ -444,7 +446,8 @@ mod tests {
         }
 
         // Provision LC state.
-        let lc_mem = mcu_otp_lifecycle::lc_generate_memory(state_index, transition_count).unwrap();
+        let lc_mem =
+            caliptra_mcu_otp_lifecycle::lc_generate_memory(state_index, transition_count).unwrap();
         data[LIFE_CYCLE_BYTE_OFFSET..LIFE_CYCLE_BYTE_OFFSET + LIFECYCLE_MEM_SIZE]
             .copy_from_slice(&lc_mem);
 
@@ -462,7 +465,7 @@ mod tests {
 
     /// Helper: perform a full transition protocol on an LcCtrl.
     fn do_transition(lc: &mut LcCtrl, target_state: u32, token_words: [u32; 4]) -> u32 {
-        use emulator_registers_generated::lc::LcPeripheral;
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
 
         // Claim mutex
         lc.write_claim_transition_if(ReadWriteRegister::new(MUTEX_TRUE));
@@ -595,14 +598,14 @@ mod tests {
             [LIFE_CYCLE_BYTE_OFFSET..LIFE_CYCLE_BYTE_OFFSET + LIFECYCLE_MEM_SIZE]
             .try_into()
             .unwrap();
-        let (state_idx, count) = mcu_otp_lifecycle::lc_decode_memory(&lc_bytes).unwrap();
+        let (state_idx, count) = caliptra_mcu_otp_lifecycle::lc_decode_memory(&lc_bytes).unwrap();
         assert_eq!(state_idx, PROD as u8);
         assert_eq!(count, 10);
     }
 
     #[test]
     fn test_mutex_required() {
-        use emulator_registers_generated::lc::LcPeripheral;
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
 
         let mut lc = make_lc_ctrl(TEST_UNLOCKED0, 1, &TEST_RAW_TOKEN);
 
@@ -636,7 +639,8 @@ mod tests {
                 [LIFE_CYCLE_BYTE_OFFSET..LIFE_CYCLE_BYTE_OFFSET + LIFECYCLE_MEM_SIZE]
                 .try_into()
                 .unwrap();
-            let (state_idx, count) = mcu_otp_lifecycle::lc_decode_memory(&lc_bytes).unwrap();
+            let (state_idx, count) =
+                caliptra_mcu_otp_lifecycle::lc_decode_memory(&lc_bytes).unwrap();
             drop(otp_ref);
 
             assert_eq!(
@@ -667,13 +671,13 @@ mod tests {
             [LIFE_CYCLE_BYTE_OFFSET..LIFE_CYCLE_BYTE_OFFSET + LIFECYCLE_MEM_SIZE]
             .try_into()
             .unwrap();
-        let (state_idx, _count) = mcu_otp_lifecycle::lc_decode_memory(&lc_bytes).unwrap();
+        let (state_idx, _count) = caliptra_mcu_otp_lifecycle::lc_decode_memory(&lc_bytes).unwrap();
         assert_eq!(state_idx, PROD as u8);
     }
 
     #[test]
     fn test_warm_reset_loads_new_state() {
-        use emulator_registers_generated::lc::LcPeripheral;
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
 
         let mut lc = make_lc_ctrl(RAW, 1, &TEST_RAW_TOKEN);
 
@@ -699,7 +703,7 @@ mod tests {
 
     #[test]
     fn test_warm_reset_clears_mutex_and_token() {
-        use emulator_registers_generated::lc::LcPeripheral;
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
 
         let mut lc = make_lc_ctrl(RAW, 1, &TEST_RAW_TOKEN);
 
@@ -717,7 +721,7 @@ mod tests {
 
     #[test]
     fn test_transition_then_reset_then_transition() {
-        use emulator_registers_generated::lc::LcPeripheral;
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
 
         let raw_token = TEST_RAW_TOKEN;
         let token_words = token_to_words(&raw_token);

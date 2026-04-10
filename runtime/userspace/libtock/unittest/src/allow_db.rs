@@ -1,5 +1,5 @@
+use caliptra_mcu_libtock_platform::Register;
 use core::num::NonZeroUsize;
-use libtock_platform::Register;
 
 /// `AllowDb` stores the currently-active Allow buffers, and is responsible for
 /// preventing overlapping Allow buffers.

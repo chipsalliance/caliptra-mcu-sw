@@ -1,7 +1,9 @@
-use libtock_platform::{
+use caliptra_mcu_libtock_platform::{
     share, subscribe, CommandReturn, DefaultConfig, ErrorCode, Syscalls, YieldNoWaitReturn,
 };
-use libtock_unittest::{command_return, fake, DriverInfo, DriverShareRef, SyscallLogEntry};
+use caliptra_mcu_libtock_unittest::{
+    command_return, fake, DriverInfo, DriverShareRef, SyscallLogEntry,
+};
 use std::{cell::Cell, rc::Rc};
 
 // Fake driver that accepts an upcall.
@@ -109,25 +111,26 @@ fn success() {
 fn unwinding_upcall() {
     struct BadUpcall;
 
-    impl libtock_platform::Upcall<subscribe::AnyId> for BadUpcall {
+    impl caliptra_mcu_libtock_platform::Upcall<subscribe::AnyId> for BadUpcall {
         fn upcall(&self, _: u32, _: u32, _: u32) {
             panic!("Beginning stack unwinding");
         }
     }
 
-    let exit = libtock_unittest::exit_test("subscribe_tests::unwinding_upcall", || {
-        let driver = Rc::new(MockDriver::default());
-        let kernel = fake::Kernel::new();
-        kernel.add_driver(&driver);
-        let upcall = BadUpcall;
-        share::scope(|subscribe| {
-            assert_eq!(
-                fake::Syscalls::subscribe::<_, _, DefaultConfig, 1, 0>(subscribe, &upcall),
-                Ok(())
-            );
-            driver.share_ref.schedule_upcall(0, (2, 3, 4)).unwrap();
-            assert_eq!(fake::Syscalls::yield_no_wait(), YieldNoWaitReturn::Upcall);
+    let exit =
+        caliptra_mcu_libtock_unittest::exit_test("subscribe_tests::unwinding_upcall", || {
+            let driver = Rc::new(MockDriver::default());
+            let kernel = fake::Kernel::new();
+            kernel.add_driver(&driver);
+            let upcall = BadUpcall;
+            share::scope(|subscribe| {
+                assert_eq!(
+                    fake::Syscalls::subscribe::<_, _, DefaultConfig, 1, 0>(subscribe, &upcall),
+                    Ok(())
+                );
+                driver.share_ref.schedule_upcall(0, (2, 3, 4)).unwrap();
+                assert_eq!(fake::Syscalls::yield_no_wait(), YieldNoWaitReturn::Upcall);
+            });
         });
-    });
-    assert_eq!(exit, libtock_unittest::ExitCall::Terminate(0));
+    assert_eq!(exit, caliptra_mcu_libtock_unittest::ExitCall::Terminate(0));
 }

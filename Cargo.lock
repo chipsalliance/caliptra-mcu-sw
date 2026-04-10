@@ -197,15 +197,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
-name = "bare-metal-runtime"
-version = "0.1.0"
-dependencies = [
- "caliptra-drivers",
- "romtime",
- "rv32i",
-]
-
-[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -832,13 +823,1470 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliptra-mailbox-server"
+name = "caliptra-mcu-bare-metal-runtime"
+version = "0.1.0"
+dependencies = [
+ "caliptra-drivers",
+ "caliptra-mcu-romtime",
+ "rv32i",
+]
+
+[[package]]
+name = "caliptra-mcu-builder"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "caliptra-auth-man-gen",
+ "caliptra-auth-man-types",
+ "caliptra-builder",
+ "caliptra-image-crypto",
+ "caliptra-image-fake-keys",
+ "caliptra-image-gen",
+ "caliptra-image-types",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-firmware-bundler",
+ "caliptra-mcu-flash-image",
+ "caliptra-mcu-pldm-fw-pkg",
+ "caliptra-mcu-tbf-header",
+ "cargo_metadata",
+ "chrono",
+ "elf",
+ "hex",
+ "semver",
+ "serde",
+ "subst",
+ "tempfile",
+ "uuid",
+ "walkdir",
+ "zerocopy",
+ "zip",
+]
+
+[[package]]
+name = "caliptra-mcu-capsules-emulator"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-flash-driver",
+ "caliptra-mcu-platforms-common",
+ "caliptra-mcu-registers-generated",
+ "kernel",
+]
+
+[[package]]
+name = "caliptra-mcu-capsules-runtime"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "caliptra-api",
+ "caliptra-mcu-doe-transport",
+ "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-mbox-comm",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "caliptra-ureg",
+ "capsules-core",
+ "capsules-extra",
+ "kernel",
+ "tock-registers",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-compliance-test"
+version = "0.1.0"
+dependencies = [
+ "caliptra-emu-bus",
+ "caliptra-emu-cpu",
+ "caliptra-emu-types",
+ "caliptra-mcu-emulator-consts",
+ "clap 4.5.51",
+ "getrandom 0.2.16",
+]
+
+[[package]]
+name = "caliptra-mcu-components"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-capsules-emulator",
+ "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-config",
+ "caliptra-mcu-dma-driver",
+ "caliptra-mcu-doe-transport",
+ "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-mbox-comm",
+ "caliptra-mcu-mbox-driver",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-tock-veer",
+ "capsules-core",
+ "capsules-extra",
+ "capsules-system",
+ "components",
+ "kernel",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-config"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-registers-generated",
+]
+
+[[package]]
+name = "caliptra-mcu-config-emulator"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-config",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-config-fpga"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-config",
+]
+
+[[package]]
+name = "caliptra-mcu-core-mailbox-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "caliptra-util-host-mailbox-test-config",
+ "caliptra-mcu-core-util-host-mailbox-test-config",
  "clap 4.5.51",
  "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-core-util-host-mailbox-test-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "caliptra-mcu-dma-driver"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "capsules-core",
+ "kernel",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-doe-mbox-driver"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-doe-transport",
+ "caliptra-mcu-registers-generated",
+ "capsules-core",
+ "kernel",
+]
+
+[[package]]
+name = "caliptra-mcu-doe-transport"
+version = "0.1.0"
+dependencies = [
+ "kernel",
+]
+
+[[package]]
+name = "caliptra-mcu-emulator"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "caliptra-api-types",
+ "caliptra-emu-bus",
+ "caliptra-emu-cpu",
+ "caliptra-emu-periph",
+ "caliptra-emu-types",
+ "caliptra-image-types",
+ "caliptra-mcu-core-mailbox-server",
+ "caliptra-mcu-core-util-host-mailbox-test-config",
+ "caliptra-mcu-emulator-bmc",
+ "caliptra-mcu-emulator-caliptra",
+ "caliptra-mcu-emulator-consts",
+ "caliptra-mcu-emulator-mcu-mbox",
+ "caliptra-mcu-emulator-periph",
+ "caliptra-mcu-emulator-registers-generated",
+ "caliptra-mcu-mbox-common",
+ "caliptra-mcu-otp-lifecycle",
+ "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-fw-pkg",
+ "caliptra-mcu-pldm-ua",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-testing-common",
+ "caliptra-registers",
+ "caliptra-test",
+ "chrono",
+ "clap 4.5.51",
+ "clap-num",
+ "crc",
+ "crossterm",
+ "ctrlc",
+ "ecdsa",
+ "elf",
+ "gdbstub",
+ "gdbstub_arch",
+ "hex",
+ "lazy_static",
+ "log",
+ "p384",
+ "rand 0.8.5",
+ "sec1",
+ "semver",
+ "sha2",
+ "simple_logger",
+ "smlang",
+ "strum",
+ "strum_macros",
+ "tempfile",
+ "tock-registers",
+ "uuid",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-emulator-bmc"
+version = "0.1.0"
+dependencies = [
+ "caliptra-emu-bus",
+ "caliptra-emu-cpu",
+ "caliptra-emu-periph",
+ "smlang",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-emulator-caliptra"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api-types",
+ "caliptra-emu-bus",
+ "caliptra-emu-cpu",
+ "caliptra-emu-periph",
+ "caliptra-mcu-emulator-consts",
+ "caliptra-registers",
+ "clap 4.5.51",
+ "ctrlc",
+ "elf",
+ "gdbstub",
+ "gdbstub_arch",
+ "hex",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-emulator-cbinding"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api-types",
+ "caliptra-emu-bus",
+ "caliptra-emu-cpu",
+ "caliptra-emu-types",
+ "caliptra-image-types",
+ "caliptra-mcu-emulator",
+ "caliptra-mcu-testing-common",
+ "cbindgen",
+ "libc",
+ "semver",
+]
+
+[[package]]
+name = "caliptra-mcu-emulator-consts"
+version = "0.1.0"
+dependencies = [
+ "caliptra-emu-cpu",
+ "caliptra-mcu-network-config",
+]
+
+[[package]]
+name = "caliptra-mcu-emulator-mcu-mbox"
+version = "0.1.0"
+dependencies = [
+ "caliptra-emu-bus",
+ "caliptra-mcu-emulator-consts",
+ "caliptra-mcu-emulator-periph",
+ "caliptra-mcu-registers-generated",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-emulator-periph"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "caliptra-emu-bus",
+ "caliptra-emu-cpu",
+ "caliptra-emu-derive",
+ "caliptra-emu-periph",
+ "caliptra-emu-types",
+ "caliptra-image-types",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-emulator-consts",
+ "caliptra-mcu-emulator-registers-generated",
+ "caliptra-mcu-network-config",
+ "caliptra-mcu-otp-digest",
+ "caliptra-mcu-otp-lifecycle",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-testing-common",
+ "caliptra-registers",
+ "lazy_static",
+ "libc",
+ "num_enum",
+ "semver",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tock-registers",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-emulator-registers-generated"
+version = "0.1.0"
+dependencies = [
+ "caliptra-emu-bus",
+ "caliptra-emu-types",
+ "caliptra-mcu-registers-generated",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-error"
+version = "0.1.0"
+
+[[package]]
+name = "caliptra-mcu-example-app"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api",
+ "caliptra-auth-man-types",
+ "caliptra-error",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-libapi-caliptra",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock",
+ "caliptra-mcu-libtock_alarm",
+ "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_debug_panic",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
+ "caliptra-mcu-libtockasync",
+ "caliptra-mcu-pldm-common",
+ "caliptra-mcu-romtime",
+ "const-oid 0.9.6",
+ "critical-section",
+ "der 0.7.10",
+ "embassy-executor",
+ "embedded-alloc",
+ "portable-atomic",
+ "spki 0.7.3",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-external-cmds-common"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-firmware-bundler"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "caliptra-mcu-image-header",
+ "caliptra-mcu-tbf-header",
+ "clap 4.5.51",
+ "elf",
+ "serde",
+ "subst",
+ "tempfile",
+ "toml 0.8.23",
+ "uuid",
+ "walkdir",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-flash-ctrl-emulator"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "capsules-core",
+ "kernel",
+]
+
+[[package]]
+name = "caliptra-mcu-flash-ctrl-fpga"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "capsules-core",
+ "kernel",
+]
+
+[[package]]
+name = "caliptra-mcu-flash-driver"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "capsules-core",
+ "kernel",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-flash-image"
+version = "0.1.0"
+dependencies = [
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-fusegen"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hex",
+ "serde",
+ "serde-hjson",
+]
+
+[[package]]
+name = "caliptra-mcu-fuses-generator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde-hjson",
+ "syn 2.0.109",
+]
+
+[[package]]
+name = "caliptra-mcu-hw-model"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitfield",
+ "caliptra-api",
+ "caliptra-api-types",
+ "caliptra-builder",
+ "caliptra-emu-bus",
+ "caliptra-emu-cpu",
+ "caliptra-emu-periph",
+ "caliptra-emu-types",
+ "caliptra-hw-model",
+ "caliptra-hw-model-types",
+ "caliptra-image-types",
+ "caliptra-mcu-builder",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-emulator-bmc",
+ "caliptra-mcu-emulator-caliptra",
+ "caliptra-mcu-emulator-consts",
+ "caliptra-mcu-emulator-periph",
+ "caliptra-mcu-emulator-registers-generated",
+ "caliptra-mcu-mbox-common",
+ "caliptra-mcu-network-config",
+ "caliptra-mcu-ocp",
+ "caliptra-mcu-otp-lifecycle",
+ "caliptra-mcu-poll-common",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-testing-common",
+ "caliptra-registers",
+ "caliptra-test-harness-types",
+ "caliptra-ureg",
+ "ecdsa",
+ "fips204",
+ "hex",
+ "int-enum",
+ "libc",
+ "nix 0.26.4",
+ "p384",
+ "rand 0.8.5",
+ "semver",
+ "sha2",
+ "sha3 0.10.8",
+ "thiserror 2.0.17",
+ "tock-registers",
+ "uio",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-i3c-driver"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "capsules-core",
+ "kernel",
+ "rv32i",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-image-header"
+version = "0.1.0"
+dependencies = [
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-libapi-caliptra"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-api",
+ "caliptra-auth-man-types",
+ "caliptra-error",
+ "caliptra-mcu-flash-image",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
+ "caliptra-mcu-libtockasync",
+ "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-lib",
+ "caliptra-mcu-romtime",
+ "caliptra-ocp-eat",
+ "const-oid 0.9.6",
+ "der 0.7.10",
+ "dpe",
+ "embassy-executor",
+ "embassy-sync",
+ "embedded-alloc",
+ "futures",
+ "spki 0.7.3",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-libapi-emulated-caliptra"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
+ "embassy-executor",
+ "embedded-alloc",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-libsyscall-caliptra"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-api",
+ "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
+ "caliptra-mcu-libtockasync",
+ "embassy-sync",
+]
+
+[[package]]
+name = "caliptra-mcu-libtock"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_alarm",
+ "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_debug_panic",
+ "caliptra-mcu-libtock_low_level_debug",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_rng",
+ "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_small_panic",
+ "embedded-hal",
+]
+
+[[package]]
+name = "caliptra-mcu-libtock_alarm"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_unittest",
+]
+
+[[package]]
+name = "caliptra-mcu-libtock_console"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_unittest",
+]
+
+[[package]]
+name = "caliptra-mcu-libtock_debug_panic"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_low_level_debug",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_runtime",
+]
+
+[[package]]
+name = "caliptra-mcu-libtock_low_level_debug"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_unittest",
+]
+
+[[package]]
+name = "caliptra-mcu-libtock_platform"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal",
+]
+
+[[package]]
+name = "caliptra-mcu-libtock_rng"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_unittest",
+]
+
+[[package]]
+name = "caliptra-mcu-libtock_runtime"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_platform",
+]
+
+[[package]]
+name = "caliptra-mcu-libtock_small_panic"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_low_level_debug",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_runtime",
+]
+
+[[package]]
+name = "caliptra-mcu-libtock_unittest"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_platform",
+ "futures",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "caliptra-mcu-libtockasync"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock",
+ "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_debug_panic",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
+ "critical-section",
+ "embassy-executor",
+ "embedded-alloc",
+ "portable-atomic",
+]
+
+[[package]]
+name = "caliptra-mcu-lwip-rs"
+version = "0.1.0"
+dependencies = [
+ "bindgen",
+ "bitflags 2.10.0",
+ "cc",
+ "spin",
+]
+
+[[package]]
+name = "caliptra-mcu-lwip-rs-example"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-lwip-rs",
+]
+
+[[package]]
+name = "caliptra-mcu-mbox-comm"
+version = "0.1.0"
+dependencies = [
+ "kernel",
+]
+
+[[package]]
+name = "caliptra-mcu-mbox-common"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-mbox-driver"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-mbox-comm",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "capsules-core",
+ "kernel",
+]
+
+[[package]]
+name = "caliptra-mcu-mbox-lib"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api",
+ "caliptra-mcu-external-cmds-common",
+ "caliptra-mcu-libapi-caliptra",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_alarm",
+ "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtockasync",
+ "caliptra-mcu-mbox-common",
+ "embassy-executor",
+ "embassy-sync",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-mctp-vdm-common"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-mctp-vdm-lib"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-mcu-external-cmds-common",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_alarm",
+ "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
+ "caliptra-mcu-libtockasync",
+ "caliptra-mcu-mctp-vdm-common",
+ "embassy-executor",
+ "embassy-sync",
+ "embedded-alloc",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-network-app-rom-test"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-network-drivers",
+ "caliptra-mcu-network-hil",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-network-config"
+version = "0.1.0"
+
+[[package]]
+name = "caliptra-mcu-network-drivers"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-network-config",
+ "caliptra-mcu-network-hil",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-network-hil"
+version = "0.1.0"
+
+[[package]]
+name = "caliptra-mcu-network-rom"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-network-app-rom-test",
+ "caliptra-mcu-network-config",
+ "caliptra-mcu-network-drivers",
+]
+
+[[package]]
+name = "caliptra-mcu-ocp"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-otp-digest"
+version = "0.1.0"
+
+[[package]]
+name = "caliptra-mcu-otp-lifecycle"
+version = "0.1.0"
+dependencies = [
+ "sha3 0.10.8",
+]
+
+[[package]]
+name = "caliptra-mcu-platforms-common"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-config",
+ "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-tock-veer",
+ "kernel",
+ "rv32i",
+]
+
+[[package]]
+name = "caliptra-mcu-pldm-common"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-pldm-fw-pkg"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clap 4.5.51",
+ "crc",
+ "num-derive",
+ "num-traits",
+ "serde",
+ "tempfile",
+ "toml 0.8.23",
+ "uuid",
+]
+
+[[package]]
+name = "caliptra-mcu-pldm-lib"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_alarm",
+ "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
+ "caliptra-mcu-libtockasync",
+ "caliptra-mcu-pldm-common",
+ "embassy-executor",
+ "embassy-sync",
+ "embedded-alloc",
+]
+
+[[package]]
+name = "caliptra-mcu-pldm-ua"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-fw-pkg",
+ "chrono",
+ "log",
+ "simple_logger",
+ "smlang",
+ "uuid",
+]
+
+[[package]]
+name = "caliptra-mcu-poll-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
+name = "caliptra-mcu-provisioning-fuses"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-mcu-fusegen",
+ "caliptra-mcu-registers-generated",
+]
+
+[[package]]
+name = "caliptra-mcu-registers-generated"
+version = "0.1.0"
+dependencies = [
+ "tock-registers",
+ "zeroize",
+]
+
+[[package]]
+name = "caliptra-mcu-registers-generator"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-registers-systemrdl",
+ "proc-macro2",
+ "quote",
+]
+
+[[package]]
+name = "caliptra-mcu-registers-systemrdl"
+version = "0.1.0"
+dependencies = [
+ "same-file",
+]
+
+[[package]]
+name = "caliptra-mcu-registers-systemrdl-new"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "same-file",
+ "winnow 0.7.13",
+]
+
+[[package]]
+name = "caliptra-mcu-rom-common"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "bitflags 2.10.0",
+ "caliptra-api",
+ "caliptra-api-types",
+ "caliptra-drivers",
+ "caliptra-mcu-config",
+ "caliptra-mcu-error",
+ "caliptra-mcu-flash-image",
+ "caliptra-mcu-ocp",
+ "caliptra-mcu-otp-digest",
+ "caliptra-mcu-otp-lifecycle",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "constant_time_eq 0.4.2",
+ "riscv-csr",
+ "rv32i",
+ "smlang",
+ "tock-registers",
+ "zerocopy",
+ "zeroize",
+]
+
+[[package]]
+name = "caliptra-mcu-rom-emulator"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "caliptra-mcu-builder",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-error",
+ "caliptra-mcu-image-header",
+ "caliptra-mcu-ocp",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-usb-emulator",
+ "riscv-csr",
+ "rv32i",
+ "tock-registers",
+ "zerocopy",
+ "zeroize",
+]
+
+[[package]]
+name = "caliptra-mcu-rom-fpga"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-builder",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "riscv-csr",
+ "rv32i",
+ "tock-registers",
+ "zeroize",
+]
+
+[[package]]
+name = "caliptra-mcu-romtime"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.10.0",
+ "caliptra-api",
+ "caliptra-mcu-error",
+ "caliptra-mcu-mbox-common",
+ "caliptra-mcu-otp-digest",
+ "caliptra-mcu-otp-lifecycle",
+ "caliptra-mcu-registers-generated",
+ "caliptra-registers",
+ "caliptra-ureg",
+ "riscv-csr",
+ "rv32i",
+ "tock-registers",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-runtime-emulator"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "caliptra-mcu-capsules-emulator",
+ "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-components",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-dma-driver",
+ "caliptra-mcu-doe-mbox-driver",
+ "caliptra-mcu-doe-transport",
+ "caliptra-mcu-flash-ctrl-emulator",
+ "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-mbox-comm",
+ "caliptra-mcu-mbox-driver",
+ "caliptra-mcu-platforms-common",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-tock-veer",
+ "capsules-core",
+ "capsules-extra",
+ "capsules-system",
+ "components",
+ "kernel",
+ "riscv 0.2.2",
+ "riscv-csr",
+ "rv32i",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-runtime-fpga"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "caliptra-mcu-capsules-emulator",
+ "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-components",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-dma-driver",
+ "caliptra-mcu-flash-ctrl-fpga",
+ "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-mbox-driver",
+ "caliptra-mcu-platforms-common",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-tock-veer",
+ "capsules-core",
+ "capsules-extra",
+ "capsules-system",
+ "components",
+ "kernel",
+ "riscv 0.2.2",
+ "riscv-csr",
+ "rv32i",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-spdm-lib"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "async-trait",
+ "bitfield",
+ "caliptra-api",
+ "caliptra-mcu-libapi-caliptra",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_platform",
+ "constant_time_eq 0.4.2",
+ "rand 0.8.5",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-syscalls_tests"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_unittest",
+]
+
+[[package]]
+name = "caliptra-mcu-tbf-header"
+version = "0.0.0"
+
+[[package]]
+name = "caliptra-mcu-test-fw-axi-bypass"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-test-harness",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-test-fw-exception-handler"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-test-harness",
+]
+
+[[package]]
+name = "caliptra-mcu-test-fw-hitless-update-flow"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-error",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-test-harness",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-test-fw-lc-ctrl"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-test-harness",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-test-fw-mailbox-responder"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-test-harness",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-test-fw-otp-blank-check"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-error",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-test-harness",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-test-fw-otp-scramble-check"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-error",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-test-harness",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-test-fw-sw-digest-lock"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-error",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-test-harness",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-test-fw-usb-ocp-recovery"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-ocp",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-test-harness",
+ "caliptra-mcu-usb-emulator",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-test-fw-usb-responder"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-test-harness",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-test-harness"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-registers",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-test-hello"
+version = "0.1.0"
+
+[[package]]
+name = "caliptra-mcu-testing-common"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "caliptra-api-types",
+ "caliptra-mcu-mctp-vdm-common",
+ "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-ua",
+ "crc",
+ "hex",
+ "rand 0.8.5",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-tests-integration"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "caliptra-api",
+ "caliptra-api-types",
+ "caliptra-auth-man-types",
+ "caliptra-builder",
+ "caliptra-emu-bus",
+ "caliptra-emu-cpu",
+ "caliptra-emu-types",
+ "caliptra-hw-model",
+ "caliptra-hw-model-types",
+ "caliptra-image-fake-keys",
+ "caliptra-image-gen",
+ "caliptra-image-types",
+ "caliptra-mcu-builder",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-emulator-consts",
+ "caliptra-mcu-emulator-periph",
+ "caliptra-mcu-error",
+ "caliptra-mcu-firmware-bundler",
+ "caliptra-mcu-flash-image",
+ "caliptra-mcu-hw-model",
+ "caliptra-mcu-image-header",
+ "caliptra-mcu-mbox-common",
+ "caliptra-mcu-mctp-vdm-common",
+ "caliptra-mcu-network-config",
+ "caliptra-mcu-ocp",
+ "caliptra-mcu-otp-digest",
+ "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-fw-pkg",
+ "caliptra-mcu-pldm-ua",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-testing-common",
+ "caliptra-mcu-xtask",
+ "caliptra-registers",
+ "chrono",
+ "crc",
+ "ecdsa",
+ "fips204",
+ "hex",
+ "hkdf",
+ "hmac",
+ "lazy_static",
+ "libc",
+ "log",
+ "openssl",
+ "p384",
+ "rand 0.8.5",
+ "random-port",
+ "sha2",
+ "simple_logger",
+ "tempfile",
+ "uio",
+ "uuid",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-tock-veer"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-capsules-runtime",
+ "caliptra-mcu-config",
+ "caliptra-mcu-flash-driver",
+ "caliptra-mcu-i3c-driver",
+ "caliptra-mcu-mbox-driver",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "capsules-core",
+ "capsules-extra",
+ "capsules-system",
+ "components",
+ "kernel",
+ "riscv 0.2.2",
+ "riscv-csr",
+ "rv32i",
+ "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-usb-emulator"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-ocp",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "tock-registers",
+ "zerocopy",
+ "zeroize",
+]
+
+[[package]]
+name = "caliptra-mcu-user-app"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "async-trait",
+ "caliptra-api",
+ "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-external-cmds-common",
+ "caliptra-mcu-libapi-caliptra",
+ "caliptra-mcu-libapi-emulated-caliptra",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock",
+ "caliptra-mcu-libtock_console",
+ "caliptra-mcu-libtock_debug_panic",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_runtime",
+ "caliptra-mcu-libtock_unittest",
+ "caliptra-mcu-libtockasync",
+ "caliptra-mcu-mbox-common",
+ "caliptra-mcu-mbox-lib",
+ "caliptra-mcu-mctp-vdm-common",
+ "caliptra-mcu-mctp-vdm-lib",
+ "caliptra-mcu-pldm-common",
+ "caliptra-mcu-pldm-lib",
+ "caliptra-mcu-romtime",
+ "caliptra-mcu-spdm-lib",
+ "caliptra-ocp-eat",
+ "critical-section",
+ "embassy-executor",
+ "embassy-sync",
+ "embedded-alloc",
+ "portable-atomic",
+ "static_cell",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-xtask"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "caliptra-api-types",
+ "caliptra-auth-man-types",
+ "caliptra-bitstream-downloader",
+ "caliptra-builder",
+ "caliptra-hw-model",
+ "caliptra-image-gen",
+ "caliptra-image-types",
+ "caliptra-mcu-builder",
+ "caliptra-mcu-config-emulator",
+ "caliptra-mcu-config-fpga",
+ "caliptra-mcu-firmware-bundler",
+ "caliptra-mcu-fusegen",
+ "caliptra-mcu-fuses-generator",
+ "caliptra-mcu-hw-model",
+ "caliptra-mcu-pldm-fw-pkg",
+ "caliptra-mcu-registers-generator",
+ "caliptra-mcu-registers-systemrdl",
+ "caliptra-mcu-rom-common",
+ "caliptra-mcu-romtime",
+ "cargo_metadata",
+ "cc",
+ "clap 4.5.51",
+ "clap-num",
+ "ecdsa",
+ "elf",
+ "hex",
+ "p384",
+ "proc-macro2",
+ "quote",
+ "semver",
+ "serde",
+ "serde-hjson",
+ "serde_json",
+ "sha2",
+ "sudo",
+ "tempfile",
+ "toml 0.8.23",
+ "uuid",
+ "walkdir",
+ "zerocopy",
+ "zip",
 ]
 
 [[package]]
@@ -961,15 +2409,6 @@ version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a6e877530a7f123bd76f44a2c30c01805b62a357#a6e877530a7f123bd76f44a2c30c01805b62a357"
 
 [[package]]
-name = "caliptra-util-host-mailbox-test-config"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "serde",
- "toml 0.8.23",
-]
-
-[[package]]
 name = "caliptra-x509"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=a6e877530a7f123bd76f44a2c30c01805b62a357#a6e877530a7f123bd76f44a2c30c01805b62a357"
@@ -997,18 +2436,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "capsules-emulator"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "capsules-runtime",
- "flash-driver",
- "kernel",
- "mcu-platforms-common",
- "registers-generated",
-]
-
-[[package]]
 name = "capsules-extra"
 version = "0.2.2"
 source = "git+https://github.com/tock/tock.git?rev=release-2.2#9554639b17501a9f5940cef7a1770a0823e790c3"
@@ -1017,26 +2444,6 @@ dependencies = [
  "enum_primitive",
  "kernel",
  "tickv",
-]
-
-[[package]]
-name = "capsules-runtime"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "caliptra-api",
- "caliptra-ureg",
- "capsules-core",
- "capsules-extra",
- "doe-transport",
- "flash-driver",
- "i3c-driver",
- "kernel",
- "mcu-mbox-comm",
- "registers-generated",
- "romtime",
- "tock-registers",
- "zerocopy",
 ]
 
 [[package]]
@@ -1296,18 +2703,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
 dependencies = [
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "compliance-test"
-version = "0.1.0"
-dependencies = [
- "caliptra-emu-bus",
- "caliptra-emu-cpu",
- "caliptra-emu-types",
- "clap 4.5.51",
- "emulator-consts",
- "getrandom 0.2.16",
 ]
 
 [[package]]
@@ -1676,41 +3071,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "dma-driver"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "capsules-runtime",
- "kernel",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
 name = "document-features"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
 dependencies = [
  "litrs",
-]
-
-[[package]]
-name = "doe-mbox-driver"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "doe-transport",
- "kernel",
- "registers-generated",
-]
-
-[[package]]
-name = "doe-transport"
-version = "0.1.0"
-dependencies = [
- "kernel",
 ]
 
 [[package]]
@@ -1853,168 +3219,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emulator"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "caliptra-api-types",
- "caliptra-emu-bus",
- "caliptra-emu-cpu",
- "caliptra-emu-periph",
- "caliptra-emu-types",
- "caliptra-image-types",
- "caliptra-mailbox-server",
- "caliptra-registers",
- "caliptra-test",
- "caliptra-util-host-mailbox-test-config",
- "chrono",
- "clap 4.5.51",
- "clap-num",
- "crc",
- "crossterm",
- "ctrlc",
- "ecdsa",
- "elf",
- "emulator-bmc",
- "emulator-caliptra",
- "emulator-consts",
- "emulator-mcu-mbox",
- "emulator-periph",
- "emulator-registers-generated",
- "gdbstub",
- "gdbstub_arch",
- "hex",
- "lazy_static",
- "log",
- "mcu-mbox-common",
- "mcu-otp-lifecycle",
- "mcu-testing-common",
- "p384",
- "pldm-common",
- "pldm-fw-pkg",
- "pldm-ua",
- "rand 0.8.5",
- "registers-generated",
- "sec1",
- "semver",
- "sha2",
- "simple_logger",
- "smlang",
- "strum",
- "strum_macros",
- "tempfile",
- "tock-registers",
- "uuid",
- "zerocopy",
-]
-
-[[package]]
-name = "emulator-bmc"
-version = "0.1.0"
-dependencies = [
- "caliptra-emu-bus",
- "caliptra-emu-cpu",
- "caliptra-emu-periph",
- "smlang",
- "tock-registers",
-]
-
-[[package]]
-name = "emulator-caliptra"
-version = "0.1.0"
-dependencies = [
- "caliptra-api-types",
- "caliptra-emu-bus",
- "caliptra-emu-cpu",
- "caliptra-emu-periph",
- "caliptra-registers",
- "clap 4.5.51",
- "ctrlc",
- "elf",
- "emulator-consts",
- "gdbstub",
- "gdbstub_arch",
- "hex",
- "tock-registers",
-]
-
-[[package]]
-name = "emulator-cbinding"
-version = "0.1.0"
-dependencies = [
- "caliptra-api-types",
- "caliptra-emu-bus",
- "caliptra-emu-cpu",
- "caliptra-emu-types",
- "caliptra-image-types",
- "cbindgen",
- "emulator",
- "libc",
- "mcu-testing-common",
- "semver",
-]
-
-[[package]]
-name = "emulator-consts"
-version = "0.1.0"
-dependencies = [
- "caliptra-emu-cpu",
- "network-config",
-]
-
-[[package]]
-name = "emulator-mcu-mbox"
-version = "0.1.0"
-dependencies = [
- "caliptra-emu-bus",
- "emulator-consts",
- "emulator-periph",
- "registers-generated",
- "tock-registers",
-]
-
-[[package]]
-name = "emulator-periph"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "caliptra-emu-bus",
- "caliptra-emu-cpu",
- "caliptra-emu-derive",
- "caliptra-emu-periph",
- "caliptra-emu-types",
- "caliptra-image-types",
- "caliptra-registers",
- "emulator-consts",
- "emulator-registers-generated",
- "lazy_static",
- "libc",
- "mcu-config-emulator",
- "mcu-otp-lifecycle",
- "mcu-testing-common",
- "network-config",
- "num_enum",
- "otp-digest",
- "registers-generated",
- "semver",
- "serde",
- "serde_json",
- "tempfile",
- "tock-registers",
- "zerocopy",
-]
-
-[[package]]
-name = "emulator-registers-generated"
-version = "0.1.0"
-dependencies = [
- "caliptra-emu-bus",
- "caliptra-emu-types",
- "registers-generated",
- "tock-registers",
-]
-
-[[package]]
 name = "enum_primitive"
 version = "0.1.0"
 source = "git+https://github.com/tock/tock.git?rev=release-2.2#9554639b17501a9f5940cef7a1770a0823e790c3"
@@ -2044,45 +3248,6 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "example-app"
-version = "0.1.0"
-dependencies = [
- "caliptra-api",
- "caliptra-auth-man-types",
- "caliptra-error",
- "const-oid 0.9.6",
- "critical-section",
- "der 0.7.10",
- "embassy-executor",
- "embedded-alloc",
- "libapi-caliptra",
- "libsyscall-caliptra",
- "libtock",
- "libtock_alarm",
- "libtock_console",
- "libtock_debug_panic",
- "libtock_platform",
- "libtock_runtime",
- "libtock_unittest",
- "libtockasync",
- "mcu-config-emulator",
- "mcu-config-fpga",
- "pldm-common",
- "portable-atomic",
- "romtime",
- "spki 0.7.3",
- "zerocopy",
-]
-
-[[package]]
-name = "external-cmds-common"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "zerocopy",
 ]
 
 [[package]]
@@ -2123,44 +3288,6 @@ dependencies = [
  "sha2",
  "sha3 0.10.8",
  "zeroize",
-]
-
-[[package]]
-name = "flash-ctrl-emulator"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "kernel",
- "registers-generated",
- "romtime",
-]
-
-[[package]]
-name = "flash-ctrl-fpga"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "kernel",
- "registers-generated",
- "romtime",
-]
-
-[[package]]
-name = "flash-driver"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "kernel",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "flash-image"
-version = "0.1.0"
-dependencies = [
- "zerocopy",
 ]
 
 [[package]]
@@ -2222,16 +3349,6 @@ checksum = "04412b8935272e3a9bae6f48c7bfff74c2911f60525404edfdd28e49884c3bfb"
 dependencies = [
  "libc",
  "winapi",
-]
-
-[[package]]
-name = "fusegen"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "hex",
- "serde",
- "serde-hjson",
 ]
 
 [[package]]
@@ -2642,18 +3759,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "i3c-driver"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "kernel",
- "registers-generated",
- "romtime",
- "rv32i",
- "tock-registers",
-]
-
-[[package]]
 name = "iana-time-zone"
 version = "0.1.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2926,50 +4031,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
-name = "libapi-caliptra"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "caliptra-api",
- "caliptra-auth-man-types",
- "caliptra-error",
- "caliptra-ocp-eat",
- "const-oid 0.9.6",
- "der 0.7.10",
- "dpe",
- "embassy-executor",
- "embassy-sync",
- "embedded-alloc",
- "flash-image",
- "futures",
- "libsyscall-caliptra",
- "libtock_console",
- "libtock_platform",
- "libtock_runtime",
- "libtock_unittest",
- "libtockasync",
- "pldm-common",
- "pldm-lib",
- "romtime",
- "spki 0.7.3",
- "zerocopy",
-]
-
-[[package]]
-name = "libapi-emulated-caliptra"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "embassy-executor",
- "embedded-alloc",
- "libsyscall-caliptra",
- "libtock_platform",
- "mcu-config",
- "mcu-config-emulator",
- "zerocopy",
-]
-
-[[package]]
 name = "libc"
 version = "0.2.177"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2983,125 +4044,6 @@ checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
 dependencies = [
  "cfg-if",
  "windows-link",
-]
-
-[[package]]
-name = "libsyscall-caliptra"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "caliptra-api",
- "embassy-sync",
- "libtock_console",
- "libtock_platform",
- "libtock_runtime",
- "libtock_unittest",
- "libtockasync",
-]
-
-[[package]]
-name = "libtock"
-version = "0.1.0"
-dependencies = [
- "embedded-hal",
- "libtock_alarm",
- "libtock_console",
- "libtock_debug_panic",
- "libtock_low_level_debug",
- "libtock_platform",
- "libtock_rng",
- "libtock_runtime",
- "libtock_small_panic",
-]
-
-[[package]]
-name = "libtock_alarm"
-version = "0.1.0"
-dependencies = [
- "libtock_platform",
- "libtock_unittest",
-]
-
-[[package]]
-name = "libtock_console"
-version = "0.1.0"
-dependencies = [
- "libtock_platform",
- "libtock_unittest",
-]
-
-[[package]]
-name = "libtock_debug_panic"
-version = "0.1.0"
-dependencies = [
- "libtock_console",
- "libtock_low_level_debug",
- "libtock_platform",
- "libtock_runtime",
-]
-
-[[package]]
-name = "libtock_low_level_debug"
-version = "0.1.0"
-dependencies = [
- "libtock_platform",
- "libtock_unittest",
-]
-
-[[package]]
-name = "libtock_platform"
-version = "0.1.0"
-dependencies = [
- "embedded-hal",
-]
-
-[[package]]
-name = "libtock_rng"
-version = "0.1.0"
-dependencies = [
- "libtock_platform",
- "libtock_unittest",
-]
-
-[[package]]
-name = "libtock_runtime"
-version = "0.1.0"
-dependencies = [
- "libtock_platform",
-]
-
-[[package]]
-name = "libtock_small_panic"
-version = "0.1.0"
-dependencies = [
- "libtock_low_level_debug",
- "libtock_platform",
- "libtock_runtime",
-]
-
-[[package]]
-name = "libtock_unittest"
-version = "0.1.0"
-dependencies = [
- "futures",
- "libtock_platform",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "libtockasync"
-version = "0.1.0"
-dependencies = [
- "critical-section",
- "embassy-executor",
- "embedded-alloc",
- "libtock",
- "libtock_console",
- "libtock_debug_panic",
- "libtock_platform",
- "libtock_runtime",
- "libtock_unittest",
- "portable-atomic",
 ]
 
 [[package]]
@@ -3174,604 +4116,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
-name = "lwip-rs"
-version = "0.1.0"
-dependencies = [
- "bindgen",
- "bitflags 2.10.0",
- "cc",
- "spin",
-]
-
-[[package]]
-name = "lwip-rs-example"
-version = "0.1.0"
-dependencies = [
- "lwip-rs",
-]
-
-[[package]]
 name = "managed"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
-
-[[package]]
-name = "mctp-vdm-common"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "zerocopy",
-]
-
-[[package]]
-name = "mctp-vdm-lib"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "embassy-executor",
- "embassy-sync",
- "embedded-alloc",
- "external-cmds-common",
- "libsyscall-caliptra",
- "libtock_alarm",
- "libtock_console",
- "libtock_platform",
- "libtock_runtime",
- "libtock_unittest",
- "libtockasync",
- "mctp-vdm-common",
- "zerocopy",
-]
-
-[[package]]
-name = "mcu-builder"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "caliptra-auth-man-gen",
- "caliptra-auth-man-types",
- "caliptra-builder",
- "caliptra-image-crypto",
- "caliptra-image-fake-keys",
- "caliptra-image-gen",
- "caliptra-image-types",
- "cargo_metadata",
- "chrono",
- "elf",
- "flash-image",
- "hex",
- "mcu-config",
- "mcu-config-emulator",
- "mcu-config-fpga",
- "mcu-firmware-bundler",
- "pldm-fw-pkg",
- "semver",
- "serde",
- "subst",
- "tbf-header",
- "tempfile",
- "uuid",
- "walkdir",
- "zerocopy",
- "zip",
-]
-
-[[package]]
-name = "mcu-components"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "capsules-emulator",
- "capsules-extra",
- "capsules-runtime",
- "capsules-system",
- "components",
- "dma-driver",
- "doe-transport",
- "flash-driver",
- "i3c-driver",
- "kernel",
- "mcu-config",
- "mcu-mbox-comm",
- "mcu-mbox-driver",
- "mcu-tock-veer",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-config"
-version = "0.1.0"
-dependencies = [
- "registers-generated",
-]
-
-[[package]]
-name = "mcu-config-emulator"
-version = "0.1.0"
-dependencies = [
- "mcu-config",
- "zerocopy",
-]
-
-[[package]]
-name = "mcu-config-fpga"
-version = "0.1.0"
-dependencies = [
- "mcu-config",
-]
-
-[[package]]
-name = "mcu-error"
-version = "0.1.0"
-
-[[package]]
-name = "mcu-firmware-bundler"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "clap 4.5.51",
- "elf",
- "mcu-image-header",
- "serde",
- "subst",
- "tbf-header",
- "tempfile",
- "toml 0.8.23",
- "uuid",
- "walkdir",
- "zerocopy",
-]
-
-[[package]]
-name = "mcu-fuses-generator"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "prettyplease",
- "proc-macro2",
- "quote",
- "serde",
- "serde-hjson",
- "syn 2.0.109",
-]
-
-[[package]]
-name = "mcu-hw-model"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bitfield",
- "caliptra-api",
- "caliptra-api-types",
- "caliptra-builder",
- "caliptra-emu-bus",
- "caliptra-emu-cpu",
- "caliptra-emu-periph",
- "caliptra-emu-types",
- "caliptra-hw-model",
- "caliptra-hw-model-types",
- "caliptra-image-types",
- "caliptra-registers",
- "caliptra-test-harness-types",
- "caliptra-ureg",
- "ecdsa",
- "emulator-bmc",
- "emulator-caliptra",
- "emulator-consts",
- "emulator-periph",
- "emulator-registers-generated",
- "fips204",
- "hex",
- "int-enum",
- "libc",
- "mcu-builder",
- "mcu-config",
- "mcu-config-fpga",
- "mcu-mbox-common",
- "mcu-otp-lifecycle",
- "mcu-rom-common",
- "mcu-testing-common",
- "network-config",
- "nix 0.26.4",
- "ocp",
- "p384",
- "poll-common",
- "rand 0.8.5",
- "registers-generated",
- "romtime",
- "semver",
- "sha2",
- "sha3 0.10.8",
- "thiserror 2.0.17",
- "tock-registers",
- "uio",
- "zerocopy",
-]
-
-[[package]]
-name = "mcu-image-header"
-version = "0.1.0"
-dependencies = [
- "zerocopy",
-]
-
-[[package]]
-name = "mcu-mbox-comm"
-version = "0.1.0"
-dependencies = [
- "kernel",
-]
-
-[[package]]
-name = "mcu-mbox-common"
-version = "0.1.0"
-dependencies = [
- "caliptra-api",
- "zerocopy",
-]
-
-[[package]]
-name = "mcu-mbox-driver"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "kernel",
- "mcu-mbox-comm",
- "registers-generated",
- "romtime",
-]
-
-[[package]]
-name = "mcu-mbox-lib"
-version = "0.1.0"
-dependencies = [
- "caliptra-api",
- "embassy-executor",
- "embassy-sync",
- "external-cmds-common",
- "libapi-caliptra",
- "libsyscall-caliptra",
- "libtock_alarm",
- "libtock_console",
- "libtock_platform",
- "libtock_runtime",
- "libtockasync",
- "mcu-mbox-common",
- "zerocopy",
-]
-
-[[package]]
-name = "mcu-otp-lifecycle"
-version = "0.1.0"
-dependencies = [
- "sha3 0.10.8",
-]
-
-[[package]]
-name = "mcu-platforms-common"
-version = "0.1.0"
-dependencies = [
- "i3c-driver",
- "kernel",
- "mcu-config",
- "mcu-tock-veer",
- "romtime",
- "rv32i",
-]
-
-[[package]]
-name = "mcu-registers-systemrdl-new"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "same-file",
- "winnow 0.7.13",
-]
-
-[[package]]
-name = "mcu-rom-common"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "bitflags 2.10.0",
- "caliptra-api",
- "caliptra-api-types",
- "caliptra-drivers",
- "constant_time_eq 0.4.2",
- "flash-image",
- "mcu-config",
- "mcu-error",
- "mcu-otp-lifecycle",
- "ocp",
- "otp-digest",
- "registers-generated",
- "riscv-csr",
- "romtime",
- "rv32i",
- "smlang",
- "tock-registers",
- "zerocopy",
- "zeroize",
-]
-
-[[package]]
-name = "mcu-rom-emulator"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "mcu-builder",
- "mcu-config",
- "mcu-config-emulator",
- "mcu-error",
- "mcu-image-header",
- "mcu-rom-common",
- "mcu-usb-emulator",
- "ocp",
- "registers-generated",
- "riscv-csr",
- "romtime",
- "rv32i",
- "tock-registers",
- "zerocopy",
- "zeroize",
-]
-
-[[package]]
-name = "mcu-rom-fpga"
-version = "0.1.0"
-dependencies = [
- "mcu-builder",
- "mcu-config",
- "mcu-config-fpga",
- "mcu-rom-common",
- "registers-generated",
- "riscv-csr",
- "romtime",
- "rv32i",
- "tock-registers",
- "zeroize",
-]
-
-[[package]]
-name = "mcu-runtime-emulator"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "capsules-core",
- "capsules-emulator",
- "capsules-extra",
- "capsules-runtime",
- "capsules-system",
- "components",
- "dma-driver",
- "doe-mbox-driver",
- "doe-transport",
- "flash-ctrl-emulator",
- "flash-driver",
- "i3c-driver",
- "kernel",
- "mcu-components",
- "mcu-config",
- "mcu-config-emulator",
- "mcu-mbox-comm",
- "mcu-mbox-driver",
- "mcu-platforms-common",
- "mcu-tock-veer",
- "registers-generated",
- "riscv 0.2.2",
- "riscv-csr",
- "romtime",
- "rv32i",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-runtime-fpga"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "capsules-core",
- "capsules-emulator",
- "capsules-extra",
- "capsules-runtime",
- "capsules-system",
- "components",
- "dma-driver",
- "flash-ctrl-fpga",
- "flash-driver",
- "i3c-driver",
- "kernel",
- "mcu-components",
- "mcu-config",
- "mcu-config-fpga",
- "mcu-mbox-driver",
- "mcu-platforms-common",
- "mcu-tock-veer",
- "registers-generated",
- "riscv 0.2.2",
- "riscv-csr",
- "romtime",
- "rv32i",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-fw-axi-bypass"
-version = "0.1.0"
-dependencies = [
- "mcu-rom-common",
- "mcu-test-harness",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-fw-exception-handler"
-version = "0.1.0"
-dependencies = [
- "mcu-rom-common",
- "mcu-test-harness",
-]
-
-[[package]]
-name = "mcu-test-fw-hitless-update-flow"
-version = "0.1.0"
-dependencies = [
- "mcu-error",
- "mcu-rom-common",
- "mcu-test-harness",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-fw-lc-ctrl"
-version = "0.1.0"
-dependencies = [
- "mcu-rom-common",
- "mcu-test-harness",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-fw-mailbox-responder"
-version = "0.1.0"
-dependencies = [
- "mcu-rom-common",
- "mcu-test-harness",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-fw-otp-blank-check"
-version = "0.1.0"
-dependencies = [
- "mcu-error",
- "mcu-rom-common",
- "mcu-test-harness",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-fw-otp-scramble-check"
-version = "0.1.0"
-dependencies = [
- "mcu-error",
- "mcu-rom-common",
- "mcu-test-harness",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-fw-sw-digest-lock"
-version = "0.1.0"
-dependencies = [
- "mcu-error",
- "mcu-rom-common",
- "mcu-test-harness",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-fw-usb-ocp-recovery"
-version = "0.1.0"
-dependencies = [
- "mcu-rom-common",
- "mcu-test-harness",
- "mcu-usb-emulator",
- "ocp",
- "registers-generated",
- "romtime",
- "zerocopy",
-]
-
-[[package]]
-name = "mcu-test-fw-usb-responder"
-version = "0.1.0"
-dependencies = [
- "mcu-rom-common",
- "mcu-test-harness",
- "registers-generated",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-test-harness"
-version = "0.1.0"
-dependencies = [
- "caliptra-api",
- "caliptra-registers",
- "mcu-config",
- "mcu-config-emulator",
- "mcu-config-fpga",
- "mcu-rom-common",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-testing-common"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "caliptra-api-types",
- "crc",
- "hex",
- "mctp-vdm-common",
- "pldm-common",
- "pldm-ua",
- "rand 0.8.5",
- "zerocopy",
-]
-
-[[package]]
-name = "mcu-tock-veer"
-version = "0.1.0"
-dependencies = [
- "capsules-core",
- "capsules-extra",
- "capsules-runtime",
- "capsules-system",
- "components",
- "flash-driver",
- "i3c-driver",
- "kernel",
- "mcu-config",
- "mcu-mbox-driver",
- "registers-generated",
- "riscv 0.2.2",
- "riscv-csr",
- "romtime",
- "rv32i",
- "tock-registers",
-]
-
-[[package]]
-name = "mcu-usb-emulator"
-version = "0.1.0"
-dependencies = [
- "ocp",
- "registers-generated",
- "romtime",
- "tock-registers",
- "zerocopy",
- "zeroize",
-]
 
 [[package]]
 name = "memchr"
@@ -3863,34 +4211,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "network-app-rom-test"
-version = "0.1.0"
-dependencies = [
- "network-drivers",
- "network-hil",
- "zerocopy",
-]
-
-[[package]]
-name = "network-config"
-version = "0.1.0"
-
-[[package]]
-name = "network-drivers"
-version = "0.1.0"
-dependencies = [
- "network-config",
- "network-hil",
- "registers-generated",
- "romtime",
- "tock-registers",
-]
-
-[[package]]
-name = "network-hil"
-version = "0.1.0"
-
-[[package]]
 name = "network-interface"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3900,15 +4220,6 @@ dependencies = [
  "libc",
  "thiserror 1.0.69",
  "winapi",
-]
-
-[[package]]
-name = "network-rom"
-version = "0.1.0"
-dependencies = [
- "network-app-rom-test",
- "network-config",
- "network-drivers",
 ]
 
 [[package]]
@@ -4019,14 +4330,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33"
 
 [[package]]
-name = "ocp"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "zerocopy",
-]
-
-[[package]]
 name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4103,10 +4406,6 @@ name = "os_str_bytes"
 version = "6.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2355d85b9a3786f481747ced0e0ff2ba35213a1f9bd406ed906554d7af805a1"
-
-[[package]]
-name = "otp-digest"
-version = "0.1.0"
 
 [[package]]
 name = "p256"
@@ -4229,67 +4528,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pldm-common"
-version = "0.1.0"
-dependencies = [
- "bitfield",
- "zerocopy",
-]
-
-[[package]]
-name = "pldm-fw-pkg"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "clap 4.5.51",
- "crc",
- "num-derive",
- "num-traits",
- "serde",
- "tempfile",
- "toml 0.8.23",
- "uuid",
-]
-
-[[package]]
-name = "pldm-lib"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "embassy-executor",
- "embassy-sync",
- "embedded-alloc",
- "libsyscall-caliptra",
- "libtock_alarm",
- "libtock_console",
- "libtock_platform",
- "libtock_runtime",
- "libtock_unittest",
- "libtockasync",
- "pldm-common",
-]
-
-[[package]]
-name = "pldm-ua"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "log",
- "pldm-common",
- "pldm-fw-pkg",
- "simple_logger",
- "smlang",
- "uuid",
-]
-
-[[package]]
-name = "poll-common"
-version = "0.1.0"
-dependencies = [
- "anyhow",
-]
-
-[[package]]
 name = "poly1305"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4398,15 +4636,6 @@ dependencies = [
  "quote",
  "syn 2.0.109",
  "version_check",
-]
-
-[[package]]
-name = "provisioning-fuses"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "fusegen",
- "registers-generated",
 ]
 
 [[package]]
@@ -4594,30 +4823,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 
 [[package]]
-name = "registers-generated"
-version = "0.1.0"
-dependencies = [
- "tock-registers",
- "zeroize",
-]
-
-[[package]]
-name = "registers-generator"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "registers-systemrdl",
-]
-
-[[package]]
-name = "registers-systemrdl"
-version = "0.1.0"
-dependencies = [
- "same-file",
-]
-
-[[package]]
 name = "reqwest"
 version = "0.12.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4728,25 +4933,6 @@ name = "riscv-pac"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8188909339ccc0c68cfb5a04648313f09621e8b87dc03095454f1a11f6c5d436"
-
-[[package]]
-name = "romtime"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.10.0",
- "caliptra-api",
- "caliptra-registers",
- "caliptra-ureg",
- "mcu-error",
- "mcu-mbox-common",
- "mcu-otp-lifecycle",
- "otp-digest",
- "registers-generated",
- "riscv-csr",
- "rv32i",
- "tock-registers",
- "zerocopy",
-]
 
 [[package]]
 name = "rustc-hash"
@@ -5157,23 +5343,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spdm-lib"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "async-trait",
- "bitfield",
- "caliptra-api",
- "constant_time_eq 0.4.2",
- "libapi-caliptra",
- "libsyscall-caliptra",
- "libtock_console",
- "libtock_platform",
- "rand 0.8.5",
- "zerocopy",
-]
-
-[[package]]
 name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5320,18 +5489,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "syscalls_tests"
-version = "0.1.0"
-dependencies = [
- "libtock_platform",
- "libtock_unittest",
-]
-
-[[package]]
-name = "tbf-header"
-version = "0.0.0"
-
-[[package]]
 name = "tempfile"
 version = "3.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5361,75 +5518,6 @@ checksum = "60b8cb979cb11c32ce1603f8137b22262a9d131aaa5c37b5678025f22b8becd0"
 dependencies = [
  "rustix 1.1.2",
  "windows-sys 0.60.2",
-]
-
-[[package]]
-name = "test-hello"
-version = "0.1.0"
-
-[[package]]
-name = "tests-integration"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "caliptra-api",
- "caliptra-api-types",
- "caliptra-auth-man-types",
- "caliptra-builder",
- "caliptra-emu-bus",
- "caliptra-emu-cpu",
- "caliptra-emu-types",
- "caliptra-hw-model",
- "caliptra-hw-model-types",
- "caliptra-image-fake-keys",
- "caliptra-image-gen",
- "caliptra-image-types",
- "caliptra-registers",
- "chrono",
- "crc",
- "ecdsa",
- "emulator-consts",
- "emulator-periph",
- "fips204",
- "flash-image",
- "hex",
- "hkdf",
- "hmac",
- "lazy_static",
- "libc",
- "log",
- "mctp-vdm-common",
- "mcu-builder",
- "mcu-config",
- "mcu-config-emulator",
- "mcu-config-fpga",
- "mcu-error",
- "mcu-firmware-bundler",
- "mcu-hw-model",
- "mcu-image-header",
- "mcu-mbox-common",
- "mcu-rom-common",
- "mcu-testing-common",
- "network-config",
- "ocp",
- "openssl",
- "otp-digest",
- "p384",
- "pldm-common",
- "pldm-fw-pkg",
- "pldm-ua",
- "rand 0.8.5",
- "random-port",
- "registers-generated",
- "romtime",
- "sha2",
- "simple_logger",
- "tempfile",
- "uio",
- "uuid",
- "xtask",
- "zerocopy",
 ]
 
 [[package]]
@@ -5916,45 +6004,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "user-app"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "async-trait",
- "caliptra-api",
- "caliptra-ocp-eat",
- "critical-section",
- "embassy-executor",
- "embassy-sync",
- "embedded-alloc",
- "external-cmds-common",
- "libapi-caliptra",
- "libapi-emulated-caliptra",
- "libsyscall-caliptra",
- "libtock",
- "libtock_console",
- "libtock_debug_panic",
- "libtock_platform",
- "libtock_runtime",
- "libtock_unittest",
- "libtockasync",
- "mctp-vdm-common",
- "mctp-vdm-lib",
- "mcu-config",
- "mcu-config-emulator",
- "mcu-config-fpga",
- "mcu-mbox-common",
- "mcu-mbox-lib",
- "pldm-common",
- "pldm-lib",
- "portable-atomic",
- "romtime",
- "spdm-lib",
- "static_cell",
- "zerocopy",
-]
-
-[[package]]
 name = "utf8_iter"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6416,55 +6465,6 @@ checksum = "c7e468321c81fb07fa7f4c636c3972b9100f0346e5b6a9f2bd0603a52f7ed277"
 dependencies = [
  "curve25519-dalek",
  "rand_core 0.6.4",
-]
-
-[[package]]
-name = "xtask"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64",
- "caliptra-api-types",
- "caliptra-auth-man-types",
- "caliptra-bitstream-downloader",
- "caliptra-builder",
- "caliptra-hw-model",
- "caliptra-image-gen",
- "caliptra-image-types",
- "cargo_metadata",
- "cc",
- "clap 4.5.51",
- "clap-num",
- "ecdsa",
- "elf",
- "fusegen",
- "hex",
- "mcu-builder",
- "mcu-config-emulator",
- "mcu-config-fpga",
- "mcu-firmware-bundler",
- "mcu-fuses-generator",
- "mcu-hw-model",
- "mcu-rom-common",
- "p384",
- "pldm-fw-pkg",
- "proc-macro2",
- "quote",
- "registers-generator",
- "registers-systemrdl",
- "romtime",
- "semver",
- "serde",
- "serde-hjson",
- "serde_json",
- "sha2",
- "sudo",
- "tempfile",
- "toml 0.8.23",
- "uuid",
- "walkdir",
- "zerocopy",
- "zip",
 ]
 
 [[package]]

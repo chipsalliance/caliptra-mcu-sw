@@ -2,8 +2,7 @@
 
 #[cfg(test)]
 mod common;
-use common::CustomDiscoverySm;
-use pldm_common::{
+use caliptra_mcu_pldm_common::{
     message::firmware_update::{
         activate_fw::{ActivateFirmwareRequest, ActivateFirmwareResponse},
         apply_complete::{ApplyCompleteRequest, ApplyCompleteResponse, ApplyResult},
@@ -28,11 +27,12 @@ use pldm_common::{
         },
     },
 };
-use pldm_fw_pkg::{
+use caliptra_mcu_pldm_fw_pkg::{
     manifest::{ComponentImageInformation, FirmwareDeviceIdRecord, PackageHeaderInformation},
     FirmwareManifest,
 };
-use pldm_ua::{daemon::Options, events::PldmEvents, transport::PldmSocket, update_sm};
+use caliptra_mcu_pldm_ua::{daemon::Options, events::PldmEvents, transport::PldmSocket, update_sm};
+use common::CustomDiscoverySm;
 
 // Test UUID
 pub const TEST_UUID: [u8; 16] = [
@@ -49,8 +49,11 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
         &mut self,
         ctx: &mut update_sm::InnerContext<impl PldmSocket>,
     ) -> Result<(), ()> {
-        ctx.device_id = Some(ctx.pldm_fw_pkg.firmware_device_id_records[0].clone());
-        ctx.components = ctx.pldm_fw_pkg.component_image_information.clone();
+        ctx.device_id = Some(ctx.caliptra_mcu_pldm_fw_pkg.firmware_device_id_records[0].clone());
+        ctx.components = ctx
+            .caliptra_mcu_pldm_fw_pkg
+            .component_image_information
+            .clone();
         for _ in &ctx.components {
             ctx.component_response_codes
                 .push(ComponentResponseCode::CompCanBeUpdated);
@@ -92,7 +95,7 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
     fn on_get_firmware_parameters_response(
         &mut self,
         ctx: &mut update_sm::InnerContext<impl PldmSocket>,
-        _response: pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
+        _response: caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
     ) -> Result<(), ()> {
         ctx.event_queue
             .send(PldmEvents::Update(update_sm::Events::SendRequestUpdate))
@@ -160,7 +163,7 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
 #[test]
 fn test_one_component_activate() {
     let activation_option: u16 = SELF_ACTIVATION_FIELD_MASK << SELF_ACTIVATION_FIELD_BIT;
-    let pldm_fw_pkg = FirmwareManifest {
+    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
         package_header_information: PackageHeaderInformation {
             ..Default::default()
         },
@@ -178,7 +181,7 @@ fn test_one_component_activate() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
@@ -281,7 +284,7 @@ fn test_one_component_activate() {
 #[test]
 fn test_one_component_verify_failed() {
     let activation_option: u16 = SELF_ACTIVATION_FIELD_MASK << SELF_ACTIVATION_FIELD_BIT;
-    let pldm_fw_pkg = FirmwareManifest {
+    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
         package_header_information: PackageHeaderInformation {
             ..Default::default()
         },
@@ -299,7 +302,7 @@ fn test_one_component_verify_failed() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
@@ -338,7 +341,7 @@ fn test_one_component_verify_failed() {
 #[test]
 fn test_one_component_apply_failed() {
     let activation_option: u16 = SELF_ACTIVATION_FIELD_MASK << SELF_ACTIVATION_FIELD_BIT;
-    let pldm_fw_pkg = FirmwareManifest {
+    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
         package_header_information: PackageHeaderInformation {
             ..Default::default()
         },
@@ -356,7 +359,7 @@ fn test_one_component_apply_failed() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
@@ -410,7 +413,7 @@ fn test_one_component_apply_failed() {
 #[test]
 fn test_apply_complete_with_activation_modification() {
     let activation_option: u16 = SELF_ACTIVATION_FIELD_MASK << SELF_ACTIVATION_FIELD_BIT;
-    let pldm_fw_pkg = FirmwareManifest {
+    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
         package_header_information: PackageHeaderInformation {
             ..Default::default()
         },
@@ -428,7 +431,7 @@ fn test_apply_complete_with_activation_modification() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
@@ -488,7 +491,7 @@ fn test_apply_complete_with_activation_modification() {
 #[test]
 fn test_two_components_activate() {
     let activation_option: u16 = SELF_ACTIVATION_FIELD_MASK << SELF_ACTIVATION_FIELD_BIT;
-    let pldm_fw_pkg = FirmwareManifest {
+    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
         package_header_information: PackageHeaderInformation {
             ..Default::default()
         },
@@ -514,7 +517,7 @@ fn test_two_components_activate() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
@@ -668,7 +671,7 @@ fn test_two_components_activate() {
 #[test]
 fn test_two_components_no_self_activation() {
     let activation_option: u16 = 0x0000;
-    let pldm_fw_pkg = FirmwareManifest {
+    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
         package_header_information: PackageHeaderInformation {
             ..Default::default()
         },
@@ -694,7 +697,7 @@ fn test_two_components_no_self_activation() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
@@ -789,7 +792,7 @@ fn test_two_components_no_self_activation() {
 #[test]
 fn test_two_components_one_activate() {
     let activation_option: u16 = SELF_ACTIVATION_FIELD_MASK << SELF_ACTIVATION_FIELD_BIT;
-    let pldm_fw_pkg = FirmwareManifest {
+    let caliptra_mcu_pldm_fw_pkg = FirmwareManifest {
         package_header_information: PackageHeaderInformation {
             ..Default::default()
         },
@@ -815,7 +818,7 @@ fn test_two_components_one_activate() {
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,

@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "example-app"
+name = "caliptra-mcu-example-app"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -12,27 +12,27 @@ caliptra-error.workspace = true
 caliptra-auth-man-types.workspace = true
 critical-section.workspace = true
 embassy-executor.workspace = true
-libapi-caliptra.workspace = true
-libsyscall-caliptra.workspace = true
+caliptra-mcu-libapi-caliptra.workspace = true
+caliptra-mcu-libsyscall-caliptra.workspace = true
 const-oid.workspace = true
 der.workspace = true
 spki.workspace = true
-libtock_alarm.workspace = true
-libtock_console.workspace = true
-libtock_debug_panic.workspace = true
-libtock_platform.workspace = true
-libtock_runtime.workspace = true
-libtock.workspace = true
-libtockasync.workspace = true
-mcu-config-emulator.workspace = true
-mcu-config-fpga.workspace = true
-pldm-common.workspace = true
+caliptra-mcu-libtock_alarm.workspace = true
+caliptra-mcu-libtock_console.workspace = true
+caliptra-mcu-libtock_debug_panic.workspace = true
+caliptra-mcu-libtock_platform.workspace = true
+caliptra-mcu-libtock_runtime.workspace = true
+caliptra-mcu-libtock.workspace = true
+caliptra-mcu-libtockasync.workspace = true
+caliptra-mcu-config-emulator.workspace = true
+caliptra-mcu-config-fpga.workspace = true
+caliptra-mcu-pldm-common.workspace = true
 portable-atomic.workspace = true
-romtime.workspace = true
+caliptra-mcu-romtime.workspace = true
 zerocopy.workspace = true
 
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
-libtock_unittest.workspace = true
+caliptra-mcu-libtock_unittest.workspace = true
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
@@ -42,7 +42,7 @@ embedded-alloc.workspace = true
 default = []
 debug = []
 hw-2-1 = []
-ocp-lock = ["libapi-caliptra/ocp-lock", "romtime/ocp-lock"]
+ocp-lock = ["caliptra-mcu-libapi-caliptra/ocp-lock", "caliptra-mcu-romtime/ocp-lock"]
 test-caliptra-certs = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []
@@ -80,7 +80,7 @@ test-mcu-mbox-cmds = []
 test-mcu-rom-flash-access = []
 test-mcu-svn-gt-fuse = []
 test-mcu-svn-lt-fuse = []
-test-ocp-lock = ["libapi-caliptra/ocp-lock", "romtime/ocp-lock"]
+test-ocp-lock = ["caliptra-mcu-libapi-caliptra/ocp-lock", "caliptra-mcu-romtime/ocp-lock"]
 test-pldm-request-response = []
 test-pldm-discovery = []
 test-pldm-fw-update = []

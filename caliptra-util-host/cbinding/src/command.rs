@@ -5,7 +5,7 @@
 //! This module contains C-exportable wrapper functions for Caliptra commands.
 
 use crate::error::CaliptraError;
-use caliptra_util_host_command_types::device_info::{
+use caliptra_mcu_core_util_host_command_types::device_info::{
     GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
     GetFirmwareVersionResponse,
 };

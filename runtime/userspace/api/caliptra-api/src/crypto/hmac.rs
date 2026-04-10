@@ -7,7 +7,7 @@ use caliptra_api::mailbox::{
     CmHashAlgorithm, CmHkdfExpandReq, CmHkdfExpandResp, CmHkdfExtractReq, CmHkdfExtractResp,
     CmHmacReq, CmHmacResp, CmKeyUsage, Cmk, Request, MAX_CMB_DATA_SIZE,
 };
-use libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::IntoBytes;
 
 pub struct Hmac;

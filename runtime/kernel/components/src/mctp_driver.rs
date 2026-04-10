@@ -11,26 +11,26 @@
 //! Usage
 //! -----
 //! ```ignore
-//! use mcu_components::mctp_driver_component_static;
-//! use mcu_components::mctp_driver::MCTPDriverComponent;
+//! use caliptra_mcu_components::mctp_driver_component_static;
+//! use caliptra_mcu_components::mctp_driver::MCTPDriverComponent;
 //! use kernel::component::Component;
-//! use mcu_tock_veer::timers::InternalTimers;
+//! use caliptra_mcu_tock_veer::timers::InternalTimers;
 //! let spdm_mctp_driver = MCTPDriverComponent::new(
 //!     board_kernel,
-//!     capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
+//!     caliptra_mcu_capsules_runtime::mctp::driver::MCTP_SPDM_DRIVER_NUM,
 //!     mux_mctp,
 //!     mctp_spdm_msg_types)
 //!     .finalize(mctp_driver_component_static!(InternalTimers));
 //! ```
 
+use caliptra_mcu_capsules_runtime::mctp::base_protocol::MessageType;
+use caliptra_mcu_capsules_runtime::mctp::driver::{MCTPDriver, MCTP_MAX_MESSAGE_SIZE};
+use caliptra_mcu_capsules_runtime::mctp::mux::MuxMCTPDriver;
+use caliptra_mcu_capsules_runtime::mctp::recv::MCTPRxState;
+use caliptra_mcu_capsules_runtime::mctp::send::MCTPSender;
+use caliptra_mcu_capsules_runtime::mctp::send::MCTPTxState;
+use caliptra_mcu_capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
 use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
-use capsules_runtime::mctp::base_protocol::MessageType;
-use capsules_runtime::mctp::driver::{MCTPDriver, MCTP_MAX_MESSAGE_SIZE};
-use capsules_runtime::mctp::mux::MuxMCTPDriver;
-use capsules_runtime::mctp::recv::MCTPRxState;
-use capsules_runtime::mctp::send::MCTPSender;
-use capsules_runtime::mctp::send::MCTPTxState;
-use capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
@@ -42,12 +42,12 @@ use kernel::utilities::leasable_buffer::SubSliceMut;
 #[macro_export]
 macro_rules! mctp_driver_component_static {
     ($A:ty  $(,)?) => {{
+        use caliptra_mcu_capsules_runtime::mctp::driver::MCTPDriver;
+        use caliptra_mcu_capsules_runtime::mctp::driver::MCTP_MAX_MESSAGE_SIZE;
+        use caliptra_mcu_capsules_runtime::mctp::recv::MCTPRxState;
+        use caliptra_mcu_capsules_runtime::mctp::send::MCTPTxState;
+        use caliptra_mcu_capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
         use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
-        use capsules_runtime::mctp::driver::MCTPDriver;
-        use capsules_runtime::mctp::driver::MCTP_MAX_MESSAGE_SIZE;
-        use capsules_runtime::mctp::recv::MCTPRxState;
-        use capsules_runtime::mctp::send::MCTPTxState;
-        use capsules_runtime::mctp::transport_binding::MCTPI3CBinding;
 
         let tx_state = kernel::static_buf!(
             MCTPTxState<'static, VirtualMuxAlarm<'static, $A>, MCTPI3CBinding<'static>>

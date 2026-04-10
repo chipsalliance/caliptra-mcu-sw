@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "mcu-test-fw-mailbox-responder"
+name = "caliptra-mcu-test-fw-mailbox-responder"
 version.workspace = true
 edition.workspace = true
 
@@ -9,15 +9,15 @@ edition.workspace = true
 default = []
 riscv = []
 emu = []
-fpga_realtime = ["mcu-test-harness/fpga_realtime"]
+fpga_realtime = ["caliptra-mcu-test-harness/fpga_realtime"]
 
 [[bin]]
-name = "mcu-test-fw-mailbox-responder"
+name = "caliptra-mcu-test-fw-mailbox-responder"
 test = false
 
 [dependencies]
-mcu-rom-common.workspace = true
-mcu-test-harness.workspace = true
-registers-generated.workspace = true
-romtime.workspace = true
+caliptra-mcu-rom-common.workspace = true
+caliptra-mcu-test-harness.workspace = true
+caliptra-mcu-registers-generated.workspace = true
+caliptra-mcu-romtime.workspace = true
 tock-registers.workspace = true

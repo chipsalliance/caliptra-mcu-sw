@@ -14,8 +14,8 @@ use thiserror::Error;
 
 use caliptra_hw_model::lcc::{LcCtrlReg, LcCtrlStatus, LcCtrlTransitionCmd};
 use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagTap, OpenOcdJtagTap};
-use poll_common::poll_until;
-use romtime::{Lifecycle, LifecycleControllerState};
+use caliptra_mcu_poll_common::poll_until;
+use caliptra_mcu_romtime::{Lifecycle, LifecycleControllerState};
 
 /// Convert our local (romtime) `LifecycleControllerState` to the
 /// `caliptra_hw_model::LifecycleControllerState` used by hw-model APIs

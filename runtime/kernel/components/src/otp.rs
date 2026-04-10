@@ -11,7 +11,7 @@ pub struct OtpComponent {
     board_kernel: &'static kernel::Kernel,
     driver_num: usize,
     total_heks: u32,
-    driver: &'static romtime::Otp,
+    driver: &'static caliptra_mcu_romtime::Otp,
 }
 
 impl OtpComponent {
@@ -19,7 +19,7 @@ impl OtpComponent {
         board_kernel: &'static kernel::Kernel,
         driver_num: usize,
         total_heks: u32,
-        driver: &'static romtime::Otp,
+        driver: &'static caliptra_mcu_romtime::Otp,
     ) -> Self {
         Self {
             board_kernel,
@@ -31,14 +31,14 @@ impl OtpComponent {
 }
 
 impl Component for OtpComponent {
-    type StaticInput = &'static mut MaybeUninit<capsules_runtime::otp::Otp>;
+    type StaticInput = &'static mut MaybeUninit<caliptra_mcu_capsules_runtime::otp::Otp>;
 
-    type Output = &'static capsules_runtime::otp::Otp;
+    type Output = &'static caliptra_mcu_capsules_runtime::otp::Otp;
 
     fn finalize(self, static_buffer: Self::StaticInput) -> Self::Output {
         let grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
-        let otp: &capsules_runtime::otp::Otp =
-            static_buffer.write(capsules_runtime::otp::Otp::new(
+        let otp: &caliptra_mcu_capsules_runtime::otp::Otp =
+            static_buffer.write(caliptra_mcu_capsules_runtime::otp::Otp::new(
                 self.driver,
                 self.total_heks,
                 self.board_kernel.create_grant(self.driver_num, &grant_cap),

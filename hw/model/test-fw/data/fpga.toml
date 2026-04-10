@@ -27,5 +27,5 @@ stack = 0x2d00
 exception_stack = 0x200
 
 [kernel]
-name = "mcu-runtime-fpga"
+name = "caliptra-mcu-runtime-fpga"
 stack = 0x0_7000

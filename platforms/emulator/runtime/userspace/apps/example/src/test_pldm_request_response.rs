@@ -2,12 +2,12 @@
 
 #[cfg(feature = "test-pldm-request-response")]
 pub mod test {
-    use libsyscall_caliptra::mctp::{driver_num, Mctp};
-    use pldm_common::codec::PldmCodec;
-    use pldm_common::message::control::{
+    use caliptra_mcu_libsyscall_caliptra::mctp::{driver_num, Mctp};
+    use caliptra_mcu_pldm_common::codec::PldmCodec;
+    use caliptra_mcu_pldm_common::message::control::{
         GetTidRequest, GetTidResponse, SetTidRequest, SetTidResponse,
     };
-    use pldm_common::protocol::base::PldmMsgType;
+    use caliptra_mcu_pldm_common::protocol::base::PldmMsgType;
 
     const MAX_MCTP_PACKET_SIZE: usize = 512;
     const COMPLETION_CODE_SUCCESSFUL: u8 = 0x00;

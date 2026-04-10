@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "mcu-testing-common"
+name = "caliptra-mcu-testing-common"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -10,9 +10,9 @@ authors.workspace = true
 caliptra-api-types.workspace = true
 bitfield.workspace = true
 crc.workspace = true
-mctp-vdm-common.workspace = true
-pldm-common.workspace = true
-pldm-ua.workspace = true
+caliptra-mcu-mctp-vdm-common.workspace = true
+caliptra-mcu-pldm-common.workspace = true
+caliptra-mcu-pldm-ua.workspace = true
 zerocopy.workspace = true
 
 [dev-dependencies]

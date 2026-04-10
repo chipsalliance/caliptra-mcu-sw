@@ -1,6 +1,6 @@
 #![no_std]
 
-use libtock_platform::Syscalls;
+use caliptra_mcu_libtock_platform::Syscalls;
 
 /// The low-level debug API provides tools to diagnose userspace issues that
 /// make normal debugging workflows (e.g. printing to the console) difficult.
@@ -10,7 +10,7 @@ use libtock_platform::Syscalls;
 ///
 /// # Example
 /// ```ignore
-/// use libtock::LowLevelDebug;
+/// use caliptra_mcu_libtock::LowLevelDebug;
 ///
 /// // Prints 0x45 and the app which called it.
 /// LowLevelDebug::print_1(0x45);

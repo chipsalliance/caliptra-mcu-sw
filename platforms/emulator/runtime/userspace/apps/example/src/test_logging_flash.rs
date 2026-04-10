@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall;
+use caliptra_mcu_romtime::println;
 use core::fmt::Write;
-use libsyscall_caliptra::logging::LoggingSyscall;
-use romtime::println;
 
 pub async fn test_logging_flash_simple() {
     println!("test_logging_flash_simple started");

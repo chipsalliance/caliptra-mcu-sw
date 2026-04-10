@@ -2,10 +2,10 @@
 
 //! This provides the OTP capsule that calls the underlying OTP driver
 
+use caliptra_mcu_registers_generated::fuses;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
-use registers_generated::fuses;
 
 /// The driver number for Caliptra OTP commands.
 pub const DRIVER_NUM: usize = 0xD000_0000;
@@ -46,7 +46,7 @@ pub struct App {
 }
 
 pub struct Otp {
-    driver: &'static romtime::Otp,
+    driver: &'static caliptra_mcu_romtime::Otp,
     total_heks: u32,
     // Per-app state.
     apps: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
@@ -54,7 +54,7 @@ pub struct Otp {
 
 impl Otp {
     pub fn new(
-        driver: &'static romtime::Otp,
+        driver: &'static caliptra_mcu_romtime::Otp,
         total_heks: u32,
         grant: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
     ) -> Otp {

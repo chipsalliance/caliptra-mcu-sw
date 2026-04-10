@@ -30,14 +30,14 @@ pub struct App {
 }
 
 pub struct Mci {
-    driver: &'static romtime::Mci,
+    driver: &'static caliptra_mcu_romtime::Mci,
     // Per-app state.
     apps: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
 }
 
 impl Mci {
     pub fn new(
-        driver: &'static romtime::Mci,
+        driver: &'static caliptra_mcu_romtime::Mci,
         grant: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
     ) -> Mci {
         Mci {
@@ -110,8 +110,9 @@ impl SyscallDriver for Mci {
                 CommandReturn::success()
             }
             cmd::MCI_SET_MAILBOX_READY => {
-                self.driver
-                    .set_flow_milestone(romtime::McuBootMilestones::FIRMWARE_MAILBOX_READY.into());
+                self.driver.set_flow_milestone(
+                    caliptra_mcu_romtime::McuBootMilestones::FIRMWARE_MAILBOX_READY.into(),
+                );
                 CommandReturn::success()
             }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),

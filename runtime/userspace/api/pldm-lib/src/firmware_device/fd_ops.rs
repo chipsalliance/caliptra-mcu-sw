@@ -3,16 +3,16 @@
 extern crate alloc;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use libsyscall_caliptra::DefaultSyscalls;
-use pldm_common::message::firmware_update::apply_complete::ApplyResult;
-use pldm_common::message::firmware_update::get_status::ProgressPercent;
-use pldm_common::message::firmware_update::request_cancel::{
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
+use caliptra_mcu_pldm_common::message::firmware_update::request_cancel::{
     NonFunctioningComponentBitmap, NonFunctioningComponentIndication,
 };
-use pldm_common::message::firmware_update::transfer_complete::TransferResult;
-use pldm_common::message::firmware_update::verify_complete::VerifyResult;
-use pldm_common::util::fw_component::FirmwareComponent;
-use pldm_common::{
+use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult;
+use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
+use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
+use caliptra_mcu_pldm_common::{
     message::firmware_update::get_fw_params::FirmwareParameters,
     protocol::firmware_update::{ComponentResponseCode, Descriptor, PldmFdTime},
 };

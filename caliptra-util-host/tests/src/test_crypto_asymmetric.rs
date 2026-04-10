@@ -5,17 +5,17 @@
 //! These tests verify the ECDSA and ECDH API functions and types work correctly.
 
 use crate::common::{test_constants::*, MockMailbox};
-use caliptra_util_host_command_types::crypto_asymmetric::{
+use caliptra_mcu_core_util_host_command_types::crypto_asymmetric::{
     EcdhFinishRequest, EcdhGenerateRequest, EcdsaPublicKeyRequest, EcdsaSignRequest,
     EcdsaVerifyRequest, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
     ECC384_SCALAR_BYTE_SIZE, MAX_CMB_DATA_SIZE,
 };
-use caliptra_util_host_command_types::crypto_hmac::{CmKeyUsage, Cmk, CMK_SIZE};
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::{CmKeyUsage, Cmk, CMK_SIZE};
 use caliptra_util_host_commands::api::crypto_asymmetric::{
     caliptra_cmd_ecdh_generate, caliptra_cmd_ecdsa_public_key, caliptra_cmd_ecdsa_sign,
 };
 use caliptra_util_host_session::CaliptraSession;
-use caliptra_util_host_transport::Mailbox;
+use caliptra_mcu_core_util_host_transport::Mailbox;
 
 /// Test ECDSA public key request construction
 #[test]
@@ -112,13 +112,13 @@ fn test_ecdsa_public_key_disconnected_session() {
     let mut mock_mailbox = MockMailbox::new(TEST_DEVICE_ID_1);
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     // Create session but don't connect
     let mut session = CaliptraSession::new(
         1,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 
@@ -151,12 +151,12 @@ fn test_ecdsa_sign_disconnected_session() {
     let mut mock_mailbox = MockMailbox::new(TEST_DEVICE_ID_1);
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     let mut session = CaliptraSession::new(
         1,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 
@@ -187,12 +187,12 @@ fn test_ecdh_generate_disconnected_session() {
     let mut mock_mailbox = MockMailbox::new(TEST_DEVICE_ID_1);
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     let mut session = CaliptraSession::new(
         1,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 

@@ -4,9 +4,9 @@
 pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_api::SocManager;
-    use mcu_hw_model::McuHwModel;
-    use otp_digest;
-    use registers_generated::fuses;
+    use caliptra_mcu_hw_model::McuHwModel;
+    use caliptra_mcu_otp_digest;
+    use caliptra_mcu_registers_generated::fuses;
     use zerocopy::IntoBytes;
 
     pub fn setup_otp_hek(otp: &mut [u8], slot: usize, sanitized: bool, corrupted: bool) {
@@ -40,7 +40,7 @@ pub mod test {
             let blocks = (0..4).map(|i| {
                 u64::from_le_bytes(otp[offset + i * 8..offset + i * 8 + 8].try_into().unwrap())
             });
-            let mut digest = otp_digest::otp_digest_iter(blocks, iv, cnst);
+            let mut digest = caliptra_mcu_otp_digest::otp_digest_iter(blocks, iv, cnst);
 
             if corrupted {
                 digest ^= 0x1;

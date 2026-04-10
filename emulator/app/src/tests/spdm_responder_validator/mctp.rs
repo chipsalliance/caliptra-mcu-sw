@@ -8,10 +8,10 @@ use crate::tests::spdm_responder_validator::transport::{
     Transport, MAX_CMD_TIMEOUT_SECONDS, SOCKET_TRANSPORT_TYPE_MCTP,
 };
 use crate::tests::spdm_responder_validator::SpdmTestType;
-use mcu_testing_common::i3c::DynamicI3cAddress;
-use mcu_testing_common::i3c_socket::BufferedStream;
-use mcu_testing_common::mctp_util::common::MctpUtil;
-use mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
+use caliptra_mcu_testing_common::i3c::DynamicI3cAddress;
+use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
+use caliptra_mcu_testing_common::mctp_util::common::MctpUtil;
+use caliptra_mcu_testing_common::{wait_for_runtime_start, MCU_RUNNING};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::process::exit;
 use std::sync::atomic::Ordering;

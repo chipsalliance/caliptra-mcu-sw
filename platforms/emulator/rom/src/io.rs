@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license.
 
+use caliptra_mcu_rom_common::{FatalErrorHandler, RomEnv};
+use caliptra_mcu_romtime::{Exit, HexWord};
 use core::fmt::Write;
-use mcu_rom_common::{FatalErrorHandler, RomEnv};
-use romtime::{Exit, HexWord};
 
 pub(crate) struct EmulatorWriter {}
 pub(crate) static mut EMULATOR_WRITER: EmulatorWriter = EmulatorWriter {};

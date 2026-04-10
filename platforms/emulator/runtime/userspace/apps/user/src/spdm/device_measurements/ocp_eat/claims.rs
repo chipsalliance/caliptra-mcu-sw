@@ -3,13 +3,14 @@
 use crate::soc_env::*;
 use arrayvec::ArrayString;
 use arrayvec::ArrayVec;
+use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use caliptra_mcu_libapi_caliptra::evidence::device_state::DeviceState;
+use caliptra_mcu_libapi_caliptra::evidence::ocp_eat_claims::generate_eat_claims;
+use caliptra_mcu_libapi_caliptra::evidence::pcr_quote::PcrQuote;
+use caliptra_mcu_spdm_lib::measurements::{MeasurementsError, MeasurementsResult};
 use core::fmt::Write;
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
-use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
-use libapi_caliptra::evidence::device_state::DeviceState;
-use libapi_caliptra::evidence::ocp_eat_claims::generate_eat_claims;
-use libapi_caliptra::evidence::pcr_quote::PcrQuote;
 use ocp_eat::ocp_profile::{
     IntegrityRegisterEntry, IntegrityRegisterIdChoice, TaggedConciseEvidence,
 };
@@ -17,7 +18,6 @@ use ocp_eat::{
     ClassIdTypeChoice, ClassMap, ConciseEvidence, ConciseEvidenceMap, DigestEntry, EnvironmentMap,
     EvTriplesMap, EvidenceTripleRecord, MeasurementMap, MeasurementValue, TaggedBytes,
 };
-use spdm_lib::measurements::{MeasurementsError, MeasurementsResult};
 use zerocopy::IntoBytes;
 
 const NUM_FW_TARGET_ENV: usize = NUM_DEFAULT_FW_COMPONENTS + NUM_SOC_FW_COMPONENTS;

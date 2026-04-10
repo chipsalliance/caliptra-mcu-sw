@@ -5,21 +5,21 @@
 #[cfg(test)]
 mod test {
     use crate::{platform, test::TEST_LOCK};
-    use mcu_builder::firmware;
-    use mcu_error::McuError;
-    use mcu_hw_model::{InitParams, McuHwModel};
+    use caliptra_mcu_builder::firmware;
+    use caliptra_mcu_error::McuError;
+    use caliptra_mcu_hw_model::{InitParams, McuHwModel};
 
     #[test]
     fn test_exception_handler() {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let mcu_rom = if let Ok(binaries) = mcu_builder::FirmwareBinaries::from_env() {
+        let mcu_rom = if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
             binaries
                 .test_rom(&firmware::hw_model_tests::EXCEPTION_HANDLER)
                 .unwrap()
         } else {
-            let rom_file = mcu_builder::test_rom_build(
+            let rom_file = caliptra_mcu_builder::test_rom_build(
                 Some(platform()),
                 &firmware::hw_model_tests::EXCEPTION_HANDLER,
             )
@@ -27,7 +27,7 @@ mod test {
             std::fs::read(&rom_file).unwrap()
         };
 
-        let mut hw = mcu_hw_model::new(InitParams {
+        let mut hw = caliptra_mcu_hw_model::new(InitParams {
             mcu_rom: &mcu_rom,
             check_booted_to_runtime: false,
             ..Default::default()

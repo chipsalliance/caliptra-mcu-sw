@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use anyhow::{bail, Result};
 
-use mcu_firmware_bundler::utils::find_workspace_directory;
+use caliptra_mcu_firmware_bundler::utils::find_workspace_directory;
 
 const EMU_USER_APP_MANIFEST: &str = "firmware-bundler/reference/emulator/user-app.toml";
 const EMU_EXAMPLE_APP_MANIFEST: &str = "firmware-bundler/reference/emulator/example-app.toml";

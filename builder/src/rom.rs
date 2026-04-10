@@ -10,7 +10,7 @@ use crate::PROJECT_ROOT;
 use caliptra_builder::FwId;
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
-use mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
+use caliptra_mcu_firmware_bundler::args::{BuildArgs, Commands, Common, LdArgs};
 
 pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<PathBuf> {
     let feature_suffix = match &features {
@@ -19,7 +19,7 @@ pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<P
     };
 
     let target_name = format!(
-        "mcu-rom-{}",
+        "caliptra-mcu-rom-{}",
         platform.clone().unwrap_or_else(|| "emulator".to_string())
     );
     let rom = format!("{target_name}{feature_suffix}");
@@ -40,7 +40,7 @@ pub fn rom_build(platform: Option<String>, features: Option<String>) -> Result<P
         target: Some(target_name.clone()),
     };
 
-    mcu_firmware_bundler::execute(build_cmd)?;
+    caliptra_mcu_firmware_bundler::execute(build_cmd)?;
     std::fs::rename(
         rom_binary.with_file_name(format!("{target_name}.bin")),
         &rom_binary,
@@ -107,7 +107,7 @@ pub fn test_rom_build(platform: Option<&str>, fwid: &FwId) -> Result<String> {
         target: Some(fwid.crate_name.to_string()),
     };
 
-    mcu_firmware_bundler::execute(build_cmd)?;
+    caliptra_mcu_firmware_bundler::execute(build_cmd)?;
 
     // The firmware bundler outputs <crate_name>.bin; rename to our expected convention.
     let bundler_output = rom_binary.with_file_name(format!("{}.bin", fwid.crate_name));
@@ -127,7 +127,7 @@ pub fn test_rom_build(platform: Option<&str>, fwid: &FwId) -> Result<String> {
 
 pub fn rom_size_for_platform(platform: &str) -> usize {
     match platform {
-        "fpga" => mcu_config_fpga::FPGA_MEMORY_MAP.rom_size as usize,
-        _ => mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size as usize,
+        "fpga" => caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.rom_size as usize,
+        _ => caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size as usize,
     }
 }

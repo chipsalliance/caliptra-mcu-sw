@@ -4,9 +4,9 @@ use crate::discovery_sm;
 use crate::events::PldmEvents;
 use crate::transport::{PldmSocket, RxPacket};
 use crate::update_sm;
+use caliptra_mcu_pldm_fw_pkg::manifest::FirmwareDeviceIdRecord;
+use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
 use log::{debug, error, info, warn};
-use pldm_fw_pkg::manifest::FirmwareDeviceIdRecord;
-use pldm_fw_pkg::FirmwareManifest;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -49,7 +49,7 @@ impl<
     pub fn run(socket: S, opts: Options<D, U>) -> Result<Self, ()> {
         info!("PldmDaemon is running...");
 
-        if opts.pldm_fw_pkg.is_none() {
+        if opts.caliptra_mcu_pldm_fw_pkg.is_none() {
             warn!("PLDM firmware package is not provided.");
             return Err(());
         }
@@ -74,7 +74,7 @@ impl<
             update_sm::Context::new(
                 opts.update_sm_actions,
                 socket_clone1.clone(),
-                opts.pldm_fw_pkg.unwrap(),
+                opts.caliptra_mcu_pldm_fw_pkg.unwrap(),
                 event_queue_tx_clone4,
             ),
         )));
@@ -236,7 +236,7 @@ pub struct Options<D: discovery_sm::StateMachineActions, U: update_sm::StateMach
     pub fd_tid: u8,
     // Actions for the update state machine that can be customized as needed
     pub update_sm_actions: U,
-    pub pldm_fw_pkg: Option<FirmwareManifest>,
+    pub caliptra_mcu_pldm_fw_pkg: Option<FirmwareManifest>,
 }
 
 impl Default for Options<discovery_sm::DefaultActions, update_sm::DefaultActions> {
@@ -244,7 +244,7 @@ impl Default for Options<discovery_sm::DefaultActions, update_sm::DefaultActions
         Self {
             discovery_sm_actions: discovery_sm::DefaultActions {},
             update_sm_actions: update_sm::DefaultActions {},
-            pldm_fw_pkg: None,
+            caliptra_mcu_pldm_fw_pkg: None,
             fd_tid: 0,
         }
     }

@@ -3,23 +3,23 @@
 #[cfg(test)]
 mod common;
 
-use common::CustomDiscoverySm;
-use pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse;
-use pldm_common::message::firmware_update::query_devid::QueryDeviceIdentifiersResponse;
-use pldm_common::message::firmware_update::request_update::{
+use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse;
+use caliptra_mcu_pldm_common::message::firmware_update::query_devid::QueryDeviceIdentifiersResponse;
+use caliptra_mcu_pldm_common::message::firmware_update::request_update::{
     RequestUpdateRequest, RequestUpdateResponse,
 };
-use pldm_common::protocol::base::PldmBaseCompletionCode;
-use pldm_common::protocol::firmware_update::{ComponentClassification, FwUpdateCmd};
-use pldm_fw_pkg::manifest::{
+use caliptra_mcu_pldm_common::protocol::base::PldmBaseCompletionCode;
+use caliptra_mcu_pldm_common::protocol::firmware_update::{ComponentClassification, FwUpdateCmd};
+use caliptra_mcu_pldm_fw_pkg::manifest::{
     ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
 };
-use pldm_fw_pkg::FirmwareManifest;
-use pldm_ua::events::PldmEvents;
+use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
+use caliptra_mcu_pldm_ua::events::PldmEvents;
+use common::CustomDiscoverySm;
 
-use pldm_ua::daemon::Options;
-use pldm_ua::transport::PldmSocket;
-use pldm_ua::update_sm;
+use caliptra_mcu_pldm_ua::daemon::Options;
+use caliptra_mcu_pldm_ua::transport::PldmSocket;
+use caliptra_mcu_pldm_ua::update_sm;
 
 // Test UUID
 pub const TEST_UUID: [u8; 16] = [
@@ -33,8 +33,11 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
         &mut self,
         ctx: &mut update_sm::InnerContext<impl PldmSocket>,
     ) -> Result<(), ()> {
-        ctx.device_id = Some(ctx.pldm_fw_pkg.firmware_device_id_records[0].clone());
-        ctx.components = ctx.pldm_fw_pkg.component_image_information.clone();
+        ctx.device_id = Some(ctx.caliptra_mcu_pldm_fw_pkg.firmware_device_id_records[0].clone());
+        ctx.components = ctx
+            .caliptra_mcu_pldm_fw_pkg
+            .component_image_information
+            .clone();
         ctx.event_queue
             .send(PldmEvents::Update(
                 update_sm::Events::QueryDeviceIdentifiersResponse(QueryDeviceIdentifiersResponse {
@@ -71,7 +74,7 @@ impl update_sm::StateMachineActions for UpdateSmBypassed {
     fn on_get_firmware_parameters_response(
         &mut self,
         ctx: &mut update_sm::InnerContext<impl PldmSocket>,
-        _response: pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
+        _response: caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::GetFirmwareParametersResponse,
     ) -> Result<(), ()> {
         ctx.event_queue
             .send(PldmEvents::Update(update_sm::Events::SendRequestUpdate))
@@ -95,7 +98,8 @@ fn get_pldm_fw_pkg_caliptra_and_manifest(
                 descriptor_type: DescriptorType::Uuid,
                 descriptor_data: TEST_UUID.to_vec(),
             },
-            component_image_set_version_string_type: pldm_fw_pkg::manifest::StringType::Utf8,
+            component_image_set_version_string_type:
+                caliptra_mcu_pldm_fw_pkg::manifest::StringType::Utf8,
             component_image_set_version_string: Some(COMPONENT_ACTIVE_VER_STR.to_string()),
             applicable_components: Some(vec![0, 1]),
             ..Default::default()
@@ -121,14 +125,14 @@ fn get_pldm_fw_pkg_caliptra_and_manifest(
 #[test]
 fn test_request_update_receive_ok() {
     // PLDM firmware package contains Caliptra Firmware with current active version + 1
-    let pldm_fw_pkg = get_pldm_fw_pkg_caliptra_and_manifest(
+    let caliptra_mcu_pldm_fw_pkg = get_pldm_fw_pkg_caliptra_and_manifest(
         Some(CALIPTRA_FW_ACTIVE_COMP_STAMP + 1),
         Some(SOC_MANIFEST_ACTIVE_COMP_STAMP + 1),
     );
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,
@@ -158,14 +162,14 @@ fn test_request_update_receive_ok() {
 #[test]
 fn test_request_update_receive_fail() {
     // PLDM firmware package contains Caliptra Firmware with current active version + 1
-    let pldm_fw_pkg = get_pldm_fw_pkg_caliptra_and_manifest(
+    let caliptra_mcu_pldm_fw_pkg = get_pldm_fw_pkg_caliptra_and_manifest(
         Some(CALIPTRA_FW_ACTIVE_COMP_STAMP + 1),
         Some(SOC_MANIFEST_ACTIVE_COMP_STAMP + 1),
     );
 
     // Setup the test environment
     let mut setup = common::setup(Options {
-        pldm_fw_pkg: Some(pldm_fw_pkg.clone()),
+        caliptra_mcu_pldm_fw_pkg: Some(caliptra_mcu_pldm_fw_pkg.clone()),
         discovery_sm_actions: CustomDiscoverySm {},
         update_sm_actions: UpdateSmBypassed {},
         fd_tid: 0x01,

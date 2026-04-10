@@ -22,6 +22,6 @@ offset = 0x3BFE0000
 size = 0x20000
 
 [bare_metal]
-name = "bare-metal-runtime"
+name = "caliptra-mcu-bare-metal-runtime"
 stack = 0x4000
 exception_stack = 0x400

@@ -40,7 +40,7 @@ pub fn otp_unscramble(data: u64, key: u128) -> u64 {
     Present::new_128(&key.to_le_bytes()).decrypt_block(data)
 }
 
-pub fn otp_digest(data: &[u8], iv: u64, cnst: u128) -> u64 {
+pub fn caliptra_mcu_otp_digest(data: &[u8], iv: u64, cnst: u128) -> u64 {
     assert_eq!(data.len() % 8, 0);
 
     let blocks = data.chunks_exact(8).map(|chunk| {
@@ -54,7 +54,7 @@ pub fn otp_digest(data: &[u8], iv: u64, cnst: u128) -> u64 {
 
 /// Compute an OTP digest over an iterator of little-endian 64-bit data blocks.
 ///
-/// This is equivalent to [`otp_digest`] but avoids requiring all data in memory
+/// This is equivalent to [`caliptra_mcu_otp_digest`] but avoids requiring all data in memory
 /// at once — the caller can stream blocks from OTP word-by-word.
 pub fn otp_digest_iter(blocks: impl Iterator<Item = u64>, iv: u64, cnst: u128) -> u64 {
     let mut state = iv;
@@ -339,7 +339,7 @@ mod test {
         let data: Vec<u8> = (0..32).collect();
         let iv = 0x1234567890abcdef;
         let cnst = 0xfedcba0987654321fedcba0987654321u128;
-        let expected = otp_digest(&data, iv, cnst);
+        let expected = caliptra_mcu_otp_digest(&data, iv, cnst);
         let blocks = data
             .chunks_exact(8)
             .map(|c| u64::from_le_bytes(c.try_into().unwrap()));
@@ -347,7 +347,7 @@ mod test {
 
         // Odd number of blocks
         let data: Vec<u8> = (0..24).collect();
-        let expected = otp_digest(&data, iv, cnst);
+        let expected = caliptra_mcu_otp_digest(&data, iv, cnst);
         let blocks = data
             .chunks_exact(8)
             .map(|c| u64::from_le_bytes(c.try_into().unwrap()));
@@ -355,14 +355,14 @@ mod test {
 
         // Single block
         let data = [0u8; 8];
-        let expected = otp_digest(&data, iv, cnst);
+        let expected = caliptra_mcu_otp_digest(&data, iv, cnst);
         let blocks = data
             .chunks_exact(8)
             .map(|c| u64::from_le_bytes(c.try_into().unwrap()));
         assert_eq!(otp_digest_iter(blocks, iv, cnst), expected);
 
         // Empty
-        let expected = otp_digest(&[], iv, cnst);
+        let expected = caliptra_mcu_otp_digest(&[], iv, cnst);
         assert_eq!(otp_digest_iter(core::iter::empty(), iv, cnst), expected);
     }
 }

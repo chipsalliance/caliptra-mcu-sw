@@ -6,10 +6,10 @@ use crate::DefaultSyscalls;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_api::mailbox::MailboxReqHeader;
+use caliptra_mcu_libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
+use caliptra_mcu_libtockasync::TockSubscribe;
 use core::{hint::black_box, marker::PhantomData};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use libtock_platform::{share, DefaultConfig, ErrorCode, Syscalls};
-use libtockasync::TockSubscribe;
 
 // Global mutex to ensure that multiple tasks do not overwrite each other's upcall pointers.
 static MAILBOX_MUTEX: Mutex<CriticalSectionRawMutex, u32> = Mutex::new(0);

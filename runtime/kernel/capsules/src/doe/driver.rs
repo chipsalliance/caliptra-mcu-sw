@@ -1,14 +1,14 @@
 // Licensed under the Apache-2.0 license
 
 use crate::doe::protocol::*;
+use caliptra_mcu_doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
+use caliptra_mcu_romtime::println;
 use core::cell::Cell;
-use doe_transport::hil::{DoeTransport, DoeTransportRxClient, DoeTransportTxClient};
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, GrantKernelData, UpcallCount};
 use kernel::processbuffer::{ReadableProcessBuffer, ReadableProcessSlice, WriteableProcessBuffer};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::OptionalCell;
 use kernel::{ErrorCode, ProcessId};
-use romtime::println;
 
 pub const DOE_SPDM_DRIVER_NUM: usize = 0xA000_0010;
 

@@ -10,22 +10,23 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
+use caliptra_mcu_ocp::cms::slice_indirect::SliceIndirectRegion;
+use caliptra_mcu_ocp::interface::{ActivationResult, RecoveryAction, RecoveryStateMachine};
+use caliptra_mcu_ocp::protocol::device_status::{DeviceStatusValue, RecoveryReasonCode};
+use caliptra_mcu_ocp::protocol::indirect_status::CmsRegionType;
+use caliptra_mcu_ocp::protocol::prot_cap::{self, RecoveryProtocolCapabilities};
+use caliptra_mcu_ocp::protocol::recovery_status::DeviceRecoveryStatus;
+use caliptra_mcu_ocp::protocol::RecoveryCommand;
+use caliptra_mcu_ocp::vendor::NoopVendorHandler;
 use common::{take_last_response, test_config, MockUsbDeviceDriver};
-use ocp::cms::slice_indirect::SliceIndirectRegion;
-use ocp::interface::{ActivationResult, RecoveryAction, RecoveryStateMachine};
-use ocp::protocol::device_status::{DeviceStatusValue, RecoveryReasonCode};
-use ocp::protocol::indirect_status::CmsRegionType;
-use ocp::protocol::prot_cap::{self, RecoveryProtocolCapabilities};
-use ocp::protocol::recovery_status::DeviceRecoveryStatus;
-use ocp::protocol::RecoveryCommand;
-use ocp::vendor::NoopVendorHandler;
 
 #[test]
 fn full_recovery_sequence() {
     let sent = RefCell::new(Vec::new());
     let mut cms_buf = [0u8; 64];
     let mut region = SliceIndirectRegion::new(&mut cms_buf, CmsRegionType::CodeSpace).unwrap();
-    let mut regions: [(u8, &mut dyn ocp::cms::IndirectCmsRegion); 1] = [(0, &mut region)];
+    let mut regions: [(u8, &mut dyn caliptra_mcu_ocp::cms::IndirectCmsRegion); 1] =
+        [(0, &mut region)];
 
     let mut transport = MockUsbDeviceDriver::new(&sent);
 

@@ -1,11 +1,11 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP;
+use caliptra_mcu_libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
+use caliptra_mcu_libsyscall_caliptra::system::System;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_console::Console;
 use core::fmt::Write;
-use libsyscall_caliptra::dma::{DMASource, DMATransaction, DMA as DMASyscall};
-use libsyscall_caliptra::system::System;
-use libsyscall_caliptra::DefaultSyscalls;
-use libtock_console::Console;
-use mcu_config_emulator::EMULATOR_MEMORY_MAP;
 
 const TEST_EXTERNAL_SRAM_DEST_ADDRESS: u32 = EMULATOR_MEMORY_MAP.staging_sram_offset;
 fn local_ram_to_axi_address(addr: u32) -> u64 {

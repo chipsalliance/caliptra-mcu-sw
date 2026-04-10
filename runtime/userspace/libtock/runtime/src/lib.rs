@@ -6,7 +6,7 @@
 
 pub mod startup;
 
-/// TockSyscalls implements `libtock_platform::Syscalls`.
+/// TockSyscalls implements `caliptra_mcu_libtock_platform::Syscalls`.
 pub struct TockSyscalls;
 
 #[cfg(not(target_arch = "riscv32"))]

@@ -6,18 +6,20 @@ use super::pldm_client::{IMAGE_LOADING_TASK_YIELD, PLDM_TASK_YIELD};
 use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use flash_image::{FlashHeader, ImageHeader};
-use libsyscall_caliptra::dma::{AXIAddr, DMAMapping, DMASource, DMATransaction, DMA as DMASyscall};
-use pldm_common::message::firmware_update::apply_complete::ApplyResult;
-use pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
-use pldm_common::message::firmware_update::get_status::ProgressPercent;
-use pldm_common::message::firmware_update::transfer_complete::TransferResult;
-use pldm_common::message::firmware_update::verify_complete::VerifyResult;
-use pldm_common::protocol::firmware_update::{
+use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
+use caliptra_mcu_libsyscall_caliptra::dma::{
+    AXIAddr, DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
+};
+use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
+use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
+use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult;
+use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
+use caliptra_mcu_pldm_common::protocol::firmware_update::{
     ComponentResponseCode, Descriptor, PLDM_FWUP_BASELINE_TRANSFER_SIZE,
 };
-use pldm_common::util::fw_component::FirmwareComponent;
-use pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
+use caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent;
+use caliptra_mcu_pldm_lib::firmware_device::fd_ops::{ComponentOperation, FdOps, FdOpsError};
 const MAX_PLDM_TRANSFER_SIZE: usize = 196; // This should be smaller than I3C MAX_READ_WRITE_SIZE
 
 pub struct StreamingFdOps<'a, D: DMAMapping> {

@@ -8,8 +8,8 @@
 #[cfg(test)]
 mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
-    use emulator_periph::LinuxTapDevice;
-    use mcu_hw_model::McuHwModel;
+    use caliptra_mcu_emulator_periph::LinuxTapDevice;
+    use caliptra_mcu_hw_model::McuHwModel;
     use std::sync::{Arc, Mutex};
 
     #[test]
@@ -61,7 +61,7 @@ mod test {
     #[test]
     #[cfg_attr(feature = "fpga_realtime", ignore)]
     fn test_network_rom_dhcp_with_server() {
-        use xtask::network::{server, server::ServerOptions, tap};
+        use caliptra_mcu_xtask::network::{server, server::ServerOptions, tap};
 
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -112,7 +112,7 @@ mod test {
         // Create TAP device for the hardware model
         let tap_device = match LinuxTapDevice::open("tap0") {
             Ok(tap) => Arc::new(Mutex::new(
-                Box::new(tap) as Box<dyn emulator_periph::TapDevice>
+                Box::new(tap) as Box<dyn caliptra_mcu_emulator_periph::TapDevice>
             )),
             Err(e) => {
                 eprintln!("Failed to open TAP device: {}", e);

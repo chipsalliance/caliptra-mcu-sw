@@ -15,9 +15,9 @@ Abstract:
 
 --*/
 
-use network_drivers::EthernetDriver;
-use network_drivers::{exit_emulator, println, IpAddr, MacAddr};
-use network_hil::ethernet::{Ethernet, MacAddress, BROADCAST_MAC, ETH_MAX_FRAME_SIZE};
+use caliptra_mcu_network_drivers::EthernetDriver;
+use caliptra_mcu_network_drivers::{exit_emulator, println, IpAddr, MacAddr};
+use caliptra_mcu_network_hil::ethernet::{Ethernet, MacAddress, BROADCAST_MAC, ETH_MAX_FRAME_SIZE};
 use zerocopy::byteorder::big_endian::{U16, U32};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Ref};
 

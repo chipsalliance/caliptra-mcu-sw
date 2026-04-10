@@ -1,14 +1,14 @@
-//! This crate contains tests for `libtock_platform` functionality that use the
+//! This crate contains tests for `caliptra_mcu_libtock_platform` functionality that use the
 //! `Syscalls` implementation.
 //!
-//! These tests are not in `libtock_platform` because adding them to
-//! `libtock_platform causes two incompatible copies of `libtock_platform` to be
+//! These tests are not in `caliptra_mcu_libtock_platform` because adding them to
+//! `caliptra_mcu_libtock_platform causes two incompatible copies of `caliptra_mcu_libtock_platform` to be
 //! compiled:
-//!   1. The `libtock_platform` with `cfg(test)` enabled
-//!   2. The `libtock_platform` that `libtock_unittest` depends on, which has
+//!   1. The `caliptra_mcu_libtock_platform` with `cfg(test)` enabled
+//!   2. The `caliptra_mcu_libtock_platform` that `caliptra_mcu_libtock_unittest` depends on, which has
 //!      `cfg(test)` disabled.
 //!
-//! Mixing types from the two `libtock_platform` instantiations in tests results
+//! Mixing types from the two `caliptra_mcu_libtock_platform` instantiations in tests results
 //! in confusing error messages, so instead those tests live in this crate.
 
 #[cfg(test)]

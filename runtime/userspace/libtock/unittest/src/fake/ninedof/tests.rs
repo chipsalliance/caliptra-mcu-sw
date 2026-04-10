@@ -1,6 +1,6 @@
 use crate::fake::{self, SyscallDriver};
+use caliptra_mcu_libtock_platform::{share, DefaultConfig, YieldNoWaitReturn};
 use fake::ninedof::*;
-use libtock_platform::{share, DefaultConfig, YieldNoWaitReturn};
 
 //Test the command implementation
 #[test]
@@ -28,10 +28,10 @@ fn command() {
 }
 
 // Integration test that verifies NineDof works with fake::Kernel and
-// libtock_platform::Syscalls.
+// caliptra_mcu_libtock_platform::Syscalls.
 #[test]
 fn kernel_integration() {
-    use libtock_platform::Syscalls;
+    use caliptra_mcu_libtock_platform::Syscalls;
     let kernel = fake::Kernel::new();
     let ninedof = NineDof::new();
     kernel.add_driver(&ninedof);

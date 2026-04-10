@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use capsules_runtime::doe::driver::DoeDriver;
+use caliptra_mcu_capsules_runtime::doe::driver::DoeDriver;
+use caliptra_mcu_doe_transport::hil::DoeTransport;
 use core::mem::MaybeUninit;
-use doe_transport::hil::DoeTransport;
 use kernel::capabilities;
 use kernel::component::Component;
 

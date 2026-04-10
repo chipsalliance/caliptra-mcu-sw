@@ -7,7 +7,7 @@ mod raw_syscalls_impl;
 mod subscribe_impl;
 mod yield_impl;
 
-/// `fake::Syscalls` implements `libtock_platform::Syscalls` by forwarding the
+/// `fake::Syscalls` implements `caliptra_mcu_libtock_platform::Syscalls` by forwarding the
 /// system calls to the thread's `fake::Kernel` instance.
 ///
 /// It is used by unit tests to provide the code under test access to Tock's system calls.

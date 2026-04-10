@@ -6,13 +6,13 @@
 #[cfg(test)]
 pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
-    use mcu_hw_model::{flash_ctrl::ImaginaryFlashController, McuHwModel};
-    use mcu_testing_common::sleep_emulator_ticks;
-    use mcu_testing_common::wait_for_runtime_start;
-    use mcu_testing_common::MCU_RUNNING;
+    use caliptra_mcu_hw_model::{flash_ctrl::ImaginaryFlashController, McuHwModel};
+    use caliptra_mcu_registers_generated::mci;
+    use caliptra_mcu_romtime::StaticRef;
+    use caliptra_mcu_testing_common::sleep_emulator_ticks;
+    use caliptra_mcu_testing_common::wait_for_runtime_start;
+    use caliptra_mcu_testing_common::MCU_RUNNING;
     use random_port::PortPicker;
-    use registers_generated::mci;
-    use romtime::StaticRef;
     use std::process::exit;
     use std::sync::atomic::Ordering;
     use std::thread;

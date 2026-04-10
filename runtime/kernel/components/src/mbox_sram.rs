@@ -2,14 +2,14 @@
 
 // Component for MCI driver.
 
+use caliptra_mcu_registers_generated::mci;
+use caliptra_mcu_romtime::StaticRef;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
 use kernel::create_capability;
 use kernel::hil::time::Alarm;
-use registers_generated::mci;
-use romtime::StaticRef;
 
 #[macro_export]
 macro_rules! mbox_sram_component_static {
@@ -17,7 +17,10 @@ macro_rules! mbox_sram_component_static {
         use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
         let alarm = kernel::static_buf!(VirtualMuxAlarm<'static, $A>);
         let mbox_sram = kernel::static_buf!(
-            capsules_runtime::mbox_sram::MboxSram<'static, VirtualMuxAlarm<'static, $A>>
+            caliptra_mcu_capsules_runtime::mbox_sram::MboxSram<
+                'static,
+                VirtualMuxAlarm<'static, $A>,
+            >
         );
         (alarm, mbox_sram)
     }};
@@ -53,26 +56,32 @@ impl<A: Alarm<'static> + 'static> Component for MboxSramComponent<A> {
     type StaticInput = (
         &'static mut MaybeUninit<VirtualMuxAlarm<'static, A>>,
         &'static mut MaybeUninit<
-            capsules_runtime::mbox_sram::MboxSram<'static, VirtualMuxAlarm<'static, A>>,
+            caliptra_mcu_capsules_runtime::mbox_sram::MboxSram<
+                'static,
+                VirtualMuxAlarm<'static, A>,
+            >,
         >,
     );
 
-    type Output =
-        &'static capsules_runtime::mbox_sram::MboxSram<'static, VirtualMuxAlarm<'static, A>>;
+    type Output = &'static caliptra_mcu_capsules_runtime::mbox_sram::MboxSram<
+        'static,
+        VirtualMuxAlarm<'static, A>,
+    >;
 
     fn finalize(self, static_buffer: Self::StaticInput) -> Self::Output {
         let grant_cap = create_capability!(capabilities::MemoryAllocationCapability);
         let mux_alarm = static_buffer.0.write(VirtualMuxAlarm::new(self.mux_alarm));
         mux_alarm.setup();
-        let mbox_sram = static_buffer
-            .1
-            .write(capsules_runtime::mbox_sram::MboxSram::new(
-                self.driver_num,
-                self.registers,
-                self.mem_ref,
-                self.board_kernel.create_grant(self.driver_num, &grant_cap),
-                mux_alarm,
-            ));
+        let mbox_sram =
+            static_buffer
+                .1
+                .write(caliptra_mcu_capsules_runtime::mbox_sram::MboxSram::new(
+                    self.driver_num,
+                    self.registers,
+                    self.mem_ref,
+                    self.board_kernel.create_grant(self.driver_num, &grant_cap),
+                    mux_alarm,
+                ));
         mbox_sram.init();
         mbox_sram
     }

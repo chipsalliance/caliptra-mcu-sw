@@ -33,8 +33,8 @@ jobs:
 
       - name: Calculate ROM and runtime digests
         run: |
-          echo "rom_hash=$(sha384sum target/riscv32imc-unknown-none-elf/release/mcu-rom-emulator.bin)" >> $GITHUB_ENV
-          echo "runtime_hash=$(sha384sum target/riscv32imc-unknown-none-elf/release/mcu-runtime-emulator.bin)" >> $GITHUB_ENV
+          echo "rom_hash=$(sha384sum target/riscv32imc-unknown-none-elf/release/caliptra-mcu-rom-emulator.bin)" >> $GITHUB_ENV
+          echo "runtime_hash=$(sha384sum target/riscv32imc-unknown-none-elf/release/caliptra-mcu-runtime-emulator.bin)" >> $GITHUB_ENV
 
       - name: Clean
         run: cargo clean
@@ -45,6 +45,6 @@ jobs:
       - name: Calculate digests again and ensure it hasn't changed
         run: |
           echo "Comparing ROM hash"
-          test "$rom_hash" = "$(sha384sum target/riscv32imc-unknown-none-elf/release/mcu-rom-emulator.bin)"
+          test "$rom_hash" = "$(sha384sum target/riscv32imc-unknown-none-elf/release/caliptra-mcu-rom-emulator.bin)"
           echo "Comparing runtime hash"
-          test "$runtime_hash" = "$(sha384sum target/riscv32imc-unknown-none-elf/release/mcu-runtime-emulator.bin)"
+          test "$runtime_hash" = "$(sha384sum target/riscv32imc-unknown-none-elf/release/caliptra-mcu-runtime-emulator.bin)"

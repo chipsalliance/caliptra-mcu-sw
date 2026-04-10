@@ -1,6 +1,6 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "tbf-header"
+name = "caliptra-mcu-tbf-header"
 edition = "2021"
 

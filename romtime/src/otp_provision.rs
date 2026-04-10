@@ -7,12 +7,12 @@
 //   MC_FUSE_WRITE          (0x4946_5057 / "IFPW")
 //   MC_FUSE_LOCK_PARTITION (0x4946_504B / "IFPK")
 //
-// All OTP access goes through the DAI helpers in romtime::Otp
+// All OTP access goes through the DAI helpers in caliptra_mcu_romtime::Otp
 // (read_word, write_word, finalize_digest).
 
 use crate::{HexWord, Otp};
-use mcu_error::McuError;
-use registers_generated::fuses;
+use caliptra_mcu_error::McuError;
+use caliptra_mcu_registers_generated::fuses;
 
 // ---------------------------------------------------------------------------
 // Partition identifiers (same numbering as the Fuse definition script)

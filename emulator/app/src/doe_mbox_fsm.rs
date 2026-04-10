@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-use emulator_periph::DoeMboxPeriph;
-use mcu_testing_common::{sleep_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
+use caliptra_mcu_emulator_periph::DoeMboxPeriph;
+use caliptra_mcu_testing_common::{sleep_emulator_ticks, wait_for_runtime_start, MCU_RUNNING};
 use std::process::exit;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, Sender};

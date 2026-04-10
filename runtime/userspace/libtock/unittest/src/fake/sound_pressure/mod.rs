@@ -4,7 +4,7 @@
 //! a function `set_value` used to immediately call an upcall with a sound pressure value read by the sensor
 //! and a function 'set_value_sync' used to call the upcall when the read command is received.
 use crate::{DriverInfo, DriverShareRef};
-use libtock_platform::{CommandReturn, ErrorCode};
+use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
 use std::cell::Cell;
 
 // The `upcall_on_command` field is set to Some(value) if an upcall(with value as its argument) should be called when read command is received,

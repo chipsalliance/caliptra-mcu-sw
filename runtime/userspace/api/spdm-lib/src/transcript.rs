@@ -4,8 +4,8 @@ use crate::cert_store::MAX_CERT_SLOTS_SUPPORTED;
 use crate::protocol::SpdmVersion;
 use crate::session::SessionInfo;
 use arrayvec::ArrayVec;
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
-use libapi_caliptra::error::CaliptraApiError;
+use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
+use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
 
 #[derive(Debug, PartialEq)]
 pub enum TranscriptError {

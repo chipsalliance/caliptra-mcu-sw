@@ -5,10 +5,12 @@
 #[cfg(test)]
 mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
-    use mcu_hw_model::McuHwModel;
-    use mcu_testing_common::i3c_socket::{self, BufferedStream, MctpTestState, MctpTransportTest};
-    use mcu_testing_common::mctp_util::common::MctpUtil;
-    use mcu_testing_common::MCU_RUNNING;
+    use caliptra_mcu_hw_model::McuHwModel;
+    use caliptra_mcu_testing_common::i3c_socket::{
+        self, BufferedStream, MctpTestState, MctpTransportTest,
+    };
+    use caliptra_mcu_testing_common::mctp_util::common::MctpUtil;
+    use caliptra_mcu_testing_common::MCU_RUNNING;
     use random_port::PortPicker;
     use std::sync::atomic::Ordering;
 

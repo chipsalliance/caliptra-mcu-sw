@@ -1,5 +1,7 @@
-use libtock_platform::{allow_rw, share, CommandReturn, ErrorCode, Syscalls};
-use libtock_unittest::{command_return, fake, DriverInfo, RwAllowBuffer, SyscallLogEntry};
+use caliptra_mcu_libtock_platform::{allow_rw, share, CommandReturn, ErrorCode, Syscalls};
+use caliptra_mcu_libtock_unittest::{
+    command_return, fake, DriverInfo, RwAllowBuffer, SyscallLogEntry,
+};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::thread_local;

@@ -10,6 +10,10 @@
 use crate::pic::Pic;
 use crate::pmp::{VeeRPMP, VeeRProtectionMMLEPMP};
 use crate::timers::{InternalTimers, TimerInterrupts};
+use caliptra_mcu_config::McuMemoryMap;
+use caliptra_mcu_registers_generated::i3c::regs::I3c;
+use caliptra_mcu_registers_generated::mci;
+use caliptra_mcu_registers_generated::otp_ctrl;
 use capsules_core::virtualizers::virtual_alarm::MuxAlarm;
 use core::fmt::Write;
 use core::ptr::addr_of;
@@ -17,10 +21,6 @@ use kernel::debug;
 use kernel::platform::chip::{Chip, InterruptService};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::utilities::StaticRef;
-use mcu_config::McuMemoryMap;
-use registers_generated::i3c::regs::I3c;
-use registers_generated::mci;
-use registers_generated::otp_ctrl;
 use rv32i::csr::{mcause, mie::mie, CSR};
 use rv32i::syscall::SysCall;
 
@@ -46,12 +46,12 @@ pub struct VeeR<'a, I: InterruptService + 'a> {
 }
 
 pub struct VeeRDefaultPeripherals<'a> {
-    pub i3c: i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
-    pub i3c1: i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
-    pub mci: romtime::Mci,
-    pub mcu_mbox0: mcu_mbox_driver::McuMailbox<'a, InternalTimers<'a>>,
+    pub i3c: caliptra_mcu_i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
+    pub i3c1: caliptra_mcu_i3c_driver::core::I3CCore<'a, InternalTimers<'a>>,
+    pub mci: caliptra_mcu_romtime::Mci,
+    pub mcu_mbox0: caliptra_mcu_mbox_driver::McuMailbox<'a, InternalTimers<'a>>,
     pub additional_interrupt_handler: &'static dyn InterruptService,
-    pub otp: romtime::Otp,
+    pub otp: caliptra_mcu_romtime::Otp,
 }
 
 impl<'a> VeeRDefaultPeripherals<'a> {
@@ -59,26 +59,28 @@ impl<'a> VeeRDefaultPeripherals<'a> {
         additional_interrupt_handler: &'static dyn InterruptService,
         alarm: &'a MuxAlarm<'a, InternalTimers<'a>>,
         memory_map: &McuMemoryMap,
-        mci_regs: romtime::StaticRef<mci::regs::Mci>,
+        mci_regs: caliptra_mcu_romtime::StaticRef<mci::regs::Mci>,
     ) -> Self {
-        let mci_driver = romtime::Mci::new(mci_regs);
-        let otp: romtime::StaticRef<otp_ctrl::regs::OtpCtrl> = unsafe {
-            romtime::StaticRef::new(memory_map.otp_offset as *const otp_ctrl::regs::OtpCtrl)
+        let mci_driver = caliptra_mcu_romtime::Mci::new(mci_regs);
+        let otp: caliptra_mcu_romtime::StaticRef<otp_ctrl::regs::OtpCtrl> = unsafe {
+            caliptra_mcu_romtime::StaticRef::new(
+                memory_map.otp_offset as *const otp_ctrl::regs::OtpCtrl,
+            )
         };
-        let otp_driver = romtime::Otp::new(otp);
+        let otp_driver = caliptra_mcu_romtime::Otp::new(otp);
         Self {
-            i3c: i3c_driver::core::I3CCore::new(
+            i3c: caliptra_mcu_i3c_driver::core::I3CCore::new(
                 unsafe { StaticRef::new(memory_map.i3c_offset as *const I3c) },
                 alarm,
             ),
-            i3c1: i3c_driver::core::I3CCore::new(
+            i3c1: caliptra_mcu_i3c_driver::core::I3CCore::new(
                 unsafe { StaticRef::new(memory_map.i3c1_offset as *const I3c) },
                 alarm,
             ),
             mci: mci_driver,
-            mcu_mbox0: mcu_mbox_driver::McuMailbox::new(
+            mcu_mbox0: caliptra_mcu_mbox_driver::McuMailbox::new(
                 mci_regs,
-                memory_map.mci_offset + mcu_mbox_driver::MCU_MBOX0_SRAM_OFFSET,
+                memory_map.mci_offset + caliptra_mcu_mbox_driver::MCU_MBOX0_SRAM_OFFSET,
                 alarm,
             ),
             additional_interrupt_handler,

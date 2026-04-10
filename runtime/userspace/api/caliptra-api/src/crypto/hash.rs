@@ -8,8 +8,8 @@ use caliptra_api::mailbox::{
     CmHashAlgorithm, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq,
     MailboxReqHeader, Request, CMB_SHA_CONTEXT_SIZE,
 };
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use core::mem::size_of;
-use libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::{FromBytes, IntoBytes};
 
 pub const SHA384_HASH_SIZE: usize = 48;

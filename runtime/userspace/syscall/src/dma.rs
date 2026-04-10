@@ -6,9 +6,9 @@
 //! transfers between AXI source and AXI destination addresses.
 
 use crate::DefaultSyscalls;
+use caliptra_mcu_libtock_platform::{share, AllowRo, DefaultConfig, ErrorCode, Syscalls};
+use caliptra_mcu_libtockasync::TockSubscribe;
 use core::marker::PhantomData;
-use libtock_platform::{share, AllowRo, DefaultConfig, ErrorCode, Syscalls};
-use libtockasync::TockSubscribe;
 /// DMA interface.
 pub struct DMA<S: Syscalls = DefaultSyscalls> {
     syscall: PhantomData<S>,

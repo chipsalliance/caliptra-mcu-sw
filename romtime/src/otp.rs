@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::{HexBytes, HexWord, StaticRef};
+use caliptra_mcu_error::{McuError, McuResult};
+use caliptra_mcu_registers_generated::fuses::{self, FuseEntryInfo, OtpPartitionInfo};
+use caliptra_mcu_registers_generated::otp_ctrl;
 use core::fmt::Write;
-use mcu_error::{McuError, McuResult};
-use registers_generated::fuses::{self, FuseEntryInfo, OtpPartitionInfo};
-use registers_generated::otp_ctrl;
 use tock_registers::interfaces::{Readable, Writeable};
 
 use crate::{FuseLayout, LifecycleHashedToken, LifecycleHashedTokens, LC_TOKENS_OFFSET};
@@ -789,7 +789,7 @@ impl Otp {
             Some(w0 as u64 | ((w1 as u64) << 32))
         });
 
-        let digest = otp_digest::otp_digest_iter(blocks, iv, cnst);
+        let digest = caliptra_mcu_otp_digest::otp_digest_iter(blocks, iv, cnst);
         err?;
         Ok(digest)
     }

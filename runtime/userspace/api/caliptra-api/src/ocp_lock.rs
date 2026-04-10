@@ -16,14 +16,14 @@ pub use caliptra_api::mailbox::{
     OcpLockTestAccessKeyReq, OcpLockTestAccessKeyResp, OcpLockUnloadMekReq, OcpLockUnloadMekResp,
     Request, Response, SealedAccessKey, WrappedKey,
 };
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_romtime::ocp_lock::Error as OcpLockError;
 use core::mem::size_of;
 use core::str::FromStr;
 use dpe::commands::{Command, CommandHdr, SignFlags, SignP384Cmd};
 use dpe::context::ContextHandle;
 use dpe::response::SignP384Resp;
 use dpe::DpeProfile;
-use libsyscall_caliptra::mailbox::Mailbox;
-use romtime::ocp_lock::Error as OcpLockError;
 
 use zerocopy::{IntoBytes, TryFromBytes};
 

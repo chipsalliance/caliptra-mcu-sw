@@ -7,11 +7,11 @@ mod slot0;
 use crate::spdm::cert_store::cert_chain::EndorsementCertChainTrait;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use libapi_caliptra::certificate::CertContext;
-use libapi_caliptra::crypto::asym::AsymAlgo;
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
-use libapi_caliptra::error::CaliptraApiError;
-use spdm_lib::cert_store::{CertStoreError, CertStoreResult};
+use caliptra_mcu_libapi_caliptra::certificate::CertContext;
+use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
+use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
+use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
+use caliptra_mcu_spdm_lib::cert_store::{CertStoreError, CertStoreResult};
 
 // Example implementation of Endorsement cert chain
 pub struct EndorsementCertChain<'b> {

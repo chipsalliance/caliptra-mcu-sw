@@ -1,10 +1,13 @@
 use core::convert::TryInto;
 
-pub(super) fn exit(r0: libtock_platform::Register, r1: libtock_platform::Register) -> ! {
+pub(super) fn exit(
+    r0: caliptra_mcu_libtock_platform::Register,
+    r1: caliptra_mcu_libtock_platform::Register,
+) -> ! {
     let exit_num: u32 = r0.try_into().expect("Too large exit number");
     let completion_code: u32 = r1.try_into().expect("Too large completion code");
     match exit_num {
-        libtock_platform::exit_id::TERMINATE => {
+        caliptra_mcu_libtock_platform::exit_id::TERMINATE => {
             println!("exit-terminate called with code {}", completion_code);
 
             #[cfg(not(miri))]
@@ -12,7 +15,7 @@ pub(super) fn exit(r0: libtock_platform::Register, r1: libtock_platform::Registe
 
             std::process::exit(1);
         }
-        libtock_platform::exit_id::RESTART => {
+        caliptra_mcu_libtock_platform::exit_id::RESTART => {
             println!("exit-restart called with code {}", completion_code);
 
             #[cfg(not(miri))]

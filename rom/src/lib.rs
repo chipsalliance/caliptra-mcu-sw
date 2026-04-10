@@ -58,7 +58,7 @@ pub use fw_hitless_update::FwHitlessUpdate;
 use caliptra_api::CaliptraApiError;
 
 #[cfg(feature = "ocp-lock")]
-pub use romtime::ocp_lock;
+pub use caliptra_mcu_romtime::ocp_lock;
 
 pub trait FatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> !;
@@ -103,8 +103,10 @@ fn exception_handler() -> ! {
         )
     };
 
-    romtime::println!("EXCEPTION mcause={mcause:#08X} mepc={mepc:#08X} sp={sp:#08X} ra={ra:#08X}");
-    fatal_error(mcu_error::McuError::GENERIC_EXCEPTION)
+    caliptra_mcu_romtime::println!(
+        "EXCEPTION mcause={mcause:#08X} mepc={mepc:#08X} sp={sp:#08X} ra={ra:#08X}"
+    );
+    fatal_error(caliptra_mcu_error::McuError::GENERIC_EXCEPTION)
 }
 
 #[no_mangle]
@@ -140,7 +142,7 @@ fn fatal_error_raw(code: u32) -> ! {
 
 #[inline(never)]
 #[allow(dead_code)]
-pub fn fatal_error(error: mcu_error::McuError) -> ! {
+pub fn fatal_error(error: caliptra_mcu_error::McuError) -> ! {
     fatal_error_raw(error.into())
 }
 

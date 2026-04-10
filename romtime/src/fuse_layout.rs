@@ -4,8 +4,8 @@
 #![allow(dead_code)]
 #![allow(unused)]
 
+use caliptra_mcu_error::{McuError, McuResult};
 use core::num::NonZero;
-use mcu_error::{McuError, McuResult};
 
 #[derive(Copy, Clone)]
 pub struct Bits(pub NonZero<usize>);
@@ -472,8 +472,10 @@ pub fn extract_fuse_value<const N: usize>(
 /// Returns `None` if the bits or duplication value is zero (which shouldn't
 /// happen for well-formed generated code).
 impl FuseLayout {
-    pub fn from_generated(layout: &registers_generated::fuses::FuseLayoutType) -> Option<Self> {
-        use registers_generated::fuses::FuseLayoutType;
+    pub fn from_generated(
+        layout: &caliptra_mcu_registers_generated::fuses::FuseLayoutType,
+    ) -> Option<Self> {
+        use caliptra_mcu_registers_generated::fuses::FuseLayoutType;
         match *layout {
             FuseLayoutType::Single { bits } => {
                 Some(FuseLayout::Single(Bits(NonZero::new(bits as usize)?)))

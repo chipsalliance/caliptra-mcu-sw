@@ -1,12 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Result};
-use emulator_periph::{otp_digest, otp_scramble, otp_unscramble};
-use mcu_otp_lifecycle::hash_lc_token;
-use romtime::LifecycleControllerState;
+use caliptra_mcu_emulator_periph::{caliptra_mcu_otp_digest, otp_scramble, otp_unscramble};
+use caliptra_mcu_otp_lifecycle::hash_lc_token;
+use caliptra_mcu_romtime::LifecycleControllerState;
 
 // Re-export lifecycle ECC encode/decode from the common crate.
-pub use mcu_otp_lifecycle::{
+pub use caliptra_mcu_otp_lifecycle::{
     lc_generate_count_mem, LIFECYCLE_COUNT_SIZE, LIFECYCLE_MEM_SIZE, LIFECYCLE_STATE_SIZE,
 };
 
@@ -14,7 +14,9 @@ pub use mcu_otp_lifecycle::{
 pub fn lc_generate_state_mem(
     state: LifecycleControllerState,
 ) -> Result<[u8; LIFECYCLE_STATE_SIZE]> {
-    Ok(mcu_otp_lifecycle::lc_generate_state_mem(u8::from(state))?)
+    Ok(caliptra_mcu_otp_lifecycle::lc_generate_state_mem(
+        u8::from(state),
+    )?)
 }
 
 /// Generate the OTP memory contents associated with the lifecycle state and transition count.
@@ -22,7 +24,7 @@ pub fn lc_generate_memory(
     state: LifecycleControllerState,
     transition_count: u8,
 ) -> Result<[u8; LIFECYCLE_MEM_SIZE]> {
-    Ok(mcu_otp_lifecycle::lc_generate_memory(
+    Ok(caliptra_mcu_otp_lifecycle::lc_generate_memory(
         u8::from(state),
         transition_count,
     )?)
@@ -30,19 +32,19 @@ pub fn lc_generate_memory(
 
 /// Decode the lifecycle state and transition count from OTP memory (as stored, i.e., reversed).
 pub fn lc_decode_memory(mem: &[u8; LIFECYCLE_MEM_SIZE]) -> Result<(LifecycleControllerState, u8)> {
-    let (state_idx, count) = mcu_otp_lifecycle::lc_decode_memory(mem)?;
+    let (state_idx, count) = caliptra_mcu_otp_lifecycle::lc_decode_memory(mem)?;
     Ok((LifecycleControllerState::from(state_idx), count))
 }
 
 /// Decode the lifecycle state from OTP memory (pre-reversal format).
 pub fn lc_decode_state_mem(mem: &[u8; LIFECYCLE_STATE_SIZE]) -> Result<LifecycleControllerState> {
-    let state_idx = mcu_otp_lifecycle::lc_decode_state_mem(mem)?;
+    let state_idx = caliptra_mcu_otp_lifecycle::lc_decode_state_mem(mem)?;
     Ok(LifecycleControllerState::from(state_idx))
 }
 
 /// Decode the lifecycle transition count from OTP memory (pre-reversal format).
 pub fn lc_decode_count_mem(mem: &[u8; LIFECYCLE_COUNT_SIZE]) -> Result<u8> {
-    Ok(mcu_otp_lifecycle::lc_decode_count_mem(mem)?)
+    Ok(caliptra_mcu_otp_lifecycle::lc_decode_count_mem(mem)?)
 }
 
 pub const DIGEST_SIZE: usize = 8;
@@ -52,7 +54,7 @@ pub const LIFECYCLE_TOKENS_MEM_SIZE: usize = 184; // 11 tokens of 16 bytes each 
 const OTP_IV: u64 = 0x90C7F21F6224F027;
 const OTP_CNST: u128 = 0xF98C48B1F93772844A22D4B78FE0266F;
 
-pub(crate) use emulator_periph::OTP_SCRAMBLE_KEYS;
+pub(crate) use caliptra_mcu_emulator_periph::OTP_SCRAMBLE_KEYS;
 
 const LC_TOKENS_KEY_IDX: usize = 6;
 
@@ -89,7 +91,7 @@ fn otp_unscramble_data(data: &mut [u8], key_idx: usize) -> Result<()> {
 
 /// Generate the OTP memory contents for lifecycle tokens partition (including the digest).
 pub fn otp_generate_lifecycle_tokens_mem(
-    tokens: &romtime::LifecycleRawTokens,
+    tokens: &caliptra_mcu_romtime::LifecycleRawTokens,
 ) -> Result<[u8; LIFECYCLE_TOKENS_MEM_SIZE]> {
     let mut output = [0u8; LIFECYCLE_TOKENS_MEM_SIZE];
     for (i, token) in tokens.test_unlock.iter().enumerate() {
@@ -106,7 +108,7 @@ pub fn otp_generate_lifecycle_tokens_mem(
         LC_TOKENS_KEY_IDX,
     )?;
 
-    let digest = otp_digest(
+    let digest = caliptra_mcu_otp_digest(
         &output[..LIFECYCLE_TOKENS_MEM_SIZE - DIGEST_SIZE],
         OTP_IV,
         OTP_CNST,
@@ -117,7 +119,7 @@ pub fn otp_generate_lifecycle_tokens_mem(
 
 #[cfg(test)]
 mod tests {
-    use romtime::{LifecycleRawTokens, LifecycleToken};
+    use caliptra_mcu_romtime::{LifecycleRawTokens, LifecycleToken};
 
     use super::*;
 

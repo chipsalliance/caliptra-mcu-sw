@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::tests::doe_util::protocol::*;
-use mcu_testing_common::sleep_emulator_ticks;
+use caliptra_mcu_testing_common::sleep_emulator_ticks;
 use std::sync::mpsc::{Receiver, RecvError, SendError, Sender};
 use zerocopy::IntoBytes;
 

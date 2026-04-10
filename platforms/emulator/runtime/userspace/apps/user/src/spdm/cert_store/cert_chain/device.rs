@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use libapi_caliptra::certificate::CertContext;
-use libapi_caliptra::crypto::asym::AsymAlgo;
-use spdm_lib::cert_store::{CertStoreError, CertStoreResult};
+use caliptra_mcu_libapi_caliptra::certificate::CertContext;
+use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
+use caliptra_mcu_spdm_lib::cert_store::{CertStoreError, CertStoreResult};
 
 const MAX_CERT_PORTION_SIZE: usize = 1024;
 

@@ -13,13 +13,13 @@ use caliptra_hw_model::{
     DeviceLifecycle, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem, Output,
     SecurityState, SubsystemInitParams, XI3CWrapper,
 };
-use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
-use mcu_testing_common::i3c::{
+use caliptra_mcu_romtime::LifecycleControllerState;
+use caliptra_mcu_romtime::McuBootMilestones;
+use caliptra_mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
-use mcu_testing_common::{update_ticks, MCU_RUNNING, MCU_RUNTIME_STARTED};
-use romtime::LifecycleControllerState;
-use romtime::McuBootMilestones;
+use caliptra_mcu_testing_common::{update_ticks, MCU_RUNNING, MCU_RUNTIME_STARTED};
+use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
 use std::collections::VecDeque;
 use std::io::Write;
 use std::marker::PhantomData;
@@ -39,14 +39,18 @@ struct CaliptraMmio {
 
 impl CaliptraMmio {
     #[allow(unused)]
-    fn mbox(&self) -> &mut registers_generated::mbox::regs::Mbox {
+    fn mbox(&self) -> &mut caliptra_mcu_registers_generated::mbox::regs::Mbox {
         unsafe {
-            &mut *(self.ptr.offset(0x2_0000 / 4) as *mut registers_generated::mbox::regs::Mbox)
+            &mut *(self.ptr.offset(0x2_0000 / 4)
+                as *mut caliptra_mcu_registers_generated::mbox::regs::Mbox)
         }
     }
     #[allow(unused)]
-    fn soc(&self) -> &mut registers_generated::soc::regs::Soc {
-        unsafe { &mut *(self.ptr.offset(0x3_0000 / 4) as *mut registers_generated::soc::regs::Soc) }
+    fn soc(&self) -> &mut caliptra_mcu_registers_generated::soc::regs::Soc {
+        unsafe {
+            &mut *(self.ptr.offset(0x3_0000 / 4)
+                as *mut caliptra_mcu_registers_generated::soc::regs::Soc)
+        }
     }
 }
 
@@ -65,7 +69,7 @@ pub struct ModelFpgaRealtime {
     caliptra_firmware: Option<Vec<u8>>,
     soc_manifest: Option<Vec<u8>>,
     mcu_firmware: Option<Vec<u8>>,
-    pub usb_host_controller: emulator_periph::UsbHostController,
+    pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
 }
 
 impl ModelFpgaRealtime {
@@ -364,8 +368,10 @@ impl McuHwModel for ModelFpgaRealtime {
                 "Starting I3C socket on port {} and connected to hardware",
                 i3c_port
             );
-            let (rx, tx) =
-                mcu_testing_common::i3c_socket_server::start_i3c_socket(&MCU_RUNNING, i3c_port);
+            let (rx, tx) = caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket(
+                &MCU_RUNNING,
+                i3c_port,
+            );
 
             (Some(rx), Some(tx))
         } else {
@@ -384,7 +390,7 @@ impl McuHwModel for ModelFpgaRealtime {
             None
         };
 
-        let usb_periph = emulator_periph::UsbDevPeriph::new();
+        let usb_periph = caliptra_mcu_emulator_periph::UsbDevPeriph::new();
         let usb_host_controller = usb_periph.host_controller();
 
         let mut m = Self {
@@ -756,11 +762,11 @@ mod tests {
     #[cfg(feature = "fpga_realtime")]
     #[test]
     fn test_mctp() {
-        use mcu_builder::flash_image::build_flash_image_bytes;
+        use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
 
         use crate::DefaultHwModel;
 
-        let binaries = mcu_builder::FirmwareBinaries::from_env().unwrap();
+        let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env().unwrap();
 
         // Build flash image from firmware binaries
         let flash_image = build_flash_image_bytes(

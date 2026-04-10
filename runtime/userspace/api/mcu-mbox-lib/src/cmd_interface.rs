@@ -2,14 +2,13 @@
 
 use crate::transport::McuMboxTransport;
 use caliptra_api::mailbox::{CommandId as CaliptraCommandId, MailboxReqHeader};
-use core::sync::atomic::{AtomicBool, Ordering};
-use external_cmds_common::{
+use caliptra_mcu_external_cmds_common::{
     DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, UnifiedCommandHandler, MAX_UID_LEN,
 };
-use libapi_caliptra::mailbox_api::execute_mailbox_cmd;
-use libsyscall_caliptra::mailbox::Mailbox;
-use libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
-use mcu_mbox_common::messages::{
+use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
+use caliptra_mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
     DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, MailboxRespHeader,
     MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptInitResp, McuAesDecryptUpdateReq,
@@ -30,10 +29,11 @@ use mcu_mbox_common::messages::{
     DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
 };
 #[cfg(feature = "periodic-fips-self-test")]
-use mcu_mbox_common::messages::{
+use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
     McuFipsPeriodicStatusResp,
 };
+use core::sync::atomic::{AtomicBool, Ordering};
 use zerocopy::{FromBytes, IntoBytes};
 
 #[derive(Debug)]
@@ -49,7 +49,7 @@ pub enum MsgHandlerError {
 pub struct CmdInterface<'a> {
     transport: &'a mut McuMboxTransport,
     non_crypto_cmds_handler: &'a dyn UnifiedCommandHandler,
-    caliptra_mbox: libsyscall_caliptra::mailbox::Mailbox, // Handle crypto commands via caliptra mailbox
+    caliptra_mbox: caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox, // Handle crypto commands via caliptra mailbox
     busy: AtomicBool,
 }
 

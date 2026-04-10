@@ -12,9 +12,9 @@ crate-type = ["cdylib", "staticlib"]
 [dependencies]
 caliptra-util-host-commands.workspace = true
 caliptra-util-host-session.workspace = true
-caliptra-util-host-transport.workspace = true
-caliptra-util-host-command-types.workspace = true
-caliptra-util-host-osal.workspace = true
+caliptra-mcu-core-util-host-transport.workspace = true
+caliptra-mcu-core-util-host-command-types.workspace = true
+caliptra-mcu-core-util-host-osal.workspace = true
 
 [build-dependencies]
 cbindgen.workspace = true
@@ -22,4 +22,4 @@ cc.workspace = true
 
 [features]
 default = ["std"]
-std = ["caliptra-util-host-osal/std"]
+std = ["caliptra-mcu-core-util-host-osal/std"]

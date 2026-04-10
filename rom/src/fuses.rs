@@ -4,12 +4,12 @@
 #![allow(dead_code)]
 #![allow(unused)]
 
+use caliptra_mcu_error::{McuError, McuResult};
+use caliptra_mcu_registers_generated::fuses as generated_fuses;
+use caliptra_mcu_romtime::otp::Otp;
+use caliptra_mcu_romtime::PqcKeyType;
+use caliptra_mcu_romtime::{Bits, Duplication, FuseLayout};
 use core::num::NonZero;
-use mcu_error::{McuError, McuResult};
-use registers_generated::fuses as generated_fuses;
-use romtime::otp::Otp;
-use romtime::PqcKeyType;
-use romtime::{Bits, Duplication, FuseLayout};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 /// Owner public key hash structure.

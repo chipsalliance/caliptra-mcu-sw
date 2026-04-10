@@ -1,14 +1,14 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "mcu-mbox-driver"
+name = "caliptra-mcu-mbox-driver"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
 [dependencies]
 capsules-core.workspace = true
-mcu-mbox-comm.workspace = true
+caliptra-mcu-mbox-comm.workspace = true
 kernel.workspace = true
-registers-generated.workspace = true
-romtime.workspace = true
+caliptra-mcu-registers-generated.workspace = true
+caliptra-mcu-romtime.workspace = true

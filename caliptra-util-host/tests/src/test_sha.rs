@@ -5,10 +5,10 @@
 //! These tests verify the SHA API functions work correctly with the mock mailbox.
 
 use crate::common::{test_constants::*, MockMailbox};
-use caliptra_util_host_command_types::crypto_hash::{ShaAlgorithm, SHA_CONTEXT_SIZE};
+use caliptra_mcu_core_util_host_command_types::crypto_hash::{ShaAlgorithm, SHA_CONTEXT_SIZE};
 use caliptra_util_host_commands::api::crypto_hash::caliptra_cmd_sha_init;
 use caliptra_util_host_session::CaliptraSession;
-use caliptra_util_host_transport::Mailbox;
+use caliptra_mcu_core_util_host_transport::Mailbox;
 
 /// Test SHA384 init command
 #[test]
@@ -18,12 +18,12 @@ fn test_sha384_init_basic() {
     let mut mock_mailbox = MockMailbox::new(TEST_DEVICE_ID_1);
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     let mut session = CaliptraSession::new(
         1,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 
@@ -59,12 +59,12 @@ fn test_sha512_init_basic() {
     let mut mock_mailbox = MockMailbox::new(TEST_DEVICE_ID_1);
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     let mut session = CaliptraSession::new(
         1,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 
@@ -100,13 +100,13 @@ fn test_sha_disconnected_session() {
     let mut mock_mailbox = MockMailbox::new(TEST_DEVICE_ID_1);
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     // Create session but don't connect
     let mut session = CaliptraSession::new(
         1,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 

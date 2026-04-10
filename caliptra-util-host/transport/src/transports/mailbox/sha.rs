@@ -15,11 +15,11 @@ extern crate alloc;
 use super::checksum::calc_checksum;
 use super::command_traits::*;
 use alloc::vec::Vec;
-use caliptra_util_host_command_types::crypto_hash::{
+use caliptra_mcu_core_util_host_command_types::crypto_hash::{
     ShaFinalRequest, ShaFinalResponse, ShaInitRequest, ShaInitResponse, ShaUpdateRequest,
     ShaUpdateResponse, MAX_HASH_SIZE, MAX_SHA_INPUT_SIZE, SHA_CONTEXT_SIZE,
 };
-use caliptra_util_host_command_types::CommonResponse;
+use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 #[repr(C)]

@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 use caliptra_api::mailbox::{FwInfoResp, GetImageInfoResp};
+use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use caliptra_mcu_libapi_caliptra::evidence::device_state::*;
+use caliptra_mcu_libapi_caliptra::evidence::pcr_quote::{PcrQuote, PCR_QUOTE_BUFFER_SIZE};
+use caliptra_mcu_romtime::{println, test_exit};
 use core::fmt::Write;
-use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
-use libapi_caliptra::evidence::device_state::*;
-use libapi_caliptra::evidence::pcr_quote::{PcrQuote, PCR_QUOTE_BUFFER_SIZE};
-use romtime::{println, test_exit};
 
 #[allow(unused)]
 pub(crate) async fn test_get_pcr_quote() {

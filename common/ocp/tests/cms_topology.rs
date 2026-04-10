@@ -10,15 +10,15 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 
+use caliptra_mcu_ocp::cms::slice_fifo::SliceFifoRegion;
+use caliptra_mcu_ocp::cms::slice_indirect::SliceIndirectRegion;
+use caliptra_mcu_ocp::interface::{RecoveryAction, RecoveryStateMachine};
+use caliptra_mcu_ocp::protocol::device_status::RecoveryReasonCode;
+use caliptra_mcu_ocp::protocol::indirect_fifo_status::{self, FifoCmsRegionType};
+use caliptra_mcu_ocp::protocol::indirect_status::{self, CmsRegionType};
+use caliptra_mcu_ocp::protocol::RecoveryCommand;
+use caliptra_mcu_ocp::vendor::NoopVendorHandler;
 use common::{take_last_response, test_config, MockUsbDeviceDriver};
-use ocp::cms::slice_fifo::SliceFifoRegion;
-use ocp::cms::slice_indirect::SliceIndirectRegion;
-use ocp::interface::{RecoveryAction, RecoveryStateMachine};
-use ocp::protocol::device_status::RecoveryReasonCode;
-use ocp::protocol::indirect_fifo_status::{self, FifoCmsRegionType};
-use ocp::protocol::indirect_status::{self, CmsRegionType};
-use ocp::protocol::RecoveryCommand;
-use ocp::vendor::NoopVendorHandler;
 
 /// Accessing a FIFO CMS region (index 1) via INDIRECT_CTRL + INDIRECT_STATUS
 /// should report CmsRegionType::Unsupported.
@@ -31,8 +31,10 @@ fn fifo_cms_via_indirect_ctrl_returns_unsupported() {
     let mut fifo_region =
         SliceFifoRegion::new(&mut fifo_buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
 
-    let mut ind_regions: [(u8, &mut dyn ocp::cms::IndirectCmsRegion); 1] = [(0, &mut ind_region)];
-    let mut fifo_regions: [(u8, &mut dyn ocp::cms::FifoCmsRegion); 1] = [(1, &mut fifo_region)];
+    let mut ind_regions: [(u8, &mut dyn caliptra_mcu_ocp::cms::IndirectCmsRegion); 1] =
+        [(0, &mut ind_region)];
+    let mut fifo_regions: [(u8, &mut dyn caliptra_mcu_ocp::cms::FifoCmsRegion); 1] =
+        [(1, &mut fifo_region)];
 
     let mut transport = MockUsbDeviceDriver::new(&sent);
 
@@ -79,8 +81,10 @@ fn indirect_cms_via_fifo_ctrl_returns_unsupported() {
     let mut fifo_region =
         SliceFifoRegion::new(&mut fifo_buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
 
-    let mut ind_regions: [(u8, &mut dyn ocp::cms::IndirectCmsRegion); 1] = [(0, &mut ind_region)];
-    let mut fifo_regions: [(u8, &mut dyn ocp::cms::FifoCmsRegion); 1] = [(1, &mut fifo_region)];
+    let mut ind_regions: [(u8, &mut dyn caliptra_mcu_ocp::cms::IndirectCmsRegion); 1] =
+        [(0, &mut ind_region)];
+    let mut fifo_regions: [(u8, &mut dyn caliptra_mcu_ocp::cms::FifoCmsRegion); 1] =
+        [(1, &mut fifo_region)];
 
     let mut transport = MockUsbDeviceDriver::new(&sent);
 
@@ -127,8 +131,10 @@ fn invalid_cms_index_returns_unsupported() {
     let mut fifo_region =
         SliceFifoRegion::new(&mut fifo_buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
 
-    let mut ind_regions: [(u8, &mut dyn ocp::cms::IndirectCmsRegion); 1] = [(0, &mut ind_region)];
-    let mut fifo_regions: [(u8, &mut dyn ocp::cms::FifoCmsRegion); 1] = [(1, &mut fifo_region)];
+    let mut ind_regions: [(u8, &mut dyn caliptra_mcu_ocp::cms::IndirectCmsRegion); 1] =
+        [(0, &mut ind_region)];
+    let mut fifo_regions: [(u8, &mut dyn caliptra_mcu_ocp::cms::FifoCmsRegion); 1] =
+        [(1, &mut fifo_region)];
 
     let mut transport = MockUsbDeviceDriver::new(&sent);
 
@@ -185,7 +191,7 @@ fn multiple_code_regions_across_indices() {
     let mut buf2 = [0u8; 64];
     let mut region2 = SliceIndirectRegion::new(&mut buf2, CmsRegionType::CodeSpace).unwrap();
 
-    let mut ind_regions: [(u8, &mut dyn ocp::cms::IndirectCmsRegion); 2] =
+    let mut ind_regions: [(u8, &mut dyn caliptra_mcu_ocp::cms::IndirectCmsRegion); 2] =
         [(0, &mut region0), (2, &mut region2)];
 
     let mut transport = MockUsbDeviceDriver::new(&sent);
@@ -276,8 +282,10 @@ fn mixed_topology_both_types_report_correctly() {
     let mut fifo_region =
         SliceFifoRegion::new(&mut fifo_buf, FifoCmsRegionType::CodeSpace, 16).unwrap();
 
-    let mut ind_regions: [(u8, &mut dyn ocp::cms::IndirectCmsRegion); 1] = [(0, &mut ind_region)];
-    let mut fifo_regions: [(u8, &mut dyn ocp::cms::FifoCmsRegion); 1] = [(1, &mut fifo_region)];
+    let mut ind_regions: [(u8, &mut dyn caliptra_mcu_ocp::cms::IndirectCmsRegion); 1] =
+        [(0, &mut ind_region)];
+    let mut fifo_regions: [(u8, &mut dyn caliptra_mcu_ocp::cms::FifoCmsRegion); 1] =
+        [(1, &mut fifo_region)];
 
     let mut transport = MockUsbDeviceDriver::new(&sent);
 

@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_mcu_libsyscall_caliptra::mci::mci_reg::{RESET_REASON, WDT_TIMER1_EN};
+use caliptra_mcu_libsyscall_caliptra::mci::Mci;
+use caliptra_mcu_romtime::{println, test_exit};
 use core::fmt::Write;
-use libsyscall_caliptra::mci::mci_reg::{RESET_REASON, WDT_TIMER1_EN};
-use libsyscall_caliptra::mci::Mci;
-use romtime::{println, test_exit};
 
 #[allow(unused)]
 pub(crate) async fn test_mci_read_write() {

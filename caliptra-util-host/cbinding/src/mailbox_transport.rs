@@ -7,9 +7,9 @@
 
 use crate::error::CaliptraError;
 use crate::transport::CaliptraTransport;
-use caliptra_util_host_transport::transports::mailbox::transport::Mailbox;
-use caliptra_util_host_transport::transports::mailbox::MailboxDriver;
-use caliptra_util_host_transport::transports::mailbox::MailboxError;
+use caliptra_mcu_core_util_host_transport::transports::mailbox::transport::Mailbox;
+use caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver;
+use caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxError;
 use std::boxed::Box;
 
 /// Function pointer types for MailboxDriver implementation in C

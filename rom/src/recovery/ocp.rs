@@ -7,11 +7,11 @@
 //! Firmware Recovery v1.1 protocol.
 
 use super::ImageProvider;
-use ocp::error::OcpError;
-use ocp::interface::{RecoveryAction, RecoveryCmsRegion, RecoveryStateMachine};
-use ocp::protocol::device_status::RecoveryReasonCode;
-use ocp::usb::driver::UsbDeviceDriver;
-use ocp::vendor::VendorHandler;
+use caliptra_mcu_ocp::error::OcpError;
+use caliptra_mcu_ocp::interface::{RecoveryAction, RecoveryCmsRegion, RecoveryStateMachine};
+use caliptra_mcu_ocp::protocol::device_status::RecoveryReasonCode;
+use caliptra_mcu_ocp::usb::driver::UsbDeviceDriver;
+use caliptra_mcu_ocp::vendor::VendorHandler;
 
 /// Tracks which type of CMS region is being used for the current transfer.
 enum ActiveRegion {

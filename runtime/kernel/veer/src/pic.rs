@@ -4,14 +4,14 @@
 
 //! Platform Level Interrupt Control peripheral driver for VeeR.
 
+use caliptra_mcu_registers_generated::el2_pic_ctrl::bits::{Meie, Meigwctrl, Meipl, Mpiccfg};
+use caliptra_mcu_registers_generated::el2_pic_ctrl::regs::El2PicCtrl;
+use caliptra_mcu_romtime::StaticRef;
 use core::cell::Cell;
 use core::ptr::write_volatile;
 use kernel::utilities::registers::interfaces::{Readable, Writeable};
 use kernel::utilities::registers::register_bitfields;
-use registers_generated::el2_pic_ctrl::bits::{Meie, Meigwctrl, Meipl, Mpiccfg};
-use registers_generated::el2_pic_ctrl::regs::El2PicCtrl;
 use riscv_csr::csr::ReadWriteRiscvCsr;
-use romtime::StaticRef;
 
 register_bitfields![usize,
     MEIVT [
@@ -160,7 +160,10 @@ impl Pic {
         let offset = (index / 32) as usize;
         if offset >= self.saved.len() {
             // Ignore impossible interrupts.
-            romtime::println!("[mcu-runtime-veer] Ignoring impossible interrupt {}", index);
+            caliptra_mcu_romtime::println!(
+                "[mcu-runtime-veer] Ignoring impossible interrupt {}",
+                index
+            );
             return;
         };
         let irq = index % 32;

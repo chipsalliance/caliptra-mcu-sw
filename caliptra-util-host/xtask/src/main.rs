@@ -310,7 +310,7 @@ fn run_server(address: String, config: Option<String>, release: bool) -> Result<
     // Build the server first
     println!("ℹ Building mailbox server...");
     let mut build_cmd = Command::new("cargo");
-    build_cmd.args(["build", "-p", "caliptra-mailbox-server"]);
+    build_cmd.args(["build", "-p", "caliptra-mcu-core-mailbox-server"]);
 
     if release {
         build_cmd.arg("--release");
@@ -321,7 +321,7 @@ fn run_server(address: String, config: Option<String>, release: bool) -> Result<
     // Run the server
     let target_dir = if release { "release" } else { "debug" };
     let mut cmd = Command::new(format!(
-        "../target/caliptra-util-host/{}/caliptra-mailbox-server",
+        "../target/caliptra-util-host/{}/caliptra-mcu-core-mailbox-server",
         target_dir
     ));
     cmd.args(["--server", &address]);
@@ -364,7 +364,7 @@ fn run_validator(
     // Build the validator first
     println!("ℹ Building mailbox validator...");
     let mut build_cmd = Command::new("cargo");
-    build_cmd.args(["build", "-p", "caliptra-mailbox-client"]);
+    build_cmd.args(["build", "-p", "caliptra-mcu-mailbox-client"]);
 
     if release {
         build_cmd.arg("--release");

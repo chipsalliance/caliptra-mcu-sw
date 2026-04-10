@@ -2,8 +2,8 @@
 
 use crate::{MailboxClient, TestConfig, UdpTransportDriver};
 use anyhow::Result;
-use caliptra_util_host_command_types::crypto_aes::AesMode;
-use caliptra_util_host_command_types::crypto_hmac::CmKeyUsage;
+use caliptra_mcu_core_util_host_command_types::crypto_aes::AesMode;
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::CmKeyUsage;
 use std::net::SocketAddr;
 
 /// Hardcoded fallback expected device responses for validation (when config is not available)
@@ -96,7 +96,7 @@ impl Validator {
 
         // Create UDP transport driver and connect
         let mut udp_driver = UdpTransportDriver::new(self.server_addr);
-        use caliptra_util_host_transport::MailboxDriver;
+        use caliptra_mcu_core_util_host_transport::MailboxDriver;
         udp_driver
             .connect()
             .map_err(|e| anyhow::anyhow!("Failed to connect UDP driver: {:?}", e))?;
@@ -407,7 +407,7 @@ impl Validator {
 
     /// Validate SHA384 hash command
     fn validate_sha384(&self, client: &mut MailboxClient) -> ValidationResult {
-        use caliptra_util_host_command_types::crypto_hash::ShaAlgorithm;
+        use caliptra_mcu_core_util_host_command_types::crypto_hash::ShaAlgorithm;
         use sha2::{Digest, Sha384};
 
         let test_name = "SHA384".to_string();
@@ -478,7 +478,7 @@ impl Validator {
 
     /// Validate SHA512 hash command
     fn validate_sha512(&self, client: &mut MailboxClient) -> ValidationResult {
-        use caliptra_util_host_command_types::crypto_hash::ShaAlgorithm;
+        use caliptra_mcu_core_util_host_command_types::crypto_hash::ShaAlgorithm;
         use sha2::{Digest, Sha512};
 
         let test_name = "SHA512".to_string();
@@ -549,7 +549,7 @@ impl Validator {
 
     /// Validate HMAC-SHA384 command
     fn validate_hmac_sha384(&self, client: &mut MailboxClient) -> ValidationResult {
-        use caliptra_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
+        use caliptra_mcu_core_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
 
         let test_name = "HMAC-SHA384".to_string();
 
@@ -635,7 +635,7 @@ impl Validator {
 
     /// Validate HMAC-SHA512 command
     fn validate_hmac_sha512(&self, client: &mut MailboxClient) -> ValidationResult {
-        use caliptra_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
+        use caliptra_mcu_core_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
 
         let test_name = "HMAC-SHA512".to_string();
 
@@ -719,7 +719,7 @@ impl Validator {
 
     /// Validate HMAC KDF Counter command
     fn validate_hmac_kdf_counter(&self, client: &mut MailboxClient) -> ValidationResult {
-        use caliptra_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
+        use caliptra_mcu_core_util_host_command_types::crypto_hmac::{CmKeyUsage, HmacAlgorithm};
 
         let test_name = "HMAC-KDF-Counter".to_string();
 

@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "lwip-rs"
+name = "caliptra-mcu-lwip-rs"
 version.workspace = true
 edition.workspace = true
 description = "Rust bindings for lwIP (Lightweight IP stack)"

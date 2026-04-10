@@ -4,14 +4,14 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
-use ocp::error::OcpError;
-use ocp::protocol::RecoveryCommand;
-use ocp::usb::descriptors::*;
-use ocp::usb::driver::{RecoveryRequest, UsbDeviceDriver, UsbDriverError};
-use ocp::usb::setup::{RequestType, SetupPacket, StandardRequest, SETUP_PACKET_LEN};
-use registers_generated::usbdev;
-use registers_generated::usbdev::bits::*;
-use romtime::StaticRef;
+use caliptra_mcu_ocp::error::OcpError;
+use caliptra_mcu_ocp::protocol::RecoveryCommand;
+use caliptra_mcu_ocp::usb::descriptors::*;
+use caliptra_mcu_ocp::usb::driver::{RecoveryRequest, UsbDeviceDriver, UsbDriverError};
+use caliptra_mcu_ocp::usb::setup::{RequestType, SetupPacket, StandardRequest, SETUP_PACKET_LEN};
+use caliptra_mcu_registers_generated::usbdev;
+use caliptra_mcu_registers_generated::usbdev::bits::*;
+use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{Readable, Writeable};
 use tock_registers::LocalRegisterCopy;
 use zerocopy::IntoBytes;

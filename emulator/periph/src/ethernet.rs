@@ -14,8 +14,8 @@ Abstract:
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
-use emulator_registers_generated::ethernet::{EthernetGenerated, EthernetPeripheral};
-use registers_generated::ethernet::bits::{EthRxLen, EthStatus};
+use caliptra_mcu_emulator_registers_generated::ethernet::{EthernetGenerated, EthernetPeripheral};
+use caliptra_mcu_registers_generated::ethernet::bits::{EthRxLen, EthStatus};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{ReadWriteable, Readable};
@@ -351,7 +351,8 @@ impl EthernetPeripheral for Ethernet {
 
     fn read_eth_status(
         &mut self,
-    ) -> ReadWriteRegister<u32, registers_generated::ethernet::bits::EthStatus::Register> {
+    ) -> ReadWriteRegister<u32, caliptra_mcu_registers_generated::ethernet::bits::EthStatus::Register>
+    {
         let status = ReadWriteRegister::<u32, EthStatus::Register>::new(0);
 
         // TX_READY: TX buffer is not busy
@@ -378,7 +379,10 @@ impl EthernetPeripheral for Ethernet {
 
     fn write_eth_ctrl(
         &mut self,
-        val: ReadWriteRegister<u32, registers_generated::ethernet::bits::EthCtrl::Register>,
+        val: ReadWriteRegister<
+            u32,
+            caliptra_mcu_registers_generated::ethernet::bits::EthCtrl::Register,
+        >,
     ) {
         let ctrl_val = val.reg.get();
         if ctrl_val & CTRL_TX_START != 0 {
@@ -395,7 +399,8 @@ impl EthernetPeripheral for Ethernet {
 
     fn read_eth_rx_len(
         &mut self,
-    ) -> ReadWriteRegister<u32, registers_generated::ethernet::bits::EthRxLen::Register> {
+    ) -> ReadWriteRegister<u32, caliptra_mcu_registers_generated::ethernet::bits::EthRxLen::Register>
+    {
         let len = self.current_rx_frame().map(|f| f.len()).unwrap_or(0) as u32;
         let reg = ReadWriteRegister::<u32, EthRxLen::Register>::new(0);
         reg.reg.modify(EthRxLen::Len.val(len));
@@ -445,7 +450,7 @@ mod tests {
     use caliptra_emu_bus::{Bus, Clock};
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
-    use emulator_registers_generated::ethernet::EthernetBus;
+    use caliptra_mcu_emulator_registers_generated::ethernet::EthernetBus;
     use std::rc::Rc;
 
     // Register offsets from the generated code

@@ -17,7 +17,7 @@
 
 use crate::common::{test_constants::*, MockMailbox};
 use caliptra_util_host_session::CaliptraSession;
-use caliptra_util_host_transport::Mailbox;
+use caliptra_mcu_core_util_host_transport::Mailbox;
 
 /// Integration test demonstrating session lifecycle management
 ///
@@ -30,13 +30,13 @@ fn test_session_lifecycle() {
     let mut mock_mailbox = MockMailbox::new(TEST_DEVICE_ID_1);
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     // Create a session with the mailbox transport
     let mut session = CaliptraSession::new(
         1,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 
@@ -71,13 +71,13 @@ fn test_error_propagation() {
 
     let mut mailbox_transport = Mailbox::new(
         &mut mock_mailbox
-            as &mut dyn caliptra_util_host_transport::transports::mailbox::MailboxDriver,
+            as &mut dyn caliptra_mcu_core_util_host_transport::transports::mailbox::MailboxDriver,
     );
 
     // Create a session with the mailbox transport
     let mut session = CaliptraSession::new(
         2,
-        &mut mailbox_transport as &mut dyn caliptra_util_host_transport::Transport,
+        &mut mailbox_transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
     )
     .expect("Failed to create CaliptraSession");
 

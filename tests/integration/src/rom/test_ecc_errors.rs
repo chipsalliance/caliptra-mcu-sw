@@ -7,14 +7,14 @@
 use anyhow::Result;
 use caliptra_api::SocManager;
 use caliptra_image_types::FwVerificationPqcKeyType;
-use mcu_builder::flash_image::build_flash_image_bytes;
-use mcu_hw_model::McuHwModel;
-use mcu_hw_model::{new, Fuses, InitParams};
-use romtime::McuBootMilestones;
+use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
+use caliptra_mcu_hw_model::McuHwModel;
+use caliptra_mcu_hw_model::{new, Fuses, InitParams};
+use caliptra_mcu_romtime::McuBootMilestones;
 use std::io::Write;
 
 fn test_rom_hw_error(inject_val: u32, expected_error: u32, expected_message: &str) -> Result<()> {
-    let binaries = mcu_builder::FirmwareBinaries::from_env()?;
+    let binaries = caliptra_mcu_builder::FirmwareBinaries::from_env()?;
 
     // Build flash image from firmware binaries
     let flash_image = build_flash_image_bytes(

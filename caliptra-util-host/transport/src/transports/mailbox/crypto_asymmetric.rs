@@ -16,14 +16,14 @@ use super::command_traits::{
     ExternalCommandMetadata, FromInternalRequest, ToInternalResponse, VariableSizeBytes,
 };
 use alloc::vec::Vec;
-use caliptra_util_host_command_types::crypto_asymmetric::{
+use caliptra_mcu_core_util_host_command_types::crypto_asymmetric::{
     EcdhFinishRequest, EcdhFinishResponse, EcdhGenerateRequest, EcdhGenerateResponse,
     EcdsaPublicKeyRequest, EcdsaPublicKeyResponse, EcdsaSignRequest, EcdsaSignResponse,
     EcdsaVerifyRequest, EcdsaVerifyResponse, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE,
     CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, ECC384_SCALAR_BYTE_SIZE, MAX_CMB_DATA_SIZE,
 };
-use caliptra_util_host_command_types::crypto_hmac::{Cmk, CMK_SIZE};
-use caliptra_util_host_command_types::CommonResponse;
+use caliptra_mcu_core_util_host_command_types::crypto_hmac::{Cmk, CMK_SIZE};
+use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 use crate::define_command;

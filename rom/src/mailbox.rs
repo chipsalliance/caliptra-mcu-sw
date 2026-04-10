@@ -16,8 +16,8 @@ use crate::{err_code, fatal_error};
 use caliptra_api::mailbox::{
     CmShaFinalResp, CmShaInitResp, CommandId, CMB_SHA_CONTEXT_SIZE, MAX_CMB_DATA_SIZE,
 };
-use mcu_error::McuError;
-use romtime::{CaliptraSoC, HexWord};
+use caliptra_mcu_error::McuError;
+use caliptra_mcu_romtime::{CaliptraSoC, HexWord};
 
 /// CmHashAlgorithm::Sha384 value (matches caliptra-api enum).
 const CM_HASH_ALGORITHM_SHA384: u32 = 1;
@@ -100,7 +100,7 @@ fn cm_sha_init(soc_manager: &mut CaliptraSoC, chunk: &[u32]) -> [u8; CMB_SHA_CON
         .chain(core::iter::repeat(0u32).take(padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom] CM_SHA_INIT start error: {}",
             HexWord(err_code(&err))
         );
@@ -109,7 +109,7 @@ fn cm_sha_init(soc_manager: &mut CaliptraSoC, chunk: &[u32]) -> [u8; CMB_SHA_CON
 
     let mut resp_buf = [0u8; core::mem::size_of::<CmShaInitResp>()];
     if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom] CM_SHA_INIT finish error: {}",
             HexWord(err_code(&err))
         );
@@ -151,7 +151,7 @@ fn cm_sha_update(
         .chain(core::iter::repeat(0u32).take(padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom] CM_SHA_UPDATE start error: {}",
             HexWord(err_code(&err))
         );
@@ -160,7 +160,7 @@ fn cm_sha_update(
 
     let mut resp_buf = [0u8; core::mem::size_of::<CmShaInitResp>()];
     if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom] CM_SHA_UPDATE finish error: {}",
             HexWord(err_code(&err))
         );
@@ -200,7 +200,7 @@ fn cm_sha_final(
         .chain(core::iter::repeat(0u32).take(padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom] CM_SHA_FINAL start error: {}",
             HexWord(err_code(&err))
         );
@@ -209,7 +209,7 @@ fn cm_sha_final(
 
     let mut resp_buf = [0u8; core::mem::size_of::<CmShaFinalResp>()];
     if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
-        romtime::println!(
+        caliptra_mcu_romtime::println!(
             "[mcu-rom] CM_SHA_FINAL finish error: {}",
             HexWord(err_code(&err))
         );

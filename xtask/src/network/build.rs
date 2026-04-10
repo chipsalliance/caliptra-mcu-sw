@@ -12,17 +12,17 @@ use std::time::{Duration, Instant};
 pub fn build(release: bool, lib_only: bool) -> Result<()> {
     if lib_only {
         println!("Building lwip-rs library...");
-        build_package("lwip-rs", release)?;
+        build_package("caliptra-mcu-lwip-rs", release)?;
     } else {
         println!("Building all network packages...");
 
         // Build lwip-rs library first
         println!("\n[1/2] Building lwip-rs...");
-        build_package("lwip-rs", release)?;
+        build_package("caliptra-mcu-lwip-rs", release)?;
 
         // Build example application
         println!("\n[2/2] Building example application...");
-        build_package("lwip-rs-example", release)?;
+        build_package("caliptra-mcu-lwip-rs-example", release)?;
     }
 
     println!("\nBuild complete!");

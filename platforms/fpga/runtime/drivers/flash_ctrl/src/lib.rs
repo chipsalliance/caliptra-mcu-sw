@@ -4,6 +4,9 @@
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
+use caliptra_mcu_registers_generated::mci;
+use caliptra_mcu_registers_generated::mci::bits::{MboxExecute, MboxTargetStatus};
+use caliptra_mcu_romtime::StaticRef;
 use core::cell::Cell;
 use core::ops::{Index, IndexMut};
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
@@ -11,9 +14,6 @@ use kernel::hil;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::ErrorCode;
-use registers_generated::mci;
-use registers_generated::mci::bits::{MboxExecute, MboxTargetStatus};
-use romtime::StaticRef;
 
 pub const PAGE_SIZE: usize = 256;
 pub const FLASH_MAX_PAGES: usize = 64 * 1024 * 1024 / PAGE_SIZE;
@@ -122,7 +122,9 @@ impl<'a> EmulatedFlashCtrl<'a> {
                 self.release_lock();
                 self.mailbox_locked.set(false);
                 self.pending_op.clear();
-                romtime::println!("FLASH_CTRL_DRIVER: WritePage operation requires a buffer");
+                caliptra_mcu_romtime::println!(
+                    "FLASH_CTRL_DRIVER: WritePage operation requires a buffer"
+                );
                 return Err(ErrorCode::INVAL);
             }
             let data = self.write_buf.take().unwrap();

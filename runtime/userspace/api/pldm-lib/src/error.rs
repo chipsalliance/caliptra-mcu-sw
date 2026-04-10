@@ -2,8 +2,8 @@
 
 use crate::firmware_device::fd_ops::FdOpsError;
 use crate::transport::TransportError;
-use pldm_common::codec::PldmCodecError;
-use pldm_common::error::{PldmError, UtilError};
+use caliptra_mcu_pldm_common::codec::PldmCodecError;
+use caliptra_mcu_pldm_common::error::{PldmError, UtilError};
 
 /// Handle non-protocol specific error conditions.
 #[derive(Debug)]

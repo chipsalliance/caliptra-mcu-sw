@@ -12,7 +12,7 @@ Abstract:
 
 --*/
 
-use network_config::DEFAULT_NETWORK_MEMORY_MAP;
+use caliptra_mcu_network_config::DEFAULT_NETWORK_MEMORY_MAP;
 
 /// Emulator control register for exit
 const EMU_CTRL_EXIT: u32 = DEFAULT_NETWORK_MEMORY_MAP.ctrl_offset;

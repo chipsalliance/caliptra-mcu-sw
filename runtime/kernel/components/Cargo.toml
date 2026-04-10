@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license.
 
 [package]
-name = "mcu-components"
+name = "caliptra-mcu-components"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -9,19 +9,19 @@ edition.workspace = true
 [dependencies]
 capsules-core.workspace = true
 capsules-extra.workspace = true
-capsules-emulator.workspace = true
-capsules-runtime.workspace = true
+caliptra-mcu-capsules-emulator.workspace = true
+caliptra-mcu-capsules-runtime.workspace = true
 capsules-system.workspace = true
 components.workspace = true
-dma-driver.workspace = true
-doe-transport.workspace = true
-flash-driver.workspace = true
-i3c-driver.workspace = true
+caliptra-mcu-dma-driver.workspace = true
+caliptra-mcu-doe-transport.workspace = true
+caliptra-mcu-flash-driver.workspace = true
+caliptra-mcu-i3c-driver.workspace = true
 kernel.workspace = true
-mcu-config.workspace = true
-mcu-mbox-comm.workspace = true
-mcu-mbox-driver.workspace = true
-mcu-tock-veer.workspace = true
-registers-generated.workspace = true
-romtime.workspace = true
+caliptra-mcu-config.workspace = true
+caliptra-mcu-mbox-comm.workspace = true
+caliptra-mcu-mbox-driver.workspace = true
+caliptra-mcu-tock-veer.workspace = true
+caliptra-mcu-registers-generated.workspace = true
+caliptra-mcu-romtime.workspace = true
 tock-registers.workspace = true

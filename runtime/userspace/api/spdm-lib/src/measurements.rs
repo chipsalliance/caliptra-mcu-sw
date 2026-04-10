@@ -15,11 +15,11 @@ extern crate alloc;
 use crate::protocol::*;
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use libapi_caliptra::crypto::asym::AsymAlgo;
-use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
-use libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
-use libapi_caliptra::error::CaliptraApiError;
-use libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
+use caliptra_mcu_libapi_caliptra::crypto::asym::AsymAlgo;
+use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
+use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
+use caliptra_mcu_libapi_caliptra::mailbox_api::MAX_CRYPTO_MBOX_DATA_SIZE;
 use zerocopy::IntoBytes;
 
 // Needs to be adjusted based on actual max size of measurement record when PQC is added

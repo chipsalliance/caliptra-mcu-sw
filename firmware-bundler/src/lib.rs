@@ -32,9 +32,9 @@ pub mod utils;
 
 use anyhow::{bail, Result};
 use args::{BuildArgs, Common, LdArgs};
+use caliptra_mcu_image_header::McuImageHeader;
 use ld::BuildDefinition;
 use manifest::{AllocationRequest, Manifest};
-use mcu_image_header::McuImageHeader;
 
 use crate::args::Commands;
 

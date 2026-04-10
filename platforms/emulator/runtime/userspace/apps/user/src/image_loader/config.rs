@@ -6,8 +6,7 @@
     feature = "test-firmware-update-flash",
 ))]
 pub mod streaming_boot_consts {
-    use embassy_sync::lazy_lock::LazyLock;
-    use pldm_common::{
+    use caliptra_mcu_pldm_common::{
         message::firmware_update::get_fw_params::FirmwareParameters,
         protocol::firmware_update::{
             ComponentActivationMethods, ComponentClassification, ComponentParameterEntry,
@@ -15,6 +14,7 @@ pub mod streaming_boot_consts {
             PldmFirmwareVersion,
         },
     };
+    use embassy_sync::lazy_lock::LazyLock;
 
     pub const FD_FW_COMPONENTS_COUNT: usize = 1;
     #[allow(unused)]

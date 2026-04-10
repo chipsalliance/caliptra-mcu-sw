@@ -10,11 +10,11 @@
 #![no_main]
 #![no_std]
 
-use registers_generated::usbdev;
-use registers_generated::usbdev::bits::*;
+use caliptra_mcu_registers_generated::usbdev;
+use caliptra_mcu_registers_generated::usbdev::bits::*;
 use tock_registers::interfaces::{Readable, Writeable};
 
-extern crate mcu_rom_common;
+extern crate caliptra_mcu_rom_common;
 
 const NUM_BUFFERS: u32 = 4;
 
@@ -88,6 +88,6 @@ fn run() -> ! {
 
 #[no_mangle]
 pub extern "C" fn main() {
-    mcu_test_harness::set_printer();
+    caliptra_mcu_test_harness::set_printer();
     run();
 }

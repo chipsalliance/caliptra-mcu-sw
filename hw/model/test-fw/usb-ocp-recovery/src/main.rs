@@ -11,18 +11,18 @@
 #![no_main]
 #![no_std]
 
-use mcu_usb_emulator::ExamplarUsbDriver;
-use ocp::protocol::device_status::{
+use caliptra_mcu_ocp::protocol::device_status::{
     DeviceStatus, DeviceStatusValue, ProtocolError, RecoveryReasonCode,
 };
-use ocp::protocol::prot_cap::{ProtCap, RecoveryProtocolCapabilities};
-use ocp::protocol::RecoveryCommand;
-use ocp::usb::driver::{RecoveryRequest, UsbDeviceDriver, UsbDriverError};
-use registers_generated::usbdev;
-use romtime::StaticRef;
+use caliptra_mcu_ocp::protocol::prot_cap::{ProtCap, RecoveryProtocolCapabilities};
+use caliptra_mcu_ocp::protocol::RecoveryCommand;
+use caliptra_mcu_ocp::usb::driver::{RecoveryRequest, UsbDeviceDriver, UsbDriverError};
+use caliptra_mcu_registers_generated::usbdev;
+use caliptra_mcu_romtime::StaticRef;
+use caliptra_mcu_usb_emulator::ExamplarUsbDriver;
 use zerocopy::IntoBytes;
 
-extern crate mcu_rom_common;
+extern crate caliptra_mcu_rom_common;
 
 fn prot_cap_response() -> ProtCap {
     let mut caps = RecoveryProtocolCapabilities(0);
@@ -74,6 +74,6 @@ fn run() -> ! {
 
 #[no_mangle]
 pub extern "C" fn main() {
-    mcu_test_harness::set_printer();
+    caliptra_mcu_test_harness::set_printer();
     run();
 }

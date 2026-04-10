@@ -6,7 +6,7 @@ use caliptra_api::mailbox::{
     CmEcdhFinishReq, CmEcdhFinishResp, CmEcdhGenerateReq, CmEcdhGenerateResp, Cmk,
     MailboxReqHeader, Request,
 };
-use libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use zerocopy::IntoBytes;
 
 // re-export

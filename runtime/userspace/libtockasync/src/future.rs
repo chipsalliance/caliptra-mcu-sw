@@ -1,12 +1,12 @@
 // Licensed under the Apache-2.0 license
 
 use alloc::boxed::Box;
+use caliptra_mcu_libtock_platform::exit_on_drop::ExitOnDrop;
+use caliptra_mcu_libtock_platform::*;
 use core::cell::Cell;
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll, Waker};
-use libtock_platform::exit_on_drop::ExitOnDrop;
-use libtock_platform::*;
 
 /// TockSubscribe is a future implementation that performs a Tock subscribe call and
 /// is ready when the subscribe upcall happens.

@@ -6,7 +6,7 @@
 //! with Caliptra mailbox servers using the caliptra-mailbox-client library.
 
 use anyhow::Result;
-use caliptra_mailbox_client::{TestConfig, Validator};
+use caliptra_mcu_mailbox_client::{TestConfig, Validator};
 use clap::Parser;
 use std::net::SocketAddr;
 use std::path::PathBuf;

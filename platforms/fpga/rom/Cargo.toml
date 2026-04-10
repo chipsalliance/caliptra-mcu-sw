@@ -1,21 +1,21 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "mcu-rom-fpga"
+name = "caliptra-mcu-rom-fpga"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
 [build-dependencies]
-mcu-builder.workspace = true
-mcu-config-fpga.workspace = true
+caliptra-mcu-builder.workspace = true
+caliptra-mcu-config-fpga.workspace = true
 
 [dependencies]
-mcu-config.workspace = true
-mcu-config-fpga.workspace = true
-mcu-rom-common.workspace = true
-registers-generated.workspace = true
-romtime.workspace = true
+caliptra-mcu-config.workspace = true
+caliptra-mcu-config-fpga.workspace = true
+caliptra-mcu-rom-common.workspace = true
+caliptra-mcu-registers-generated.workspace = true
+caliptra-mcu-romtime.workspace = true
 tock-registers.workspace = true
 zeroize.workspace = true
 
@@ -24,9 +24,9 @@ riscv-csr.workspace = true
 rv32i.workspace = true
 
 [features]
-core_test = ["mcu-rom-common/core_test"]
-hw-2-1 = ["mcu-rom-common/hw-2-1"]
+core_test = ["caliptra-mcu-rom-common/core_test"]
+hw-2-1 = ["caliptra-mcu-rom-common/hw-2-1"]
 test-i3c-services = []
 test-rom-hooks = []
-ocp-lock = ["romtime/ocp-lock", "mcu-rom-common/ocp-lock"]
-stable-owner-key = ["mcu-rom-common/stable-owner-key"]
+ocp-lock = ["caliptra-mcu-romtime/ocp-lock", "caliptra-mcu-rom-common/ocp-lock"]
+stable-owner-key = ["caliptra-mcu-rom-common/stable-owner-key"]

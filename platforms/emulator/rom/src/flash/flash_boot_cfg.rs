@@ -1,8 +1,10 @@
 // Licensed under the Apache-2.0 license
 
-use mcu_config::boot::{BootConfig, BootConfigError, PartitionId, PartitionStatus, RollbackEnable};
-use mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator};
-use mcu_rom_common::flash::flash_partition::FlashPartition;
+use caliptra_mcu_config::boot::{
+    BootConfig, BootConfigError, PartitionId, PartitionStatus, RollbackEnable,
+};
+use caliptra_mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator};
+use caliptra_mcu_rom_common::flash::flash_partition::FlashPartition;
 use zerocopy::{FromBytes, IntoBytes};
 pub struct FlashBootCfg<'a> {
     flash_driver: &'a mut FlashPartition<'a>,
@@ -108,9 +110,9 @@ impl<'a> BootConfig for FlashBootCfg<'a> {
 
     fn set_partition_status(
         &mut self,
-        partition_id: mcu_config::boot::PartitionId,
-        status: mcu_config::boot::PartitionStatus,
-    ) -> Result<(), mcu_config::boot::BootConfigError> {
+        partition_id: caliptra_mcu_config::boot::PartitionId,
+        status: caliptra_mcu_config::boot::PartitionStatus,
+    ) -> Result<(), caliptra_mcu_config::boot::BootConfigError> {
         let mut partition_table = self
             .read_partition_table()
             .map_err(|_| BootConfigError::ReadFailed)?;
@@ -131,8 +133,11 @@ impl<'a> BootConfig for FlashBootCfg<'a> {
 
     fn get_partition_status(
         &self,
-        partition_id: mcu_config::boot::PartitionId,
-    ) -> Result<mcu_config::boot::PartitionStatus, mcu_config::boot::BootConfigError> {
+        partition_id: caliptra_mcu_config::boot::PartitionId,
+    ) -> Result<
+        caliptra_mcu_config::boot::PartitionStatus,
+        caliptra_mcu_config::boot::BootConfigError,
+    > {
         let partition_table = self
             .read_partition_table()
             .map_err(|_| BootConfigError::ReadFailed)?;
@@ -149,7 +154,7 @@ impl<'a> BootConfig for FlashBootCfg<'a> {
         }
     }
 
-    fn is_rollback_enabled(&self) -> Result<bool, mcu_config::boot::BootConfigError> {
+    fn is_rollback_enabled(&self) -> Result<bool, caliptra_mcu_config::boot::BootConfigError> {
         let partition_table = self
             .read_partition_table()
             .map_err(|_| BootConfigError::ReadFailed)?;

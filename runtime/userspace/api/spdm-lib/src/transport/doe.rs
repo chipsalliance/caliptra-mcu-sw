@@ -8,7 +8,7 @@ use crate::transport::common::{SpdmTransport, TransportError, TransportResult};
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use bitfield::bitfield;
-use libsyscall_caliptra::doe::{driver_num, Doe};
+use caliptra_mcu_libsyscall_caliptra::doe::{driver_num, Doe};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 const DOE_HEADER_SIZE: usize = 8;

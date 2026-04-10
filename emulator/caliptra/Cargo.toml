@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "emulator-caliptra"
+name = "caliptra-mcu-emulator-caliptra"
 version = "0.1.0"
 edition = "2021"
 
@@ -16,7 +16,7 @@ caliptra-registers.workspace = true
 clap.workspace = true
 ctrlc.workspace = true
 elf.workspace = true
-emulator-consts.workspace = true
+caliptra-mcu-emulator-consts.workspace = true
 gdbstub_arch.workspace = true
 gdbstub.workspace = true
 hex.workspace = true

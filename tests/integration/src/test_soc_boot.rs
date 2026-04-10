@@ -6,19 +6,19 @@ mod test {
         compile_runtime, get_rom_with_feature, has_prebuilt_binaries, run_runtime, TEST_LOCK,
     };
     use caliptra_image_types::ImageManifest;
-    use chrono::{TimeZone, Utc};
-    use hex::ToHex;
-    use mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
-    use mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
-    use mcu_config_emulator::flash::{
+    use caliptra_mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
+    use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
+    use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
-    use mcu_testing_common::DeviceLifecycle;
-    use pldm_fw_pkg::manifest::{
+    use caliptra_mcu_pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
     };
-    use pldm_fw_pkg::FirmwareManifest;
+    use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
+    use caliptra_mcu_testing_common::DeviceLifecycle;
+    use chrono::{TimeZone, Utc};
+    use hex::ToHex;
     use random_port::PortPicker;
     use std::env;
     use std::path::PathBuf;
@@ -85,7 +85,7 @@ mod test {
         let mcu_runtime_path_str = mcu_runtime_path
             .as_ref()
             .map(|p| p.to_string_lossy().to_string());
-        mcu_builder::flash_image::flash_image_create(
+        caliptra_mcu_builder::flash_image::flash_image_create(
             &caliptra_fw_path_str,
             &soc_manifest_path_str,
             &mcu_runtime_path_str,
@@ -101,7 +101,7 @@ mod test {
         .expect("Failed to create flash image");
 
         if let Some(partition_table) = partition_table {
-            mcu_builder::flash_image::write_partition_table(
+            caliptra_mcu_builder::flash_image::write_partition_table(
                 &partition_table,
                 0,
                 flash_image_path.to_str().unwrap(),

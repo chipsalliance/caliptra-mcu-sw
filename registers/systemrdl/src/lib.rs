@@ -11,7 +11,7 @@ Licensed under the Apache-2.0 license.
 //! Examples
 //!
 //! ```no_run
-//! use registers_systemrdl::{ComponentType, EnumReference, FileSource, FsFileSource, InstanceRef, Scope, ScopeType};
+//! use caliptra_mcu_registers_systemrdl::{ComponentType, EnumReference, FileSource, FsFileSource, InstanceRef, Scope, ScopeType};
 //!
 //! let fs = FsFileSource::new();
 //! let scope = Scope::parse_root(&fs, &["/tmp/foo.rdl".into()]).unwrap();

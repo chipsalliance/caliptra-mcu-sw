@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use libsyscall_caliptra::mcu_mbox::{MbxCmdStatus, McuMbox, MCU_MBOX0_DRIVER_NUM};
+use caliptra_mcu_libsyscall_caliptra::mcu_mbox::{MbxCmdStatus, McuMbox, MCU_MBOX0_DRIVER_NUM};
 
 #[allow(dead_code)]
 pub async fn test_mcu_mbox_usermode_loopback() {

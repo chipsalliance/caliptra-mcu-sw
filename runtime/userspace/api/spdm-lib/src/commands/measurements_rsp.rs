@@ -13,9 +13,9 @@ use crate::session::SessionInfo;
 use crate::state::ConnectionState;
 use crate::transcript::{Transcript, TranscriptContext};
 use bitfield::bitfield;
-use libapi_caliptra::crypto::asym::*;
-use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
-use libapi_caliptra::crypto::rng::Rng;
+use caliptra_mcu_libapi_caliptra::crypto::asym::*;
+use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use caliptra_mcu_libapi_caliptra::crypto::rng::Rng;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 const RESPONSE_FIXED_FIELDS_SIZE: usize = 8;

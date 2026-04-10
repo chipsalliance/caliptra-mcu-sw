@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_api::mailbox::{MailboxReqHeader, QuotePcrsEcc384Req, QuotePcrsEcc384Resp, Request};
+use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
+use caliptra_mcu_romtime::{println, test_exit};
 use core::fmt::Write;
-use libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
-use romtime::{println, test_exit};
 use zerocopy::{FromBytes, IntoBytes};
 
 #[allow(unused)]
@@ -52,7 +52,7 @@ pub(crate) async fn test_caliptra_mailbox() {
         }
         Err(err) => {
             println!("Failed to parse response: {:?}", err);
-            romtime::test_exit(1);
+            caliptra_mcu_romtime::test_exit(1);
         }
     }
     println!("Test passed");

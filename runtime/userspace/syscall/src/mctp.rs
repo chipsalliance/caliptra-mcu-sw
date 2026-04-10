@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::DefaultSyscalls;
+use caliptra_mcu_libtock_platform::share;
+use caliptra_mcu_libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
+use caliptra_mcu_libtockasync::TockSubscribe;
 use core::marker::PhantomData;
-use libtock_platform::share;
-use libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
-use libtockasync::TockSubscribe;
 
 type EndpointId = u8;
 type Tag = u8;

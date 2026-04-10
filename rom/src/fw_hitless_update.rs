@@ -20,9 +20,9 @@ use crate::device_ownership_transfer;
 use crate::MCU_MEMORY_MAP;
 use crate::{fatal_error, BootFlow, RomEnv, RomParameters};
 use caliptra_api::{mailbox::MailboxRespHeader, CaliptraApiError};
+use caliptra_mcu_error::McuError;
+use caliptra_mcu_romtime::HexWord;
 use core::fmt::Write;
-use mcu_error::McuError;
-use romtime::HexWord;
 #[cfg(all(target_arch = "riscv32", feature = "fw-manifest-dot"))]
 use zerocopy::FromBytes;
 
@@ -31,7 +31,7 @@ pub struct FwHitlessUpdate {}
 impl BootFlow for FwHitlessUpdate {
     fn run(env: &mut RomEnv, _params: RomParameters) -> ! {
         crate::call_hook(_params.hooks, |h| h.pre_fw_hitless_update());
-        romtime::println!("[mcu-rom] Starting fw hitless update flow");
+        caliptra_mcu_romtime::println!("[mcu-rom] Starting fw hitless update flow");
 
         // Create local references to minimize code changes
         let soc_manager = &mut env.soc_manager;
@@ -48,13 +48,13 @@ impl BootFlow for FwHitlessUpdate {
         ) {
             match err {
                 CaliptraApiError::MailboxCmdFailed(code) => {
-                    romtime::println!(
+                    caliptra_mcu_romtime::println!(
                         "[mcu-rom] Error finishing mailbox command: {}",
                         HexWord(code)
                     );
                 }
                 _ => {
-                    romtime::println!("[mcu-rom] Error finishing mailbox command");
+                    caliptra_mcu_romtime::println!("[mcu-rom] Error finishing mailbox command");
                 }
             }
             fatal_error(McuError::ROM_FW_HITLESS_UPDATE_CLEAR_MB_ERROR);
@@ -72,7 +72,7 @@ impl BootFlow for FwHitlessUpdate {
         }
 
         // Jump to firmware
-        romtime::println!("[mcu-rom] Jumping to firmware");
+        caliptra_mcu_romtime::println!("[mcu-rom] Jumping to firmware");
         crate::call_hook(_params.hooks, |h| h.post_fw_hitless_update());
 
         #[cfg(target_arch = "riscv32")]
@@ -99,7 +99,8 @@ impl BootFlow for FwHitlessUpdate {
                         firmware_offset += manifest_size as u32;
 
                         env.mci.set_flow_checkpoint(
-                            romtime::McuRomBootStatus::FwManifestDotProcessingStarted.into(),
+                            caliptra_mcu_romtime::McuRomBootStatus::FwManifestDotProcessingStarted
+                                .into(),
                         );
                         if let Err(err) =
                             device_ownership_transfer::process_fw_manifest_dot_commands(
@@ -108,21 +109,23 @@ impl BootFlow for FwHitlessUpdate {
                                 _params.dot_flash,
                             )
                         {
-                            romtime::println!(
+                            caliptra_mcu_romtime::println!(
                                 "[mcu-rom] Error in firmware manifest DOT: {}",
                                 HexWord(err.into())
                             );
                             fatal_error(err);
                         }
                         env.mci.set_flow_checkpoint(
-                            romtime::McuRomBootStatus::FwManifestDotProcessingComplete.into(),
+                            caliptra_mcu_romtime::McuRomBootStatus::FwManifestDotProcessingComplete
+                                .into(),
                         );
                     }
                 }
             }
 
-            env.mci
-                .set_flow_milestone(romtime::McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE.into());
+            env.mci.set_flow_milestone(
+                caliptra_mcu_romtime::McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE.into(),
+            );
 
             let firmware_entry = MCU_MEMORY_MAP.sram_offset + firmware_offset;
             core::arch::asm!(

@@ -24,18 +24,20 @@ use crate::flash::flash_boot_cfg::FlashBootCfg;
 use crate::flash::flash_drv::{
     EmulatedFlashCtrl, PRIMARY_FLASH_CTRL_BASE, SECONDARY_FLASH_CTRL_BASE,
 };
-use mcu_config::boot::{BootConfig, BootConfigError, PartitionId, PartitionStatus, RollbackEnable};
-use mcu_config::{McuMemoryMap, McuStraps};
-use mcu_config_emulator::flash::{
+use caliptra_mcu_config::boot::{
+    BootConfig, BootConfigError, PartitionId, PartitionStatus, RollbackEnable,
+};
+use caliptra_mcu_config::{McuMemoryMap, McuStraps};
+use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     PARTITION_TABLE,
 };
-use mcu_rom_common::flash::flash_partition::FlashPartition;
-use mcu_rom_common::hil::FlashStorage;
-use mcu_rom_common::memory::SimpleFlash;
-use mcu_rom_common::{fatal_error, RomHooks, RomParameters};
-use mcu_rom_common::{DotRecoveryHandler, DOT_BLOB_SIZE};
-use romtime::HexWord;
+use caliptra_mcu_rom_common::flash::flash_partition::FlashPartition;
+use caliptra_mcu_rom_common::hil::FlashStorage;
+use caliptra_mcu_rom_common::memory::SimpleFlash;
+use caliptra_mcu_rom_common::{fatal_error, RomHooks, RomParameters};
+use caliptra_mcu_rom_common::{DotRecoveryHandler, DOT_BLOB_SIZE};
+use caliptra_mcu_romtime::HexWord;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
 /// DOT recovery handler using MCI mbox0.
@@ -45,7 +47,7 @@ struct TestDotRecoveryHandler {
 }
 
 impl DotRecoveryHandler for TestDotRecoveryHandler {
-    fn read_recovery_blob(&self) -> mcu_error::McuResult<[u8; DOT_BLOB_SIZE]> {
+    fn read_recovery_blob(&self) -> caliptra_mcu_error::McuResult<[u8; DOT_BLOB_SIZE]> {
         Ok(self.blob)
     }
 }
@@ -79,59 +81,59 @@ fn record_hook_bit(bit: u32) {
 
 impl RomHooks for LoggingRomHooks {
     fn pre_cold_boot(&self) {
-        romtime::println!("[mcu-rom-hook] pre_cold_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_cold_boot");
         record_hook_bit(0);
     }
     fn post_cold_boot(&self) {
-        romtime::println!("[mcu-rom-hook] post_cold_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_cold_boot");
         record_hook_bit(1);
     }
     fn pre_warm_boot(&self) {
-        romtime::println!("[mcu-rom-hook] pre_warm_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_warm_boot");
         record_hook_bit(2);
     }
     fn post_warm_boot(&self) {
-        romtime::println!("[mcu-rom-hook] post_warm_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_warm_boot");
         record_hook_bit(3);
     }
     fn pre_fw_boot(&self) {
-        romtime::println!("[mcu-rom-hook] pre_fw_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_fw_boot");
         record_hook_bit(4);
     }
     fn post_fw_boot(&self) {
-        romtime::println!("[mcu-rom-hook] post_fw_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_fw_boot");
         record_hook_bit(5);
     }
     fn pre_fw_hitless_update(&self) {
-        romtime::println!("[mcu-rom-hook] pre_fw_hitless_update");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_fw_hitless_update");
         record_hook_bit(6);
     }
     fn post_fw_hitless_update(&self) {
-        romtime::println!("[mcu-rom-hook] post_fw_hitless_update");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_fw_hitless_update");
         record_hook_bit(7);
     }
     fn pre_caliptra_boot(&self) {
-        romtime::println!("[mcu-rom-hook] pre_caliptra_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_caliptra_boot");
         record_hook_bit(8);
     }
     fn post_caliptra_boot(&self) {
-        romtime::println!("[mcu-rom-hook] post_caliptra_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_caliptra_boot");
         record_hook_bit(9);
     }
     fn pre_populate_fuses_to_caliptra(&self) {
-        romtime::println!("[mcu-rom-hook] pre_populate_fuses_to_caliptra");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_populate_fuses_to_caliptra");
         record_hook_bit(10);
     }
     fn post_populate_fuses_to_caliptra(&self) {
-        romtime::println!("[mcu-rom-hook] post_populate_fuses_to_caliptra");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_populate_fuses_to_caliptra");
         record_hook_bit(11);
     }
     fn pre_load_firmware(&self) {
-        romtime::println!("[mcu-rom-hook] pre_load_firmware");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_load_firmware");
         record_hook_bit(12);
     }
     fn post_load_firmware(&self) {
-        romtime::println!("[mcu-rom-hook] post_load_firmware");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_load_firmware");
         record_hook_bit(13);
     }
 }
@@ -139,24 +141,24 @@ impl RomHooks for LoggingRomHooks {
 // re-export these so the common ROM can use it
 #[no_mangle]
 #[used]
-pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_emulator::EMULATOR_MEMORY_MAP;
+pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP;
 
 #[no_mangle]
 #[used]
-pub static MCU_STRAPS: McuStraps = mcu_config_emulator::EMULATOR_MCU_STRAPS;
+pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_emulator::EMULATOR_MCU_STRAPS;
 
 pub extern "C" fn rom_entry() -> ! {
     unsafe {
         #[allow(static_mut_refs)]
-        romtime::set_printer(&mut EMULATOR_WRITER);
+        caliptra_mcu_romtime::set_printer(&mut EMULATOR_WRITER);
     }
     unsafe {
         #[allow(static_mut_refs)]
-        mcu_rom_common::set_fatal_error_handler(&mut FATAL_ERROR_HANDLER);
+        caliptra_mcu_rom_common::set_fatal_error_handler(&mut FATAL_ERROR_HANDLER);
     }
     unsafe {
         #[allow(static_mut_refs)]
-        romtime::set_exiter(&mut EMULATOR_EXITER);
+        caliptra_mcu_romtime::set_exiter(&mut EMULATOR_EXITER);
     }
 
     const EMULATOR_DOT_FLASH_ADDR: *mut u8 = 0x8100_0000 as *mut u8;
@@ -183,11 +185,12 @@ pub extern "C" fn rom_entry() -> ! {
     struct EmulatorOcpPlatform;
 
     #[cfg(feature = "ocp-lock")]
-    fn get_hek_partition(slot: usize) -> registers_generated::fuses::OtpPartitionInfo {
-        registers_generated::fuses::OtpPartitionInfo {
+    fn get_hek_partition(slot: usize) -> caliptra_mcu_registers_generated::fuses::OtpPartitionInfo {
+        caliptra_mcu_registers_generated::fuses::OtpPartitionInfo {
             name: "cptra_ss_lock_hek_prod",
-            byte_offset: registers_generated::fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET
-                + slot * 48,
+            byte_offset:
+                caliptra_mcu_registers_generated::fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET
+                    + slot * 48,
             byte_size: 40,
             sw_digest: true,
             hw_digest: false,
@@ -196,26 +199,29 @@ pub extern "C" fn rom_entry() -> ! {
     }
 
     #[cfg(feature = "ocp-lock")]
-    impl romtime::ocp_lock::Platform for EmulatorOcpPlatform {
+    impl caliptra_mcu_romtime::ocp_lock::Platform for EmulatorOcpPlatform {
         fn get_total_slots(&self) -> usize {
             8
         }
 
         fn get_slot_state(
             &mut self,
-            otp: &romtime::otp::Otp,
-            perma_bit: &romtime::ocp_lock::PermaBitStatus,
+            otp: &caliptra_mcu_romtime::otp::Otp,
+            perma_bit: &caliptra_mcu_romtime::ocp_lock::PermaBitStatus,
             slot: usize,
             seed: &[u8; 48],
-        ) -> Result<romtime::ocp_lock::HekSeedState, romtime::ocp_lock::Error> {
-            if *perma_bit == romtime::ocp_lock::PermaBitStatus::Set {
-                return Ok(romtime::ocp_lock::HekSeedState::Permanent);
+        ) -> Result<
+            caliptra_mcu_romtime::ocp_lock::HekSeedState,
+            caliptra_mcu_romtime::ocp_lock::Error,
+        > {
+            if *perma_bit == caliptra_mcu_romtime::ocp_lock::PermaBitStatus::Set {
+                return Ok(caliptra_mcu_romtime::ocp_lock::HekSeedState::Permanent);
             }
             if seed.iter().all(|&b| b == 0xFF) {
-                return Ok(romtime::ocp_lock::HekSeedState::Sanitized);
+                return Ok(caliptra_mcu_romtime::ocp_lock::HekSeedState::Sanitized);
             }
             if seed.iter().all(|&b| b == 0x0) {
-                return Ok(romtime::ocp_lock::HekSeedState::Unused);
+                return Ok(caliptra_mcu_romtime::ocp_lock::HekSeedState::Unused);
             }
 
             let partition = get_hek_partition(slot);
@@ -231,40 +237,42 @@ pub extern "C" fn rom_entry() -> ! {
                 (Ok(expected_digest), Ok(computed_digest)) => {
                     let expected_digest = u64::from_le_bytes(*expected_digest);
                     if computed_digest != expected_digest {
-                        romtime::println!(
+                        caliptra_mcu_romtime::println!(
                             "[mcu-rom-otp] HEK software digest mismatch! Slot {}",
                             slot
                         );
-                        return Ok(romtime::ocp_lock::HekSeedState::ProgrammedCorrupted);
+                        return Ok(
+                            caliptra_mcu_romtime::ocp_lock::HekSeedState::ProgrammedCorrupted,
+                        );
                     }
                 }
-                _ => return Err(romtime::ocp_lock::Error::INVALID_HEK_SLOT),
+                _ => return Err(caliptra_mcu_romtime::ocp_lock::Error::INVALID_HEK_SLOT),
             }
 
-            Ok(romtime::ocp_lock::HekSeedState::Programmed)
+            Ok(caliptra_mcu_romtime::ocp_lock::HekSeedState::Programmed)
         }
 
         fn get_active_slot(
             &mut self,
-            otp: &romtime::otp::Otp,
-            perma_bit: &romtime::ocp_lock::PermaBitStatus,
-            seeds: &romtime::ocp_lock::HekSeeds,
-        ) -> Result<usize, romtime::ocp_lock::Error> {
-            if *perma_bit == romtime::ocp_lock::PermaBitStatus::Set {
+            otp: &caliptra_mcu_romtime::otp::Otp,
+            perma_bit: &caliptra_mcu_romtime::ocp_lock::PermaBitStatus,
+            seeds: &caliptra_mcu_romtime::ocp_lock::HekSeeds,
+        ) -> Result<usize, caliptra_mcu_romtime::ocp_lock::Error> {
+            if *perma_bit == caliptra_mcu_romtime::ocp_lock::PermaBitStatus::Set {
                 return Ok(self.get_total_slots() - 1);
             }
 
             for i in 0..seeds.len() {
                 let buf = seeds
                     .get(i)
-                    .ok_or(romtime::ocp_lock::Error::INVALID_HEK_SLOT)?;
+                    .ok_or(caliptra_mcu_romtime::ocp_lock::Error::INVALID_HEK_SLOT)?;
                 let state = self.get_slot_state(otp, perma_bit, i, buf)?;
 
-                if state == romtime::ocp_lock::HekSeedState::Programmed {
+                if state == caliptra_mcu_romtime::ocp_lock::HekSeedState::Programmed {
                     return Ok(i);
                 }
             }
-            Err(romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS)
+            Err(caliptra_mcu_romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS)
         }
     }
 
@@ -272,7 +280,7 @@ pub extern "C" fn rom_entry() -> ! {
     let mut ocp_platform = EmulatorOcpPlatform;
 
     #[cfg(feature = "ocp-lock")]
-    let ocp_lock_config = romtime::ocp_lock::RomConfig {
+    let ocp_lock_config = caliptra_mcu_romtime::ocp_lock::RomConfig {
         platform: Some(&mut ocp_platform),
         ..Default::default()
     };
@@ -313,18 +321,20 @@ pub extern "C" fn rom_entry() -> ! {
 
         let mut flash_image_partition_driver = match active_partition {
             PartitionId::A => {
-                romtime::println!("[mcu-rom] Booting from Partition A");
+                caliptra_mcu_romtime::println!("[mcu-rom] Booting from Partition A");
                 partition_a
             }
             PartitionId::B => {
-                romtime::println!("[mcu-rom] Booting from Partition B");
+                caliptra_mcu_romtime::println!("[mcu-rom] Booting from Partition B");
                 partition_b
             }
             _ => fatal_error(EmulatorError::InvalidPartitionId.into()),
         };
 
-        use mcu_rom_common::recovery::flash::FlashImageProvider;
-        use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
+        use caliptra_mcu_rom_common::recovery::flash::FlashImageProvider;
+        use caliptra_mcu_rom_common::recovery::{
+            ErrorPolicy, ImageProviderEntry, ImageProviderManager,
+        };
 
         let mut flash_provider = FlashImageProvider::new(&mut flash_image_partition_driver);
         let mut entries = [ImageProviderEntry {
@@ -333,7 +343,7 @@ pub extern "C" fn rom_entry() -> ! {
         }];
         let manager = ImageProviderManager::new(&mut entries);
 
-        mcu_rom_common::rom_start(RomParameters {
+        caliptra_mcu_rom_common::rom_start(RomParameters {
             image_provider_manager: Some(manager),
             dot_flash: Some(dot_flash),
             request_recovery_boot: true,
@@ -355,7 +365,8 @@ pub extern "C" fn rom_entry() -> ! {
         let mcu_image_verifier = McuImageVerifier;
         let rom_parameters = RomParameters {
             mcu_image_verifier: Some(&mcu_image_verifier),
-            mcu_image_header_size: core::mem::size_of::<mcu_image_header::McuImageHeader>(),
+            mcu_image_header_size: core::mem::size_of::<caliptra_mcu_image_header::McuImageHeader>(
+            ),
             dot_flash: Some(dot_flash),
             otp_enable_integrity_check: true,
             otp_enable_consistency_check: true,
@@ -369,12 +380,12 @@ pub extern "C" fn rom_entry() -> ! {
             ocp_lock_config,
             ..Default::default()
         };
-        mcu_rom_common::rom_start(rom_parameters);
+        caliptra_mcu_rom_common::rom_start(rom_parameters);
     } else if cfg!(any(
         feature = "test-fw-manifest-dot",
         feature = "test-fw-manifest-dot-hitless"
     )) {
-        mcu_rom_common::rom_start(RomParameters {
+        caliptra_mcu_rom_common::rom_start(RomParameters {
             dot_flash: Some(dot_flash),
             fw_manifest_dot_enabled: true,
             otp_enable_integrity_check: true,
@@ -392,21 +403,25 @@ pub extern "C" fn rom_entry() -> ! {
     } else if cfg!(feature = "test-usb-ocp-recovery") {
         #[cfg(feature = "test-usb-ocp-recovery")]
         {
-            use mcu_usb_emulator::ExamplarUsbDriver;
-            use ocp::cms::slice_fifo::SliceFifoRegion;
-            use ocp::cms::slice_indirect::SliceIndirectRegion;
-            use ocp::cms::{FifoCmsRegion, IndirectCmsRegion};
-            use ocp::interface::{RecoveryDeviceConfig, RecoveryStateMachine};
-            use ocp::protocol::device_id::{DeviceDescriptor, DeviceId, PciVendorDescriptor};
-            use ocp::protocol::indirect_fifo_status::FifoCmsRegionType;
-            use ocp::protocol::indirect_status::CmsRegionType;
-            use ocp::vendor::NoopVendorHandler;
-            use registers_generated::usbdev;
+            use caliptra_mcu_ocp::cms::slice_fifo::SliceFifoRegion;
+            use caliptra_mcu_ocp::cms::slice_indirect::SliceIndirectRegion;
+            use caliptra_mcu_ocp::cms::{FifoCmsRegion, IndirectCmsRegion};
+            use caliptra_mcu_ocp::interface::{RecoveryDeviceConfig, RecoveryStateMachine};
+            use caliptra_mcu_ocp::protocol::device_id::{
+                DeviceDescriptor, DeviceId, PciVendorDescriptor,
+            };
+            use caliptra_mcu_ocp::protocol::indirect_fifo_status::FifoCmsRegionType;
+            use caliptra_mcu_ocp::protocol::indirect_status::CmsRegionType;
+            use caliptra_mcu_ocp::vendor::NoopVendorHandler;
+            use caliptra_mcu_registers_generated::usbdev;
+            use caliptra_mcu_usb_emulator::ExamplarUsbDriver;
 
-            romtime::println!("[mcu-rom] USB OCP Recovery boot path");
+            caliptra_mcu_romtime::println!("[mcu-rom] USB OCP Recovery boot path");
 
             let usb_regs = unsafe {
-                romtime::StaticRef::new(usbdev::USBDEV_ADDR as *const usbdev::regs::Usbdev)
+                caliptra_mcu_romtime::StaticRef::new(
+                    usbdev::USBDEV_ADDR as *const usbdev::regs::Usbdev,
+                )
             };
             let mut usb_driver = ExamplarUsbDriver::new(usb_regs);
 
@@ -419,7 +434,9 @@ pub extern "C" fn rom_entry() -> ! {
             };
 
             fn ocp_setup_failed() -> ! {
-                fatal_error(mcu_error::McuError::ROM_COLD_BOOT_RECOVERY_NOT_CONFIGURED_ERROR);
+                fatal_error(
+                    caliptra_mcu_error::McuError::ROM_COLD_BOOT_RECOVERY_NOT_CONFIGURED_ERROR,
+                );
             }
             let mut indirect = SliceIndirectRegion::new(indirect_buf, CmsRegionType::CodeSpace)
                 .ok()
@@ -456,8 +473,10 @@ pub extern "C" fn rom_entry() -> ! {
             .ok()
             .unwrap_or_else(|| ocp_setup_failed());
 
-            use mcu_rom_common::recovery::ocp::OcpImageProvider;
-            use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
+            use caliptra_mcu_rom_common::recovery::ocp::OcpImageProvider;
+            use caliptra_mcu_rom_common::recovery::{
+                ErrorPolicy, ImageProviderEntry, ImageProviderManager,
+            };
 
             let mut ocp_provider = OcpImageProvider::new(sm);
             let mut entries = [ImageProviderEntry {
@@ -466,7 +485,7 @@ pub extern "C" fn rom_entry() -> ! {
             }];
             let manager = ImageProviderManager::new(&mut entries);
 
-            mcu_rom_common::rom_start(RomParameters {
+            caliptra_mcu_rom_common::rom_start(RomParameters {
                 image_provider_manager: Some(manager),
                 dot_flash: Some(dot_flash),
                 cptra_mbox_axi_users: mbox_axi_users,
@@ -501,10 +520,12 @@ pub extern "C" fn rom_entry() -> ! {
         )
         .unwrap_or_else(|_| fatal_error(EmulatorError::InitFlashPartitionDriver.into()));
 
-        romtime::println!("[mcu-rom] Booting from flash");
+        caliptra_mcu_romtime::println!("[mcu-rom] Booting from flash");
 
-        use mcu_rom_common::recovery::flash::FlashImageProvider;
-        use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
+        use caliptra_mcu_rom_common::recovery::flash::FlashImageProvider;
+        use caliptra_mcu_rom_common::recovery::{
+            ErrorPolicy, ImageProviderEntry, ImageProviderManager,
+        };
 
         let mut flash_provider = FlashImageProvider::new(&mut flash_partition);
         let mut entries = [ImageProviderEntry {
@@ -513,7 +534,7 @@ pub extern "C" fn rom_entry() -> ! {
         }];
         let manager = ImageProviderManager::new(&mut entries);
 
-        mcu_rom_common::rom_start(RomParameters {
+        caliptra_mcu_rom_common::rom_start(RomParameters {
             image_provider_manager: Some(manager),
             dot_flash: Some(dot_flash),
             // Let the generic wire (bit 29 of mci_reg_generic_input_wires[1]) control flash boot
@@ -552,21 +573,26 @@ pub extern "C" fn rom_entry() -> ! {
             })
         };
 
-        let mci_base: romtime::StaticRef<registers_generated::mci::regs::Mci> = unsafe {
-            romtime::StaticRef::new(
-                MCU_MEMORY_MAP.mci_offset as *const registers_generated::mci::regs::Mci,
+        let mci_base: caliptra_mcu_romtime::StaticRef<
+            caliptra_mcu_registers_generated::mci::regs::Mci,
+        > = unsafe {
+            caliptra_mcu_romtime::StaticRef::new(
+                MCU_MEMORY_MAP.mci_offset
+                    as *const caliptra_mcu_registers_generated::mci::regs::Mci,
             )
         };
         static mut RECOVERY_TRANSPORT: core::mem::MaybeUninit<
-            mcu_rom_common::Mbox0RecoveryTransport,
+            caliptra_mcu_rom_common::Mbox0RecoveryTransport,
         > = core::mem::MaybeUninit::uninit();
         let recovery_transport = unsafe {
-            RECOVERY_TRANSPORT.write(mcu_rom_common::Mbox0RecoveryTransport::new(mci_base))
+            RECOVERY_TRANSPORT.write(caliptra_mcu_rom_common::Mbox0RecoveryTransport::new(
+                mci_base,
+            ))
         };
 
         let hooks = LoggingRomHooks;
 
-        mcu_rom_common::rom_start(RomParameters {
+        caliptra_mcu_rom_common::rom_start(RomParameters {
             dot_flash: Some(dot_flash),
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
@@ -585,7 +611,7 @@ pub extern "C" fn rom_entry() -> ! {
                 None
             },
             i3c_services: if cfg!(feature = "test-i3c-services") {
-                Some(mcu_rom_common::I3cServicesModes::DOT_RECOVERY)
+                Some(caliptra_mcu_rom_common::I3cServicesModes::DOT_RECOVERY)
             } else {
                 None
             },
@@ -597,63 +623,68 @@ pub extern "C" fn rom_entry() -> ! {
             },
             dot_locked_recovery_handlers: if cfg!(feature = "test-dot-recovery") {
                 static mut BLOB_HANDLER: core::mem::MaybeUninit<
-                    mcu_rom_common::BackupBlobRecoveryHandler<'static>,
+                    caliptra_mcu_rom_common::BackupBlobRecoveryHandler<'static>,
                 > = core::mem::MaybeUninit::uninit();
                 let blob_h = unsafe {
-                    BLOB_HANDLER.write(mcu_rom_common::BackupBlobRecoveryHandler {
+                    BLOB_HANDLER.write(caliptra_mcu_rom_common::BackupBlobRecoveryHandler {
                         recovery_handler: &*recovery_handler,
                     })
                 };
                 static mut OVERRIDE_HANDLER: core::mem::MaybeUninit<
-                    mcu_rom_common::OverrideChallengeRecoveryHandler<'static>,
+                    caliptra_mcu_rom_common::OverrideChallengeRecoveryHandler<'static>,
                 > = core::mem::MaybeUninit::uninit();
                 let override_h = unsafe {
-                    OVERRIDE_HANDLER.write(mcu_rom_common::OverrideChallengeRecoveryHandler {
-                        transport: &*recovery_transport,
-                        wdt_timeout: 0,
-                    })
+                    OVERRIDE_HANDLER.write(
+                        caliptra_mcu_rom_common::OverrideChallengeRecoveryHandler {
+                            transport: &*recovery_transport,
+                            wdt_timeout: 0,
+                        },
+                    )
                 };
                 static mut HANDLER_ENTRIES: core::mem::MaybeUninit<
-                    [mcu_rom_common::DotLockedRecoveryEntry<'static>; 2],
+                    [caliptra_mcu_rom_common::DotLockedRecoveryEntry<'static>; 2],
                 > = core::mem::MaybeUninit::uninit();
                 unsafe {
                     HANDLER_ENTRIES
                         .write([
-                            mcu_rom_common::DotLockedRecoveryEntry {
+                            caliptra_mcu_rom_common::DotLockedRecoveryEntry {
                                 handler: blob_h,
-                                policy: mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
+                                policy:
+                                    caliptra_mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
                             },
-                            mcu_rom_common::DotLockedRecoveryEntry {
+                            caliptra_mcu_rom_common::DotLockedRecoveryEntry {
                                 handler: override_h,
-                                policy: mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
+                                policy:
+                                    caliptra_mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
                             },
                         ])
                         .as_slice()
                 }
             } else if cfg!(feature = "test-i3c-services") {
                 let i3c_base = unsafe {
-                    romtime::StaticRef::new(
-                        MCU_MEMORY_MAP.i3c_offset as *const registers_generated::i3c::regs::I3c,
+                    caliptra_mcu_romtime::StaticRef::new(
+                        MCU_MEMORY_MAP.i3c_offset
+                            as *const caliptra_mcu_registers_generated::i3c::regs::I3c,
                     )
                 };
                 static mut I3C_HANDLER: core::mem::MaybeUninit<
-                    mcu_rom_common::I3cDotLockedRecoveryHandler,
+                    caliptra_mcu_rom_common::I3cDotLockedRecoveryHandler,
                 > = core::mem::MaybeUninit::uninit();
                 let handler = unsafe {
-                    I3C_HANDLER.write(mcu_rom_common::I3cDotLockedRecoveryHandler {
+                    I3C_HANDLER.write(caliptra_mcu_rom_common::I3cDotLockedRecoveryHandler {
                         i3c_base,
-                        services: mcu_rom_common::I3cServicesModes::DOT_RECOVERY,
+                        services: caliptra_mcu_rom_common::I3cServicesModes::DOT_RECOVERY,
                         i3c_target_addr: 0x5a,
                     })
                 };
                 static mut HANDLER_ENTRIES: core::mem::MaybeUninit<
-                    [mcu_rom_common::DotLockedRecoveryEntry<'static>; 1],
+                    [caliptra_mcu_rom_common::DotLockedRecoveryEntry<'static>; 1],
                 > = core::mem::MaybeUninit::uninit();
                 unsafe {
                     HANDLER_ENTRIES
-                        .write([mcu_rom_common::DotLockedRecoveryEntry {
+                        .write([caliptra_mcu_rom_common::DotLockedRecoveryEntry {
                             handler,
-                            policy: mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
+                            policy: caliptra_mcu_rom_common::DotLockedRecoveryErrorPolicy::Continue,
                         }])
                         .as_slice()
                 }
@@ -675,7 +706,7 @@ pub extern "C" fn rom_entry() -> ! {
         crate::flash::flash_test::test_rom_flash_access(&test_par);
     }
 
-    romtime::println!(
+    caliptra_mcu_romtime::println!(
         "[mcu-rom] Jumping to firmware at {}",
         HexWord(MCU_MEMORY_MAP.sram_offset as u32)
     );
@@ -721,7 +752,7 @@ enum EmulatorError {
     InitOcpRecovery,
 }
 
-impl From<EmulatorError> for mcu_error::McuError {
+impl From<EmulatorError> for caliptra_mcu_error::McuError {
     fn from(err: EmulatorError) -> Self {
         Self::new_vendor(err as u32)
     }

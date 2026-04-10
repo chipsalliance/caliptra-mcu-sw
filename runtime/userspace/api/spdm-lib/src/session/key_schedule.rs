@@ -7,12 +7,14 @@
 use crate::protocol::SpdmVersion;
 use arrayvec::ArrayVec;
 use caliptra_api::mailbox::Cmk;
-use libapi_caliptra::crypto::aes_gcm::{Aes256GcmTag, AesGcm};
-use libapi_caliptra::crypto::asym::ecdh::{CmKeyUsage, Ecdh, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE};
-use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
-use libapi_caliptra::crypto::hmac::{HkdfSalt, Hmac};
-use libapi_caliptra::crypto::import::Import;
-use libapi_caliptra::error::CaliptraApiError;
+use caliptra_mcu_libapi_caliptra::crypto::aes_gcm::{Aes256GcmTag, AesGcm};
+use caliptra_mcu_libapi_caliptra::crypto::asym::ecdh::{
+    CmKeyUsage, Ecdh, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
+};
+use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use caliptra_mcu_libapi_caliptra::crypto::hmac::{HkdfSalt, Hmac};
+use caliptra_mcu_libapi_caliptra::crypto::import::Import;
+use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
 
 #[derive(Debug, PartialEq)]
 pub enum KeyScheduleError {

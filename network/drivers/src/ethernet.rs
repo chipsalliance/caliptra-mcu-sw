@@ -12,15 +12,15 @@ Abstract:
 
 --*/
 
-use network_hil::ethernet::{
+use caliptra_mcu_network_hil::ethernet::{
     Ethernet, EthernetError, MacAddress, Result, ETH_MAX_FRAME_SIZE, ETH_MIN_FRAME_SIZE,
 };
-use registers_generated::ethernet::{
+use caliptra_mcu_registers_generated::ethernet::{
     bits::{EthCtrl, EthStatus},
     regs::Ethernet as EthernetRegs,
     ETHERNET_ADDR,
 };
-use romtime::StaticRef;
+use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{Readable, Writeable};
 
 // Ethernet driver for the Network Coprocessor

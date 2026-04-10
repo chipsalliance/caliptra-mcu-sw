@@ -6,10 +6,12 @@ use std::rc::Rc;
 use crate::McuMailbox0Internal;
 use caliptra_emu_bus::{ActionHandle, Clock, Ram, ReadWriteRegister, Timer};
 use caliptra_emu_cpu::Irq;
-use emulator_consts::{RAM_ORG, RAM_SIZE};
-use emulator_registers_generated::axicdma::{AxicdmaGenerated, AxicdmaPeripheral};
-use mcu_config_emulator::EMULATOR_MEMORY_MAP;
-use registers_generated::axicdma::bits::{AxicdmaBytesToTransfer, AxicdmaControl, AxicdmaStatus};
+use caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP;
+use caliptra_mcu_emulator_consts::{RAM_ORG, RAM_SIZE};
+use caliptra_mcu_emulator_registers_generated::axicdma::{AxicdmaGenerated, AxicdmaPeripheral};
+use caliptra_mcu_registers_generated::axicdma::bits::{
+    AxicdmaBytesToTransfer, AxicdmaControl, AxicdmaStatus,
+};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 pub enum DmaCtrlIntType {
@@ -339,7 +341,7 @@ impl AxicdmaPeripheral for AxiCDMA {
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
-            registers_generated::axicdma::bits::AxicdmaStatus::Register,
+            caliptra_mcu_registers_generated::axicdma::bits::AxicdmaStatus::Register,
         >,
     ) {
         if val.reg.is_set(AxicdmaStatus::IrqError) {
@@ -398,10 +400,10 @@ mod test {
     use caliptra_emu_bus::{Bus, Clock};
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
-    use emulator_consts::{EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE};
-    use emulator_registers_generated::root_bus::AutoRootBus;
-    use registers_generated::axicdma::bits::{AxicdmaControl, AxicdmaStatus};
-    use registers_generated::axicdma::AXICDMA_ADDR;
+    use caliptra_mcu_emulator_consts::{EXTERNAL_TEST_SRAM_SIZE, RAM_SIZE};
+    use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
+    use caliptra_mcu_registers_generated::axicdma::bits::{AxicdmaControl, AxicdmaStatus};
+    use caliptra_mcu_registers_generated::axicdma::AXICDMA_ADDR;
 
     const AXICDMA_CONTROL_OFFSET: u32 = 0x0;
     const AXICDMA_STATUS_OFFSET: u32 = 0x4;

@@ -3,7 +3,7 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
 pub mod flash;
-use mcu_config::{McuMemoryMap, McuStraps, MemoryRegionType};
+use caliptra_mcu_config::{McuMemoryMap, McuStraps, MemoryRegionType};
 
 pub const FPGA_MEMORY_MAP: McuMemoryMap = McuMemoryMap {
     rom_offset: 0xb004_0000,

@@ -9,15 +9,15 @@
 #[cfg(test)]
 mod test {
     use crate::test::{build_test_binaries, start_runtime_hw_model, TestParams, TEST_LOCK};
-    use emulator_periph::UsbHostController;
-    use mcu_hw_model::usb_ctrl::*;
-    use mcu_hw_model::{DefaultHwModel, McuHwModel};
-    use ocp::protocol::device_status::{DeviceStatusValue, ProtocolError};
-    use ocp::protocol::prot_cap::{self, RecoveryProtocolCapabilities};
-    use ocp::protocol::recovery_status::DeviceRecoveryStatus;
-    use ocp::protocol::RecoveryCommand;
+    use caliptra_mcu_emulator_periph::UsbHostController;
+    use caliptra_mcu_hw_model::usb_ctrl::*;
+    use caliptra_mcu_hw_model::{DefaultHwModel, McuHwModel};
+    use caliptra_mcu_ocp::protocol::device_status::{DeviceStatusValue, ProtocolError};
+    use caliptra_mcu_ocp::protocol::prot_cap::{self, RecoveryProtocolCapabilities};
+    use caliptra_mcu_ocp::protocol::recovery_status::DeviceRecoveryStatus;
+    use caliptra_mcu_ocp::protocol::RecoveryCommand;
+    use caliptra_mcu_romtime::McuBootMilestones;
     use random_port::PortPicker;
-    use romtime::McuBootMilestones;
     use std::sync::atomic::Ordering;
 
     /// Timeout for quick USB transactions (enumeration, reads).

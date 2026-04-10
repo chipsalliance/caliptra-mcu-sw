@@ -11,9 +11,9 @@
 #![no_main]
 #![no_std]
 
-use mcu_rom_common::{fatal_error, RomEnv};
-use registers_generated::fuses;
-use romtime::otp::Otp;
+use caliptra_mcu_registers_generated::fuses;
+use caliptra_mcu_rom_common::{fatal_error, RomEnv};
+use caliptra_mcu_romtime::otp::Otp;
 
 const DIGEST_IV: u64 = 0x90C7_F21F_6224_F027;
 const DIGEST_CONST: u128 = 0xF98C_48B1_F937_7284_4A22_D4B7_8FE0_266F;
@@ -27,8 +27,8 @@ fn populate_vendor_test_partition(otp: &Otp) {
     for i in 0..num_words {
         let val = (i as u32).wrapping_mul(0x0101_0101);
         if let Err(_e) = otp.write_word(base_word + i, val) {
-            romtime::println!("[sw-digest-lock] Failed to write OTP word {}", i);
-            fatal_error(mcu_error::McuError::ROM_OTP_WRITE_WORD_ERROR);
+            caliptra_mcu_romtime::println!("[sw-digest-lock] Failed to write OTP word {}", i);
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_WRITE_WORD_ERROR);
         }
     }
 }
@@ -37,20 +37,22 @@ fn write_phase(env: &RomEnv) -> ! {
     let otp = &env.otp;
     let partition = fuses::VENDOR_TEST_PARTITION;
 
-    romtime::println!("[sw-digest-lock] Write phase: populating partition and writing digest");
+    caliptra_mcu_romtime::println!(
+        "[sw-digest-lock] Write phase: populating partition and writing digest"
+    );
     populate_vendor_test_partition(otp);
 
     match otp.write_sw_digest_and_lock(partition, DIGEST_IV, DIGEST_CONST) {
         Ok(digest) => {
-            romtime::println!("[sw-digest-lock] Digest written: {:#018x}", digest);
+            caliptra_mcu_romtime::println!("[sw-digest-lock] Digest written: {:#018x}", digest);
         }
         Err(_e) => {
-            romtime::println!("[sw-digest-lock] write_sw_digest_and_lock failed");
-            fatal_error(mcu_error::McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
+            caliptra_mcu_romtime::println!("[sw-digest-lock] write_sw_digest_and_lock failed");
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
         }
     }
 
-    romtime::println!("[sw-digest-lock] DONE");
+    caliptra_mcu_romtime::println!("[sw-digest-lock] DONE");
     #[allow(clippy::empty_loop)]
     loop {}
 }
@@ -59,37 +61,37 @@ fn verify_phase(env: &RomEnv) -> ! {
     let otp = &env.otp;
     let partition = fuses::VENDOR_TEST_PARTITION;
 
-    romtime::println!("[sw-digest-lock] Verify phase: checking digest");
+    caliptra_mcu_romtime::println!("[sw-digest-lock] Verify phase: checking digest");
 
     let computed = match otp.compute_sw_digest(partition, DIGEST_IV, DIGEST_CONST) {
         Ok(d) => d,
         Err(_e) => {
-            romtime::println!("[sw-digest-lock] compute_sw_digest failed");
-            fatal_error(mcu_error::McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
+            caliptra_mcu_romtime::println!("[sw-digest-lock] compute_sw_digest failed");
+            fatal_error(caliptra_mcu_error::McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
         }
     };
 
     let digest_offset = match partition.digest_offset {
         Some(off) => off,
-        None => fatal_error(mcu_error::McuError::ROM_OTP_INVALID_DATA_ERROR),
+        None => fatal_error(caliptra_mcu_error::McuError::ROM_OTP_INVALID_DATA_ERROR),
     };
     let stored = match otp.read_dword(digest_offset / 8) {
         Ok(v) => v,
-        Err(_e) => fatal_error(mcu_error::McuError::ROM_OTP_READ_ERROR),
+        Err(_e) => fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR),
     };
 
-    romtime::println!(
+    caliptra_mcu_romtime::println!(
         "[sw-digest-lock] Computed: {:#018x}, Stored: {:#018x}",
         computed,
         stored
     );
 
     if stored != computed {
-        romtime::println!("[sw-digest-lock] MISMATCH!");
-        fatal_error(mcu_error::McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
+        caliptra_mcu_romtime::println!("[sw-digest-lock] MISMATCH!");
+        fatal_error(caliptra_mcu_error::McuError::ROM_OTP_DIGEST_VERIFY_ERROR);
     }
 
-    romtime::println!("[sw-digest-lock] PASS");
+    caliptra_mcu_romtime::println!("[sw-digest-lock] PASS");
     #[allow(clippy::empty_loop)]
     loop {}
 }
@@ -101,11 +103,11 @@ fn run() -> ! {
     let partition = fuses::VENDOR_TEST_PARTITION;
     let digest_offset = match partition.digest_offset {
         Some(off) => off,
-        None => fatal_error(mcu_error::McuError::ROM_OTP_INVALID_DATA_ERROR),
+        None => fatal_error(caliptra_mcu_error::McuError::ROM_OTP_INVALID_DATA_ERROR),
     };
     let stored = match env.otp.read_dword(digest_offset / 8) {
         Ok(v) => v,
-        Err(_e) => fatal_error(mcu_error::McuError::ROM_OTP_READ_ERROR),
+        Err(_e) => fatal_error(caliptra_mcu_error::McuError::ROM_OTP_READ_ERROR),
     };
 
     if stored == 0 {
@@ -117,6 +119,6 @@ fn run() -> ! {
 
 #[no_mangle]
 pub extern "C" fn main() {
-    mcu_test_harness::set_printer();
+    caliptra_mcu_test_harness::set_printer();
     run();
 }

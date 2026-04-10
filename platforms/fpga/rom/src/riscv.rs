@@ -19,10 +19,10 @@ use core::fmt::Write;
 #[cfg(target_arch = "riscv32")]
 core::arch::global_asm!(include_str!("start.s"));
 
-use mcu_config::{McuMemoryMap, McuStraps};
-use mcu_rom_common::flash::flash_partition::FlashPartition;
-use mcu_rom_common::{RomHooks, RomParameters};
-use romtime::{
+use caliptra_mcu_config::{McuMemoryMap, McuStraps};
+use caliptra_mcu_rom_common::flash::flash_partition::FlashPartition;
+use caliptra_mcu_rom_common::{RomHooks, RomParameters};
+use caliptra_mcu_romtime::{
     LifecycleControllerState, LifecycleHashedToken, LifecycleHashedTokens, LifecycleToken,
 };
 
@@ -53,59 +53,59 @@ fn record_hook_bit(bit: u32) {
 
 impl RomHooks for LoggingRomHooks {
     fn pre_cold_boot(&self) {
-        romtime::println!("[mcu-rom-hook] pre_cold_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_cold_boot");
         record_hook_bit(0);
     }
     fn post_cold_boot(&self) {
-        romtime::println!("[mcu-rom-hook] post_cold_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_cold_boot");
         record_hook_bit(1);
     }
     fn pre_warm_boot(&self) {
-        romtime::println!("[mcu-rom-hook] pre_warm_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_warm_boot");
         record_hook_bit(2);
     }
     fn post_warm_boot(&self) {
-        romtime::println!("[mcu-rom-hook] post_warm_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_warm_boot");
         record_hook_bit(3);
     }
     fn pre_fw_boot(&self) {
-        romtime::println!("[mcu-rom-hook] pre_fw_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_fw_boot");
         record_hook_bit(4);
     }
     fn post_fw_boot(&self) {
-        romtime::println!("[mcu-rom-hook] post_fw_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_fw_boot");
         record_hook_bit(5);
     }
     fn pre_fw_hitless_update(&self) {
-        romtime::println!("[mcu-rom-hook] pre_fw_hitless_update");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_fw_hitless_update");
         record_hook_bit(6);
     }
     fn post_fw_hitless_update(&self) {
-        romtime::println!("[mcu-rom-hook] post_fw_hitless_update");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_fw_hitless_update");
         record_hook_bit(7);
     }
     fn pre_caliptra_boot(&self) {
-        romtime::println!("[mcu-rom-hook] pre_caliptra_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_caliptra_boot");
         record_hook_bit(8);
     }
     fn post_caliptra_boot(&self) {
-        romtime::println!("[mcu-rom-hook] post_caliptra_boot");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_caliptra_boot");
         record_hook_bit(9);
     }
     fn pre_populate_fuses_to_caliptra(&self) {
-        romtime::println!("[mcu-rom-hook] pre_populate_fuses_to_caliptra");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_populate_fuses_to_caliptra");
         record_hook_bit(10);
     }
     fn post_populate_fuses_to_caliptra(&self) {
-        romtime::println!("[mcu-rom-hook] post_populate_fuses_to_caliptra");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_populate_fuses_to_caliptra");
         record_hook_bit(11);
     }
     fn pre_load_firmware(&self) {
-        romtime::println!("[mcu-rom-hook] pre_load_firmware");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] pre_load_firmware");
         record_hook_bit(12);
     }
     fn post_load_firmware(&self) {
-        romtime::println!("[mcu-rom-hook] post_load_firmware");
+        caliptra_mcu_romtime::println!("[mcu-rom-hook] post_load_firmware");
         record_hook_bit(13);
     }
 }
@@ -113,28 +113,28 @@ impl RomHooks for LoggingRomHooks {
 // re-export these so the common ROM and runtime can use them
 #[no_mangle]
 #[used]
-pub static MCU_MEMORY_MAP: McuMemoryMap = mcu_config_fpga::FPGA_MEMORY_MAP;
+pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_fpga::FPGA_MEMORY_MAP;
 
 #[no_mangle]
 #[used]
-pub static MCU_STRAPS: McuStraps = mcu_config_fpga::FPGA_MCU_STRAPS;
+pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_fpga::FPGA_MCU_STRAPS;
 
 pub extern "C" fn rom_entry() -> ! {
     print_to_console("FPGA MCU ROM\n");
     unsafe {
         #[allow(static_mut_refs)]
-        romtime::set_printer(&mut FPGA_WRITER);
+        caliptra_mcu_romtime::set_printer(&mut FPGA_WRITER);
     }
     unsafe {
         #[allow(static_mut_refs)]
-        mcu_rom_common::set_fatal_error_handler(&mut FATAL_ERROR_HANDLER);
+        caliptra_mcu_rom_common::set_fatal_error_handler(&mut FATAL_ERROR_HANDLER);
     }
     unsafe {
         #[allow(static_mut_refs)]
-        romtime::set_exiter(&mut EXITER);
+        caliptra_mcu_romtime::set_exiter(&mut EXITER);
     }
 
-    romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
+    caliptra_mcu_romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
 
     // Initialize the primary flash controller
     let primary_flash_ctrl = FpgaFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
@@ -214,10 +214,12 @@ pub extern "C" fn rom_entry() -> ! {
 
     // DOT flash is backed by the secondary flash controller.
     let secondary_flash_ctrl = FpgaFlashCtrl::initialize_flash_ctrl(SECONDARY_FLASH_CTRL_BASE);
-    let dot_flash: &dyn mcu_rom_common::hil::FlashStorage = &secondary_flash_ctrl;
+    let dot_flash: &dyn caliptra_mcu_rom_common::hil::FlashStorage = &secondary_flash_ctrl;
 
-    use mcu_rom_common::recovery::flash::FlashImageProvider;
-    use mcu_rom_common::recovery::{ErrorPolicy, ImageProviderEntry, ImageProviderManager};
+    use caliptra_mcu_rom_common::recovery::flash::FlashImageProvider;
+    use caliptra_mcu_rom_common::recovery::{
+        ErrorPolicy, ImageProviderEntry, ImageProviderManager,
+    };
 
     let mut flash_provider = FlashImageProvider::new(&mut flash_partition);
     let mut entries = [ImageProviderEntry {
@@ -235,11 +237,12 @@ pub extern "C" fn rom_entry() -> ! {
     struct FpgaOcpPlatform;
 
     #[cfg(feature = "ocp-lock")]
-    fn get_hek_partition(slot: usize) -> registers_generated::fuses::OtpPartitionInfo {
-        registers_generated::fuses::OtpPartitionInfo {
+    fn get_hek_partition(slot: usize) -> caliptra_mcu_registers_generated::fuses::OtpPartitionInfo {
+        caliptra_mcu_registers_generated::fuses::OtpPartitionInfo {
             name: "cptra_ss_lock_hek_prod",
-            byte_offset: registers_generated::fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET
-                + slot * 48,
+            byte_offset:
+                caliptra_mcu_registers_generated::fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET
+                    + slot * 48,
             byte_size: 40,
             sw_digest: true,
             hw_digest: false,
@@ -248,32 +251,36 @@ pub extern "C" fn rom_entry() -> ! {
     }
 
     #[cfg(feature = "ocp-lock")]
-    impl romtime::ocp_lock::Platform for FpgaOcpPlatform {
+    impl caliptra_mcu_romtime::ocp_lock::Platform for FpgaOcpPlatform {
         fn get_total_slots(&self) -> usize {
             8
         }
 
         fn get_slot_state(
             &mut self,
-            otp: &romtime::otp::Otp,
-            perma_bit: &romtime::ocp_lock::PermaBitStatus,
+            otp: &caliptra_mcu_romtime::otp::Otp,
+            perma_bit: &caliptra_mcu_romtime::ocp_lock::PermaBitStatus,
             slot: usize,
             seed: &[u8; 48],
-        ) -> Result<romtime::ocp_lock::HekSeedState, romtime::ocp_lock::Error> {
-            if *perma_bit == romtime::ocp_lock::PermaBitStatus::Set && !cfg!(feature = "core_test")
+        ) -> Result<
+            caliptra_mcu_romtime::ocp_lock::HekSeedState,
+            caliptra_mcu_romtime::ocp_lock::Error,
+        > {
+            if *perma_bit == caliptra_mcu_romtime::ocp_lock::PermaBitStatus::Set
+                && !cfg!(feature = "core_test")
             {
-                return Ok(romtime::ocp_lock::HekSeedState::Permanent);
+                return Ok(caliptra_mcu_romtime::ocp_lock::HekSeedState::Permanent);
             }
             if seed.iter().all(|&b| b == 0xFF) {
-                return Ok(romtime::ocp_lock::HekSeedState::Sanitized);
+                return Ok(caliptra_mcu_romtime::ocp_lock::HekSeedState::Sanitized);
             }
             if seed.iter().all(|&b| b == 0x0) {
-                return Ok(romtime::ocp_lock::HekSeedState::Unused);
+                return Ok(caliptra_mcu_romtime::ocp_lock::HekSeedState::Unused);
             }
 
             if cfg!(feature = "core_test") {
                 if slot == 0 && !seed.iter().all(|&b| b == 0) && !seed.iter().all(|&b| b == 0xFF) {
-                    return Ok(romtime::ocp_lock::HekSeedState::Programmed);
+                    return Ok(caliptra_mcu_romtime::ocp_lock::HekSeedState::Programmed);
                 }
             }
 
@@ -286,26 +293,29 @@ pub extern "C" fn rom_entry() -> ! {
                 (Ok(expected_digest), Ok(computed_digest)) => {
                     let expected_digest = u64::from_le_bytes(*expected_digest);
                     if computed_digest != expected_digest {
-                        romtime::println!(
+                        caliptra_mcu_romtime::println!(
                             "[mcu-rom-otp] HEK software digest mismatch! Slot {}",
                             slot
                         );
-                        return Ok(romtime::ocp_lock::HekSeedState::ProgrammedCorrupted);
+                        return Ok(
+                            caliptra_mcu_romtime::ocp_lock::HekSeedState::ProgrammedCorrupted,
+                        );
                     }
                 }
-                _ => return Err(romtime::ocp_lock::Error::INVALID_HEK_SLOT),
+                _ => return Err(caliptra_mcu_romtime::ocp_lock::Error::INVALID_HEK_SLOT),
             }
 
-            Ok(romtime::ocp_lock::HekSeedState::Programmed)
+            Ok(caliptra_mcu_romtime::ocp_lock::HekSeedState::Programmed)
         }
 
         fn get_active_slot(
             &mut self,
-            otp: &romtime::otp::Otp,
-            perma_bit: &romtime::ocp_lock::PermaBitStatus,
-            seeds: &romtime::ocp_lock::HekSeeds,
-        ) -> Result<usize, romtime::ocp_lock::Error> {
-            if *perma_bit == romtime::ocp_lock::PermaBitStatus::Set && !cfg!(feature = "core_test")
+            otp: &caliptra_mcu_romtime::otp::Otp,
+            perma_bit: &caliptra_mcu_romtime::ocp_lock::PermaBitStatus,
+            seeds: &caliptra_mcu_romtime::ocp_lock::HekSeeds,
+        ) -> Result<usize, caliptra_mcu_romtime::ocp_lock::Error> {
+            if *perma_bit == caliptra_mcu_romtime::ocp_lock::PermaBitStatus::Set
+                && !cfg!(feature = "core_test")
             {
                 return Ok(self.get_total_slots() - 1);
             }
@@ -313,14 +323,14 @@ pub extern "C" fn rom_entry() -> ! {
             for i in 0..seeds.len() {
                 let buf = seeds
                     .get(i)
-                    .ok_or(romtime::ocp_lock::Error::INVALID_HEK_SLOT)?;
+                    .ok_or(caliptra_mcu_romtime::ocp_lock::Error::INVALID_HEK_SLOT)?;
                 let state = self.get_slot_state(otp, perma_bit, i, buf)?;
 
-                if state == romtime::ocp_lock::HekSeedState::Programmed {
+                if state == caliptra_mcu_romtime::ocp_lock::HekSeedState::Programmed {
                     return Ok(i);
                 }
             }
-            Err(romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS)
+            Err(caliptra_mcu_romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS)
         }
     }
 
@@ -328,13 +338,13 @@ pub extern "C" fn rom_entry() -> ! {
     let mut ocp_platform = FpgaOcpPlatform;
 
     #[cfg(feature = "ocp-lock")]
-    let ocp_lock_config = romtime::ocp_lock::RomConfig {
+    let ocp_lock_config = caliptra_mcu_romtime::ocp_lock::RomConfig {
         platform: Some(&mut ocp_platform),
         key_release_addr: 0xA401_0200,
         ..Default::default()
     };
 
-    mcu_rom_common::rom_start(RomParameters {
+    caliptra_mcu_rom_common::rom_start(RomParameters {
         lifecycle_transition,
         burn_lifecycle_tokens,
         program_field_entropy: [program_field_entropy; 4],
@@ -349,7 +359,7 @@ pub extern "C" fn rom_entry() -> ! {
         mci_mbox0_axi_users: mbox_axi_users,
         mci_mbox1_axi_users: mbox_axi_users,
         i3c_services: if cfg!(feature = "test-i3c-services") {
-            Some(mcu_rom_common::I3cServicesModes::DOT_RECOVERY)
+            Some(caliptra_mcu_rom_common::I3cServicesModes::DOT_RECOVERY)
         } else {
             None
         },
@@ -366,7 +376,7 @@ pub extern "C" fn rom_entry() -> ! {
     });
 
     let addr = MCU_MEMORY_MAP.sram_offset;
-    romtime::println!("[mcu-rom] Jumping to firmware at {:08x}", addr);
+    caliptra_mcu_romtime::println!("[mcu-rom] Jumping to firmware at {:08x}", addr);
     exit_rom(addr);
 }
 

@@ -1,22 +1,22 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "network-rom"
+name = "caliptra-mcu-network-rom"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
 [build-dependencies]
-network-config.workspace = true
+caliptra-mcu-network-config.workspace = true
 
 [dependencies]
-network-app-rom-test = { workspace = true, optional = true }
-network-drivers.workspace = true
+caliptra-mcu-network-app-rom-test = { workspace = true, optional = true }
+caliptra-mcu-network-drivers.workspace = true
 
 [[bin]]
-name = "network-rom"
+name = "caliptra-mcu-network-rom"
 test = false
 
 [features]
 default = []
-test-network-rom-dhcp-discover = ["network-app-rom-test"]
+test-network-rom-dhcp-discover = ["caliptra-mcu-network-app-rom-test"]

@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "network-config"
+name = "caliptra-mcu-network-config"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

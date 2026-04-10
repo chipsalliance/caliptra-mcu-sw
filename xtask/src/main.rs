@@ -1,10 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_api_types::DeviceLifecycle;
+use caliptra_mcu_builder::ImageCfg;
+use caliptra_mcu_firmware_bundler::args::Commands as BundleCommands;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
-use mcu_builder::ImageCfg;
-use mcu_firmware_bundler::args::Commands as BundleCommands;
 use std::path::PathBuf;
 
 mod auth_manifest;
@@ -488,7 +488,7 @@ fn main() {
             soc_images,
             mcu_cfgs,
             pldm_manifest,
-        } => mcu_builder::all_build(mcu_builder::AllBuildArgs {
+        } => caliptra_mcu_builder::all_build(caliptra_mcu_builder::AllBuildArgs {
             output: output.as_deref(),
             platform: platform.as_deref(),
             rom_features: rom_features.as_deref(),
@@ -501,7 +501,7 @@ fn main() {
             pldm_manifest: pldm_manifest.as_deref(),
         }),
         Commands::EmulatorBuild { output, features } => {
-            mcu_builder::emulator_build(mcu_builder::EmulatorBuildArgs {
+            caliptra_mcu_builder::emulator_build(caliptra_mcu_builder::EmulatorBuildArgs {
                 output: output.as_deref(),
                 features: features.as_deref(),
             })
@@ -513,7 +513,7 @@ fn main() {
             platform,
         } => {
             let features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            mcu_builder::runtime_build_with_apps(
+            caliptra_mcu_builder::runtime_build_with_apps(
                 &features,
                 output.clone(),
                 false,
@@ -524,7 +524,7 @@ fn main() {
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild { platform, features } => {
-            mcu_builder::rom_build(platform.clone(), features.clone()).map(|_| ())
+            caliptra_mcu_builder::rom_build(platform.clone(), features.clone()).map(|_| ())
         }
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
@@ -533,7 +533,7 @@ fn main() {
                 mcu_runtime,
                 soc_images,
                 output,
-            } => mcu_builder::flash_image::flash_image_create(
+            } => caliptra_mcu_builder::flash_image::flash_image_create(
                 caliptra_fw,
                 soc_manifest,
                 mcu_runtime,
@@ -542,7 +542,7 @@ fn main() {
                 output,
             ),
             FlashImageCommands::Verify { file, offset } => {
-                mcu_builder::flash_image::flash_image_verify(file, *offset)
+                caliptra_mcu_builder::flash_image::flash_image_verify(file, *offset)
             }
         },
         Commands::Clippy => clippy::clippy(),
@@ -618,7 +618,7 @@ fn main() {
                 Ok(())
             }
         },
-        Commands::FirmwareBundler { cmd } => mcu_firmware_bundler::execute(cmd.clone()),
+        Commands::FirmwareBundler { cmd } => caliptra_mcu_firmware_bundler::execute(cmd.clone()),
         Commands::Network { cmd } => network::run(cmd.clone()),
     };
     result.unwrap_or_else(|e| {

@@ -5,6 +5,7 @@
 
 use crate::dma::hil::{Dma, DmaRoute, DmaStatus};
 use caliptra_api::CaliptraApiError;
+use caliptra_mcu_romtime::CaliptraSoC;
 use core::cell::Cell;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::hil::time::{Alarm, AlarmClient};
@@ -14,7 +15,6 @@ use kernel::processbuffer::{
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::{debug, ErrorCode, ProcessId};
-use romtime::CaliptraSoC;
 
 /// The driver number for Caliptra mailbox commands.
 pub const DRIVER_NUM: usize = 0x8000_0009;

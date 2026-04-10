@@ -5,6 +5,7 @@ use crate::mctp::base_protocol::{
 };
 use crate::mctp::recv::MCTPRxClient;
 use crate::mctp::send::{MCTPSender, MCTPTxClient};
+use caliptra_mcu_romtime::println;
 use core::cell::Cell;
 use core::fmt::Write;
 use kernel::deferred_call::{DeferredCall, DeferredCallClient};
@@ -14,7 +15,6 @@ use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::utilities::cells::{MapCell, OptionalCell, TakeCell};
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::{ErrorCode, ProcessId};
-use romtime::println;
 
 pub const MCTP_MAX_MESSAGE_SIZE: usize = 2048;
 pub const MCTP_SPDM_DRIVER_NUM: usize = 0xA0000;

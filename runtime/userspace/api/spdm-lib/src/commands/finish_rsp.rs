@@ -11,8 +11,8 @@ use crate::session::{SessionKeyType, SessionState};
 use crate::state::ConnectionState;
 use crate::transcript::TranscriptContext;
 use bitfield::bitfield;
+use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use constant_time_eq::constant_time_eq;
-use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const RANDOM_DATA_LEN: usize = 32;

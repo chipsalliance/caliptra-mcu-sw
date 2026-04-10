@@ -8,14 +8,14 @@ use crate::spdm::cert_store::DeviceCertStore;
 use crate::spdm::endorsement_certs::EndorsementCertChain;
 use alloc::boxed::Box;
 use async_trait::async_trait;
+use caliptra_mcu_libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
+use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use caliptra_mcu_spdm_lib::cert_store::{CertStoreError, CertStoreResult, SpdmCertStore};
+use caliptra_mcu_spdm_lib::protocol::{CertificateInfo, KeyUsageMask};
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use libapi_caliptra::crypto::asym::{AsymAlgo, ECC_P384_SIGNATURE_SIZE};
-use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
-use spdm_lib::cert_store::{CertStoreError, CertStoreResult, SpdmCertStore};
-use spdm_lib::protocol::{CertificateInfo, KeyUsageMask};
 
 /// Static storage just for the endorsement chain (since it needs static lifetime)
 static mut SLOT0_ENDORSEMENT: MaybeUninit<EndorsementCertChain> = MaybeUninit::uninit();

@@ -13,8 +13,8 @@ Abstract:
 --*/
 
 use caliptra_image_types::FwVerificationPqcKeyType;
-use emulator::{Emulator, EmulatorArgs};
-use mcu_testing_common::DeviceLifecycle;
+use caliptra_mcu_emulator::{Emulator, EmulatorArgs};
+use caliptra_mcu_testing_common::DeviceLifecycle;
 
 #[test]
 fn test_can_import_emulator() {

@@ -4,10 +4,12 @@ use crate::kernel_data::{with_kernel_data, KERNEL_DATA};
 use crate::{ExpectedSyscall, SyscallLogEntry};
 
 /// # Safety
-/// It must be valid to write a `libtock_platform::YieldNoWaitReturn` into the
+/// It must be valid to write a `caliptra_mcu_libtock_platform::YieldNoWaitReturn` into the
 /// value pointed to by `return_ptr`. When `yield_no_wait` returns, the value
 /// pointed to by `return_ptr` will be set.
-pub(super) unsafe fn yield_no_wait(return_ptr: *mut libtock_platform::YieldNoWaitReturn) {
+pub(super) unsafe fn yield_no_wait(
+    return_ptr: *mut caliptra_mcu_libtock_platform::YieldNoWaitReturn,
+) {
     let override_return = KERNEL_DATA.with(|refcell| {
         let mut refmut = refcell.borrow_mut();
         let kernel_data = refmut
@@ -24,8 +26,8 @@ pub(super) unsafe fn yield_no_wait(return_ptr: *mut libtock_platform::YieldNoWai
     });
 
     let upcall_ran = match invoke_next_upcall() {
-        true => libtock_platform::YieldNoWaitReturn::Upcall,
-        false => libtock_platform::YieldNoWaitReturn::NoUpcall,
+        true => caliptra_mcu_libtock_platform::YieldNoWaitReturn::Upcall,
+        false => caliptra_mcu_libtock_platform::YieldNoWaitReturn::NoUpcall,
     };
 
     unsafe {

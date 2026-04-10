@@ -16,8 +16,10 @@ use caliptra_emu_bus::Bus;
 use caliptra_emu_cpu::xreg_file::XReg;
 use caliptra_emu_cpu::StepAction;
 use caliptra_emu_types::{RvAddr, RvSize};
-use emulator::{gdb, Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback};
-use mcu_testing_common::MCU_RUNNING;
+use caliptra_mcu_emulator::{
+    gdb, Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback,
+};
+use caliptra_mcu_testing_common::MCU_RUNNING;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_longlong, c_uchar, c_uint};
 use std::ptr;

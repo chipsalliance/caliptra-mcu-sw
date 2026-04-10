@@ -14,8 +14,8 @@ use kernel::utilities::cells::TakeCell;
 ))]
 use crate::board::run_kernel_op;
 
+use caliptra_mcu_romtime::println;
 use core::fmt::Write;
-use romtime::println;
 
 pub(crate) fn test_flash_ctrl_init() -> Option<u32> {
     // Safety: this is run after the board has initialized the chip.
@@ -35,16 +35,16 @@ pub struct IoState {
 // Create flash callback struct for testing
 struct FlashCtrlTestCallBack {
     io_state: RefCell<IoState>,
-    read_in_page: TakeCell<'static, flash_ctrl_emulator::EmulatedFlashPage>,
-    write_in_page: TakeCell<'static, flash_ctrl_emulator::EmulatedFlashPage>,
+    read_in_page: TakeCell<'static, caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage>,
+    write_in_page: TakeCell<'static, caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage>,
     read_out_buf: TakeCell<'static, [u8]>,
     write_out_buf: TakeCell<'static, [u8]>,
 }
 
 impl<'a> FlashCtrlTestCallBack {
     pub fn new(
-        read_in_page: &'static mut flash_ctrl_emulator::EmulatedFlashPage,
-        write_in_page: &'static mut flash_ctrl_emulator::EmulatedFlashPage,
+        read_in_page: &'static mut caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
+        write_in_page: &'static mut caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
     ) -> Self {
         Self {
             io_state: RefCell::new(IoState {
@@ -106,15 +106,15 @@ impl<'a, F: hil::flash::Flash> hil::flash::Client<F> for FlashCtrlTestCallBack {
 macro_rules! static_init_test {
     () => {{
         let r_in_page = static_init!(
-            flash_ctrl_emulator::EmulatedFlashPage,
-            flash_ctrl_emulator::EmulatedFlashPage::default()
+            caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
+            caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage::default()
         );
         let w_in_page = static_init!(
-            flash_ctrl_emulator::EmulatedFlashPage,
-            flash_ctrl_emulator::EmulatedFlashPage::default()
+            caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage,
+            caliptra_mcu_flash_ctrl_emulator::EmulatedFlashPage::default()
         );
         let mut val: u8 = 0;
-        for i in 0..flash_ctrl_emulator::PAGE_SIZE {
+        for i in 0..caliptra_mcu_flash_ctrl_emulator::PAGE_SIZE {
             val = val.wrapping_add(0x10);
             r_in_page[i] = 0x00;
             // Fill the write buffer with arbitrary data
@@ -128,7 +128,7 @@ macro_rules! static_init_test {
 }
 
 fn test_single_flash_ctrl_erase_page(
-    flash_ctrl: &'static flash_ctrl_emulator::EmulatedFlashCtrl,
+    flash_ctrl: &'static caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl,
     test_cb: &'static FlashCtrlTestCallBack,
 ) {
     flash_ctrl.set_client(test_cb);
@@ -176,7 +176,7 @@ pub fn test_flash_ctrl_erase_page() -> Option<u32> {
 }
 
 fn test_single_flash_ctrl_read_write_page(
-    flash_ctrl: &'static flash_ctrl_emulator::EmulatedFlashCtrl,
+    flash_ctrl: &'static caliptra_mcu_flash_ctrl_emulator::EmulatedFlashCtrl,
     test_cb: &'static FlashCtrlTestCallBack,
 ) {
     flash_ctrl.set_client(test_cb);

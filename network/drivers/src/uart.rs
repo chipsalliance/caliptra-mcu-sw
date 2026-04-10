@@ -15,7 +15,7 @@ Abstract:
 
 --*/
 
-use network_config::DEFAULT_NETWORK_MEMORY_MAP;
+use caliptra_mcu_network_config::DEFAULT_NETWORK_MEMORY_MAP;
 
 /// UART TX data register address for Network Coprocessor
 /// This is UART offset + TX register offset (0x41)

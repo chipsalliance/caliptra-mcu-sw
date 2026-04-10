@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::tests::spdm_responder_validator::transport::Transport;
-use mcu_testing_common::MCU_RUNNING;
+use caliptra_mcu_testing_common::MCU_RUNNING;
 use std::fs::File;
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::TcpStream;

@@ -6,14 +6,14 @@
 
 use core::cell::RefCell;
 
+use caliptra_mcu_capsules_runtime::dma::hil::{Dma, DmaClient, DmaError, DmaRoute, DmaStatus};
+use caliptra_mcu_registers_generated::axicdma::{bits::*, regs::*, AXICDMA_ADDR};
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
-use capsules_runtime::dma::hil::{Dma, DmaClient, DmaError, DmaRoute, DmaStatus};
 use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
 use kernel::ErrorCode;
-use registers_generated::axicdma::{bits::*, regs::*, AXICDMA_ADDR};
 
 pub const DMA_CTRL_BASE: StaticRef<Axicdma> =
     unsafe { StaticRef::new(AXICDMA_ADDR as *const Axicdma) };

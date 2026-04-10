@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 use bitfield::bitfield;
-use libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
+use caliptra_mcu_libapi_caliptra::crypto::hash::SHA384_HASH_SIZE;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub(crate) const SPDM_MAX_CERT_CHAIN_PORTION_LEN: u16 = 512;

@@ -7,8 +7,8 @@
 
 use core::cell::RefCell;
 
+use caliptra_mcu_capsules_runtime::dma::hil::{Dma, DmaClient, DmaError, DmaRoute, DmaStatus};
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
-use capsules_runtime::dma::hil::{Dma, DmaClient, DmaError, DmaRoute, DmaStatus};
 use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::OptionalCell;
 use kernel::ErrorCode;

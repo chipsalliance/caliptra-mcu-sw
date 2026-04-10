@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "registers-generator"
+name = "caliptra-mcu-registers-generator"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,4 +10,4 @@ edition = "2021"
 [dependencies]
 proc-macro2.workspace = true
 quote.workspace = true
-registers-systemrdl.workspace = true
+caliptra-mcu-registers-systemrdl.workspace = true

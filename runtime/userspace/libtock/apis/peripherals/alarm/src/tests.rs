@@ -1,4 +1,4 @@
-use libtock_unittest::fake;
+use caliptra_mcu_libtock_unittest::fake;
 
 use crate::{Hz, Milliseconds, Ticks};
 

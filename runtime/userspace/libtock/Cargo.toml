@@ -5,23 +5,23 @@ description = """Tock Rust userspace library collection. Provides all the \
                  tools needed to create a Tock Rust process binary."""
 edition = "2021"
 license = "Apache-2.0 OR MIT"
-name = "libtock"
+name = "caliptra-mcu-libtock"
 repository = "https://www.github.com/tock/libtock-rs"
 version = "0.1.0"
 
 [features]
 rust_embedded = [
     "embedded-hal",
-    "libtock_platform/rust_embedded",
+    "caliptra-mcu-libtock_platform/rust_embedded",
 ]
 
 [dependencies]
 embedded-hal = { workspace = true, optional = true }
-libtock_alarm.workspace = true
-libtock_console.workspace = true
-libtock_debug_panic.workspace = true
-libtock_low_level_debug.workspace = true
-libtock_platform.workspace = true
-libtock_rng.workspace = true
-libtock_runtime.workspace = true
-libtock_small_panic.workspace = true
+caliptra-mcu-libtock_alarm.workspace = true
+caliptra-mcu-libtock_console.workspace = true
+caliptra-mcu-libtock_debug_panic.workspace = true
+caliptra-mcu-libtock_low_level_debug.workspace = true
+caliptra-mcu-libtock_platform.workspace = true
+caliptra-mcu-libtock_rng.workspace = true
+caliptra-mcu-libtock_runtime.workspace = true
+caliptra-mcu-libtock_small_panic.workspace = true

@@ -39,11 +39,13 @@ pub fn platform() -> &'static str {
 #[cfg(test)]
 mod test {
     use caliptra_image_types::FwVerificationPqcKeyType;
-    use emulator_periph::TapDevice;
-    use mcu_builder::flash_image::build_flash_image_bytes;
-    use mcu_builder::{CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET};
-    use mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
-    use mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
+    use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
+    use caliptra_mcu_builder::{
+        CaliptraBuilder, EmulatorBinaries, FirmwareBinaries, ImageCfg, TARGET,
+    };
+    use caliptra_mcu_emulator_periph::TapDevice;
+    use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
+    use caliptra_mcu_testing_common::{DeviceLifecycle, MCU_RUNNING};
     use random_port::PortPicker;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::{Arc, Mutex};
@@ -90,7 +92,7 @@ mod test {
         pub firmware_prefix: Option<Vec<u8>>,
         pub fw_manifest_dot_hitless: bool,
         pub active_i3c1: bool,
-        pub lifecycle_controller_state: Option<romtime::LifecycleControllerState>,
+        pub lifecycle_controller_state: Option<caliptra_mcu_romtime::LifecycleControllerState>,
         pub vendor_pqc_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
     }
 
@@ -212,8 +214,9 @@ mod test {
         // Do NOT copy to a generic name: subsequent builds re-create the
         // intermediate mcu-rom-<platform>.bin (without the appended ROM
         // digest), which would silently clobber the copy.
-        let output: PathBuf = mcu_builder::rom_build(Some(platform().to_string()), Some(feature))
-            .expect("ROM build failed");
+        let output: PathBuf =
+            caliptra_mcu_builder::rom_build(Some(platform().to_string()), Some(feature))
+                .expect("ROM build failed");
         assert!(output.exists());
         output
     }
@@ -234,7 +237,7 @@ mod test {
         };
         let name = format!("runtime{}-{}.bin", feature_name, platform);
 
-        let output = mcu_builder::runtime_build_with_apps(
+        let output = caliptra_mcu_builder::runtime_build_with_apps(
             &features,
             Some(name),
             example_app,
@@ -247,7 +250,8 @@ mod test {
     }
 
     pub fn compile_bare_metal_runtime() -> PathBuf {
-        let output = mcu_builder::bare_metal_build().expect("Bare-metal runtime failed to compile");
+        let output =
+            caliptra_mcu_builder::bare_metal_build().expect("Bare-metal runtime failed to compile");
         assert!(output.exists());
         output
     }
@@ -443,7 +447,8 @@ mod test {
             .expect("Invalid hex string for vendor_pk_hash");
 
         // Network ROM is optional - build it if the build system supports it
-        let network_rom = match mcu_builder::network_rom_build(params.network_rom_feature) {
+        let network_rom = match caliptra_mcu_builder::network_rom_build(params.network_rom_feature)
+        {
             Ok(path) => std::fs::read(path).unwrap_or_default(),
             Err(_) => Vec::new(),
         };
@@ -527,7 +532,7 @@ mod test {
             Some(custom_otp)
         } else if params.dot_enabled {
             // TODO: move this when we add the fuse-burning scripts
-            use registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
+            use caliptra_mcu_registers_generated::fuses::VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET;
             // Create OTP memory large enough to include the vendor non-secret prod partition
             let mut otp = vec![0u8; VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 256];
             // Set dot_initialized to 1 at the start of the vendor non-secret prod partition
@@ -551,7 +556,7 @@ mod test {
                 (None, caliptra_fw, soc_manifest, mcu_runtime)
             };
 
-        mcu_hw_model::new(InitParams {
+        caliptra_mcu_hw_model::new(InitParams {
             fuses: Fuses {
                 fuse_pqc_key_type: params.vendor_pqc_type.map(|t| t as u32).unwrap_or(0),
                 vendor_pk_hash,
@@ -629,68 +634,98 @@ mod test {
             "--rom-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_offset
             ),
             "--rom-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.rom_size
+            ),
             "--dccm-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_offset
             ),
             "--dccm-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.dccm_size
+            ),
             "--sram-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_offset
             ),
             "--sram-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.sram_size
+            ),
             "--pic-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.pic_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.pic_offset
             ),
             "--i3c-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_offset
             ),
             "--i3c-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.i3c_size
+            ),
             "--mci-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_offset
             ),
             "--mci-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mci_size
+            ),
             "--mbox-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_offset
             ),
             "--mbox-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.mbox_size
+            ),
             "--soc-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_offset
             ),
             "--soc-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.soc_size
+            ),
             "--otp-offset".to_string(),
             format!(
                 "0x{:x}",
-                mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_offset
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_offset
             ),
             "--otp-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.otp_size
+            ),
             "--lc-offset".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_offset),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_offset
+            ),
             "--lc-size".to_string(),
-            format!("0x{:x}", mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_size),
+            format!(
+                "0x{:x}",
+                caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_size
+            ),
         ]);
 
         let mut caliptra_builder = if let Some(caliptra_builder) = caliptra_builder {
@@ -808,7 +843,7 @@ mod test {
             let mut cargo_args: Vec<String> = vec![
                 "run".to_string(),
                 "-p".to_string(),
-                "emulator".to_string(),
+                "caliptra-mcu-emulator".to_string(),
                 "--profile".to_string(),
                 "test".to_string(),
                 "--features".to_string(),
@@ -1106,8 +1141,14 @@ mod test {
         let test_runtime = target_binary(&name);
 
         println!("Compiling test firmware {}", &feature);
-        mcu_builder::runtime_build_with_apps(&[feature], Some(name), true, None, Some(image_svn))
-            .expect("Runtime build failed");
+        caliptra_mcu_builder::runtime_build_with_apps(
+            &[feature],
+            Some(name),
+            true,
+            None,
+            Some(image_svn),
+        )
+        .expect("Runtime build failed");
         assert!(test_runtime.exists());
 
         let fuse_vendor_hashes_prod_partition = {

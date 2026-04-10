@@ -1,16 +1,16 @@
 // Licensed under the Apache-2.0 license
 
-use capsules_runtime::mcu_mbox::McuMboxDriver;
+use caliptra_mcu_capsules_runtime::mcu_mbox::McuMboxDriver;
+use caliptra_mcu_mbox_comm::hil;
 use core::mem::MaybeUninit;
 use kernel::capabilities;
 use kernel::component::Component;
-use mcu_mbox_comm::hil;
 
 #[macro_export]
 macro_rules! mcu_mbox_component_static {
     ($T:ty $(,)?) => {{
-        let mcu_mbox_driver = kernel::static_buf!(McuMboxDriver<'static, $T>);
-        (mcu_mbox_driver,)
+        let caliptra_mcu_mbox_driver = kernel::static_buf!(McuMboxDriver<'static, $T>);
+        (caliptra_mcu_mbox_driver,)
     }};
 }
 
@@ -40,13 +40,13 @@ impl<T: hil::Mailbox<'static>> Component for McuMboxComponent<T> {
 
     fn finalize(self, static_input: Self::StaticInput) -> Self::Output {
         let grant_cap = kernel::create_capability!(capabilities::MemoryAllocationCapability);
-        let mcu_mbox_driver = static_input.0.write(McuMboxDriver::new(
+        let caliptra_mcu_mbox_driver = static_input.0.write(McuMboxDriver::new(
             self.physical_driver,
             self.board_kernel.create_grant(self.driver_num, &grant_cap),
         ));
 
-        self.physical_driver.set_client(mcu_mbox_driver);
+        self.physical_driver.set_client(caliptra_mcu_mbox_driver);
         self.physical_driver.enable();
-        mcu_mbox_driver
+        caliptra_mcu_mbox_driver
     }
 }

@@ -3,24 +3,24 @@
 use crate::events::PldmEvents;
 use crate::timer::Timer;
 use crate::transport::{PldmSocket, RxPacket, MAX_PLDM_PAYLOAD_SIZE};
-use log::{debug, error, info};
-use pldm_common::codec::PldmCodec;
-use pldm_common::message::firmware_update as pldm_packet;
-use pldm_common::message::firmware_update::activate_fw::SelfContainedActivationRequest;
-use pldm_common::message::firmware_update::request_update::REQUEST_UPDATE_REQUEST_FIXED_HEADER_LEN;
-use pldm_common::message::firmware_update::transfer_complete::TransferResult;
-use pldm_common::message::firmware_update::verify_complete::VerifyResult;
-use pldm_common::protocol::base::{
+use caliptra_mcu_pldm_common::codec::PldmCodec;
+use caliptra_mcu_pldm_common::message::firmware_update as pldm_packet;
+use caliptra_mcu_pldm_common::message::firmware_update::activate_fw::SelfContainedActivationRequest;
+use caliptra_mcu_pldm_common::message::firmware_update::request_update::REQUEST_UPDATE_REQUEST_FIXED_HEADER_LEN;
+use caliptra_mcu_pldm_common::message::firmware_update::transfer_complete::TransferResult;
+use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
+use caliptra_mcu_pldm_common::protocol::base::{
     InstanceId, PldmBaseCompletionCode, PldmMsgHeader, PldmMsgType, PldmSupportedType,
     TransferRespFlag,
 };
-use pldm_common::protocol::firmware_update::{
+use caliptra_mcu_pldm_common::protocol::firmware_update::{
     ComponentClassification, ComponentCompatibilityResponse, ComponentParameterEntry,
     ComponentResponseCode, FirmwareDeviceState, FwUpdateCmd, FwUpdateCompletionCode,
     PldmFirmwareString, UpdateOptionFlags, VersionStringType, PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN,
 };
-use pldm_fw_pkg::manifest::{ComponentImageInformation, FirmwareDeviceIdRecord};
-use pldm_fw_pkg::FirmwareManifest;
+use caliptra_mcu_pldm_fw_pkg::manifest::{ComponentImageInformation, FirmwareDeviceIdRecord};
+use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
+use log::{debug, error, info};
 use smlang::statemachine;
 use std::cmp::{max, min};
 use std::sync::mpsc::Sender;
@@ -126,8 +126,8 @@ fn send_message_helper<P: PldmCodec>(
 }
 
 fn is_pkg_descriptor_in_response_descriptor(
-    pkg_descriptor: &pldm_fw_pkg::manifest::Descriptor,
-    response_descriptor: &pldm_common::protocol::firmware_update::Descriptor,
+    pkg_descriptor: &caliptra_mcu_pldm_fw_pkg::manifest::Descriptor,
+    response_descriptor: &caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor,
 ) -> bool {
     if response_descriptor.descriptor_type != pkg_descriptor.descriptor_type as u16 {
         return false;
@@ -406,7 +406,7 @@ pub trait StateMachineActions {
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
         response: pldm_packet::query_devid::QueryDeviceIdentifiersResponse,
     ) -> Result<(), ()> {
-        for pkg_dev_id in &ctx.pldm_fw_pkg.firmware_device_id_records {
+        for pkg_dev_id in &ctx.caliptra_mcu_pldm_fw_pkg.firmware_device_id_records {
             if is_pkg_device_id_in_response(pkg_dev_id, &response) {
                 ctx.device_id = Some(pkg_dev_id.clone());
                 break;
@@ -480,7 +480,7 @@ pub trait StateMachineActions {
     }
 
     fn find_component_in_package(
-        pkg_components: &[pldm_fw_pkg::manifest::ComponentImageInformation],
+        pkg_components: &[caliptra_mcu_pldm_fw_pkg::manifest::ComponentImageInformation],
         comp_entry: &ComponentParameterEntry,
     ) -> Result<usize, ()> {
         // iterate over the components in the package and get the index
@@ -544,7 +544,7 @@ pub trait StateMachineActions {
         ctx.instance_id = ctx.instance_id.wrapping_add(1); // Response received, increment instance id
         for i in 0..response.parms.params_fixed.comp_count {
             if let Ok(comp_idx) = Self::find_component_in_package(
-                &ctx.pldm_fw_pkg.component_image_information,
+                &ctx.caliptra_mcu_pldm_fw_pkg.component_image_information,
                 &response.parms.comp_param_table[i as usize],
             ) {
                 if Self::is_in_device_applicable_components(
@@ -553,16 +553,18 @@ pub trait StateMachineActions {
                 ) {
                     debug!(
                         "Component id: {} is in applicable components",
-                        ctx.pldm_fw_pkg.component_image_information[comp_idx].identifier
+                        ctx.caliptra_mcu_pldm_fw_pkg.component_image_information[comp_idx]
+                            .identifier
                     );
                 } else {
                     debug!(
                         "Component id: {} is not applicable",
-                        ctx.pldm_fw_pkg.component_image_information[comp_idx].identifier
+                        ctx.caliptra_mcu_pldm_fw_pkg.component_image_information[comp_idx]
+                            .identifier
                     );
                     continue;
                 }
-                let component = &ctx.pldm_fw_pkg.component_image_information[comp_idx];
+                let component = &ctx.caliptra_mcu_pldm_fw_pkg.component_image_information[comp_idx];
                 if Self::is_need_component_update(
                     component,
                     &response.parms.comp_param_table[i as usize],
@@ -1189,7 +1191,7 @@ impl StateMachineActions for DefaultActionsExitOnError {
 
 pub struct InnerContext<S: PldmSocket> {
     socket: S,
-    pub pldm_fw_pkg: FirmwareManifest,
+    pub caliptra_mcu_pldm_fw_pkg: FirmwareManifest,
     pub event_queue: Sender<PldmEvents>,
     instance_id: InstanceId,
     // The device id of the firmware device
@@ -1220,14 +1222,14 @@ impl<T: StateMachineActions, S: PldmSocket> Context<T, S> {
     pub fn new(
         context: T,
         socket: S,
-        pldm_fw_pkg: FirmwareManifest,
+        caliptra_mcu_pldm_fw_pkg: FirmwareManifest,
         event_queue: Sender<PldmEvents>,
     ) -> Self {
         Self {
             inner: context,
             inner_ctx: InnerContext {
                 socket,
-                pldm_fw_pkg,
+                caliptra_mcu_pldm_fw_pkg,
                 event_queue,
                 instance_id: 0,
                 device_id: None,

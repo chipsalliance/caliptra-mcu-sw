@@ -11,6 +11,7 @@
 
 #[cfg(test)]
 mod test {
+    use caliptra_mcu_xtask::network::{build, server, server::ServerOptions, tap};
     use std::fs;
     use std::io::{self, Write};
     use std::path::{Path, PathBuf};
@@ -18,7 +19,6 @@ mod test {
     use std::thread;
     use std::time::Duration;
     use tempfile::TempDir;
-    use xtask::network::{build, server, server::ServerOptions, tap};
 
     // Mutex to ensure tests don't run in parallel (they share dnsmasq)
     static TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -162,7 +162,7 @@ mod test {
         // Run the example using xtask build module
         println!("\nRunning example application...");
         let result = build::run_example_with_timeout(
-            "lwip-rs-example",
+            "caliptra-mcu-lwip-rs-example",
             false, // debug build
             Some(Duration::from_secs(60)),
             "tap0",

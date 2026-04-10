@@ -19,13 +19,13 @@ Abstract:
 
 --*/
 
-use mcu_error::{McuError, McuResult};
+use caliptra_mcu_error::{McuError, McuResult};
 
 use crate::{
     EccP384PublicKey, RecoveryTransport, MLDSA87_PUB_KEY_SIZE_DWORDS, MLDSA87_SIGNATURE_SIZE_DWORDS,
 };
-use registers_generated::mci;
-use romtime::StaticRef;
+use caliptra_mcu_registers_generated::mci;
+use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 pub const CMD_DOT_UNLOCK_CHALLENGE: u32 = 0x444F_5457;
@@ -169,7 +169,7 @@ impl RecoveryTransport for Mbox0RecoveryTransport {
     fn wait_for_override_request(&self) -> McuResult<crate::OverrideRequest<'_>> {
         let cmd = self.helpers.wait_for_mbox0_cmd();
         if cmd != CMD_DOT_UNLOCK_CHALLENGE {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[dot-override] Unexpected mbox0 cmd: {:#x}, expected DOT_UNLOCK_CHALLENGE",
                 cmd
             );
@@ -179,12 +179,12 @@ impl RecoveryTransport for Mbox0RecoveryTransport {
 
         let dlen = self.helpers.dlen();
         if dlen < core::mem::size_of::<OverrideChallengeRequest>() {
-            romtime::println!("[dot-override] DOT_UNLOCK_CHALLENGE dlen too small");
+            caliptra_mcu_romtime::println!("[dot-override] DOT_UNLOCK_CHALLENGE dlen too small");
             self.helpers.cmd_failure();
             return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
         }
         if !self.helpers.verify_checksum(cmd, dlen) {
-            romtime::println!("[dot-override] DOT_UNLOCK_CHALLENGE checksum failed");
+            caliptra_mcu_romtime::println!("[dot-override] DOT_UNLOCK_CHALLENGE checksum failed");
             self.helpers.cmd_failure();
             return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
         }
@@ -192,7 +192,7 @@ impl RecoveryTransport for Mbox0RecoveryTransport {
         let req = unsafe { self.helpers.sram_as::<OverrideChallengeRequest>() };
 
         if req.challenge_type != CHALLENGE_TYPE_OVERRIDE {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[dot-override] Unsupported challenge_type: {:#x}, expected OVERRIDE ({:#x})",
                 req.challenge_type,
                 CHALLENGE_TYPE_OVERRIDE
@@ -207,7 +207,9 @@ impl RecoveryTransport for Mbox0RecoveryTransport {
         };
         let mldsa_pub_key = &req.mldsa_pub_key;
 
-        romtime::println!("[dot-override] Override challenge request received via mbox0");
+        caliptra_mcu_romtime::println!(
+            "[dot-override] Override challenge request received via mbox0"
+        );
 
         Ok(crate::OverrideRequest {
             ecc_pub_key,
@@ -216,7 +218,7 @@ impl RecoveryTransport for Mbox0RecoveryTransport {
     }
 
     fn send_challenge(&self, challenge: &[u8; 48]) -> McuResult<()> {
-        romtime::println!("[dot-override] Sending challenge via mbox0");
+        caliptra_mcu_romtime::println!("[dot-override] Sending challenge via mbox0");
         self.helpers.send_mbox0_response(challenge);
         Ok(())
     }
@@ -224,7 +226,7 @@ impl RecoveryTransport for Mbox0RecoveryTransport {
     fn receive_override_response(&self) -> McuResult<crate::OverrideChallengeResponse<'_>> {
         let cmd = self.helpers.wait_for_mbox0_cmd();
         if cmd != CMD_DOT_OVERRIDE {
-            romtime::println!(
+            caliptra_mcu_romtime::println!(
                 "[dot-override] Unexpected mbox0 cmd: {:#x}, expected DOT_OVERRIDE",
                 cmd
             );
@@ -234,12 +236,12 @@ impl RecoveryTransport for Mbox0RecoveryTransport {
 
         let dlen = self.helpers.dlen();
         if dlen < core::mem::size_of::<OverrideResponse>() {
-            romtime::println!("[dot-override] DOT_OVERRIDE dlen too small");
+            caliptra_mcu_romtime::println!("[dot-override] DOT_OVERRIDE dlen too small");
             self.helpers.cmd_failure();
             return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
         }
         if !self.helpers.verify_checksum(cmd, dlen) {
-            romtime::println!("[dot-override] DOT_OVERRIDE checksum failed");
+            caliptra_mcu_romtime::println!("[dot-override] DOT_OVERRIDE checksum failed");
             self.helpers.cmd_failure();
             return Err(McuError::ROM_DOT_OVERRIDE_CHALLENGE_FAILED);
         }
@@ -254,7 +256,7 @@ impl RecoveryTransport for Mbox0RecoveryTransport {
         let mldsa_pub_key = &resp.mldsa_pub_key;
         let mldsa_signature = &resp.mldsa_signature;
 
-        romtime::println!("[dot-override] Override response received via mbox0");
+        caliptra_mcu_romtime::println!("[dot-override] Override response received via mbox0");
 
         Ok(crate::OverrideChallengeResponse {
             ecc_pub_key,
