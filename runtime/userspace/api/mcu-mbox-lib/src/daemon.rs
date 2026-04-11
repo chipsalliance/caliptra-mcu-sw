@@ -9,7 +9,7 @@ use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
 
-const MAX_MCU_MBOX_MSG_SIZE: usize = 4096;
+const MAX_MCU_MBOX_MSG_SIZE: usize = 8192;
 
 #[derive(Debug)]
 pub enum McuMboxServiceError {

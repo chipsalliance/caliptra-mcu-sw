@@ -95,6 +95,10 @@ mod test {
         pub active_i3c1: bool,
         pub lifecycle_controller_state: Option<caliptra_mcu_romtime::LifecycleControllerState>,
         pub vendor_pqc_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
+        /// Assert the debug intent strap.
+        pub debug_intent: bool,
+        /// Production debug unlock keypairs (ECC384 pub key bytes, MLDSA87 pub key bytes).
+        pub prod_dbg_unlock_keypairs: Vec<([u8; 96], [u8; 2592])>,
     }
 
     impl Default for TestParams<'_> {
@@ -120,6 +124,8 @@ mod test {
                 active_i3c1: false,
                 lifecycle_controller_state: None,
                 vendor_pqc_type: Some(caliptra_image_types::FwVerificationPqcKeyType::LMS),
+                debug_intent: false,
+                prod_dbg_unlock_keypairs: Vec::new(),
             }
         }
     }
@@ -582,6 +588,13 @@ mod test {
             flash_boot: params.flash_boot,
             ocp_lock_en: params.ocp_lock_en,
             fips_zeroization: params.fips_zeroization,
+            active_i3c1: params.active_i3c1,
+            debug_intent: params.debug_intent,
+            prod_dbg_unlock_keypairs: params
+                .prod_dbg_unlock_keypairs
+                .iter()
+                .map(|(ecc, mldsa)| (ecc as &[u8; 96], mldsa as &[u8; 2592]))
+                .collect(),
             ..Default::default()
         })
         .unwrap()
