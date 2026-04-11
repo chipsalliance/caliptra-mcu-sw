@@ -5,7 +5,7 @@ use caliptra_mcu_registers_generated::mci::bits::{MboxCmdStatus, MboxExecute, No
 use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
-const MCU_MAILBOX0_SRAM_SIZE: u32 = 4 * 1024; // MCU Mailbox0 SRAM size is 4KB on FPGA
+const MCU_MAILBOX0_SRAM_SIZE: u32 = 16 * 1024; // MCU Mailbox0 SRAM size is 16KB on FPGA
 
 pub struct McuMailboxResponse {
     pub status_code: u32,

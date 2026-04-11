@@ -15,13 +15,15 @@ pub use caliptra_api::mailbox::{
     CmHmacResp, CmImportReq, CmImportResp, CmKeyUsage, CmRandomGenerateReq, CmRandomGenerateResp,
     CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq,
     CmStatusResp, Cmk, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
-    ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
-    CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE, MAX_CMB_DATA_SIZE,
+    ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
+    ProductionAuthDebugUnlockToken, ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE,
+    CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE,
+    MAX_CMB_DATA_SIZE,
 };
 pub use caliptra_api::{calc_checksum, verify_checksum};
 use core::convert::From;
 use core::num::NonZeroU32;
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout};
 
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
@@ -106,6 +108,10 @@ impl CommandId {
     pub const MC_ECDSA_CMK_SIGN: Self = Self(0x4D43_4553); // "MCES"
     pub const MC_ECDSA_CMK_VERIFY: Self = Self(0x4D43_4556); // "MCEV"
 
+    // Debug Unlock commands
+    pub const MC_PROD_DEBUG_UNLOCK_REQ: Self = Self(0x4D50_5552); // "MPUR"
+    pub const MC_PROD_DEBUG_UNLOCK_TOKEN: Self = Self(0x4D50_5554); // "MPUT"
+
     // In-Field Fuse Programming commands
     pub const MC_FUSE_READ: Self = Self(0x4946_5052); // "IFPR"
     pub const MC_FUSE_WRITE: Self = Self(0x4946_5057); // "IFPW"
@@ -164,6 +170,9 @@ pub enum McuMailboxReq {
     EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq),
     EcdsaCmkSign(McuEcdsaCmkSignReq),
     EcdsaCmkVerify(McuEcdsaCmkVerifyReq),
+    // Debug Unlock
+    ProdDebugUnlockReq(McuProdDebugUnlockReqReq),
+    ProdDebugUnlockToken(McuProdDebugUnlockTokenReq),
     // In-Field Fuse Programming
     FuseRead(FuseReadReq),
     FuseWrite(FuseWriteReq),
@@ -210,6 +219,8 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(req) => Ok(req.as_bytes()),
             McuMailboxReq::EcdsaCmkSign(req) => req.as_bytes_partial(),
             McuMailboxReq::EcdsaCmkVerify(req) => req.as_bytes_partial(),
+            McuMailboxReq::ProdDebugUnlockReq(req) => Ok(req.as_bytes()),
+            McuMailboxReq::ProdDebugUnlockToken(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRead(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
@@ -255,6 +266,8 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::EcdsaCmkSign(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::EcdsaCmkVerify(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::ProdDebugUnlockReq(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::ProdDebugUnlockToken(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRead(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseWrite(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
@@ -300,6 +313,8 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(_) => CommandId::MC_ECDSA_CMK_PUBLIC_KEY,
             McuMailboxReq::EcdsaCmkSign(_) => CommandId::MC_ECDSA_CMK_SIGN,
             McuMailboxReq::EcdsaCmkVerify(_) => CommandId::MC_ECDSA_CMK_VERIFY,
+            McuMailboxReq::ProdDebugUnlockReq(_) => CommandId::MC_PROD_DEBUG_UNLOCK_REQ,
+            McuMailboxReq::ProdDebugUnlockToken(_) => CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN,
             McuMailboxReq::FuseRead(_) => CommandId::MC_FUSE_READ,
             McuMailboxReq::FuseWrite(_) => CommandId::MC_FUSE_WRITE,
             McuMailboxReq::FuseLockPartition(_) => CommandId::MC_FUSE_LOCK_PARTITION,
@@ -368,6 +383,9 @@ pub enum McuMailboxResp {
     EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyResp),
     EcdsaCmkSign(McuEcdsaCmkSignResp),
     EcdsaCmkVerify(McuEcdsaCmkVerifyResp),
+    // Debug Unlock
+    ProdDebugUnlockReq(McuProdDebugUnlockReqResp),
+    ProdDebugUnlockToken(McuProdDebugUnlockTokenResp),
     // In-Field Fuse Programming
     FuseRead(FuseReadResp),
     FuseWrite(FuseWriteResp),
@@ -475,6 +493,8 @@ impl McuMailboxResp {
             McuMailboxResp::EcdsaCmkPublicKey(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::EcdsaCmkSign(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::EcdsaCmkVerify(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::ProdDebugUnlockReq(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::ProdDebugUnlockToken(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
@@ -521,6 +541,8 @@ impl McuMailboxResp {
             McuMailboxResp::EcdsaCmkPublicKey(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::EcdsaCmkSign(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::EcdsaCmkVerify(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::ProdDebugUnlockReq(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::ProdDebugUnlockToken(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
@@ -1155,6 +1177,40 @@ impl_mcu_request_varsize!(McuEcdsaCmkVerifyReq, CmEcdsaVerifyReq);
 pub struct McuEcdsaCmkVerifyResp(pub MailboxRespHeader);
 impl Response for McuEcdsaCmkVerifyResp {}
 
+// ---- Debug Unlock ----
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuProdDebugUnlockReqReq(pub ProductionAuthDebugUnlockReq);
+impl Request for McuProdDebugUnlockReqReq {
+    const ID: CommandId = CommandId::MC_PROD_DEBUG_UNLOCK_REQ;
+    type Resp = McuProdDebugUnlockReqResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuProdDebugUnlockReqResp(pub ProductionAuthDebugUnlockChallenge);
+impl Response for McuProdDebugUnlockReqResp {}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuProdDebugUnlockTokenReq(pub ProductionAuthDebugUnlockToken);
+impl Request for McuProdDebugUnlockTokenReq {
+    const ID: CommandId = CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN;
+    type Resp = McuProdDebugUnlockTokenResp;
+}
+
+impl Default for McuProdDebugUnlockTokenReq {
+    fn default() -> Self {
+        Self(ProductionAuthDebugUnlockToken::new_zeroed())
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuProdDebugUnlockTokenResp(pub MailboxRespHeader);
+impl Response for McuProdDebugUnlockTokenResp {}
+
 // ---- In-Field Fuse Programming (IFP) ----
 
 /// Maximum size of fuse data in bytes for read/write operations.
@@ -1365,7 +1421,7 @@ mod tests {
         assert_eq!(req.partial_len(), expected_len);
 
         req.length_bits = 0;
-        let expected_len = core::mem::size_of::<MailboxReqHeader>() + 4 * 4 + 0;
+        let expected_len = core::mem::size_of::<MailboxReqHeader>() + 4 * 4;
         assert_eq!(req.partial_len(), expected_len);
     }
 

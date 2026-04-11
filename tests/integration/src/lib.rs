@@ -84,6 +84,10 @@ mod test {
         /// Optional bytes to prepend to the MCU firmware image (e.g., a manifest header).
         pub firmware_prefix: Option<Vec<u8>>,
         pub vendor_pqc_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
+        /// Assert the debug intent strap.
+        pub debug_intent: bool,
+        /// Production debug unlock keypairs (ECC384 pub key bytes, MLDSA87 pub key bytes).
+        pub prod_dbg_unlock_keypairs: Vec<([u8; 96], [u8; 2592])>,
     }
 
     impl Default for TestParams<'_> {
@@ -103,6 +107,8 @@ mod test {
                 custom_mcu_rom: None,
                 firmware_prefix: None,
                 vendor_pqc_type: Some(caliptra_image_types::FwVerificationPqcKeyType::LMS),
+                debug_intent: false,
+                prod_dbg_unlock_keypairs: Vec::new(),
             }
         }
     }
@@ -436,6 +442,12 @@ mod test {
             primary_flash_initial_contents: flash_image,
             flash_boot: params.flash_boot,
             active_i3c1: params.active_i3c1,
+            debug_intent: params.debug_intent,
+            prod_dbg_unlock_keypairs: params
+                .prod_dbg_unlock_keypairs
+                .iter()
+                .map(|(ecc, mldsa)| (ecc as &[u8; 96], mldsa as &[u8; 2592]))
+                .collect(),
             ..Default::default()
         })
         .unwrap()
