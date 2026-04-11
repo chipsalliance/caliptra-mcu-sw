@@ -31,7 +31,7 @@ async fn populate_idev_cert() -> CertStoreResult<()> {
     let mut cert_ctx = CertContext::new();
 
     while let Err(e) = cert_ctx
-        .populate_idev_ecc384_cert(&slot0::SLOT0_ECC_DEVID_CERT_DER)
+        .populate_idev_ecc384_cert(slot0::SLOT0_ECC_DEVID_CERT)
         .await
     {
         match e {

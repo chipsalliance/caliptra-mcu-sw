@@ -39,6 +39,7 @@ embedded-alloc.workspace = true
 default = []
 debug = []
 doe = []
+fpga = []
 hw-2-1 = []
 test-caliptra-certs = []
 test-caliptra-crypto = []

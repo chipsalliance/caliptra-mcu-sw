@@ -9,6 +9,7 @@ use crate::InitParams;
 use crate::McuHwModel;
 use crate::McuManager;
 use crate::DEFAULT_LIFECYCLE_RAW_TOKENS;
+use caliptra_hw_model_types::DEFAULT_UDS_SEED;
 use anyhow::bail;
 use anyhow::Result;
 use caliptra_api::SocManager;
@@ -202,6 +203,15 @@ impl McuHwModel for ModelEmulated {
                 .copy_from_slice(&mem);
         }
 
+        // Provision DEFAULT_UDS_SEED into the SECRET_MANUF_PARTITION so the
+        // emulated fuse controller produces the same UDS as real FPGA hardware.
+        let uds_offset = fuses::SECRET_MANUF_PARTITION_BYTE_OFFSET;
+        let uds_bytes: Vec<u8> = DEFAULT_UDS_SEED
+            .iter()
+            .flat_map(|&word| word.to_le_bytes())
+            .collect();
+        otp_mem[uds_offset..uds_offset + uds_bytes.len()].copy_from_slice(&uds_bytes);
+
         // Derive LC state from the provisioned OTP fuses (source of truth).
         let lc_bytes = &otp_mem[fuses::LIFE_CYCLE_BYTE_OFFSET
             ..fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE];
@@ -321,6 +331,7 @@ impl McuHwModel for ModelEmulated {
                 extra_soc_bus: Some(params.caliptra_soc_axi_user.unwrap_or(0xdddd_dddd)),
                 debug_intent: params.debug_intent,
                 prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs.clone(),
+                cptra_obf_key: params.cptra_obf_key,
             })
             .expect("Failed to start Caliptra CPU");
         let soc_to_caliptra_bus = soc_to_caliptra_bus.unwrap();

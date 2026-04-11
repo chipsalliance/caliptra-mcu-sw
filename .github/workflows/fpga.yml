@@ -5,6 +5,8 @@ name: FPGA Tests
 on:
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
 jobs:
   build_test_binaries:
     runs-on: [e2-standard-8-big-disk]
@@ -20,11 +22,11 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
-          submodules: 'true'
+          submodules: "true"
 
       - name: Install cross compiler
         run: |
-          sudo apt-get update -qy && sudo apt-get install -y gcc-aarch64-linux-gnu squashfs-tools
+          sudo apt-get update -qy && sudo apt-get install -y gcc-aarch64-linux-gnu squashfs-tools cmake
           rustup toolchain install 1.84-x86_64-unknown-linux-gnu
           rustup target add riscv32imc-unknown-none-elf
           rustup target add aarch64-unknown-linux-gnu
@@ -161,27 +163,61 @@ jobs:
           tar xvf caliptra-test-binaries.tar.zst -C /tmp/caliptra-test-binaries/
           mksquashfs /tmp/caliptra-test-binaries /tmp/caliptra-test-binaries.sqsh -comp zstd
 
-      - name: 'Upload bitstream'
+      # TODO: Re-enable SPDM steps after verifying base FPGA tests pass
+      # - name: Build spdm-emu for aarch64
+      #   if: github.event_name != 'pull_request'
+      #   run: |
+      #     git clone --recursive --branch pbhogaraju/spdm_emu_main_custom https://github.com/parvathib/spdm-emu.git /tmp/spdm-emu
+      #     pushd /tmp/spdm-emu
+      #     mkdir build
+      #     pushd build
+      #     cmake -DARCH=aarch64 -DTOOLCHAIN=AARCH64_GCC -DTARGET=Debug -DCRYPTO=openssl ..
+      #     make copy_sample_key
+      #     make -j$(nproc)
+      #     popd
+      #     popd
+      #
+      #     mkdir -p /tmp/spdm-emu-binaries
+      #     cp -r /tmp/spdm-emu/build/bin/* /tmp/spdm-emu-binaries/
+      #
+      #     # Replace the default CA cert with the one that signed the IDevID CSR
+      #     cp ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der /tmp/spdm-emu-binaries/ecp384/ca.cert.der
+
+      - name: Download bitstream
+        run: |
+          cargo install --git https://github.com/chipsalliance/caliptra-infra caliptra-bitstream-downloader --root /tmp/bitstream-downloader --rev 3db904cf9cd704fcf890da32fd61dd30bfce8d11
+          /tmp/bitstream-downloader/bin/caliptra-bitstream-downloader --bitstream-manifest hw/fpga/bitstream_manifests/subsystem.toml
+          mv subsystem.pdi /tmp/caliptra-bitstream.pdi
+
+      - name: "Upload bitstream"
         uses: actions/upload-artifact@v4
         with:
           name: caliptra-bitstream${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-bitstream.pdi
           retention-days: 1
 
-
-      - name: 'Upload test binaries artifact'
+      - name: "Upload test binaries artifact"
         uses: actions/upload-artifact@v4
         with:
           name: caliptra-test-binaries${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-test-binaries.sqsh
           retention-days: 1
 
-      - name: 'Upload test firmware artifact'
+      - name: "Upload test firmware artifact"
         uses: actions/upload-artifact@v4
         with:
           name: caliptra-test-firmware${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-binaries
           retention-days: 1
+
+      # TODO: Re-enable after verifying base tests pass
+      # - name: "Upload spdm-emu binaries artifact"
+      #   if: github.event_name != 'pull_request'
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: spdm-emu-binaries${{ inputs.artifact-suffix }}
+      #     path: /tmp/spdm-emu-binaries
+      #     retention-days: 1
 
   test_artifacts:
     runs-on: vck190-subsystem
@@ -192,25 +228,41 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
-          submodules: 'recursive'
+          submodules: "recursive"
 
-      - name: 'Download Test Binaries Artifact'
+      - name: "Download Test Binaries Artifact"
         uses: actions/download-artifact@v4
         with:
           name: caliptra-test-binaries${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-test-binaries.sqsh
 
-      - name: 'Download Test Firmware Artifact'
+      - name: "Download Test Firmware Artifact"
         uses: actions/download-artifact@v4
         with:
           name: caliptra-test-firmware${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-binaries
 
-      - name: 'Download Bitstream'
+      - name: "Download Bitstream"
         uses: actions/download-artifact@v4
         with:
           name: caliptra-bitstream${{ inputs.artifact-suffix }}
           path: /tmp/caliptra-bitstream
+
+      # TODO: Re-enable after verifying base tests pass
+      # - name: "Download spdm-emu binaries"
+      #   if: github.event_name != 'pull_request'
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: spdm-emu-binaries${{ inputs.artifact-suffix }}
+      #     path: /tmp/spdm-emu-binaries
+      #
+      # - name: Make spdm-emu binaries executable
+      #   if: github.event_name != 'pull_request'
+      #   run: |
+      #     chmod +x /tmp/spdm-emu-binaries/spdm_device_validator_sample
+      #     chmod +x /tmp/spdm-emu-binaries/spdm_requester_emu
+      #     chmod +x /tmp/spdm-emu-binaries/spdm_device_attester_sample
+      #     chmod +x /tmp/spdm-emu-binaries/spdm_responder_emu
 
       - name: Load bitstream
         run: |
@@ -245,7 +297,50 @@ jobs:
           chmod +x /tmp/caliptra-binaries/xtask
           /tmp/caliptra-binaries/xtask fpga test
 
-      - name: 'Upload test results'
+      # TODO: Re-enable after verifying base tests pass
+      # - name: Execute SPDM attestation tests (nightly only)
+      #   if: github.event_name != 'pull_request'
+      #   run: |
+      #     export RUST_BACKTRACE=1
+      #     TEST_BIN=/tmp/caliptra-test-binaries
+      #
+      #     sudo CPTRA_FIRMWARE_BUNDLE="${PWD}/target/all-fw.zip" \
+      #         SPDM_VALIDATOR_DIR=/tmp/spdm-emu-binaries \
+      #         cargo-nextest nextest run \
+      #         --cargo-metadata="${TEST_BIN}/target/nextest/cargo-metadata.json" \
+      #         --binaries-metadata="${TEST_BIN}/target/nextest/binaries-metadata.json" \
+      #         --target-dir-remap="${TEST_BIN}/target" \
+      #         --workspace-remap=. \
+      #         --profile=nightly-ci-spdm \
+      #         --run-ignored all \
+      #         --test-threads=1 \
+      #         --no-fail-fast
+      #
+      # - name: Display and check SPDM Validator test results
+      #   if: (success() || failure()) && github.event_name != 'pull_request'
+      #   run: |
+      #     if [ -f /tmp/spdm-emu-binaries/test.log ]; then
+      #       echo "=== SPDM Validator test.log ==="
+      #       cat /tmp/spdm-emu-binaries/test.log
+      #       if grep -E 'test suite \(.*\) - pass: [0-9]+, fail: [1-9][0-9]*' /tmp/spdm-emu-binaries/test.log; then
+      #         echo "SPDM Validator test suite had failures."
+      #         exit 1
+      #       fi
+      #     else
+      #       echo "test.log not found"
+      #     fi
+      #
+      # - name: Display SPDM attestation test results
+      #   if: (success() || failure()) && github.event_name != 'pull_request'
+      #   run: |
+      #     if [ -f /tmp/spdm-emu-binaries/spdm_requester_emu_output.txt ]; then
+      #       echo "=== SPDM Requester Emu Output ==="
+      #       cat /tmp/spdm-emu-binaries/spdm_requester_emu_output.txt
+      #     else
+      #       echo "spdm_requester_emu_output.txt not found"
+      #     fi
+
+      - name: "Upload test results"
         uses: actions/upload-artifact@v4
         if: success() || failure()
         with:
