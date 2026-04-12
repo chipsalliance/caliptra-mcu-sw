@@ -62,6 +62,36 @@ pub struct LifecycleHashedTokens {
 
 pub use caliptra_mcu_otp_lifecycle::LifecycleControllerState;
 
+/// RAII guard that releases the lifecycle transition mutex on drop.
+struct TransitionMutexGuard {
+    registers: StaticRef<lc_ctrl::regs::LcCtrl>,
+}
+
+impl TransitionMutexGuard {
+    /// Spin until the transition mutex is claimed, then return a struct
+    /// that will release it on drop.
+    fn claim(registers: StaticRef<lc_ctrl::regs::LcCtrl>) -> Self {
+        const MULTI_TRUE: u32 = 0x96;
+        while registers.claim_transition_if.get() != MULTI_TRUE {
+            registers.claim_transition_if.set(MULTI_TRUE);
+            let reg_value = registers.claim_transition_if.get();
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom-lcc] Claim Mutex Register: {} (should be {})",
+                HexWord(reg_value),
+                HexWord(MULTI_TRUE)
+            );
+        }
+        caliptra_mcu_romtime::println!("[mcu-rom-lcc] Mutex successfully acquired.");
+        Self { registers }
+    }
+}
+
+impl Drop for TransitionMutexGuard {
+    fn drop(&mut self) {
+        self.registers.claim_transition_if.set(0);
+    }
+}
+
 pub struct Lifecycle {
     registers: StaticRef<lc_ctrl::regs::LcCtrl>,
 }
@@ -115,31 +145,29 @@ impl Lifecycle {
             "[mcu-rom-lcc] Transitioning Lifecycle state... to {}",
             u8::from(state)
         );
+
+        // Acquire the transition mutex (released on drop)
+        let mutex = TransitionMutexGuard::claim(self.registers);
+        self.transition_flow(mutex, state, token)
+    }
+
+    fn transition_flow(
+        &self,
+        _mutex: TransitionMutexGuard,
+        state: LifecycleControllerState,
+        token: &LifecycleToken,
+    ) -> McuResult<()> {
         let next_lc_state_mne = Self::calc_lc_state_mnemonic(state);
         let token = u128::from_le_bytes(token.0);
 
-        const MULTI_TRUE: u32 = 0x96;
-
-        // Step 1: Set Claim Transition Register
-        while self.registers.claim_transition_if.get() != MULTI_TRUE {
-            self.registers.claim_transition_if.set(MULTI_TRUE);
-            let reg_value = self.registers.claim_transition_if.get();
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom-lcc] Claim Mutex Register: {} (should be {})",
-                HexWord(reg_value),
-                HexWord(MULTI_TRUE)
-            );
-        }
-        caliptra_mcu_romtime::println!("[mcu-rom-lcc] Mutex successfully acquired.");
-
-        // Step 3: Set Target Lifecycle State
+        // Step 1: Set Target Lifecycle State
         caliptra_mcu_romtime::println!(
             "[mcu-rom-lcc] Setting next lifecycle state: 0x{:02x}",
             next_lc_state_mne & 0x1f
         );
         self.registers.transition_target.set(next_lc_state_mne);
 
-        // Step 4: Write Transition Tokens
+        // Step 2: Write Transition Tokens
         let token_31_0 = (token & 0xFFFF_FFFF) as u32;
         let token_63_32 = ((token >> 32) & 0xFFFF_FFFF) as u32;
         let token_95_64 = ((token >> 64) & 0xFFFF_FFFF) as u32;
@@ -154,11 +182,11 @@ impl Lifecycle {
         caliptra_mcu_romtime::println!("[mcu-rom-lcc] Writing tokens: 0x{:08x}", token_127_96);
         self.registers.transition_token_3.set(token_127_96);
 
-        // Step 6: Trigger the Transition Command
+        // Step 3: Trigger the Transition Command
         caliptra_mcu_romtime::println!("[mcu-rom-lcc] Triggering transition command: 0x1",);
         self.registers.transition_cmd.set(1);
 
-        // Step 7: Poll Status Register
+        // Step 4: Poll Status Register
         loop {
             let status = self.registers.status.extract();
             caliptra_mcu_romtime::println!(
@@ -168,7 +196,7 @@ impl Lifecycle {
 
             if status.is_set(lc_ctrl::bits::Status::TransitionSuccessful) {
                 caliptra_mcu_romtime::println!("[mcu-rom-lcc] Transition successful.");
-                break;
+                return Ok(());
             }
             if status.is_set(lc_ctrl::bits::Status::TransitionError) {
                 caliptra_mcu_romtime::println!("[mcu-rom-lcc] Transition error detected.");
@@ -203,10 +231,5 @@ impl Lifecycle {
                 return Err(McuError::ROM_LC_OTP_PARTITION_ERROR);
             }
         }
-
-        self.registers.claim_transition_if.set(0);
-
-        caliptra_mcu_romtime::println!("[mcu-rom-lcc] Lifecycle state transitioned");
-        Ok(())
     }
 }
