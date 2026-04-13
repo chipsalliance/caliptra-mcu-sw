@@ -631,49 +631,50 @@ INCLUDE $BASE_LD_CONTENTS
 
 /// Output a linker file for the application.
 fn content_aware_write(prefix: &str, content: &str, linker_dir: &Path) -> Result<PathBuf> {
-    // Determine if a previous file matching this prefix has already been generated.
-    // First read through the linker-script directory
-    let maybe_previous_file = std::fs::read_dir(linker_dir)?
-        .find(|f| {
-            f.as_ref()
-                .map(|f| {
-                    // Then check if each entry has a name which starts with the same name as
-                    // this linker file.  If so return it as the previous file.
-                    f.file_name()
-                        .to_str()
-                        .map(|n| n.starts_with(prefix))
-                        .unwrap_or(false)
-                })
-                .unwrap_or(false)
-        })
-        .transpose()?;
+    // Determine if any previous files matching this prefix have already been generated.
+    let mut matching_content_file = None;
+    let mut files_to_remove = Vec::new();
 
-    // To keep incremental builds fast, only output the linker contents if they differ from the
-    // previously existing file.
-    if let Some(previous_file) = maybe_previous_file {
-        let previous_file = previous_file.path();
-        // If the contents match exactly, just use the previous file, and perhaps the cached
-        // build.
-        if std::fs::read_to_string(&previous_file)
-            .map(|prev| prev == content)
-            .unwrap_or(false)
-        {
-            return Ok(previous_file);
-        } else {
-            // If they are different clean up the old file to avoid confusing multiple entries
-            // within the linker-script directory.
-            std::fs::remove_file(previous_file)?;
+    for entry in std::fs::read_dir(linker_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with(prefix) && name.ends_with(".ld") {
+                    if matching_content_file.is_none() {
+                        if let Ok(prev_content) = std::fs::read_to_string(&path) {
+                            if prev_content == content {
+                                matching_content_file = Some(path.clone());
+                                continue;
+                            }
+                        }
+                    }
+                    files_to_remove.push(path);
+                }
+            }
         }
     }
 
-    // Finally output the linker script file if we need to.  Use a unique UUID with each linker
-    // script generated.  This allows the `rustc` compiler to recognize when different scripts
-    // are used, and thus trigger a new build when memory space allocations change.
-    //
-    // If this is not done, compilation can diverge from the actual status of the Manifest toml
-    // until `cargo clean` is executed which can be quite confusing.
+    if let Some(file) = matching_content_file {
+        // We found a file with matching content. We can ignore other files with the same prefix.
+        return Ok(file);
+    }
+
+    // If we didn't find a matching file, we need to write a new one.
+    // Use a unique UUID with each linker script generated.
     let output_file = linker_dir.join(format!("{}-{}.ld", prefix, uuid::Uuid::new_v4()));
     std::fs::write(&output_file, content)?;
+
+    // Only remove OLD files AFTER we've successfully written the new one,
+    // and ideally we should be careful here. For now, let's remove them
+    // to keep the directory clean, but this is still slightly risky if
+    // another process just started using one of them.
+    // However, since we just wrote a NEW one with a NEW UUID, any OTHER
+    // process will either find this one or write its own.
+    for path in files_to_remove {
+        let _ = std::fs::remove_file(path);
+    }
+
     Ok(output_file)
 }
 
