@@ -758,7 +758,7 @@ mod test {
             let mut cargo_args: Vec<String> = vec![
                 "run".to_string(),
                 "-p".to_string(),
-                "emulator".to_string(),
+                "caliptra-mcu-emulator".to_string(),
                 "--profile".to_string(),
                 "test".to_string(),
                 "--".to_string(),
