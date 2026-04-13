@@ -459,7 +459,8 @@ mod test {
     }
 
     pub fn build_test_binaries(params: &TestParams) -> TestBinaries {
-        // Get MCU runtime: prefer prebuilt, fall back to compilation
+        // Get MCU runtime: prefer an explicit override, then prebuilt for the
+        // requested feature, and fall back to compilation.
         let mcu_runtime_path = if let Some(runtime_bytes) = params.custom_mcu_runtime.as_ref() {
             let path = target_binary("mcu_runtime_custom_for_builder.bin");
             if let Some(parent) = path.parent() {
@@ -469,22 +470,23 @@ mod test {
             path
         } else if let Ok(binaries) = FirmwareBinaries::from_env() {
             let runtime_bytes = if let Some(feature) = params.feature {
-                binaries
-                    .test_runtime(feature)
-                    .unwrap_or_else(|_| {
-                        panic!("Failed to get prebuilt runtime for feature {}", feature)
-                    })
-                    .clone()
+                match binaries.test_runtime(feature) {
+                    Ok(bytes) => Some(bytes.clone()),
+                    Err(_) => None,
+                }
             } else {
-                binaries.mcu_runtime.clone()
+                Some(binaries.mcu_runtime.clone())
             };
-            let path = target_binary("mcu_runtime_prebuilt_for_builder.bin");
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).ok();
+            if let Some(bytes) = runtime_bytes {
+                let path = target_binary("mcu_runtime_prebuilt_for_builder.bin");
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                std::fs::write(&path, &bytes).expect("Failed to write prebuilt runtime to file");
+                path
+            } else {
+                compile_runtime_with_profile(params.feature, params.example_app, params.profile)
             }
-            std::fs::write(&path, &runtime_bytes)
-                .expect("Failed to write prebuilt runtime to file");
-            path
         } else {
             compile_runtime_with_profile(params.feature, params.example_app, params.profile)
         };
