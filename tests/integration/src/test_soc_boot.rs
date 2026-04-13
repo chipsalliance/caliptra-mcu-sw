@@ -879,8 +879,17 @@ mod test {
         let soc_image_fw_1 = [0x55u8; 512]; // Example firmware data for SOC image 1
         let soc_image_fw_2 = [0xAAu8; 256]; // Example firmware data for SOC image 2
 
-        // Compile the runtime once with the appropriate feature
-        let test_runtime = compile_runtime(Some(feature), false);
+        // Get runtime: prefer prebuilt, fall back to compilation
+        let test_runtime = if let Ok(binaries) = FirmwareBinaries::from_env() {
+            let runtime_data = binaries
+                .test_runtime(feature)
+                .expect("Prebuilt runtime not found");
+            let path = std::env::temp_dir().join(format!("soc-boot-build-runtime-{}.bin", feature));
+            std::fs::write(&path, runtime_data).expect("Failed to write runtime");
+            path
+        } else {
+            compile_runtime(Some(feature), false)
+        };
 
         let soc_images_paths = create_soc_images(vec![
             soc_image_fw_1.clone().to_vec(),
@@ -909,14 +918,36 @@ mod test {
             },
         ];
 
+        // When prebuilt binaries are available, pass the Caliptra ROM/FW paths
+        // to the builder so it doesn't try to compile them from scratch.
+        let (prebuilt_caliptra_rom, prebuilt_caliptra_fw, prebuilt_vendor_pk_hash) =
+            if let Ok(binaries) = FirmwareBinaries::from_env() {
+                let rom_path = std::env::temp_dir()
+                    .join(format!("soc-boot-build-caliptra-rom-{}.bin", feature));
+                std::fs::write(&rom_path, &binaries.caliptra_rom)
+                    .expect("Failed to write prebuilt Caliptra ROM");
+                let fw_path = std::env::temp_dir()
+                    .join(format!("soc-boot-build-caliptra-fw-{}.bin", feature));
+                std::fs::write(&fw_path, &binaries.caliptra_fw)
+                    .expect("Failed to write prebuilt Caliptra FW");
+                let vendor_pk_hash = hex::encode(
+                    binaries
+                        .vendor_pk_hash()
+                        .expect("Failed to get vendor PK hash from prebuilt binaries"),
+                );
+                (Some(rom_path), Some(fw_path), Some(vendor_pk_hash))
+            } else {
+                (None, None, None)
+            };
+
         // Build the Caliptra runtime
         let mut builder = CaliptraBuilder::new(
             false,
             false,
+            prebuilt_caliptra_rom,
+            prebuilt_caliptra_fw,
             None,
-            None,
-            None,
-            None,
+            prebuilt_vendor_pk_hash,
             Some(test_runtime.clone()),
             Some(soc_images.clone()),
             None,

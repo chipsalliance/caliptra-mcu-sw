@@ -83,10 +83,8 @@ impl FdOps for UpdateFdOps {
         }
     }
 
-    async fn get_xfer_size(&self, _ua_transfer_size: usize) -> Result<usize, FdOpsError> {
-        // Return the minimum of requested and baseline transfer size
-        let size = MAX_PLDM_TRANSFER_SIZE;
-        Ok(size)
+    async fn get_xfer_size(&self, ua_transfer_size: usize) -> Result<usize, FdOpsError> {
+        Ok(ua_transfer_size.min(MAX_PLDM_TRANSFER_SIZE))
     }
 
     fn handle_component(

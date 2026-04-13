@@ -116,9 +116,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
     }
 
     async fn get_xfer_size(&self, ua_transfer_size: usize) -> Result<usize, FdOpsError> {
-        // Return the minimum of requested and baseline transfer size
-        let size = core::cmp::min(ua_transfer_size, PLDM_FWUP_BASELINE_TRANSFER_SIZE);
-        Ok(size)
+        Ok(ua_transfer_size.min(MAX_PLDM_TRANSFER_SIZE))
     }
 
     fn handle_component(
