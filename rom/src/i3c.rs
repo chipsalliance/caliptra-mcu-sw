@@ -35,6 +35,10 @@ impl I3c {
             HexWord(TTI_RESET_CONTROL)
         );
         regs.tti_tti_reset_control.set(TTI_RESET_CONTROL);
+        // Clear reset to take TTI out of reset. In I3C v1.5 these bits are persistent
+        // "hold in reset" rather than self-clearing pulses, so the TTI stays in reset
+        // (and threshold register writes are discarded) unless explicitly cleared.
+        regs.tti_tti_reset_control.set(0);
 
         // Evaluate RING_HEADERS_SECTION_OFFSET, the SECTION_OFFSET should read 0x0 as this controller doesn’t support the DMA mode
         let rhso = regs
