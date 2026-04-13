@@ -115,6 +115,7 @@ pub trait Platform {
     /// The current HEK Seed Status of `slot`. `seed` is the fuse value of the slot.
     fn get_slot_state(
         &mut self,
+        otp: &crate::otp::Otp,
         perma_bit: &PermaBitStatus,
         slot: usize,
         seed: &[u8; 48],
@@ -123,6 +124,7 @@ pub trait Platform {
     /// Report the active slot
     fn get_active_slot(
         &mut self,
+        otp: &crate::otp::Otp,
         perma_bit: &PermaBitStatus,
         seeds: &HekSeeds,
     ) -> Result<usize, Error>;
@@ -137,6 +139,7 @@ pub struct RomConfig<'a> {
 impl RomConfig<'_> {
     pub fn get_active_slot(
         &mut self,
+        otp: &crate::otp::Otp,
         perma_bit: &PermaBitStatus,
         seeds: &HekSeeds,
     ) -> Result<usize, Error> {
@@ -144,7 +147,7 @@ impl RomConfig<'_> {
             .platform
             .as_mut()
             .ok_or(Error::MISSING_PLATFORM_IMPLEMENTATION)?;
-        platform.get_active_slot(perma_bit, seeds)
+        platform.get_active_slot(otp, perma_bit, seeds)
     }
 
     pub fn get_total_slots(&mut self) -> Result<usize, Error> {
@@ -157,6 +160,7 @@ impl RomConfig<'_> {
 
     pub fn get_slot_status(
         &mut self,
+        otp: &crate::otp::Otp,
         perma_bit: &PermaBitStatus,
         slot: usize,
         seed: &[u8; 48],
@@ -165,7 +169,7 @@ impl RomConfig<'_> {
             .platform
             .as_mut()
             .ok_or(Error::MISSING_PLATFORM_IMPLEMENTATION)?;
-        platform.get_slot_state(perma_bit, slot, seed)
+        platform.get_slot_state(otp, perma_bit, slot, seed)
     }
 }
 

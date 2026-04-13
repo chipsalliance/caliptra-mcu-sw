@@ -5221,6 +5221,7 @@ dependencies = [
  "mcu-testing-common",
  "network-config",
  "openssl",
+ "otp-digest",
  "p384",
  "pldm-common",
  "pldm-fw-pkg",

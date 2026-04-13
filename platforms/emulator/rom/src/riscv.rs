@@ -73,8 +73,23 @@ pub extern "C" fn rom_entry() -> ! {
     let axi_user1 = 0xdddd_ddddu32;
     let mbox_axi_users = [axi_user0, axi_user1, 0, 0, 0];
 
+    // OTP digest IV and constant for the emulator.
+    // These defaults are defined in the caliptra-ss RTL (otp_ctrl_part_pkg.sv).
+    const EMULATOR_OTP_DIGEST_IV: u64 = 0x90C7F21F6224F027u64;
+    const EMULATOR_OTP_DIGEST_CONST: u128 = 0xF98C48B1F93772844A22D4B78FE0266Fu128;
+
     #[cfg(feature = "ocp-lock")]
     struct EmulatorOcpPlatform;
+
+    #[cfg(feature = "ocp-lock")]
+    fn get_hek_partition(slot: usize) -> romtime::otp::OtpPartition {
+        romtime::otp::OtpPartition {
+            byte_offset: registers_generated::fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET
+                + slot * 48,
+            byte_size: 40,
+            sw_digest: true,
+        }
+    }
 
     #[cfg(feature = "ocp-lock")]
     impl romtime::ocp_lock::Platform for EmulatorOcpPlatform {
@@ -86,8 +101,9 @@ pub extern "C" fn rom_entry() -> ! {
         // Sample only supports a subset of `HekSeedState`
         fn get_slot_state(
             &mut self,
+            otp: &romtime::otp::Otp,
             perma_bit: &romtime::ocp_lock::PermaBitStatus,
-            _slot: usize,
+            slot: usize,
             seed: &[u8; 48],
         ) -> Result<romtime::ocp_lock::HekSeedState, romtime::ocp_lock::Error> {
             if *perma_bit == romtime::ocp_lock::PermaBitStatus::Set {
@@ -99,6 +115,30 @@ pub extern "C" fn rom_entry() -> ! {
             if seed.iter().all(|&b| b == 0x0) {
                 return Ok(romtime::ocp_lock::HekSeedState::Unused);
             }
+
+            let partition = get_hek_partition(slot);
+            let expected_digest: Result<&[u8; 8], _> = seed[32..40].try_into();
+            match (
+                expected_digest,
+                otp.compute_sw_digest(
+                    &partition,
+                    EMULATOR_OTP_DIGEST_IV,
+                    EMULATOR_OTP_DIGEST_CONST,
+                ),
+            ) {
+                (Ok(expected_digest), Ok(computed_digest)) => {
+                    let expected_digest = u64::from_le_bytes(*expected_digest);
+                    if computed_digest != expected_digest {
+                        romtime::println!(
+                            "[mcu-rom-otp] HEK software digest mismatch! Slot {}",
+                            slot
+                        );
+                        return Ok(romtime::ocp_lock::HekSeedState::ProgrammedCorrupted);
+                    }
+                }
+                _ => return Err(romtime::ocp_lock::Error::INVALID_HEK_SLOT),
+            }
+
             Ok(romtime::ocp_lock::HekSeedState::Programmed)
         }
 
@@ -106,6 +146,7 @@ pub extern "C" fn rom_entry() -> ! {
         // Returns the first programmed.
         fn get_active_slot(
             &mut self,
+            otp: &romtime::otp::Otp,
             perma_bit: &romtime::ocp_lock::PermaBitStatus,
             seeds: &romtime::ocp_lock::HekSeeds,
         ) -> Result<usize, romtime::ocp_lock::Error> {
@@ -119,7 +160,7 @@ pub extern "C" fn rom_entry() -> ! {
                 let buf = seeds
                     .get(i)
                     .ok_or(romtime::ocp_lock::Error::INVALID_HEK_SLOT)?;
-                let state = self.get_slot_state(perma_bit, i, buf)?;
+                let state = self.get_slot_state(otp, perma_bit, i, buf)?;
 
                 if state == romtime::ocp_lock::HekSeedState::Programmed {
                     return Ok(i);

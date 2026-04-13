@@ -164,8 +164,9 @@ impl Soc {
         &self,
         otp: &Otp,
         mci: &romtime::Mci,
-        _params: &mut FuseParams,
+        params: &mut FuseParams,
     ) -> FuseState {
+        let _ = params;
         // secret fuses are populated by a hardware state machine, so we can skip those
 
         // UDS partition base address. (FE offset is calculated automatically by Caliptra ROM.)
@@ -397,7 +398,7 @@ impl Soc {
         romtime::println!("");
 
         #[cfg(feature = "ocp-lock")]
-        let hek_state = if let Some(ref mut config) = _params.ocp_lock_config {
+        let hek_state = if let Some(ref mut config) = params.ocp_lock_config {
             romtime::println!("[mcu-rom] OCP LOCK enabled");
             // TODO(clundin): Need to communicate HEK availability to firmware.
             match self.set_ocp_lock_fuses(otp, config) {
@@ -459,7 +460,7 @@ impl Soc {
         let total_slots = seeds.len();
 
         let hek_seeds = romtime::ocp_lock::HekSeeds::new(&seeds[..]);
-        let active_slot = match config.get_active_slot(&perma_status, &hek_seeds) {
+        let active_slot = match config.get_active_slot(otp, &perma_status, &hek_seeds) {
             Ok(slot) => slot,
             Err(romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS) => {
                 return Err(romtime::ocp_lock::Error::EXHAUSTED_HEK_SLOTS)
@@ -476,7 +477,7 @@ impl Soc {
             let buf = hek_seeds
                 .get(active_slot)
                 .ok_or(romtime::ocp_lock::Error::INVALID_HEK_SLOT)?;
-            let state = platform.get_slot_state(&perma_status, active_slot, buf)?;
+            let state = platform.get_slot_state(otp, &perma_status, active_slot, buf)?;
             (active_slot, state, buf)
         };
 
