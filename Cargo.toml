@@ -186,12 +186,15 @@ zeroize = { version = "1.6.0", default-features = false, features = ["zeroize_de
 zip = { version = "4.3.0", default-features = false, features = ["chrono", "deflate"] }
 
 # local dependencies
+caliptra-mailbox-client = { path = "caliptra-util-host/apps/mailbox/client" }
 caliptra-mcu-core-util-host-mailbox-test-config = { path = "caliptra-util-host/apps/mailbox/config" }
 caliptra-mcu-core-util-host-mctp-vdm-test-config = { path = "caliptra-util-host/apps/mctp-vdm/config" }
 caliptra-mcu-core-mctp-vdm-client = { path = "caliptra-util-host/apps/mctp-vdm/client" }
 caliptra-mcu-core-util-host-transport = { path = "caliptra-util-host/transport" }
 caliptra-mcu-core-util-host-command-types = { path = "caliptra-util-host/command-types" }
 caliptra-mcu-core-util-host-osal = { path = "caliptra-util-host/osal" }
+caliptra-util-host-commands = { path = "caliptra-util-host/commands" }
+caliptra-util-host-session = { path = "caliptra-util-host/session" }
 caliptra-mcu-core-mailbox-server = { path = "caliptra-util-host/apps/mailbox/server" }
 caliptra-mcu-capsules-emulator = { path = "platforms/emulator/runtime/kernel/capsules" }
 caliptra-mcu-capsules-runtime = { path = "runtime/kernel/capsules" }

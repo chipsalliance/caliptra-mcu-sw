@@ -39,6 +39,7 @@ caliptra-mcu-config.workspace = true
 caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-mctp-vdm-common.workspace = true
+caliptra-mailbox-client.workspace = true
 caliptra-mcu-core-mctp-vdm-client.workspace = true
 caliptra-mcu-core-util-host-mctp-vdm-test-config.workspace = true
 caliptra-mcu-core-util-host-transport.workspace = true

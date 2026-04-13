@@ -11,11 +11,11 @@ use caliptra_mcu_core_util_host_command_types::crypto_asymmetric::{
     ECC384_SCALAR_BYTE_SIZE, MAX_CMB_DATA_SIZE,
 };
 use caliptra_mcu_core_util_host_command_types::crypto_hmac::{CmKeyUsage, Cmk, CMK_SIZE};
+use caliptra_mcu_core_util_host_transport::Mailbox;
 use caliptra_util_host_commands::api::crypto_asymmetric::{
     caliptra_cmd_ecdh_generate, caliptra_cmd_ecdsa_public_key, caliptra_cmd_ecdsa_sign,
 };
 use caliptra_util_host_session::CaliptraSession;
-use caliptra_mcu_core_util_host_transport::Mailbox;
 
 /// Test ECDSA public key request construction
 #[test]

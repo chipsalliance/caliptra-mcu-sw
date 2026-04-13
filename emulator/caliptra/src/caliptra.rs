@@ -60,13 +60,14 @@ impl BytesOrPath {
 }
 
 #[derive(Default)]
-pub struct StartCaliptraArgs {
+pub struct StartCaliptraArgs<'a> {
     pub rom: BytesOrPath,
     pub req_idevid_csr: Option<bool>,
     pub device_lifecycle: Option<String>,
     pub use_mcu_recovery_interface: bool,
     pub extra_soc_bus: Option<u32>,
     pub debug_intent: bool,
+    pub prod_dbg_unlock_keypairs: Vec<(&'a [u8; 96], &'a [u8; 2592])>,
 }
 
 register_bitfields! [
@@ -84,7 +85,7 @@ register_bitfields! [
 
 /// Creates and returns an initialized a Caliptra emulator CPU.
 pub fn start_caliptra(
-    args: &StartCaliptraArgs,
+    args: &StartCaliptraArgs<'_>,
 ) -> io::Result<(
     Cpu<CaliptraRootBus>,
     SocToCaliptraBus,
@@ -185,6 +186,8 @@ pub fn start_caliptra(
         ),
         subsystem_mode: true,
         use_mcu_recovery_interface: args_use_mcu_recovery_interface,
+        debug_intent: args.debug_intent,
+        prod_dbg_unlock_keypairs: args.prod_dbg_unlock_keypairs.clone(),
         ..Default::default()
     };
 

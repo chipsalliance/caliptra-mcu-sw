@@ -9,11 +9,11 @@ use caliptra_mcu_core_util_host_command_types::crypto_hmac::{
     CmKeyUsage, Cmk, HmacAlgorithm, HmacKdfCounterRequest, HmacRequest, CMK_SIZE,
     MAX_HMAC_INPUT_SIZE,
 };
+use caliptra_mcu_core_util_host_transport::Mailbox;
 use caliptra_util_host_commands::api::crypto_hmac::{
     caliptra_cmd_hmac, caliptra_cmd_hmac_kdf_counter,
 };
 use caliptra_util_host_session::CaliptraSession;
-use caliptra_mcu_core_util_host_transport::Mailbox;
 
 /// Test HMAC SHA384 command
 #[test]
