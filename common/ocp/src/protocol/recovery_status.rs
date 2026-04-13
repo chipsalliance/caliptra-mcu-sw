@@ -110,6 +110,11 @@ impl RecoveryStatus {
         DeviceRecoveryStatus::try_from(self.byte0.status())
     }
 
+    /// Set the image index.
+    pub fn set_image_index(&mut self, index: u8) {
+        self.byte0.set_image_index(index);
+    }
+
     /// Byte 0, bits 4-7: Recovery image index (0-15).
     pub fn image_index(&self) -> u8 {
         self.byte0.image_index()

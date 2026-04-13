@@ -294,8 +294,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
                 self.state
                     .recovery_status
                     .set_status(DeviceRecoveryStatus::AuthenticationError);
-                self.state.device_status_value = DeviceStatusValue::BootFailure;
-                self.state.recovery_reason = RecoveryReasonCode::AuthFailureRecoveryFirmware;
+                self.set_boot_failure(RecoveryReasonCode::AuthFailureRecoveryFirmware);
             }
             ActivationResult::Failed => {
                 self.state
@@ -329,6 +328,7 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
         self.state
             .recovery_status
             .set_status(DeviceRecoveryStatus::AwaitingImage);
+        self.state.recovery_status.set_image_index(0);
     }
 
     /// Transition the device status to `BootFailure` with the given reason.
@@ -587,6 +587,8 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
                 return RecoveryAction::None;
             }
             self.device_status_value = DeviceStatusValue::RecoveryPending;
+            self.recovery_status
+                .set_status(DeviceRecoveryStatus::BootingImage);
             RecoveryAction::ActivateRecoveryImage
         } else {
             RecoveryAction::None
