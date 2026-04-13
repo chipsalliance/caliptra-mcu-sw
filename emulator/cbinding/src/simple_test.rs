@@ -53,6 +53,7 @@ fn test_emulator_args_creation() {
         vendor_pk_hash: None,
         vendor_pqc_type: FwVerificationPqcKeyType::LMS,
         owner_pk_hash: None,
+        raw_unlock_tokens: None,
         streaming_boot: None,
         primary_flash_image: None,
         secondary_flash_image: None,

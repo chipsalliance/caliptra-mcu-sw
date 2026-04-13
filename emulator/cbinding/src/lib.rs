@@ -156,6 +156,7 @@ pub struct CEmulatorConfig {
     pub vendor_pk_hash: *const c_char, // Optional, can be null
     pub vendor_pqc_type: c_uchar,      // 1 = LMS, 3 = MLDSA
     pub owner_pk_hash: *const c_char,  // Optional, can be null
+    pub raw_unlock_token: *const c_char, // Optional, can be null
     pub streaming_boot_path: *const c_char, // Optional, can be null
     pub primary_flash_image_path: *const c_char, // Optional, can be null
     pub secondary_flash_image_path: *const c_char, // Optional, can be null
@@ -326,6 +327,7 @@ pub unsafe extern "C" fn emulator_init(
         )
         .unwrap_or(caliptra_image_types::FwVerificationPqcKeyType::LMS),
         owner_pk_hash: convert_optional_c_string(config.owner_pk_hash),
+        raw_unlock_token: convert_optional_c_string(config.raw_unlock_token),
         streaming_boot: convert_optional_c_string(config.streaming_boot_path).map(|s| s.into()),
         primary_flash_image: convert_optional_c_string(config.primary_flash_image_path)
             .map(|s| s.into()),

@@ -381,6 +381,7 @@ void print_usage(const char* program_name) {
     printf("      --vendor-pk-hash <VENDOR_PK_HASH>\n");
     printf("                                       Vendor public key hash\n");
     printf("      --owner-pk-hash <OWNER_PK_HASH> Owner public key hash\n");
+    printf("      --raw-unlock-token <RAW_UNLOCK_TOKEN> Raw unlock token\n");
     printf("      --streaming-boot <STREAMING_BOOT>\n");
     printf("                                       Path to the streaming boot PLDM firmware package\n");
     printf("      --primary-flash-image <PRIMARY_FLASH_IMAGE>\n");
@@ -689,6 +690,7 @@ int main(int argc, char *argv[]) {
         .capture_uart_output = 1,  // Default to capturing UART output
         .vendor_pk_hash = NULL,
         .owner_pk_hash = NULL,
+        .raw_unlock_token = NULL,
         .streaming_boot_path = NULL,
         .primary_flash_image_path = NULL,
         .secondary_flash_image_path = NULL,
@@ -753,6 +755,7 @@ int main(int argc, char *argv[]) {
         {"device-security-state", required_argument, 0, 133},
         {"vendor-pk-hash", required_argument, 0, 134},
         {"owner-pk-hash", required_argument, 0, 135},
+        {"raw-unlock-token", required_argument, 0, 173},
         {"streaming-boot", required_argument, 0, 136},
         {"primary-flash-image", required_argument, 0, 137},
         {"secondary-flash-image", required_argument, 0, 138},
@@ -945,6 +948,9 @@ int main(int argc, char *argv[]) {
             case 172: // --stub-warnings
                 config.stub_warnings = 1;
                 break;
+            case 173: // --raw-unlock-tokens
+                config.raw_unlock_token = optarg;
+                break;  
             case 'h':
                 print_usage(argv[0]);
                 return 0;

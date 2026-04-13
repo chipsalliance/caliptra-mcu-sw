@@ -153,6 +153,9 @@ pub struct EmulatorArgs {
     #[arg(long)]
     pub i3c_port: Option<u16>,
 
+    #[arg(long)]
+    pub raw_unlock_token: Option<String>,
+
     /// Device lifecycle value (0=Unprovisioned, 1=Manufacturing, 2=Reserved, 3=Production).
     #[arg(long, value_parser = maybe_hex::<u32>, default_value_t = DeviceLifecycle::Production as u32)]
     pub device_security_state: u32,
@@ -857,7 +860,15 @@ impl Emulator {
         // Map DeviceLifecycle to LC state index per the Caliptra SS HW spec
         // (caliptra-ss docs/CaliptraSSHardwareSpecification.md, LCC state table).
         // The lifecycle state was already resolved above from fuses or CLI arg.
-        let lc = LcCtrl::with_state(lc_state_index, lc_transition_cnt);
+        let mut lc = LcCtrl::with_state(lc_state_index, lc_transition_cnt);
+        if let Some(ref token_hex) = cli.raw_unlock_token {
+            let token_bytes = hex::decode(token_hex).expect("Invalid hex in --raw-unlock-token");
+            let token: [u8; 16] = token_bytes
+                .try_into()
+                .expect("--raw-unlock-token must be exactly 16 bytes (32 hex chars)");
+            println!("LCC: Raw unlock token set to: {}", token_hex);
+            lc.set_raw_unlock_token(token);
+        }
 
         let otp = Otp::new(
             &clock.clone(),
@@ -876,7 +887,6 @@ impl Emulator {
         )?;
 
         // Share OTP partition data with the LC controller for transitions.
-        let mut lc = lc;
         lc.set_otp_partitions(otp.partitions_ref());
         let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
         let soc_ifc = unsafe {

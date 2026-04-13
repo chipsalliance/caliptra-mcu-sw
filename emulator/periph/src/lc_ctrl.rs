@@ -37,7 +37,7 @@ const LC_TOKENS_SCRAMBLE_KEY: u128 = 0x277195FC471E4B26B6641214B61D1B43;
 
 // Hardcoded raw unlock token matching the caliptra-ss RTL netlist constant.
 // Source: caliptra-ss/src/lc_ctrl/rtl/lc_ctrl_pkg.sv (RndCnstRawUnlockToken)
-const RAW_UNLOCK_TOKEN: [u8; 16] = [
+pub const DEFAULT_RAW_UNLOCK_TOKEN: [u8; 16] = [
     0xca, 0xa0, 0x32, 0xb5, 0x87, 0x96, 0xce, 0x74, 0x9a, 0xef, 0xec, 0xa2, 0x65, 0xbe, 0x41, 0x61,
 ];
 
@@ -133,8 +133,8 @@ fn validate_transition(from: u32, to: u32) -> Option<TokenRequirement> {
         (f, PROD_END) if is_test_unlocked(f) || is_test_locked(f) => {
             Some(TokenRequirement::OtpToken(9))
         }
-        // Any TestUnlocked -> Rma: rma token (index 10)
-        (f, RMA) if is_test_unlocked(f) => Some(TokenRequirement::OtpToken(10)),
+        // Any TestUnlocked -> Rma: Unconditional
+        (f, RMA) if is_test_unlocked(f) => Some(TokenRequirement::None),
         // Dev -> Prod: manuf_to_prod token (index 8)
         (DEV, PROD) => Some(TokenRequirement::OtpToken(8)),
         // Dev -> ProdEnd: prod_to_prod_end token (index 9)
@@ -166,6 +166,9 @@ pub struct LcCtrl {
     mutex_claimed: bool,
     transition_target: u32,
     token: [u32; 4],
+
+    /// Raw unlock token used for Raw -> TestUnlocked0 transitions.
+    raw_unlock_token: [u8; 16],
 
     /// Shared reference to OTP partition data for token reads and state writes.
     otp_partitions: Option<Rc<RefCell<Vec<u8>>>>,
@@ -205,6 +208,7 @@ impl LcCtrl {
             mutex_claimed: false,
             transition_target: 0,
             token: [0; 4],
+            raw_unlock_token: DEFAULT_RAW_UNLOCK_TOKEN,
             otp_partitions: None,
             reload_flag: None,
             ppd_flag: None,
@@ -224,6 +228,11 @@ impl LcCtrl {
     /// Set the shared PPD (Physical Presence Detection) flag (shared with MCI).
     pub fn set_ppd_flag(&mut self, flag: Rc<Cell<bool>>) {
         self.ppd_flag = Some(flag);
+    }
+
+    /// Override the raw unlock token used for Raw -> TestUnlocked0 transitions.
+    pub fn set_raw_unlock_token(&mut self, token: [u8; 16]) {
+        self.raw_unlock_token = token;
     }
 
     /// Returns true if the PPD pin is currently asserted.
@@ -372,7 +381,7 @@ impl LcCtrl {
         match token_req {
             TokenRequirement::None => {}
             TokenRequirement::RawUnlock => {
-                if self.token_as_bytes() != RAW_UNLOCK_TOKEN {
+                if self.token_as_bytes() != self.raw_unlock_token {
                     self.transition_error(STATUS_TOKEN_ERROR);
                     return;
                 }
@@ -600,7 +609,7 @@ mod tests {
     #[test]
     fn test_raw_to_test_unlocked0() {
         let mut lc = make_lc_ctrl(RAW, 0, &TEST_RAW_TOKEN);
-        let token_words = token_to_words(&RAW_UNLOCK_TOKEN);
+        let token_words = token_to_words(&DEFAULT_RAW_UNLOCK_TOKEN);
         let status = do_transition(&mut lc, TEST_UNLOCKED0, token_words);
         assert_ne!(status & STATUS_TRANSITION_SUCCESSFUL, 0);
         assert_eq!(lc.lc_state_index, POST_TRANSITION);
@@ -773,7 +782,7 @@ mod tests {
         let mut lc = make_lc_ctrl(RAW, 1, &TEST_RAW_TOKEN);
 
         // Transition Raw -> TestUnlocked0.
-        let token_words = token_to_words(&RAW_UNLOCK_TOKEN);
+        let token_words = token_to_words(&DEFAULT_RAW_UNLOCK_TOKEN);
         let status = do_transition(&mut lc, TEST_UNLOCKED0, token_words);
         assert_ne!(status & STATUS_TRANSITION_SUCCESSFUL, 0);
 
