@@ -1044,6 +1044,7 @@ mod test {
     /// Creates OTP memory with DOT in locked state (ODD, 1 fuse bit burned).
     /// Uses the generated fuse entry offsets for correct placement.
     fn create_locked_otp_memory() -> Vec<u8> {
+        use caliptra_mcu_otp_digest::{otp_scramble, OTP_SCRAMBLE_KEYS};
         use caliptra_mcu_registers_generated::fuses;
         let mut otp =
             vec![0u8; fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
@@ -1051,6 +1052,21 @@ mod test {
         otp[fuses::DOT_INITIALIZED.byte_offset] = 0x07;
         // Set bit 0 of dot_fuse_array to 1 (burned=1, ODD/locked state)
         otp[fuses::DOT_FUSE_ARRAY.byte_offset] = 0x01;
+
+        // VendorSecretProdPartition (partition index 13) is scrambled.
+        // Pre-scramble zero blocks so the DAI read path unscrambles them
+        // back to zeros, ensuring recovery_pk_hash reads as all-zeros (None).
+        let key = OTP_SCRAMBLE_KEYS[5];
+        let part_start = fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET;
+        let part_end = part_start + fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE;
+        let end = part_end.min(otp.len());
+        for off in (part_start..end).step_by(8) {
+            let scrambled = otp_scramble(0, key);
+            let bytes = scrambled.to_le_bytes();
+            let copy_len = bytes.len().min(otp.len() - off);
+            otp[off..off + copy_len].copy_from_slice(&bytes[..copy_len]);
+        }
+
         otp
     }
 
