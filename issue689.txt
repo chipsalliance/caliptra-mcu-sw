@@ -1,0 +1,34 @@
+use std::process::Command;
+
+// Define a custom error type for better context, or just use Strong/anynhow::Error
+pub fn check_submodules() -> Result<(), String> {
+	let output = Command::new ("git")
+	    .args(["submodule", "status"]
+            .output()
+            .map_err(|e| format!
+if !output.status.success() {
+        return Err("Failed to check git submodules. Is this a git repository?".to_string());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // '-' = uninitialized, '+' = out of date, 'U' = merge conflicts
+    let problem_submodules: Vec<&str> = stdout
+        .lines()
+        .filter(|line| {
+            line.starts_with('-') || line.starts_with('+') || line.starts_with('U')
+        })
+        .collect();
+
+    if !problem_submodules.is_empty() {
+        let mut error_msg = String::from("Some git submodules are not initialized/updated:\n");
+        for sub in problem_submodules {
+            error_msg.push_str(&format!("  {}\n", sub));
+        }
+        error_msg.push_str("\nPlease run:\n    git submodule update --init --recursive");
+        
+        return Err(error_msg);
+    }
+
+    Ok(())
+}
