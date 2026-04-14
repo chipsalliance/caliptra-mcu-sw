@@ -349,26 +349,36 @@ mod test {
         };
 
         // Build the FW bundle and SoC manifest with custom owner keys.
-        // We need to provide the MCU runtime path for the SoC manifest generation.
-        let mcu_runtime_path = {
-            // Try to get prebuilt MCU runtime, or compile it
-            let mcu_runtime_bytes = if let Ok(binaries) = FirmwareBinaries::from_env() {
-                binaries.mcu_runtime.clone()
+        // When prebuilt binaries are available, pass the Caliptra FW/ROM paths
+        // to the builder so it doesn't try to compile them from scratch.
+        let (mcu_runtime_path, prebuilt_caliptra_fw, prebuilt_vendor_pk_hash) =
+            if let Ok(binaries) = FirmwareBinaries::from_env() {
+                let rt_path = std::env::temp_dir().join("test_dot_mcu_runtime.bin");
+                std::fs::write(&rt_path, &binaries.mcu_runtime)
+                    .expect("Failed to write MCU runtime");
+                let fw_path = std::env::temp_dir().join("test_dot_custom_owner_caliptra_fw.bin");
+                std::fs::write(&fw_path, &binaries.caliptra_fw)
+                    .expect("Failed to write prebuilt Caliptra FW");
+                let vendor_pk_hash = hex::encode(
+                    binaries
+                        .vendor_pk_hash()
+                        .expect("Failed to get vendor PK hash from prebuilt binaries"),
+                );
+                (rt_path, Some(fw_path), Some(vendor_pk_hash))
             } else {
-                // Fall back to compiling the runtime
                 let runtime_path = crate::test::compile_runtime(None, false);
-                std::fs::read(&runtime_path).expect("Failed to read compiled runtime")
+                let rt_bytes =
+                    std::fs::read(&runtime_path).expect("Failed to read compiled runtime");
+                let rt_path = std::env::temp_dir().join("test_dot_mcu_runtime.bin");
+                std::fs::write(&rt_path, &rt_bytes).expect("Failed to write MCU runtime");
+                (rt_path, None, None)
             };
-
-            // Write to a temp file for CaliptraBuilder
-            let temp_path = std::env::temp_dir().join("test_dot_mcu_runtime.bin");
-            std::fs::write(&temp_path, &mcu_runtime_bytes).expect("Failed to write MCU runtime");
-            temp_path
-        };
 
         let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
             fpga: cfg!(feature = "fpga_realtime"),
             mcu_firmware: Some(mcu_runtime_path),
+            caliptra_firmware: prebuilt_caliptra_fw,
+            vendor_pk_hash: prebuilt_vendor_pk_hash,
             ..Default::default()
         })
         .with_owner_config(custom_owner_config)
@@ -1224,6 +1234,7 @@ mod test {
     /// Creates OTP memory for override testing.
     /// Includes locked state fuses AND the vendor recovery PK hash.
     fn create_challenge_recovery_otp_memory(pk_hash: &[u8; 48]) -> Vec<u8> {
+        use caliptra_mcu_otp_digest::{otp_scramble, OTP_SCRAMBLE_KEYS};
         use caliptra_mcu_registers_generated::fuses;
 
         let required_size = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset
@@ -1233,15 +1244,24 @@ mod test {
             required_size.max(fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size);
         let mut otp = vec![0u8; otp_size];
 
-        // Set DOT locked state
+        // Set DOT locked state (partition 14, not scrambled)
         otp[fuses::DOT_INITIALIZED.byte_offset] = 0x07;
         otp[fuses::DOT_FUSE_ARRAY.byte_offset] = 0x01;
 
-        // Set recovery PK hash (48 bytes split across 2 OTP slots of 32 bytes)
+        // Write recovery PK hash into partition 13 (VendorSecretProdPartition),
+        // which is scrambled. Pre-scramble each 8-byte block so the DAI read
+        // path unscrambles back to the original plaintext.
+        let key = OTP_SCRAMBLE_KEYS[5]; // VendorSecretProdPartition
         let hash_offset = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset;
-        otp[hash_offset..hash_offset + 32].copy_from_slice(&pk_hash[..32]);
-        let next_offset = hash_offset + fuses::VENDOR_RECOVERY_PK_HASH.byte_size;
-        otp[next_offset..next_offset + 16].copy_from_slice(&pk_hash[32..48]);
+        for (i, chunk) in pk_hash.chunks(8).enumerate() {
+            let off = hash_offset + i * 8;
+            let mut block = [0u8; 8];
+            block[..chunk.len()].copy_from_slice(chunk);
+            let plaintext = u64::from_le_bytes(block);
+            let scrambled = otp_scramble(plaintext, key);
+            let scrambled_bytes = scrambled.to_le_bytes();
+            otp[off..off + 8].copy_from_slice(&scrambled_bytes);
+        }
 
         otp
     }

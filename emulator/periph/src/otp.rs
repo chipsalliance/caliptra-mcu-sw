@@ -817,21 +817,35 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
                 } else {
                     let mut buf = [0; 4];
                     let partitions = self.partitions.borrow();
-                    buf.copy_from_slice(&partitions[addr..addr + 4]);
-                    self.direct_access_buffer = u32::from_le_bytes(buf);
-                    // Also read the high word for 64-bit granule reads
-                    if addr + 8 <= TOTAL_SIZE {
-                        buf.copy_from_slice(&partitions[addr + 4..addr + 8]);
-                        self.direct_access_buffer_hi = u32::from_le_bytes(buf);
-                    } else {
-                        self.direct_access_buffer_hi = 0;
-                    }
                     if let Some(key) = scramble_key_for_addr(addr) {
-                        let scrambled = ((self.direct_access_buffer_hi as u64) << 32)
-                            | self.direct_access_buffer as u64;
+                        // Scrambled partitions use 8-byte granules. Align the
+                        // read to the 8-byte boundary so we unscramble the
+                        // correct block, then return the requested half.
+                        let aligned = addr & !7;
+                        buf.copy_from_slice(&partitions[aligned..aligned + 4]);
+                        let lo = u32::from_le_bytes(buf);
+                        buf.copy_from_slice(&partitions[aligned + 4..aligned + 8]);
+                        let hi = u32::from_le_bytes(buf);
+                        let scrambled = ((hi as u64) << 32) | lo as u64;
                         let plaintext = caliptra_mcu_otp_digest::otp_unscramble(scrambled, key);
-                        self.direct_access_buffer = plaintext as u32;
-                        self.direct_access_buffer_hi = (plaintext >> 32) as u32;
+                        let plaintext_lo = plaintext as u32;
+                        let plaintext_hi = (plaintext >> 32) as u32;
+                        if addr & 4 != 0 {
+                            self.direct_access_buffer = plaintext_hi;
+                            self.direct_access_buffer_hi = plaintext_lo;
+                        } else {
+                            self.direct_access_buffer = plaintext_lo;
+                            self.direct_access_buffer_hi = plaintext_hi;
+                        }
+                    } else {
+                        buf.copy_from_slice(&partitions[addr..addr + 4]);
+                        self.direct_access_buffer = u32::from_le_bytes(buf);
+                        if addr + 8 <= TOTAL_SIZE {
+                            buf.copy_from_slice(&partitions[addr + 4..addr + 8]);
+                            self.direct_access_buffer_hi = u32::from_le_bytes(buf);
+                        } else {
+                            self.direct_access_buffer_hi = 0;
+                        }
                     }
                 }
             }

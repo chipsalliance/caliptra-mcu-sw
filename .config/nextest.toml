@@ -18,10 +18,7 @@ slow-timeout = { period = "30s", terminate-after = 30 }
 default-filter = """
 !(package(caliptra-mcu-tests-integration) and test(test_active_i3c::test::test_boot_with_i3c1_active)
 | package(caliptra-mcu-tests-integration) and test(test_bare_metal::test::test_bare_metal_runtime_boot)
-| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_dot_override_challenge_success)
-| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_dot_override_invalid_signatures_fails)
 | package(caliptra-mcu-tests-integration) and test(test_dot::test::test_dot_recovery_backup_blob_invalid_hmac)
-| package(caliptra-mcu-tests-integration) and test(test_dot::test::test_dot_unlocked_state_custom_owner_keys)
 | package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_caliptra_image)
 | package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_manifest)
 | package(caliptra-mcu-tests-integration) and test(test_firmware_update::test::test_firmware_update_flash_invalid_mcu_image)
