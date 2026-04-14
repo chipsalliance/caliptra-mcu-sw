@@ -12,6 +12,7 @@ pub(crate) struct TestArgs<'a> {
     pub workspace_remap: Option<&'a str>,
     pub firmware_bundle: Option<&'a str>,
     pub emulator_bundle: Option<&'a str>,
+    pub test_filter: Option<&'a str>,
 }
 
 const EXCLUDED_PACKAGES: &[&str] = &[
@@ -44,7 +45,12 @@ pub(crate) fn test(args: TestArgs) -> Result<()> {
         std::env::set_var("CPTRA_EMULATOR_BUNDLE", emulator_bundle);
     }
 
-    cargo_test(args.shard, args.workspace_remap, args.archive)
+    cargo_test(
+        args.shard,
+        args.workspace_remap,
+        args.archive,
+        args.test_filter,
+    )
 }
 
 pub(crate) fn test_archive(archive_file: String) -> Result<()> {
@@ -55,6 +61,7 @@ fn cargo_test(
     shard: Option<&str>,
     workspace_remap: Option<&str>,
     archive: Option<&str>,
+    test_filter: Option<&str>,
 ) -> Result<()> {
     // Run all tests with nextest for proper sequencing, excluding ROM packages that don't have tests
     println!("Running: cargo nextest run");
@@ -85,6 +92,11 @@ fn cargo_test(
     if let Some(remap) = workspace_remap {
         args.push("--workspace-remap");
         args.push(remap);
+    }
+
+    if let Some(filter) = test_filter {
+        args.push("-E");
+        args.push(filter);
     }
 
     let nextest_status = Command::new("cargo")
