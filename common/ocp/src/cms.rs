@@ -66,6 +66,23 @@ pub trait IndirectCmsRegion {
     /// Returns [`CmsError::PollingNotReady`] if polling is required and the region is not ready.
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, CmsError>;
 
+    /// Read up to `buf.len()` bytes starting at `offset` for device-internal
+    /// consumption, bypassing host access control.
+    ///
+    /// Unlike [`read`](IndirectCmsRegion::read), this method:
+    /// - Takes an explicit byte offset instead of using the current IMO.
+    /// - Does **not** modify the IMO or set overflow/status flags.
+    /// - Does **not** check host-facing access permissions.
+    ///
+    /// The OCP spec defines region types like `CodeSpace` as write-only *from
+    /// the host's perspective* — the host pushes firmware images but must not
+    /// read them back. However, the device firmware itself must be able to read
+    /// the region to consume the data the host wrote. `device_read` serves this
+    /// purpose.
+    ///
+    /// Returns the number of bytes actually copied into `buf`.
+    fn device_read(&self, offset: u32, buf: &mut [u8]) -> usize;
+
     /// Clear accumulated status flags (overflow, polling error, access errors).
     ///
     /// Called when `INDIRECT_STATUS` is read (clear-on-read semantics).
@@ -103,6 +120,23 @@ pub trait FifoCmsRegion {
     /// Returns [`CmsError::FifoEmpty`] if the read index equals the write index.
     /// Returns [`CmsError::WriteOnly`] if the region is write-only.
     fn pop(&mut self, buf: &mut [u8]) -> Result<usize, CmsError>;
+
+    /// Pop data from the FIFO for device-internal consumption, bypassing host
+    /// access control.
+    ///
+    /// The OCP spec defines region types like `CodeSpace` as write-only *from
+    /// the host's perspective* — the host pushes firmware images but must not
+    /// read them back. [`pop`](FifoCmsRegion::pop) enforces this by returning
+    /// [`CmsError::WriteOnly`] for such regions.
+    ///
+    /// However, the device firmware itself must be able to drain the FIFO to
+    /// consume the data the host wrote. `device_drain` serves this purpose: it
+    /// reads data from the FIFO unconditionally, without checking the region's
+    /// host-facing access permissions.
+    ///
+    /// Returns the number of bytes read into `buf`, or [`CmsError::FifoEmpty`]
+    /// if the FIFO contains no data.
+    fn device_drain(&mut self, buf: &mut [u8]) -> Result<usize, CmsError>;
 
     /// Request a FIFO reset (INDIRECT_FIFO_CTRL byte 1 = 0x01, "Write 1, Device Clears").
     ///

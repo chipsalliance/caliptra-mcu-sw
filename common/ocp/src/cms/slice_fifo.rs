@@ -156,6 +156,10 @@ impl FifoCmsRegion for SliceFifoRegion<'_> {
         self.pop_data(buf)
     }
 
+    fn device_drain(&mut self, buf: &mut [u8]) -> Result<usize, CmsError> {
+        self.pop_data(buf)
+    }
+
     fn request_reset(&mut self) {
         self.write_idx = 0;
         self.read_idx = 0;
