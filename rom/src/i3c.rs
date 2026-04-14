@@ -60,7 +60,7 @@ impl I3c {
         // TODO: pass this timing information in
         let clocks = 0;
         regs.soc_mgmt_if_t_r_reg.set(clocks); // rise time of both SDA and SCL in clock units
-        regs.soc_mgmt_if_t_f_reg.set(clocks); // rise time of both SDA and SCL in clock units
+        regs.soc_mgmt_if_t_f_reg.set(clocks); // fall time of both SDA and SCL in clock units
 
         // if this is set to 6+ then ACKs start failing
         regs.soc_mgmt_if_t_hd_dat_reg.set(clocks); // data hold time in clock units
@@ -92,7 +92,7 @@ impl I3c {
         // Setup the threshold for the HCI queues (in the internal/private software data structures):
         caliptra_mcu_romtime::println!("[mcu-rom-i3c] Setup HCI queue thresholds");
         regs.piocontrol_queue_thld_ctrl.modify(
-            QueueThldCtrl::CmdEmptyBufThld.val(0)
+            QueueThldCtrl::CmdEmptyBufThld.val(1)
                 + QueueThldCtrl::RespBufThld.val(1)
                 + QueueThldCtrl::IbiStatusThld.val(1),
         );
