@@ -237,6 +237,10 @@ enum Commands {
         /// Path to the emulator bundle ZIP
         #[arg(long)]
         emulator_bundle: Option<PathBuf>,
+
+        /// A specific test filter to apply (e.g., "test(my_test)")
+        #[arg(long)]
+        test_filter: Option<String>,
     },
     /// Check that the ROM builds do not contain any panic symbols
     RomCheckPanic,
@@ -575,12 +579,14 @@ fn main() {
             workspace_remap,
             firmware_bundle,
             emulator_bundle,
+            test_filter,
         } => test::test(test::TestArgs {
             archive: archive.as_deref().and_then(|p| p.to_str()),
             shard: shard.as_deref(),
             workspace_remap: workspace_remap.as_deref().and_then(|p| p.to_str()),
             firmware_bundle: firmware_bundle.as_deref().and_then(|p| p.to_str()),
             emulator_bundle: emulator_bundle.as_deref().and_then(|p| p.to_str()),
+            test_filter: test_filter.as_deref(),
         }),
         Commands::RomCheckPanic => test::test_panic_missing(),
         Commands::TestArchive { archive } => test::test_archive(archive.clone()),
