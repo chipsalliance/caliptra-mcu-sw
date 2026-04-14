@@ -283,7 +283,7 @@ The verification process:
 The MCU ROM supports locking the selected vendor public key hash slot (and all higher order slots) to prevent post-ROM manipulation. This is controlled by writing to the `VENDOR_PK_HASH_VOLATILE_LOCK` register.
 
 **Strapping Override**:
-The locking behavior is gated by bit 0 of the hardware strapping register `SS_STRAP_GENERIC[2]`.
+The locking behavior is gated by bit 0 of the hardware strapping register `SS_STRAP_GENERIC[3]`.
 *   **Production Mode** (Bit 0 is `0`): The ROM automatically applies the volatile lock to the selected key slot index (locking that slot and all higher slots).
 *   **Provisioning Mode** (Bit 0 is `1`): The ROM skips applying the lock, allowing potential post-ROM code to provision higher order hash slots.
 

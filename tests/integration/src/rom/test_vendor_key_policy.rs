@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod test {
     use anyhow::Result;
+    use caliptra_api::SocManager;
     use caliptra_mcu_error::McuError;
     use caliptra_mcu_hw_model::{new, DefaultHwModel, InitParams, McuHwModel, McuManager};
     use caliptra_mcu_registers_generated::fuses;
@@ -14,12 +15,23 @@ mod test {
 
     use crate::test::{start_runtime_hw_model, TestParams};
 
-    #[derive(Default, Clone, Copy)]
+    #[derive(Clone, Copy)]
     struct SlotConfig {
         pqc_type: Option<PqcKeyType>,
         ecc_revocation: u32,
         lms_revocation: u32,
         mldsa_revocation: u32,
+    }
+
+    impl Default for SlotConfig {
+        fn default() -> Self {
+            SlotConfig {
+                pqc_type: Some(PqcKeyType::MLDSA),
+                ecc_revocation: 0,
+                lms_revocation: 0,
+                mldsa_revocation: 0,
+            }
+        }
     }
 
     fn build_otp_memory(valid_mask: u16, slot_configs: &[(usize, SlotConfig)]) -> Vec<u8> {
@@ -45,7 +57,7 @@ mod test {
                     .copy_from_slice(&raw_pqc.to_le_bytes());
             }
 
-            // 3. Populate Revocations (OneHotLinearMajorityVote)
+            // 3. Populate Revocations (LinearMajorityVote)
             let ecc_entry =
                 vendor_ecc_revocation_entry(slot).expect("Invalid ECC Revocation entry");
             let ecc_layout = FuseLayout::from_generated(&ecc_entry.layout).unwrap();
@@ -84,16 +96,7 @@ mod test {
 
     #[test]
     fn test_select_first_functional() -> Result<()> {
-        let mut hw = setup_hw_model(
-            0x0000,
-            &[(
-                0,
-                SlotConfig {
-                    pqc_type: Some(PqcKeyType::MLDSA),
-                    ..SlotConfig::default()
-                },
-            )],
-        );
+        let mut hw = setup_hw_model(0x0000, &[(0, SlotConfig::default())]);
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 0")?;
         Ok(())
     }
@@ -106,18 +109,11 @@ mod test {
                 (
                     0,
                     SlotConfig {
-                        pqc_type: Some(PqcKeyType::MLDSA),
                         ecc_revocation: 0b1111,
                         ..SlotConfig::default()
                     },
                 ),
-                (
-                    1,
-                    SlotConfig {
-                        pqc_type: Some(PqcKeyType::MLDSA),
-                        ..SlotConfig::default()
-                    },
-                ),
+                (1, SlotConfig::default()),
             ],
         );
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 1")?;
@@ -132,18 +128,11 @@ mod test {
                 (
                     0,
                     SlotConfig {
-                        pqc_type: Some(PqcKeyType::MLDSA),
                         mldsa_revocation: 0b1111,
                         ..SlotConfig::default()
                     },
                 ),
-                (
-                    1,
-                    SlotConfig {
-                        pqc_type: Some(PqcKeyType::MLDSA),
-                        ..SlotConfig::default()
-                    },
-                ),
+                (1, SlotConfig::default()),
             ],
         );
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 1")?;
@@ -169,32 +158,14 @@ mod test {
 
     #[test]
     fn test_middle_slot_selection() -> Result<()> {
-        let mut hw = setup_hw_model(
-            0x00FF,
-            &[(
-                8,
-                SlotConfig {
-                    pqc_type: Some(PqcKeyType::MLDSA),
-                    ..SlotConfig::default()
-                },
-            )],
-        );
+        let mut hw = setup_hw_model(0x00FF, &[(8, SlotConfig::default())]);
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 8")?;
         Ok(())
     }
 
     #[test]
     fn test_last_slot_selection() -> Result<()> {
-        let mut hw = setup_hw_model(
-            0x7FFF,
-            &[(
-                15,
-                SlotConfig {
-                    pqc_type: Some(PqcKeyType::MLDSA),
-                    ..SlotConfig::default()
-                },
-            )],
-        );
+        let mut hw = setup_hw_model(0x7FFF, &[(15, SlotConfig::default())]);
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 15")?;
         Ok(())
     }
@@ -219,7 +190,6 @@ mod test {
                 (
                     0,
                     SlotConfig {
-                        pqc_type: Some(PqcKeyType::MLDSA),
                         ecc_revocation: 0b1111,
                         ..SlotConfig::default()
                     },
@@ -269,6 +239,53 @@ mod test {
             .mcu_manager()
             .with_otp(|otp| otp.vendor_pk_hash_volatile_lock().read());
         assert_eq!(lock_val, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn test_vendor_pk_lock_not_applied() -> Result<()> {
+        let mut hw = setup_hw_model(0x0000, &[(0, SlotConfig::default())]);
+
+        // Set strapping bit to not lock the pk hashes
+        hw.caliptra_soc_manager()
+            .soc_ifc()
+            .ss_strap_generic()
+            .get(3)
+            .expect("failed to get strapping register")
+            .write(|_| 0x1);
+
+        hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 0")?;
+
+        // Step a few cycles
+        for _ in 0..100 {
+            hw.step();
+        }
+
+        let lock_val = hw
+            .mcu_manager()
+            .with_otp(|otp| otp.vendor_pk_hash_volatile_lock().read());
+        assert_eq!(lock_val, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_key_rotation_strap() -> Result<()> {
+        let mut hw = setup_hw_model(
+            0x0002,
+            &[(0, SlotConfig::default()), (2, SlotConfig::default())],
+        );
+        // Set strapping bit to jump 1 PK hash slot
+        hw.caliptra_soc_manager()
+            .soc_ifc()
+            .ss_strap_generic()
+            .get(3)
+            .expect("failed to get strapping register")
+            .write(|_| 0x2);
+
+        // Slot 0 is the first functional slot which we skip
+        // Slot 1 is marked invalid
+        // Slot 2 should be selected
+        hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 2")?;
         Ok(())
     }
 }

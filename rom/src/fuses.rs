@@ -148,23 +148,28 @@ pub trait VendorKeyPolicy {
 ///
 /// This policy selects the first key slot that is both marked valid
 /// in the VENDOR_PK_HASH_VALID mask and is functional (not fully revoked).
-pub struct DefaultVendorKeyPolicy;
+pub struct DefaultVendorKeyPolicy {
+    rotate_pk_hash: bool,
+}
 
 impl DefaultVendorKeyPolicy {
-    pub const fn new() -> Self {
-        Self
+    pub const fn new(rotate_pk_hash: bool) -> Self {
+        Self { rotate_pk_hash }
     }
 }
 
 impl Default for DefaultVendorKeyPolicy {
     fn default() -> Self {
-        Self::new()
+        Self::new(false)
     }
 }
 
 impl VendorKeyPolicy for DefaultVendorKeyPolicy {
     fn select_key(&self, otp: &Otp) -> McuResult<usize> {
         let valid_mask = otp.read_entry_multi::<1>(generated_fuses::VENDOR_PK_HASH_VALID)?[0];
+        let target_slot_count = if self.rotate_pk_hash { 2 } else { 1 };
+        let mut slots_found = 0;
+        let mut first_functional: Option<usize> = None;
 
         for i in 0..16 {
             if (valid_mask >> i) & 1 == 1 {
@@ -188,10 +193,19 @@ impl VendorKeyPolicy for DefaultVendorKeyPolicy {
             };
 
             if ecc_functional && pqc_functional {
-                return Ok(i);
+                slots_found += 1;
+                first_functional = Some(i);
+                if slots_found == target_slot_count {
+                    return Ok(i);
+                }
             }
         }
 
-        Err(McuError::ROM_PK_HASH_SELECTION_FAILED)
+        match first_functional {
+            // if the rotation strap is asserted, but we only found one valid PK hash
+            // fall back to that one.
+            Some(i) => Ok(i),
+            None => Err(McuError::ROM_PK_HASH_SELECTION_FAILED),
+        }
     }
 }
