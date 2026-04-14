@@ -243,6 +243,9 @@ pub struct InitParams<'a> {
     pub caliptra_soc_axi_user: Option<u32>,
 
     pub active_i3c1: bool,
+
+    /// Initial contents of the vendor test partition in OTP.
+    pub vendor_test_partition: Option<Vec<u8>>,
 }
 
 impl InitParams<'_> {
@@ -321,6 +324,7 @@ impl Default for InitParams<'_> {
             fips_zeroization: false,
             caliptra_soc_axi_user: None,
             active_i3c1: false,
+            vendor_test_partition: None,
         }
     }
 }

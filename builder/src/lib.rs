@@ -111,9 +111,5 @@ pub fn objcopy() -> Result<String> {
 
 #[allow(dead_code)]
 pub(crate) fn target_binary(name: &str) -> PathBuf {
-    PROJECT_ROOT
-        .join("target")
-        .join(TARGET)
-        .join("release")
-        .join(name)
+    target_dir().join(TARGET).join("release").join(name)
 }

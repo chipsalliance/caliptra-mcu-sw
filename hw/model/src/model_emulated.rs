@@ -233,6 +233,7 @@ impl McuHwModel for ModelEmulated {
                 raw_memory: Some(otp_mem),
                 vendor_pk_hash: params.vendor_pk_hash,
                 vendor_pqc_type: params.vendor_pqc_type,
+                vendor_test_partition: params.vendor_test_partition.clone(),
                 ..Default::default()
             },
         )?;
