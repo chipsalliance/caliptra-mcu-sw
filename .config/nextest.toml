@@ -16,10 +16,8 @@ fail-fast = false
 slow-timeout = { period = "30s", terminate-after = 30 }
 # Disable tests that are currently failing in CI
 default-filter = """
-!(package(caliptra-mcu-tests-integration) and test(test_active_i3c::test::test_boot_with_i3c1_active)
-| package(caliptra-mcu-tests-integration) and test(test_bare_metal::test::test_bare_metal_runtime_boot)
+!(package(caliptra-mcu-tests-integration) and test(test_bare_metal::test::test_bare_metal_runtime_boot)
 | package(caliptra-mcu-tests-integration) and test(test_dot::test::test_dot_recovery_backup_blob_invalid_hmac)
-| package(caliptra-mcu-tests-integration) and test(test::test_mctp_user_loopback)
 | package(caliptra-mcu-tests-integration) and test(test::test_mcu_mbox_driver)
 | package(caliptra-mcu-tests-integration) and test(test::test_mcu_mbox_soc_requester_loopback)
 | package(caliptra-mcu-tests-integration) and test(test::test_mcu_svn_gt_fuse)

@@ -68,6 +68,7 @@ const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
     "test-log-flash-usermode",
     "test-mbox-sram",
     "test-mci",
+    "test-mctp-user-loopback",
     "test-mcu-mbox-soc-requester-loopback",
     "test-mcu-mbox-usermode",
     "test-warm-reset",
