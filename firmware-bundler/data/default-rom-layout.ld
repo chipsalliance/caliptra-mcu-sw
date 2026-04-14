@@ -11,6 +11,10 @@ MEMORY
 
 SECTIONS
 {
+    .handoff (NOLOAD) : {
+        KEEP(*(.handoff))
+    } > RAM
+
     .text :
     {
         *(.text.init )

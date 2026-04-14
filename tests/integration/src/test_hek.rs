@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_api::SocManager;
     use mcu_hw_model::McuHwModel;
@@ -9,7 +9,7 @@ mod test {
     use registers_generated::fuses;
     use zerocopy::IntoBytes;
 
-    fn setup_otp_hek(otp: &mut [u8], slot: usize, sanitized: bool, corrupted: bool) {
+    pub fn setup_otp_hek(otp: &mut [u8], slot: usize, sanitized: bool, corrupted: bool) {
         let offset = [
             fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET,
             fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_OFFSET,
@@ -141,7 +141,7 @@ mod test {
             otp_memory: Some(otp),
             rom_only: false,
             ocp_lock_en: true,
-            feature: Some("test-exit-immediately"),
+            feature: Some("test-ocp-lock"),
             rom_feature: Some("ocp-lock"),
             ..Default::default()
         });
@@ -151,6 +151,10 @@ mod test {
             .output()
             .peek()
             .contains("[mcu-rom] Caliptra HEK available: true"));
+        assert!(hw
+            .output()
+            .peek()
+            .contains("[mcu-runtime] HEK state from handoff"));
     }
 
     #[test]
@@ -163,7 +167,7 @@ mod test {
             otp_memory: Some(otp),
             rom_only: false,
             ocp_lock_en: true,
-            feature: Some("test-exit-immediately"),
+            feature: Some("test-ocp-lock"),
             rom_feature: Some("ocp-lock"),
             ..Default::default()
         });
@@ -173,6 +177,10 @@ mod test {
             .output()
             .peek()
             .contains("[mcu-rom] Caliptra HEK available: true"));
+        assert!(hw
+            .output()
+            .peek()
+            .contains("[mcu-runtime] HEK state from handoff"));
     }
 
     #[test]
@@ -188,7 +196,7 @@ mod test {
             otp_memory: Some(otp),
             rom_only: false,
             ocp_lock_en: true,
-            feature: Some("test-exit-immediately"),
+            feature: Some("test-ocp-lock"),
             rom_feature: Some("ocp-lock"),
             ..Default::default()
         });
@@ -198,6 +206,10 @@ mod test {
             .output()
             .peek()
             .contains("[mcu-rom] Caliptra HEK available: false"));
+        assert!(hw
+            .output()
+            .peek()
+            .contains("[mcu-runtime] HEK state from handoff"));
     }
 
     #[test]

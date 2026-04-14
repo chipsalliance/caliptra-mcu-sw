@@ -1,6 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::components as runtime_components;
+use crate::handoff::HandOff;
 use crate::interrupts::EmulatorPeripherals;
 use crate::MCU_MEMORY_MAP;
 use arrayvec::ArrayVec;
@@ -10,6 +11,7 @@ use capsules_runtime::doe::driver::DoeDriver;
 use capsules_runtime::flash_partition::FlashPartition;
 use capsules_runtime::mctp::base_protocol::MessageType;
 use capsules_runtime::mcu_mbox::McuMboxDriver;
+use core::ops::Deref;
 use core::ptr::{addr_of, addr_of_mut};
 use doe_mbox_driver::EmulatedDoeTransport;
 use kernel::capabilities;
@@ -42,6 +44,7 @@ use mcu_tock_veer::pic::Pic;
 use mcu_tock_veer::pmp::VeeRProtectionMMLEPMP;
 use mcu_tock_veer::timers::InternalTimers;
 use registers_generated::mci;
+use romtime::handoff::HandoffData;
 use romtime::CaliptraSoC;
 use romtime::McuBootMilestones;
 use romtime::StaticRef;
@@ -300,6 +303,19 @@ pub unsafe fn main() {
     romtime::set_printer(&mut EMULATOR_WRITER);
     #[allow(static_mut_refs)]
     romtime::set_exiter(&mut EMULATOR_EXITER);
+
+    // Read handoff table BEFORE PMP setup.
+    let handoff = HandOff::new();
+    if let Some(ref ho) = handoff {
+        romtime::println!("[mcu-runtime] HandOff marker: 0x{:08x}", ho.rom.fht_marker);
+        #[cfg(feature = "ocp-lock")]
+        romtime::println!(
+            "[mcu-runtime] HEK state from handoff: {:?}",
+            ho.rom.hek_state.active_state
+        );
+    } else {
+        romtime::println!("[mcu-runtime] Handoff is None");
+    }
 
     // Set up memory protection immediately after setting the trap handler, to
     // ensure that much of the board initialization routine runs with ePMP
@@ -785,7 +801,47 @@ pub unsafe fn main() {
     mci_wdt.disable_wdt();
 
     // Run any requested test
-    let exit = if cfg!(feature = "test-exit-immediately") {
+    let exit = if cfg!(feature = "test-handoff") {
+        debug!("Executing test-handoff");
+        #[cfg(feature = "test-handoff")]
+        {
+            // Safety: Test code, no other users of Handoff table so it's safe to take a mutable reference.
+            if let Some(ho) = unsafe { crate::handoff::HandOff::new_mut() } {
+                use romtime::ocp_lock::HekSeedState;
+
+                let ho_addr = ho.addr() as u32;
+                let expected_addr = 0x5000_0000;
+                if ho.rom.hek_state.active_slot == 2
+                    && ho.rom.hek_state.active_state == HekSeedState::Programmed
+                    && ho.rom.hek_state.total_slots == 8
+                    && ho_addr == expected_addr
+                    && ho.rom.fht_major_ver == romtime::handoff::FHT_MAJOR_VERSION
+                    && ho.rom.fht_minor_ver == romtime::handoff::FHT_MINOR_VERSION
+                {
+                    romtime::println!(
+                        "[mcu-runtime] HandOff verification successful at 0x{:08x}",
+                        ho_addr
+                    );
+                    Some(0)
+                } else {
+                    romtime::println!(
+                        "[mcu-runtime] HandOff verification FAILED: state={:?}, addr=0x{:08x}, expected=0x{:08x}, ver={}.{}",
+                        ho.rom.hek_state,
+                        ho_addr,
+                        expected_addr,
+                        ho.rom.fht_major_ver,
+                        ho.rom.fht_minor_ver,
+                    );
+                    Some(1)
+                }
+            } else {
+                romtime::println!("[mcu-runtime] HandOff verification FAILED: Handoff is None");
+                Some(1)
+            }
+        }
+        #[cfg(not(feature = "test-handoff"))]
+        None
+    } else if cfg!(feature = "test-exit-immediately") {
         debug!("Executing test-exit-immediately");
         Some(0)
     } else if cfg!(feature = "test-i3c-simple") {
