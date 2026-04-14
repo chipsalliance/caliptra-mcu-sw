@@ -2,13 +2,20 @@
 
 use crate::error::VdmLibError;
 use crate::transport::MctpVdmTransport;
+use caliptra_api::mailbox::{
+    CommandId as CaliptraCommandId, MailboxReqHeader, ProductionAuthDebugUnlockChallenge,
+    ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
+};
 use caliptra_mcu_external_cmds_common::{
     AttestedCsrData, CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
     UnifiedCommandHandler, MAX_ATTESTED_CSR_DATA_LEN, MAX_UID_LEN,
 };
+use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
 use caliptra_mcu_mctp_vdm_common::message::{
-    AsymAlgorithm, DeviceCapabilitiesResponse, DeviceIdResponse, DeviceInfoRequest,
+    AsymAlgorithm, DebugUnlockRequest, DebugUnlockResponse, DebugUnlockTokenRequest,
+    DebugUnlockTokenResponse, DeviceCapabilitiesResponse, DeviceIdResponse, DeviceInfoRequest,
     DeviceInfoResponse, ExportAttestedCsrRequest, ExportAttestedCsrResponse,
     FirmwareVersionRequest, FirmwareVersionResponse, DEVICE_CAPS_SIZE,
 };
@@ -19,12 +26,13 @@ use caliptra_mcu_mctp_vdm_common::util::mctp_transport::{
     construct_mctp_vdm_msg, extract_vdm_msg, VDM_MSG_OFFSET,
 };
 use core::convert::TryFrom;
-use zerocopy::IntoBytes;
+use zerocopy::{FromBytes, FromZeros, IntoBytes};
 
 /// Command interface for handling VDM commands.
 pub struct CmdInterface<'a> {
     transport: &'a mut MctpVdmTransport,
     unified_handler: &'a dyn UnifiedCommandHandler,
+    caliptra_mbox: Mailbox,
 }
 
 impl<'a> CmdInterface<'a> {
@@ -36,6 +44,7 @@ impl<'a> CmdInterface<'a> {
         Self {
             transport,
             unified_handler,
+            caliptra_mbox: Mailbox::new(),
         }
     }
 
@@ -122,6 +131,13 @@ impl<'a> CmdInterface<'a> {
             VdmCommand::DeviceInfo => self.handle_device_info(msg_buf, vdm_req_len).await,
             VdmCommand::ExportAttestedCsr => {
                 self.handle_export_attested_csr(msg_buf, vdm_req_len).await
+            }
+            VdmCommand::RequestDebugUnlock => {
+                self.handle_request_debug_unlock(msg_buf, vdm_req_len).await
+            }
+            VdmCommand::AuthorizeDebugUnlockToken => {
+                self.handle_authorize_debug_unlock_token(msg_buf, vdm_req_len)
+                    .await
             }
             _ => self.send_error_response(
                 msg_buf,
@@ -264,6 +280,117 @@ impl<'a> CmdInterface<'a> {
 
         // Encode the response into the MCTP payload.
         self.encode_device_info_response(msg_buf, &resp)
+    }
+
+    /// Handle Request Debug Unlock command.
+    ///
+    /// Translates the VDM request into a Caliptra mailbox command and
+    /// passes the response back as a VDM response (passthrough).
+    async fn handle_request_debug_unlock(
+        &self,
+        msg_buf: &mut [u8],
+        req_len: usize,
+    ) -> Result<usize, VdmLibError> {
+        // Extract VDM message portion.
+        let vdm_msg = extract_vdm_msg(msg_buf).map_err(|_| VdmLibError::DecodingError)?;
+
+        // Decode the request.
+        let req = DebugUnlockRequest::decode(&vdm_msg[..req_len])
+            .map_err(|_| VdmLibError::DecodingError)?;
+
+        // Build the Caliptra mailbox request.
+        let mut caliptra_req = ProductionAuthDebugUnlockReq {
+            hdr: MailboxReqHeader::default(),
+            length: 2,
+            unlock_level: req.unlock_level,
+            reserved: [0; 3],
+        };
+
+        // Send to Caliptra mailbox.
+        let mut resp_buf = [0u8; core::mem::size_of::<ProductionAuthDebugUnlockChallenge>()];
+        let result = execute_mailbox_cmd(
+            &self.caliptra_mbox,
+            CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_REQ.0,
+            caliptra_req.as_mut_bytes(),
+            &mut resp_buf,
+        )
+        .await;
+
+        let resp = match result {
+            Ok(resp_len) => {
+                if let Ok(challenge) =
+                    ProductionAuthDebugUnlockChallenge::read_from_bytes(&resp_buf[..resp_len])
+                {
+                    DebugUnlockResponse::new(
+                        VdmCompletionCode::Success as u32,
+                        challenge.unique_device_identifier,
+                        challenge.challenge,
+                    )
+                } else {
+                    DebugUnlockResponse::new(
+                        VdmCompletionCode::GeneralError as u32,
+                        [0u8; 32],
+                        [0u8; 48],
+                    )
+                }
+            }
+            Err(_) => DebugUnlockResponse::new(
+                VdmCompletionCode::GeneralError as u32,
+                [0u8; 32],
+                [0u8; 48],
+            ),
+        };
+
+        self.encode_response(msg_buf, &resp)
+    }
+
+    /// Handle Authorize Debug Unlock Token command.
+    ///
+    /// Translates the VDM request into a Caliptra mailbox command and
+    /// passes the response back as a VDM response (passthrough).
+    async fn handle_authorize_debug_unlock_token(
+        &self,
+        msg_buf: &mut [u8],
+        req_len: usize,
+    ) -> Result<usize, VdmLibError> {
+        // Extract VDM message portion.
+        let vdm_msg = extract_vdm_msg(msg_buf).map_err(|_| VdmLibError::DecodingError)?;
+
+        // Decode the request.
+        let req = DebugUnlockTokenRequest::decode(&vdm_msg[..req_len])
+            .map_err(|_| VdmLibError::DecodingError)?;
+
+        // Build the Caliptra mailbox request.
+        let mut caliptra_req = ProductionAuthDebugUnlockToken::new_zeroed();
+        caliptra_req.hdr = MailboxReqHeader::default();
+        caliptra_req.length =
+            ((core::mem::size_of::<ProductionAuthDebugUnlockToken>()) / 4) as u32;
+        caliptra_req.unique_device_identifier = req.header.unique_device_identifier;
+        caliptra_req.unlock_level = req.header.unlock_level;
+        caliptra_req.reserved = [0; 3];
+        caliptra_req.challenge = req.header.challenge;
+        caliptra_req.ecc_public_key = req.ecc_public_key;
+        caliptra_req.mldsa_public_key = req.mldsa_public_key;
+        caliptra_req.ecc_signature = req.ecc_signature;
+        caliptra_req.mldsa_signature = req.mldsa_signature;
+
+        // Send to Caliptra mailbox.
+        let mut resp_buf = [0u8; 8]; // MailboxRespHeader is 8 bytes (chksum + fips_status)
+        let result = execute_mailbox_cmd(
+            &self.caliptra_mbox,
+            CaliptraCommandId::PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN.0,
+            caliptra_req.as_mut_bytes(),
+            &mut resp_buf,
+        )
+        .await;
+
+        let completion_code = match result {
+            Ok(_) => VdmCompletionCode::Success,
+            Err(_) => VdmCompletionCode::GeneralError,
+        };
+
+        let resp = DebugUnlockTokenResponse::new(completion_code as u32);
+        self.encode_response(msg_buf, &resp)
     }
 
     /// Send an error response.

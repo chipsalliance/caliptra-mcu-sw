@@ -131,7 +131,6 @@ impl MctpUtil {
     ) -> Option<Vec<u8>> {
         self.new_req(msg_tag);
         let pkts = self.packetize(msg);
-        assert!(pkts.len() == 1, "Only one packet is expected in message");
         let mut i3c_state = I3cControllerState::Start;
         let msg_type = msg[0];
 
@@ -147,11 +146,9 @@ impl MctpUtil {
                 }
 
                 I3cControllerState::SendPrivateWrite => {
-                    let write_pkt = pkts.front().unwrap().clone();
-                    if stream.send_private_write(target_addr, write_pkt) {
-                        i3c_state = I3cControllerState::WaitForIbi;
-                        sleep_emulator_ticks(100_000);
-                    }
+                    self.send_packets(pkts.clone(), stream, target_addr);
+                    i3c_state = I3cControllerState::WaitForIbi;
+                    sleep_emulator_ticks(100_000);
                 }
                 I3cControllerState::WaitForIbi => {
                     if stream.receive_ibi(target_addr) {
@@ -172,7 +169,38 @@ impl MctpUtil {
                                 msg_tag,                // The message tag sent in the request
                                 tag_owner: 0,           // Not tag owner for response
                             };
+
+                            // Check if this single packet completes the message
+                            let mctp_hdr: MCTPHdr<[u8; MCTP_HDR_SIZE]> =
+                                MCTPHdr::read_from_bytes(&data[0..MCTP_HDR_SIZE]).unwrap();
+                            let is_last = mctp_hdr.eom() == 1;
                             resp_pkts.push_back(data);
+
+                            // Collect remaining packets for multi-packet responses
+                            if !is_last {
+                                loop {
+                                    if !stream.receive_ibi(target_addr) {
+                                        break;
+                                    }
+                                    if let Some(next_data) =
+                                        stream.receive_private_read(target_addr)
+                                    {
+                                        let next_hdr: MCTPHdr<[u8; MCTP_HDR_SIZE]> =
+                                            MCTPHdr::read_from_bytes(
+                                                &next_data[0..MCTP_HDR_SIZE],
+                                            )
+                                            .unwrap();
+                                        let done = next_hdr.eom() == 1;
+                                        resp_pkts.push_back(next_data);
+                                        if done {
+                                            break;
+                                        }
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            }
+
                             self.new_resp();
                             let resp = self.assemble(resp_pkts, &message_identifier);
                             return Some(resp);

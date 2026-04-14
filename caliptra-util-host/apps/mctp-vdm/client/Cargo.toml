@@ -22,4 +22,8 @@ caliptra-mcu-core-util-host-transport.workspace = true
 caliptra-mcu-core-util-host-command-types.workspace = true
 caliptra-mcu-testing-common.workspace = true
 caliptra-mcu-mctp-vdm-common.workspace = true
+ecdsa.workspace = true
+fips204.workspace = true
+p384 = { workspace = true, features = ["ecdsa"] }
+sha2.workspace = true
 zerocopy.workspace = true

@@ -8,9 +8,11 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+caliptra-api.workspace = true
 embassy-executor.workspace = true
 embassy-sync.workspace = true
 caliptra-mcu-external-cmds-common.workspace = true
+caliptra-mcu-libapi-caliptra.workspace = true
 caliptra-mcu-libsyscall-caliptra.workspace = true
 caliptra-mcu-libtockasync.workspace = true
 caliptra-mcu-libtock_alarm.workspace = true

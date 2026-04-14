@@ -11,12 +11,15 @@
 //! - DeviceCapabilities (0x02)
 //! - DeviceId (0x03)
 //! - DeviceInfo (0x04)
+//! - RequestDebugUnlock (0x0A)
+//! - AuthorizeDebugUnlockToken (0x0B)
 
 use super::transport::MctpVdmError;
 use crate::TransportError;
 use caliptra_mcu_core_util_host_command_types::*;
 use caliptra_mcu_mctp_vdm_common::codec::VdmCodec;
 use caliptra_mcu_mctp_vdm_common::message::{
+    DebugUnlockRequest, DebugUnlockResponse, DebugUnlockTokenRequest, DebugUnlockTokenResponse,
     DeviceCapabilitiesRequest, DeviceCapabilitiesResponse, DeviceIdRequest, DeviceIdResponse,
     DeviceInfoRequest, DeviceInfoResponse, FirmwareVersionRequest, FirmwareVersionResponse,
     MAX_FW_VERSION_LEN,
@@ -258,6 +261,111 @@ pub fn handle_device_info(
     let copy_len = resp_bytes.len().min(response_buffer.len());
     response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
     Ok(copy_len)
+}
+
+// ---------------------------------------------------------------------------
+// RequestDebugUnlock (command_id = 0x7010 / CaliptraCommandId::ProdDebugUnlockReq)
+// ---------------------------------------------------------------------------
+
+pub fn handle_debug_unlock_req(
+    payload: &[u8],
+    driver: &mut dyn super::transport::MctpVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    // Parse the internal request to extract unlock_level
+    let unlock_level =
+        if payload.len() >= core::mem::size_of::<ProdDebugUnlockReqRequest>() {
+            let req = ProdDebugUnlockReqRequest::from_bytes(payload)
+                .map_err(|_| TransportError::InvalidMessage)?;
+            req.unlock_level
+        } else {
+            0
+        };
+
+    // Build and send VDM request
+    let vdm_req = DebugUnlockRequest::new(unlock_level);
+    let mut resp_buf = [0u8; MAX_VDM_RESP_BUF];
+    let resp_len = send_vdm(&vdm_req, driver, &mut resp_buf)?;
+    let resp_bytes = &resp_buf[..resp_len];
+    validate_response_header(resp_bytes)?;
+
+    // Decode VDM response
+    let vdm_resp =
+        DebugUnlockResponse::decode(resp_bytes).map_err(|_| TransportError::InvalidMessage)?;
+
+    // Convert to internal response
+    let internal_resp = ProdDebugUnlockReqResponse {
+        common: CommonResponse {
+            fips_status: vdm_resp.completion_code,
+        },
+        length: (UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE) as u32,
+        unique_device_identifier: vdm_resp.unique_device_identifier,
+        challenge: vdm_resp.challenge,
+    };
+
+    let resp_bytes = internal_resp.as_bytes();
+    let copy_len = resp_bytes.len().min(response_buffer.len());
+    response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
+    Ok(copy_len)
+}
+
+// ---------------------------------------------------------------------------
+// AuthorizeDebugUnlockToken (command_id = 0x7011 / CaliptraCommandId::ProdDebugUnlockToken)
+// ---------------------------------------------------------------------------
+
+/// Maximum buffer for encoding a debug unlock token VDM request (~7.5 KB).
+const MAX_VDM_TOKEN_REQ_BUF: usize = 8192;
+
+pub fn handle_debug_unlock_token(
+    payload: &[u8],
+    driver: &mut dyn super::transport::MctpVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    // Parse the internal request
+    let int_req = ProdDebugUnlockTokenRequest::from_bytes(payload)
+        .map_err(|_| TransportError::InvalidMessage)?;
+
+    // Build VDM request
+    let vdm_req = DebugUnlockTokenRequest::new(
+        int_req.unique_device_identifier,
+        int_req.unlock_level,
+        int_req.challenge,
+        int_req.ecc_public_key,
+        int_req.mldsa_public_key,
+        int_req.ecc_signature,
+        int_req.mldsa_signature,
+    );
+
+    // Encode and send (needs a larger buffer than the default)
+    let mut req_buf = [0u8; MAX_VDM_TOKEN_REQ_BUF];
+    let req_len = vdm_req
+        .encode(&mut req_buf)
+        .map_err(|_| TransportError::InvalidMessage)?;
+
+    let resp = driver
+        .send_request(&req_buf[..req_len])
+        .map_err(TransportError::from)?;
+
+    let mut resp_buf = [0u8; MAX_VDM_RESP_BUF];
+    let copy_len = resp.len().min(MAX_VDM_RESP_BUF);
+    resp_buf[..copy_len].copy_from_slice(&resp[..copy_len]);
+    validate_response_header(&resp_buf[..copy_len])?;
+
+    // Decode VDM response
+    let vdm_resp = DebugUnlockTokenResponse::decode(&resp_buf[..copy_len])
+        .map_err(|_| TransportError::InvalidMessage)?;
+
+    // Convert to internal response
+    let internal_resp = ProdDebugUnlockTokenResponse {
+        common: CommonResponse {
+            fips_status: vdm_resp.completion_code,
+        },
+    };
+
+    let resp_bytes = internal_resp.as_bytes();
+    let out_len = resp_bytes.len().min(response_buffer.len());
+    response_buffer[..out_len].copy_from_slice(&resp_bytes[..out_len]);
+    Ok(out_len)
 }
 
 // ---------------------------------------------------------------------------

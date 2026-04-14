@@ -13,6 +13,19 @@ pub const MAX_UID_LEN: usize = 32;
 // TODO: Replace with imported constant from Caliptra core crate when available.
 pub const MAX_ATTESTED_CSR_DATA_LEN: usize = 12800;
 
+/// Size of the unique device identifier in bytes.
+pub const DEBUG_UNLOCK_UDI_SIZE: usize = 32;
+/// Size of the debug unlock challenge in bytes.
+pub const DEBUG_UNLOCK_CHALLENGE_SIZE: usize = 48;
+/// ECC public key size in u32 words (P-384 X || Y).
+pub const DEBUG_UNLOCK_ECC_PUB_KEY_WORDS: usize = 24;
+/// ML-DSA public key size in u32 words.
+pub const DEBUG_UNLOCK_MLDSA_PUB_KEY_WORDS: usize = 648;
+/// ECC signature size in u32 words (P-384 r || s).
+pub const DEBUG_UNLOCK_ECC_SIG_WORDS: usize = 24;
+/// ML-DSA signature size in u32 words.
+pub const DEBUG_UNLOCK_MLDSA_SIG_WORDS: usize = 1157;
+
 /// Common error type for unified commands.
 #[derive(Debug)]
 pub enum CommandError {
@@ -74,6 +87,57 @@ pub struct DeviceCapabilities {
     pub mcu_rt: [u8; 8],       // Bytes [16:23]
     pub mcu_rom: [u8; 4],      // Bytes [24:27]
     pub reserved: [u8; 4],     // Bytes [28:31]
+}
+
+/// Response from a debug unlock challenge request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DebugUnlockChallenge {
+    /// Unique device identifier.
+    pub unique_device_identifier: [u8; DEBUG_UNLOCK_UDI_SIZE],
+    /// Random challenge value.
+    pub challenge: [u8; DEBUG_UNLOCK_CHALLENGE_SIZE],
+}
+
+impl Default for DebugUnlockChallenge {
+    fn default() -> Self {
+        Self {
+            unique_device_identifier: [0u8; DEBUG_UNLOCK_UDI_SIZE],
+            challenge: [0u8; DEBUG_UNLOCK_CHALLENGE_SIZE],
+        }
+    }
+}
+
+/// Token payload for authorizing a debug unlock.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DebugUnlockToken {
+    /// Unique device identifier.
+    pub unique_device_identifier: [u8; DEBUG_UNLOCK_UDI_SIZE],
+    /// Unlock level.
+    pub unlock_level: u8,
+    /// Challenge value.
+    pub challenge: [u8; DEBUG_UNLOCK_CHALLENGE_SIZE],
+    /// ECC public key (P-384).
+    pub ecc_public_key: [u32; DEBUG_UNLOCK_ECC_PUB_KEY_WORDS],
+    /// ML-DSA public key.
+    pub mldsa_public_key: [u32; DEBUG_UNLOCK_MLDSA_PUB_KEY_WORDS],
+    /// ECC signature.
+    pub ecc_signature: [u32; DEBUG_UNLOCK_ECC_SIG_WORDS],
+    /// ML-DSA signature.
+    pub mldsa_signature: [u32; DEBUG_UNLOCK_MLDSA_SIG_WORDS],
+}
+
+impl Default for DebugUnlockToken {
+    fn default() -> Self {
+        Self {
+            unique_device_identifier: [0u8; DEBUG_UNLOCK_UDI_SIZE],
+            unlock_level: 0,
+            challenge: [0u8; DEBUG_UNLOCK_CHALLENGE_SIZE],
+            ecc_public_key: [0u32; DEBUG_UNLOCK_ECC_PUB_KEY_WORDS],
+            mldsa_public_key: [0u32; DEBUG_UNLOCK_MLDSA_PUB_KEY_WORDS],
+            ecc_signature: [0u32; DEBUG_UNLOCK_ECC_SIG_WORDS],
+            mldsa_signature: [0u32; DEBUG_UNLOCK_MLDSA_SIG_WORDS],
+        }
+    }
 }
 
 /// Asynchronous trait for handling commands common to both external MCU mailbox and MCTP VDM protocols.
@@ -141,5 +205,31 @@ pub trait UnifiedCommandHandler {
         device_key_id: u32,
         algorithm: u32,
         csr_data: &mut AttestedCsrData,
+    ) -> Result<(), CommandError>;
+
+    /// Requests a production debug unlock challenge.
+    ///
+    /// # Arguments
+    /// * `unlock_level` - The requested unlock level.
+    /// * `challenge` - Mutable reference to store the challenge response.
+    ///
+    /// # Returns
+    /// * `Result<(), CommandError>` - Ok on success, or an error.
+    async fn request_debug_unlock(
+        &self,
+        unlock_level: u8,
+        challenge: &mut DebugUnlockChallenge,
+    ) -> Result<(), CommandError>;
+
+    /// Authorizes a production debug unlock token.
+    ///
+    /// # Arguments
+    /// * `token` - The signed debug unlock token.
+    ///
+    /// # Returns
+    /// * `Result<(), CommandError>` - Ok on success, or an error.
+    async fn authorize_debug_unlock_token(
+        &self,
+        token: &DebugUnlockToken,
     ) -> Result<(), CommandError>;
 }

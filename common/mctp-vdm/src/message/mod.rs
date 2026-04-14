@@ -1,11 +1,13 @@
 // Licensed under the Apache-2.0 license
 
+pub mod debug_unlock;
 pub mod device_capabilities;
 pub mod device_id;
 pub mod device_info;
 pub mod export_attested_csr;
 pub mod firmware_version;
 
+pub use debug_unlock::*;
 pub use device_capabilities::*;
 pub use device_id::*;
 pub use device_info::*;

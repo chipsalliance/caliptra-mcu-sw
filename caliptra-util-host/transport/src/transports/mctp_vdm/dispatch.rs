@@ -24,6 +24,9 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         2 => Some(encode::handle_device_capabilities), // GetDeviceCapabilities
         3 => Some(encode::handle_device_id),        // GetDeviceId
         4 => Some(encode::handle_device_info),      // GetDeviceInfo
+        // Debug Unlock Commands
+        0x7010 => Some(encode::handle_debug_unlock_req),   // ProdDebugUnlockReq
+        0x7011 => Some(encode::handle_debug_unlock_token), // ProdDebugUnlockToken
         _ => None,
     }
 }

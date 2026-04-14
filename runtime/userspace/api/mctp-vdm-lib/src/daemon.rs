@@ -8,7 +8,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::Spawner;
 
 /// Maximum size of VDM message buffer (implementation-defined limit).
-pub const MAX_VDM_MSG_SIZE: usize = 1024;
+pub const MAX_VDM_MSG_SIZE: usize = 8192;
 
 /// VDM Service error types.
 #[derive(Debug)]

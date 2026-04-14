@@ -11,7 +11,7 @@ mod network_driver;
 pub mod validator;
 
 pub use network_driver::MctpVdmSocketDriver;
-pub use validator::{ValidationResult, Validator};
+pub use validator::{DebugUnlockKeys, ValidationResult, Validator};
 
 // Re-export shared config.
 pub use caliptra_mcu_core_util_host_mctp_vdm_test_config::*;
@@ -83,6 +83,27 @@ impl<'a> VdmClient<'a> {
     pub fn get_device_info(&mut self) -> Result<GetDeviceInfoResponse> {
         let req = GetDeviceInfoRequest { info_type: 0 };
         self.send_command(CaliptraCommandId::GetDeviceInfo as u32, &req)
+    }
+
+    // ------------------------------------------------------------------
+    // Debug Unlock commands
+    // ------------------------------------------------------------------
+
+    /// Request a production debug unlock challenge (VDM command 0x7010).
+    pub fn prod_debug_unlock_req(
+        &mut self,
+        unlock_level: u8,
+    ) -> Result<ProdDebugUnlockReqResponse> {
+        let req = ProdDebugUnlockReqRequest::new(unlock_level);
+        self.send_command(CaliptraCommandId::ProdDebugUnlockReq as u32, &req)
+    }
+
+    /// Submit a production debug unlock token (VDM command 0x7011).
+    pub fn prod_debug_unlock_token(
+        &mut self,
+        request: &ProdDebugUnlockTokenRequest,
+    ) -> Result<ProdDebugUnlockTokenResponse> {
+        self.send_command(CaliptraCommandId::ProdDebugUnlockToken as u32, request)
     }
 
     // ------------------------------------------------------------------

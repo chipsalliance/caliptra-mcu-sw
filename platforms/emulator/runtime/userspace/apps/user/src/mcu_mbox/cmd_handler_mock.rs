@@ -5,8 +5,9 @@ extern crate alloc;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_external_cmds_common::{
-    AttestedCsrData, CommandError, DeviceCapabilities, DeviceId, DeviceInfo, FirmwareVersion, Uid,
-    UnifiedCommandHandler, MAX_FW_VERSION_LEN, MAX_UID_LEN,
+    AttestedCsrData, CommandError, DebugUnlockChallenge, DebugUnlockToken, DeviceCapabilities,
+    DeviceId, DeviceInfo, FirmwareVersion, Uid, UnifiedCommandHandler, MAX_FW_VERSION_LEN,
+    MAX_UID_LEN,
 };
 use caliptra_mcu_mbox_common::config;
 
@@ -90,6 +91,21 @@ impl UnifiedCommandHandler for NonCryptoCmdHandlerMock {
         _device_key_id: u32,
         _algorithm: u32,
         _csr_data: &mut AttestedCsrData,
+    ) -> Result<(), CommandError> {
+        Err(CommandError::NotSupported)
+    }
+
+    async fn request_debug_unlock(
+        &self,
+        _unlock_level: u8,
+        _challenge: &mut DebugUnlockChallenge,
+    ) -> Result<(), CommandError> {
+        Err(CommandError::NotSupported)
+    }
+
+    async fn authorize_debug_unlock_token(
+        &self,
+        _token: &DebugUnlockToken,
     ) -> Result<(), CommandError> {
         Err(CommandError::NotSupported)
     }
