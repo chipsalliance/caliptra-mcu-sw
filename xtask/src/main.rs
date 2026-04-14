@@ -218,7 +218,7 @@ enum Commands {
     HeaderFix,
     /// Run tests (or from an archive)
     Test {
-        /// Archive tests to a file
+        /// File path to a pre-built test archive
         #[arg(long)]
         archive: Option<PathBuf>,
 
