@@ -48,6 +48,7 @@ const SIGNED_IDEV_CERT_DER: [u8; 541] = [
 ];
 
 // test get idev_csr
+#[inline(never)]
 pub async fn test_get_idev_csr() {
     println!("Starting Caliptra mailbox get idev csr test");
 
@@ -76,6 +77,7 @@ pub async fn test_get_idev_csr() {
     println!("Get idev csr test completed successfully");
 }
 
+#[inline(never)]
 pub async fn test_populate_idev_ecc384_cert() {
     println!("Starting Caliptra mailbox populate idev cert test");
 
@@ -101,6 +103,7 @@ pub async fn test_populate_idev_ecc384_cert() {
     println!("Populate idev cert test completed successfully");
 }
 
+#[inline(never)]
 pub async fn test_get_ldev_ecc384_cert() {
     println!("Starting Caliptra mailbox get ldev cert test");
 
@@ -126,6 +129,7 @@ pub async fn test_get_ldev_ecc384_cert() {
     println!("Get ldev cert test completed successfully");
 }
 
+#[inline(never)]
 pub async fn test_get_fmc_alias_ecc384cert() {
     println!("Starting Caliptra mailbox get FMC alias cert test");
 
@@ -151,6 +155,7 @@ pub async fn test_get_fmc_alias_ecc384cert() {
     println!("Get FMC alias cert test completed successfully");
 }
 
+#[inline(never)]
 pub async fn test_get_rt_alias_ecc384cert() {
     println!("Starting Caliptra mailbox get FMC cert test");
 
@@ -176,11 +181,12 @@ pub async fn test_get_rt_alias_ecc384cert() {
     println!("Get RT alias cert test completed successfully");
 }
 
+#[inline(never)]
 pub async fn test_get_cert_chain() {
     println!("Starting Caliptra mailbox get cert chain test");
 
     let mut cert_chain = [0u8; 4098];
-    const CERT_CHUNK_SIZE: usize = 1024;
+    const CERT_CHUNK_SIZE: usize = 2048;
 
     let mut cert_mgr = CertContext::new();
     let mut cert_chunk = [0u8; CERT_CHUNK_SIZE];
@@ -226,6 +232,7 @@ pub async fn test_get_cert_chain() {
     println!("Cert chain data: {:?}", &cert_chain[..offset]);
 }
 
+#[inline(never)]
 pub async fn test_certify_key() {
     println!("Starting Caliptra mailbox certify attestation key test");
 
@@ -266,6 +273,7 @@ pub async fn test_certify_key() {
     println!("Certify attestation key test completed successfully");
 }
 
+#[inline(never)]
 pub async fn test_sign_with_test_key() {
     println!("Starting Caliptra mailbox sign with attestation key test");
 

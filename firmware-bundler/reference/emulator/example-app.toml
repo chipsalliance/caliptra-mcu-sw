@@ -33,5 +33,5 @@ stack = 0x0_7000
 
 [[app]]
 name = "example-app"
-stack = 0xc000
+stack = 0x10000
 
