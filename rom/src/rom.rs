@@ -506,8 +506,9 @@ impl Soc {
         romtime::println!("[mcu-fuse-write] Finished writing OCP LOCK fuses");
 
         Ok(romtime::ocp_lock::HekState {
-            active_slot,
-            total_slots,
+            active_slot: active_slot as u32,
+            reserved: 0,
+            total_slots: total_slots as u32,
             active_state,
         })
     }
@@ -591,6 +592,19 @@ impl Soc {
         }
         // Clear the reset request interrupt
         notif0.modify(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
+    }
+}
+
+/// Writes the handoff table to DCCM.
+pub fn write_handoff_table(table: &romtime::handoff::HandoffData) {
+    romtime::println!(
+        "[mcu-rom] Writing handoff table (size {}) to DCCM at {:p}",
+        romtime::handoff::HandoffData::SIZE as u32,
+        &raw const romtime::handoff::HANDOFF
+    );
+
+    unsafe {
+        romtime::handoff::HANDOFF = *table;
     }
 }
 

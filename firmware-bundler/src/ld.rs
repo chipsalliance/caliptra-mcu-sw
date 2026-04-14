@@ -433,6 +433,13 @@ MEMORY
     flash (r) : ORIGIN = $FLASH_OFFSET, LENGTH = $FLASH_LENGTH
 }
 
+SECTIONS
+{
+    .handoff (NOLOAD) : {
+        KEEP(*(.handoff))
+    } > dccm
+}
+
 $PAGE_SIZE
 
 INCLUDE $BASE_LD_CONTENTS

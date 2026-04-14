@@ -301,6 +301,16 @@ pub unsafe fn main() {
     #[allow(static_mut_refs)]
     romtime::set_exiter(&mut EMULATOR_EXITER);
 
+    // Read handoff table BEFORE PMP setup.
+    let _handoff = crate::handoff::HandOff::from_dccm();
+    if let Some(ref ho) = _handoff {
+        romtime::println!("[mcu-runtime] HandOff marker: 0x{:08x}", ho.marker());
+        #[cfg(feature = "ocp-lock")]
+        romtime::println!("[mcu-runtime] HEK state from handoff: {:?}", ho.hek_state());
+    } else {
+        romtime::println!("[mcu-runtime] Handoff is None");
+    }
+
     // Set up memory protection immediately after setting the trap handler, to
     // ensure that much of the board initialization routine runs with ePMP
     // protection.
@@ -788,6 +798,41 @@ pub unsafe fn main() {
     let exit = if cfg!(feature = "test-exit-immediately") {
         debug!("Executing test-exit-immediately");
         Some(0)
+    } else if cfg!(feature = "test-handoff") {
+        debug!("Executing test-handoff");
+        #[cfg(feature = "test-handoff")]
+        {
+            if let Some(ho) = crate::handoff::HandOff::from_dccm() {
+                use romtime::ocp_lock::HekSeedState;
+                let state = ho.hek_state();
+                let ho_addr = ho.addr() as u32;
+                let expected_addr = 0x5000_0000;
+                if state.active_slot == 2
+                    && state.active_state == HekSeedState::Programmed
+                    && state.total_slots == 8
+                    && ho_addr == expected_addr
+                {
+                    romtime::println!(
+                        "[mcu-runtime] HandOff verification successful at 0x{:08x}",
+                        ho_addr
+                    );
+                    Some(0)
+                } else {
+                    romtime::println!(
+                        "[mcu-runtime] HandOff verification FAILED: state={:?}, addr=0x{:08x}, expected=0x{:08x}",
+                        state,
+                        ho_addr,
+                        expected_addr
+                    );
+                    Some(1)
+                }
+            } else {
+                romtime::println!("[mcu-runtime] HandOff verification FAILED: Handoff is None");
+                Some(1)
+            }
+        }
+        #[cfg(not(feature = "test-handoff"))]
+        None
     } else if cfg!(feature = "test-i3c-simple") {
         debug!("Executing test-i3c-simple");
         crate::tests::i3c_target_test::run_test_i3c_simple()

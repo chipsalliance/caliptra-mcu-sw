@@ -15,6 +15,8 @@ Abstract:
 #![allow(clippy::empty_loop)]
 
 use crate::mailbox;
+#[cfg(feature = "ocp-lock")]
+use crate::write_handoff_table;
 use crate::{
     configure_mcu_mbox_axi_users, device_ownership_transfer, fatal_error,
     verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, AxiUsers, BootFlow, DotBlob,
@@ -834,7 +836,7 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         romtime::println!("[mcu-rom] Populating fuses");
-        let _fuse_state = soc.populate_fuses(
+        let fuse_state = soc.populate_fuses(
             otp,
             mci,
             &mut FuseParams {
@@ -843,6 +845,14 @@ impl BootFlow for ColdBoot {
                 ..Default::default()
             },
         );
+        let _ = fuse_state;
+
+        #[cfg(feature = "ocp-lock")]
+        if let Some(hek_state) = fuse_state.hek_state {
+            let handoff = romtime::handoff::HandoffData::new(hek_state);
+            write_handoff_table(&handoff);
+        }
+
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
         // Configure MCU mailbox AXI users before locking
@@ -916,7 +926,7 @@ impl BootFlow for ColdBoot {
 
         // Report HEK metadata to Caliptra ROM
         #[cfg(feature = "ocp-lock")]
-        Self::report_hek_metadata(_fuse_state.hek_state, &mut env.soc_manager);
+        Self::report_hek_metadata(fuse_state.hek_state, &mut env.soc_manager);
 
         // Load DOT fuses from vendor non-secret partition
         // TODO: read these from a place specified by ROM configuration

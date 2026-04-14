@@ -3,7 +3,9 @@
 //! This code may be modified by integrators without violating any OCP LOCK compliance
 //! requirements.
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromBytes, IntoBytes, KnownLayout, Immutable)]
 #[repr(u16)]
 pub enum HekSeedState {
     Unused = 0x0,
@@ -14,6 +16,12 @@ pub enum HekSeedState {
     Sanitized = 0x5,
     SanitizedPendingReset = 0x6,
     SanitizedCorrupted = 0x7,
+}
+
+impl Default for HekSeedState {
+    fn default() -> Self {
+        Self::Unused
+    }
 }
 
 impl From<HekSeedState> for u16 {
@@ -107,11 +115,15 @@ impl Error {
     pub const RUNTIME_HPKE_CERT_SIGNING_FAILURE: Self = Self(0x0000_0000_1000_0004);
 }
 
-#[derive(Debug)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, Default, TryFromBytes, IntoBytes, KnownLayout, Immutable,
+)]
+#[repr(C)]
 pub struct HekState {
     pub active_state: HekSeedState,
-    pub active_slot: usize,
-    pub total_slots: usize,
+    pub reserved: u16,
+    pub active_slot: u32,
+    pub total_slots: u32,
 }
 
 // TODO(clundin): Clean up the trait once most of the implementation is completed.
