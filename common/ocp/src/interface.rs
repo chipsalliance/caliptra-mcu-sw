@@ -377,6 +377,37 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
     pub fn recovery_cms_region(&mut self) -> Option<RecoveryCmsRegion<'_>> {
         self.state.recovery_cms_region()
     }
+
+    /// Initialize the underlying transport.
+    ///
+    /// Delegates to [`UsbDeviceDriver::init`]. This must be called before
+    /// `process_command()` can communicate with the host.
+    pub fn init_transport(&mut self) -> Result<(), OcpError> {
+        self.transport.init().map_err(|e| e.into())
+    }
+
+    /// Returns the CMS index from the current RECOVERY_CTRL register.
+    pub fn recovery_ctrl_cms(&self) -> u8 {
+        self.state.recovery_ctrl.cms
+    }
+
+    /// Returns the image size from in bytes from the current INDIRECT_FIFO_CTRL register.
+    pub fn fifo_image_size(&self) -> u32 {
+        // Translate from 4 byte words to bytes.
+        const BYTES_PER_ENTRY: u32 = 4;
+        self.state.indirect_fifo_ctrl_image_size * BYTES_PER_ENTRY
+    }
+
+    /// Returns the CMS index from the current INDIRECT_FIFO_CTRL register.
+    pub fn fifo_ctrl_cms(&self) -> u8 {
+        self.state.indirect_fifo_ctrl_cms
+    }
+
+    /// Returns the FIFO CMS region selected by INDIRECT_FIFO_CTRL.
+    pub fn fifo_cms_region(&mut self) -> Option<&mut dyn FifoCmsRegion> {
+        let cms = self.state.indirect_fifo_ctrl_cms;
+        self.state.lookup_fifo_region(cms)
+    }
 }
 
 impl<V: VendorHandler> RecoveryState<'_, V> {
@@ -401,7 +432,6 @@ impl<V: VendorHandler> RecoveryState<'_, V> {
         None
     }
 
-    /// Look up a memory-window CMS region by index.
     fn lookup_indirect_region(&mut self, cms: u8) -> Option<&mut dyn IndirectCmsRegion> {
         for (idx, region) in self.indirect_regions.iter_mut() {
             if *idx == cms {
