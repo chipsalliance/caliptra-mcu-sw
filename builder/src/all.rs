@@ -41,6 +41,7 @@ const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
     "test-doe-user-loopback",
     "test-flash-usermode",
     "test-fpga-flash-ctrl",
+    "test-handoff",
     "test-get-device-state",
     "test-log-flash-usermode",
     "test-mbox-sram",

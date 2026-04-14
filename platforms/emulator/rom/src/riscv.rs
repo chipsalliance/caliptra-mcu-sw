@@ -75,7 +75,9 @@ pub extern "C" fn rom_entry() -> ! {
 
     // OTP digest IV and constant for the emulator.
     // These defaults are defined in the caliptra-ss RTL (otp_ctrl_part_pkg.sv).
+    #[cfg(feature = "ocp-lock")]
     const EMULATOR_OTP_DIGEST_IV: u64 = 0x90C7F21F6224F027u64;
+    #[cfg(feature = "ocp-lock")]
     const EMULATOR_OTP_DIGEST_CONST: u128 = 0xF98C48B1F93772844A22D4B78FE0266Fu128;
 
     #[cfg(feature = "ocp-lock")]

@@ -834,7 +834,7 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         romtime::println!("[mcu-rom] Populating fuses");
-        let _fuse_state = soc.populate_fuses(
+        let fuse_state = soc.populate_fuses(
             otp,
             mci,
             &mut FuseParams {
@@ -843,6 +843,14 @@ impl BootFlow for ColdBoot {
                 ..Default::default()
             },
         );
+        let _ = fuse_state;
+
+        // Create handoff data
+        romtime::handoff::HandoffData::write(romtime::handoff::HandoffArgs {
+            #[cfg(feature = "ocp-lock")]
+            hek_state: fuse_state.hek_state.unwrap_or_default(),
+        });
+
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
 
         // Configure MCU mailbox AXI users before locking
@@ -916,7 +924,7 @@ impl BootFlow for ColdBoot {
 
         // Report HEK metadata to Caliptra ROM
         #[cfg(feature = "ocp-lock")]
-        Self::report_hek_metadata(_fuse_state.hek_state, &mut env.soc_manager);
+        Self::report_hek_metadata(fuse_state.hek_state, &mut env.soc_manager);
 
         // Load DOT fuses from vendor non-secret partition
         // TODO: read these from a place specified by ROM configuration

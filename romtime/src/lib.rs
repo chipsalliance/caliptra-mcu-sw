@@ -5,6 +5,7 @@
 
 mod fuse_layout;
 pub use fuse_layout::*;
+pub mod handoff;
 mod lifecycle;
 pub use lifecycle::*;
 mod boot_status;

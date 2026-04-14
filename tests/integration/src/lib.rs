@@ -14,6 +14,7 @@ mod test_exception_handler;
 mod test_fips_zeroization;
 mod test_firmware_update;
 mod test_fpga_flash_ctrl;
+mod test_handoff;
 mod test_hek;
 mod test_i3c_constant_writes;
 mod test_i3c_simple;
@@ -193,9 +194,7 @@ mod test {
     /// Check if prebuilt binaries are available for the given feature.
     pub fn has_prebuilt_binaries(feature: &str) -> bool {
         if let Ok(binaries) = FirmwareBinaries::from_env() {
-            binaries.test_runtime(feature).is_ok()
-                && binaries.test_pldm_fw_pkg(feature).is_ok()
-                && binaries.test_flash_image(feature).is_ok()
+            binaries.test_runtime(feature).is_ok() && binaries.test_soc_manifest(feature).is_ok()
         } else {
             false
         }
@@ -351,7 +350,11 @@ mod test {
             mcu_runtime,
             network_rom,
         } = match FirmwareBinaries::from_env() {
-            Ok(binaries) if params.firmware_prefix.is_none() => {
+            Ok(binaries)
+                if params.firmware_prefix.is_none()
+                    && (params.feature.is_none()
+                        || has_prebuilt_binaries(params.feature.unwrap())) =>
+            {
                 prebuilt_binaries(&params, binaries)
             }
             _ => {
