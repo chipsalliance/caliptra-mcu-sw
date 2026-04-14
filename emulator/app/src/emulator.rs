@@ -1042,7 +1042,7 @@ impl Emulator {
             i3c_controller_join_handle = Some(i3c_controller.start());
             let pldm_transport = MctpTransport::new(cli.i3c_port.unwrap(), i3c_dynamic_address);
             let pldm_socket = pldm_transport
-                .create_socket(EndpointId(LOCAL_TEST_ENDPOINT_EID), EndpointId(1))
+                .create_socket(EndpointId(LOCAL_TEST_ENDPOINT_EID), EndpointId(0))
                 .unwrap();
             if test_feature == "test-pldm-streaming-boot" {
                 // If we are running the PLDM daemon from an integration test,
