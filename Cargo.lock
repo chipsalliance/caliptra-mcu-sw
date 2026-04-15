@@ -763,6 +763,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mailbox-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-mcu-core-util-host-command-types",
+ "caliptra-mcu-core-util-host-mailbox-test-config",
+ "caliptra-mcu-core-util-host-transport",
+ "caliptra-util-host-commands",
+ "caliptra-util-host-session",
+ "clap 4.5.51",
+ "ecdsa",
+ "fips204",
+ "hmac",
+ "p384",
+ "sha2",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-builder"
 version = "0.0.0"
 dependencies = [
@@ -1810,6 +1829,7 @@ dependencies = [
  "caliptra-image-fake-keys",
  "caliptra-image-gen",
  "caliptra-image-types",
+ "caliptra-mailbox-client",
  "caliptra-mcu-builder",
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
@@ -1980,6 +2000,26 @@ source = "git+https://github.com/chipsalliance/caliptra-sw?rev=294bcacbd34aca6e2
 name = "caliptra-ureg"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=294bcacbd34aca6e23ce7b652885e3236f7e7afe#294bcacbd34aca6e23ce7b652885e3236f7e7afe"
+
+[[package]]
+name = "caliptra-util-host-commands"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-core-util-host-command-types",
+ "caliptra-mcu-core-util-host-osal",
+ "caliptra-util-host-session",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-util-host-session"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-core-util-host-command-types",
+ "caliptra-mcu-core-util-host-osal",
+ "caliptra-mcu-core-util-host-transport",
+ "zerocopy",
+]
 
 [[package]]
 name = "caliptra-x509"

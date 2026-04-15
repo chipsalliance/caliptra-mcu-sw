@@ -30,8 +30,9 @@ mod upcall {
     pub const COUNT: u8 = 2;
 }
 
-// Adjust as needed
-const MAX_DATA_SIZE_DWORDS: usize = 1024;
+// Adjust as needed - must be large enough for CmShaInitReq (4108 bytes = 1027 dwords)
+// but small enough to fit in the Tock Grant per-process memory
+const MAX_DATA_SIZE_DWORDS: usize = 2048;
 struct BufferedMessage {
     pub command: u32,
     pub data: [u32; MAX_DATA_SIZE_DWORDS],

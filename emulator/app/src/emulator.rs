@@ -426,6 +426,7 @@ impl Emulator {
             use_mcu_recovery_interface,
             extra_soc_bus: None,
             debug_intent: true, // Emulator app defaults to debug intent enabled
+            prod_dbg_unlock_keypairs: vec![],
         })
         .expect("Failed to start Caliptra CPU");
 

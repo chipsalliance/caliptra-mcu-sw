@@ -31,4 +31,5 @@ stack = 0x0_7000
 [[app]]
 name = "example-app"
 stack = 0x7600
+grant_space = 0x4000
 

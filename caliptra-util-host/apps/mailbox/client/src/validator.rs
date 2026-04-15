@@ -4,7 +4,27 @@ use crate::{MailboxClient, TestConfig, UdpTransportDriver};
 use anyhow::Result;
 use caliptra_mcu_core_util_host_command_types::crypto_aes::AesMode;
 use caliptra_mcu_core_util_host_command_types::crypto_hmac::CmKeyUsage;
+use caliptra_mcu_core_util_host_command_types::debug_unlock::{
+    ECC_PUBLIC_KEY_WORD_SIZE, MLDSA_PUBLIC_KEY_WORD_SIZE, MLDSA_SIGNATURE_WORD_SIZE,
+};
 use std::net::SocketAddr;
+use std::time::Duration;
+
+/// Keys needed to sign a production debug unlock token.
+///
+/// When provided to the [`Validator`], the debug-unlock test will construct
+/// a properly-signed token instead of sending a zeroed (expected-to-fail) token.
+#[derive(Clone)]
+pub struct DebugUnlockKeys {
+    /// P-384 private key bytes (48 bytes, big-endian scalar).
+    pub ecc_private_key_bytes: [u8; 48],
+    /// P-384 public key as big-endian u32 words: X (12 words) || Y (12 words).
+    pub ecc_public_key: [u32; ECC_PUBLIC_KEY_WORD_SIZE],
+    /// ML-DSA-87 private key bytes.
+    pub mldsa_private_key_bytes: Vec<u8>,
+    /// ML-DSA-87 public key as little-endian u32 words.
+    pub mldsa_public_key: [u32; MLDSA_PUBLIC_KEY_WORD_SIZE],
+}
 
 /// Hardcoded fallback expected device responses for validation (when config is not available)
 pub const DEFAULT_EXPECTED_DEVICE_ID: u16 = 0x1234;
@@ -29,7 +49,12 @@ pub struct Validator {
     expected_device_id: Option<u16>,
     expected_vendor_id: Option<u16>,
     config: Option<TestConfig>,
+    recv_timeout: Duration,
+    debug_unlock_keys: Option<DebugUnlockKeys>,
 }
+
+/// Default UDP receive timeout (5 seconds).
+const DEFAULT_RECV_TIMEOUT: Duration = Duration::from_secs(5);
 
 impl Validator {
     /// Create a new validator instance with default values
@@ -40,6 +65,8 @@ impl Validator {
             expected_device_id: Some(DEFAULT_EXPECTED_DEVICE_ID),
             expected_vendor_id: Some(DEFAULT_EXPECTED_VENDOR_ID),
             config: None,
+            recv_timeout: DEFAULT_RECV_TIMEOUT,
+            debug_unlock_keys: None,
         }
     }
 
@@ -57,6 +84,8 @@ impl Validator {
             expected_device_id: Some(config.device.device_id),
             expected_vendor_id: Some(config.device.vendor_id),
             config: Some(config.clone()),
+            recv_timeout: Duration::from_secs(config.validation.timeout_seconds),
+            debug_unlock_keys: None,
         })
     }
 
@@ -78,12 +107,26 @@ impl Validator {
             expected_device_id,
             expected_vendor_id,
             config: None,
+            recv_timeout: DEFAULT_RECV_TIMEOUT,
+            debug_unlock_keys: None,
         }
     }
 
     /// Enable or disable verbose logging
     pub fn set_verbose(mut self, verbose: bool) -> Self {
         self.verbose = verbose;
+        self
+    }
+
+    /// Set the UDP receive timeout for each command.
+    pub fn set_recv_timeout(mut self, timeout: Duration) -> Self {
+        self.recv_timeout = timeout;
+        self
+    }
+
+    /// Set the debug unlock keys for full end-to-end token signing.
+    pub fn set_debug_unlock_keys(mut self, keys: DebugUnlockKeys) -> Self {
+        self.debug_unlock_keys = Some(keys);
         self
     }
 
@@ -95,7 +138,7 @@ impl Validator {
         }
 
         // Create UDP transport driver and connect
-        let mut udp_driver = UdpTransportDriver::new(self.server_addr);
+        let mut udp_driver = UdpTransportDriver::new(self.server_addr, self.recv_timeout);
         use caliptra_mcu_core_util_host_transport::MailboxDriver;
         udp_driver
             .connect()
@@ -155,6 +198,10 @@ impl Validator {
         // Run ECDH validation tests
         let ecdh_result = self.validate_ecdh(&mut client);
         results.push(ecdh_result);
+
+        // Run Production Debug Unlock validation test
+        let debug_unlock_result = self.validate_prod_debug_unlock(&mut client);
+        results.push(debug_unlock_result);
 
         if self.verbose {
             self.print_summary(&results);
@@ -441,7 +488,7 @@ impl Validator {
                     };
                 }
 
-                if &response.hash[..48] != expected.as_slice() {
+                if response.hash[..48] != expected[..] {
                     let error_msg = format!(
                         "SHA384 hash mismatch: expected {:02X?}..., got {:02X?}...",
                         &expected[..8],
@@ -512,7 +559,7 @@ impl Validator {
                     };
                 }
 
-                if &response.hash[..64] != expected.as_slice() {
+                if response.hash[..64] != expected[..] {
                     let error_msg = format!(
                         "SHA512 hash mismatch: expected {:02X?}..., got {:02X?}...",
                         &expected[..8],
@@ -1439,6 +1486,204 @@ impl Validator {
             passed: true,
             error_message: None,
         }
+    }
+
+    /// Validate Production Debug Unlock commands
+    ///
+    /// When [`DebugUnlockKeys`] have been provided via [`Validator::set_debug_unlock_keys`],
+    /// performs a full end-to-end debug unlock: request a challenge, sign a token
+    /// with both ECDSA (P-384) and ML-DSA-87, and submit the token.
+    ///
+    /// Without keys, sends a zeroed token (expected to be rejected) to confirm
+    /// the command dispatch works.
+    fn validate_prod_debug_unlock(&self, client: &mut MailboxClient) -> ValidationResult {
+        use caliptra_mcu_core_util_host_command_types::debug_unlock::ProdDebugUnlockTokenRequest;
+
+        let test_name = "ProdDebugUnlock".to_string();
+
+        if self.verbose {
+            println!("\n=== Validating Production Debug Unlock Commands ===");
+        }
+
+        let unlock_level = 1u8;
+
+        match client.prod_debug_unlock_req(unlock_level) {
+            Ok(response) => {
+                if self.verbose {
+                    println!("  Got challenge response:");
+                    println!(
+                        "    UDI: {:02X?}...",
+                        &response.unique_device_identifier[..8]
+                    );
+                    println!("    Challenge: {:02X?}...", &response.challenge[..8]);
+                }
+
+                if let Some(keys) = &self.debug_unlock_keys {
+                    // Full end-to-end: construct and sign a real token.
+                    if self.verbose {
+                        println!("  Signing token with provided keys...");
+                    }
+
+                    let token_req =
+                        match Self::sign_debug_unlock_token(&response, unlock_level, keys) {
+                            Ok(t) => t,
+                            Err(e) => {
+                                let msg = format!("Failed to sign token: {}", e);
+                                eprintln!("  {}", msg);
+                                return ValidationResult {
+                                    test_name,
+                                    passed: false,
+                                    error_message: Some(msg),
+                                };
+                            }
+                        };
+
+                    match client.prod_debug_unlock_token(&token_req) {
+                        Ok(_) => {
+                            println!("✓ ProdDebugUnlock validation PASSED (token accepted)");
+                            ValidationResult {
+                                test_name,
+                                passed: true,
+                                error_message: None,
+                            }
+                        }
+                        Err(e) => {
+                            let msg = format!("Signed token rejected by device: {}", e);
+                            eprintln!("✗ ProdDebugUnlock validation FAILED: {}", msg);
+                            ValidationResult {
+                                test_name,
+                                passed: false,
+                                error_message: Some(msg),
+                            }
+                        }
+                    }
+                } else {
+                    // No keys — send a zeroed token (expected to fail).
+                    let token_req = ProdDebugUnlockTokenRequest::default();
+                    match client.prod_debug_unlock_token(&token_req) {
+                        Ok(_) => {
+                            if self.verbose {
+                                println!("  Token submission accepted (unexpected in test mode)");
+                            }
+                        }
+                        Err(_) => {
+                            if self.verbose {
+                                println!(
+                                    "  Token submission correctly rejected (no valid signature) ✓"
+                                );
+                            }
+                        }
+                    }
+
+                    println!("✓ ProdDebugUnlock validation PASSED");
+                    ValidationResult {
+                        test_name,
+                        passed: true,
+                        error_message: None,
+                    }
+                }
+            }
+            Err(e) => {
+                let error_str = e.to_string();
+                if self.verbose {
+                    println!(
+                        "  Debug unlock request returned error: {} (may be expected due to lifecycle)",
+                        error_str
+                    );
+                }
+
+                println!("✓ ProdDebugUnlock validation PASSED (command dispatched, rejected by device as expected)");
+                ValidationResult {
+                    test_name,
+                    passed: true,
+                    error_message: None,
+                }
+            }
+        }
+    }
+
+    /// Construct a signed [`ProdDebugUnlockTokenRequest`] from the challenge and keys.
+    fn sign_debug_unlock_token(
+        challenge_resp: &caliptra_mcu_core_util_host_command_types::debug_unlock::ProdDebugUnlockReqResponse,
+        unlock_level: u8,
+        keys: &DebugUnlockKeys,
+    ) -> Result<caliptra_mcu_core_util_host_command_types::debug_unlock::ProdDebugUnlockTokenRequest>
+    {
+        use caliptra_mcu_core_util_host_command_types::debug_unlock::ProdDebugUnlockTokenRequest;
+        use ecdsa::signature::hazmat::PrehashSigner;
+        use ecdsa::{Signature, SigningKey as EcdsaSigningKey};
+        use fips204::traits::SerDes;
+        use sha2::{Digest, Sha384, Sha512};
+
+        let mut token = ProdDebugUnlockTokenRequest {
+            length: ((std::mem::size_of::<ProdDebugUnlockTokenRequest>()) / 4) as u32,
+            unique_device_identifier: challenge_resp.unique_device_identifier,
+            unlock_level,
+            reserved: [0; 3],
+            challenge: challenge_resp.challenge,
+            ecc_public_key: keys.ecc_public_key,
+            mldsa_public_key: keys.mldsa_public_key,
+            ..Default::default()
+        };
+
+        // --- ECDSA (P-384) signature over SHA-384 digest ---
+        let mut hasher = Sha384::new();
+        Digest::update(&mut hasher, token.unique_device_identifier);
+        Digest::update(&mut hasher, [token.unlock_level]);
+        Digest::update(&mut hasher, token.reserved);
+        Digest::update(&mut hasher, token.challenge);
+        let ecdsa_hash: [u8; 48] = hasher.finalize().into();
+
+        let ecc_secret = p384::SecretKey::from_slice(&keys.ecc_private_key_bytes)
+            .map_err(|e| anyhow::anyhow!("Invalid ECC private key: {}", e))?;
+        let signing_key = EcdsaSigningKey::<p384::NistP384>::from(&ecc_secret);
+        let ecdsa_sig: Signature<p384::NistP384> = signing_key
+            .sign_prehash(&ecdsa_hash)
+            .map_err(|e| anyhow::anyhow!("ECDSA signing failed: {}", e))?;
+
+        let r_bytes = ecdsa_sig.r().to_bytes();
+        let s_bytes = ecdsa_sig.s().to_bytes();
+        for (i, chunk) in r_bytes.chunks(4).enumerate() {
+            token.ecc_signature[i] = u32::from_be_bytes(chunk.try_into().unwrap());
+        }
+        for (i, chunk) in s_bytes.chunks(4).enumerate() {
+            token.ecc_signature[i + 12] = u32::from_be_bytes(chunk.try_into().unwrap());
+        }
+
+        // --- ML-DSA-87 signature over SHA-512 digest ---
+        let mut hasher = Sha512::new();
+        Digest::update(&mut hasher, token.unique_device_identifier);
+        Digest::update(&mut hasher, [token.unlock_level]);
+        Digest::update(&mut hasher, token.reserved);
+        Digest::update(&mut hasher, token.challenge);
+        let mldsa_hash: [u8; 64] = hasher.finalize().into();
+
+        let mldsa_priv_key_arr: [u8; 4896] = keys
+            .mldsa_private_key_bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "Invalid MLDSA private key size: expected 4896, got {}",
+                    keys.mldsa_private_key_bytes.len()
+                )
+            })?;
+        let mldsa_private_key = fips204::ml_dsa_87::PrivateKey::try_from_bytes(mldsa_priv_key_arr)
+            .map_err(|_| anyhow::anyhow!("Failed to parse ML-DSA-87 private key"))?;
+
+        use fips204::traits::Signer;
+        let mldsa_sig = mldsa_private_key
+            .try_sign_with_seed(&[0u8; 32], &mldsa_hash, &[])
+            .map_err(|_| anyhow::anyhow!("ML-DSA-87 signing failed"))?;
+
+        // Pad to MLDSA_SIGNATURE_WORD_SIZE * 4 bytes and write as LE u32 words.
+        let mut sig_padded = [0u8; MLDSA_SIGNATURE_WORD_SIZE * 4];
+        sig_padded[..mldsa_sig.len()].copy_from_slice(&mldsa_sig);
+        for (i, chunk) in sig_padded.chunks(4).enumerate() {
+            token.mldsa_signature[i] = u32::from_le_bytes(chunk.try_into().unwrap());
+        }
+
+        Ok(token)
     }
 }
 

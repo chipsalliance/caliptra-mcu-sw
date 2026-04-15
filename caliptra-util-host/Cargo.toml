@@ -49,9 +49,12 @@ clap = { version = "4.5.23", features = [
     "unicode",
     "wrap_help",
 ] }
+ecdsa = { version = "0.16.9", features = ["pem"] }
+fips204 = "0.4.6"
 hmac = "0.12"
 caliptra-mcu-mctp-vdm-common = { path = "../common/mctp-vdm" }
 caliptra-mcu-testing-common = { path = "../common/testing" }
+p384 = "0.13.0"
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
 sha2 = "0.10"
