@@ -793,13 +793,66 @@ pub unsafe fn main() {
         BOARD = Some(board_kernel);
     }
 
-    // Disable WDT1 before running the loop or tests
+    // Disable WDT and enable MCI interrupts before tests and the kernel loop.
     let mci: StaticRef<mci::regs::Mci> =
         unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
     let mci_wdt = caliptra_mcu_romtime::Mci::new(mci);
     mci_wdt.disable_wdt();
 
-    // Run any requested test
+    mci.intr_block_rf_global_intr_en_r
+        .modify(mci::bits::GlobalIntrEnT::NotifEn::SET + mci::bits::GlobalIntrEnT::ErrorEn::SET);
+    mci.intr_block_rf_notif0_intr_en_r.modify(
+        mci::bits::Notif0IntrEnT::NotifCptraMcuResetReqEn::SET
+            + mci::bits::Notif0IntrEnT::NotifMbox0CmdAvailEn::SET,
+    );
+
+    run_kernel_tests(mux_alarm, emulator_peripherals, mux_mctp);
+
+    // Re-disable WDT before entering the main kernel loop (tests may have
+    // re-armed it).
+    let mci: StaticRef<mci::regs::Mci> =
+        unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
+    let mci_wdt = caliptra_mcu_romtime::Mci::new(mci);
+    mci_wdt.disable_wdt();
+
+    mci_wdt.set_flow_milestone(McuBootMilestones::FIRMWARE_OS_INITIALIZED.into());
+    board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
+}
+
+#[allow(unused)]
+pub fn run_kernel_op(loops: usize) {
+    unsafe {
+        for _i in 0..loops {
+            BOARD.unwrap().kernel_loop_operation(
+                PLATFORM.unwrap(),
+                CHIP.unwrap(),
+                None::<&kernel::ipc::IPC<0>>,
+                true,
+                MAIN_CAP.unwrap(),
+            );
+        }
+    }
+}
+
+/// Run kernel-level tests selected by Cargo feature flags.
+///
+/// # Prerequisites
+/// - MCI interrupts must be enabled (global + Mbox0CmdAvailable) before
+///   calling this function. Mailbox tests such as `test-mcu-mbox-driver`
+///   rely on interrupt-driven command delivery.
+/// - The watchdog timer should be disabled so tests are not killed by it.
+///
+/// Exits the emulator if a test returns an exit code.
+#[allow(unused_variables)]
+fn run_kernel_tests(
+    mux_alarm: &'static MuxAlarm<'static, InternalTimers<'static>>,
+    emulator_peripherals: &'static EmulatorPeripherals<'static>,
+    mux_mctp: &'static caliptra_mcu_capsules_runtime::mctp::mux::MuxMCTPDriver<
+        'static,
+        VirtualMuxAlarm<'static, InternalTimers<'static>>,
+        caliptra_mcu_capsules_runtime::mctp::transport_binding::MCTPI3CBinding<'static>,
+    >,
+) {
     let exit = if cfg!(feature = "test-exit-immediately") {
         debug!("Executing test-exit-immediately");
         Some(0)
@@ -832,10 +885,17 @@ pub unsafe fn main() {
         crate::tests::doe_transport_test::test_doe_transport_loopback()
     } else if cfg!(feature = "test-log-flash-circular") {
         debug!("Executing test-log-flash-circular");
-        crate::tests::circular_log_test::run(mux_alarm, &emulator_peripherals.primary_flash_ctrl)
+        unsafe {
+            crate::tests::circular_log_test::run(
+                mux_alarm,
+                &emulator_peripherals.primary_flash_ctrl,
+            )
+        }
     } else if cfg!(feature = "test-log-flash-linear") {
         debug!("Executing test-log-flash-linear");
-        crate::tests::linear_log_test::run(mux_alarm, &emulator_peripherals.primary_flash_ctrl)
+        unsafe {
+            crate::tests::linear_log_test::run(mux_alarm, &emulator_peripherals.primary_flash_ctrl)
+        }
     } else if cfg!(feature = "test-mcu-mbox-driver") {
         debug!("Executing test-mcu-mbox-driver");
         crate::tests::mcu_mbox_test::test_mcu_mbox()
@@ -856,37 +916,5 @@ pub unsafe fn main() {
     if let Some(exit) = exit {
         debug!("Exiting with code {}", exit);
         crate::io::exit_emulator(exit);
-    }
-
-    // Disable WDT1 before running the loop
-    let mci: StaticRef<mci::regs::Mci> =
-        unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) };
-    let mci_wdt = caliptra_mcu_romtime::Mci::new(mci);
-    mci_wdt.disable_wdt();
-
-    // Enable MCI Interrupts
-    mci.intr_block_rf_global_intr_en_r
-        .modify(mci::bits::GlobalIntrEnT::NotifEn::SET + mci::bits::GlobalIntrEnT::ErrorEn::SET);
-    mci.intr_block_rf_notif0_intr_en_r.modify(
-        mci::bits::Notif0IntrEnT::NotifCptraMcuResetReqEn::SET
-            + mci::bits::Notif0IntrEnT::NotifMbox0CmdAvailEn::SET,
-    );
-
-    mci_wdt.set_flow_milestone(McuBootMilestones::FIRMWARE_OS_INITIALIZED.into());
-    board_kernel.kernel_loop(veer, chip, None::<&kernel::ipc::IPC<0>>, &main_loop_cap);
-}
-
-#[allow(unused)]
-pub fn run_kernel_op(loops: usize) {
-    unsafe {
-        for _i in 0..loops {
-            BOARD.unwrap().kernel_loop_operation(
-                PLATFORM.unwrap(),
-                CHIP.unwrap(),
-                None::<&kernel::ipc::IPC<0>>,
-                true,
-                MAIN_CAP.unwrap(),
-            );
-        }
     }
 }

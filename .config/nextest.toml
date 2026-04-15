@@ -14,12 +14,6 @@ store-failure-output = true
 failure-output = "immediate-final"
 fail-fast = false
 slow-timeout = { period = "30s", terminate-after = 30 }
-# Disable tests that are currently failing in CI
-default-filter = """
-!(package(caliptra-mcu-tests-integration) and test(test_bare_metal::test::test_bare_metal_runtime_boot)
-| package(caliptra-mcu-tests-integration) and test(test::test_mcu_mbox_driver)
-| package(caliptra-mcu-tests-integration) and test(test::test_mcu_mbox_soc_requester_loopback))
-"""
 
 [profile.nightly-emulator.junit]
 path = "/tmp/junit.xml"
