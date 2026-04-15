@@ -353,6 +353,10 @@ impl CaliptraSoC {
             _ => Err(CaliptraApiError::MailboxNoResponseData),
         }
     }
+
+    pub fn read_vendor_pk_hash(&mut self) -> [u32; 12] {
+        self.soc_ifc().fuse_vendor_pk_hash().read()
+    }
 }
 
 pub struct CaliptraMailboxResponse<'a> {

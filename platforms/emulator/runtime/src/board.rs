@@ -146,6 +146,7 @@ struct VeeR {
         'static,
         VirtualMuxAlarm<'static, InternalTimers<'static>>,
     >,
+    caliptra: &'static caliptra_mcu_capsules_runtime::caliptra::Caliptra,
     dma: &'static caliptra_mcu_capsules_emulator::dma::Dma<'static>,
     logging_flash:
         &'static caliptra_mcu_capsules_emulator::logging::driver::LoggingFlashDriver<'static>,
@@ -188,6 +189,7 @@ impl SyscallDriverLookup for VeeR {
                 f(Some(self.doe_spdm))
             }
             caliptra_mcu_capsules_runtime::mailbox::DRIVER_NUM => f(Some(self.mailbox)),
+            caliptra_mcu_capsules_runtime::caliptra::DRIVER_NUM => f(Some(self.caliptra)),
             caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM => f(Some(self.dma)),
             caliptra_mcu_capsules_runtime::mci::DRIVER_NUM => f(Some(self.mci)),
             caliptra_mcu_config_emulator::flash::DRIVER_NUM_START
@@ -490,6 +492,26 @@ pub unsafe fn main() {
     ));
     mailbox.alarm.set_alarm_client(mailbox);
 
+    let caliptra_soc = static_init!(
+        caliptra_mcu_romtime::CaliptraSoC,
+        caliptra_mcu_romtime::CaliptraSoC::new(
+            Some(MCU_MEMORY_MAP.soc_offset),
+            Some(MCU_MEMORY_MAP.soc_offset),
+            Some(MCU_MEMORY_MAP.mbox_offset)
+        )
+    );
+
+    let caliptra = static_init!(
+        caliptra_mcu_capsules_runtime::caliptra::Caliptra,
+        caliptra_mcu_capsules_runtime::caliptra::Caliptra::new(
+            board_kernel.create_grant(
+                caliptra_mcu_capsules_runtime::caliptra::DRIVER_NUM,
+                &memory_allocation_cap
+            ),
+            caliptra_soc,
+        )
+    );
+
     let mci_regs = unsafe {
         caliptra_mcu_romtime::StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci)
     };
@@ -768,6 +790,7 @@ pub unsafe fn main() {
             doe_spdm,
             flash_partitions,
             mailbox,
+            caliptra,
             dma,
             logging_flash,
             mci,
