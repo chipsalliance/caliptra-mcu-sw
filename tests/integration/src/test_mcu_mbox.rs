@@ -369,6 +369,7 @@ pub mod test {
             self.prep_test_messages(feature);
             let test_messages = self.test_messages.clone();
             for message_pair in &test_messages {
+                println!("Checking cmd: {:#X}", message_pair.cmd);
                 let actual_response = self
                     .process_message(message_pair.cmd, &message_pair.request)
                     .map_err(|_| ())?;
