@@ -25,6 +25,10 @@ struct BuildArgs<'a> {
     fw_id: &'a Option<String>,
 }
 
+struct BootstrapArgs<'a> {
+    bitstream: &'a Option<PathBuf>,
+}
+
 struct BuildTestArgs<'a> {
     package_filter: &'a Option<String>,
 }
@@ -34,7 +38,7 @@ struct TestArgs<'a> {
     default_test_profile: &'a str,
 }
 trait ActionHandler<'a> {
-    fn bootstrap(&self) -> Result<()>;
+    fn bootstrap(&self, args: &'a BootstrapArgs<'a>) -> Result<()>;
     fn download_bitstream(&self) -> Result<()>;
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()>;
     fn build_test(&self, args: &'a BuildTestArgs<'a>) -> Result<()>;
@@ -49,6 +53,9 @@ pub(crate) enum Fpga {
         target_host: Option<String>,
         #[arg(long, default_value_t = Configuration::Subsystem, value_enum)]
         configuration: Configuration,
+        /// Path to a bitstream pdi file. If provided, don't download it.
+        #[arg(long)]
+        bitstream: Option<PathBuf>,
     },
     /// Download an FPGA bitstream.
     DownloadBitstream {
@@ -230,6 +237,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
         Fpga::Bootstrap {
             target_host,
             configuration,
+            bitstream,
         } => {
             println!("Bootstrapping FPGA");
             println!("configuration: {:?}", configuration);
@@ -259,7 +267,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                 .executor()
                 .set_target_host(target_host)
                 .set_caliptra_fpga(caliptra_fpga)
-                .bootstrap()?;
+                .bootstrap(&BootstrapArgs { bitstream })?;
         }
         Fpga::DownloadBitstream { configuration } => {
             println!("Downloading FPGA bitstream");
