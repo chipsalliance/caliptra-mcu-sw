@@ -563,6 +563,7 @@ mod test {
     }
 
     fn create_challenge_recovery_otp_memory(pk_hash: &[u8; 48]) -> Vec<u8> {
+        use otp_digest::{otp_scramble, OTP_SCRAMBLE_KEYS};
         use registers_generated::fuses;
 
         let required_size = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset
@@ -575,15 +576,32 @@ mod test {
         otp[fuses::DOT_FUSE_ARRAY.byte_offset] = 0x01;
 
         // VENDOR_RECOVERY_PK_HASH lives in the vendor_secret_prod_partition,
-        // which on real hardware is scrambled. The emulator's OTP model does
-        // not descramble on DAI reads, so we write the plaintext bytes
-        // directly here. (On FPGA, this test path is `#[ignore]`d because the
-        // FPGA stack does not currently support provisioning DOT fuses via
-        // `otp_memory`.)
-        let hash_offset = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset;
-        otp[hash_offset..hash_offset + 32].copy_from_slice(&pk_hash[..32]);
-        let next_offset = hash_offset + fuses::VENDOR_RECOVERY_PK_HASH.byte_size;
-        otp[next_offset..next_offset + 16].copy_from_slice(&pk_hash[32..48]);
+        // which is scrambled. Write pre-scrambled bytes for the entire
+        // partition so the DAI read path unscrambles them back to the
+        // intended values. (On FPGA, this test path is `#[ignore]`d because
+        // the FPGA stack does not currently support provisioning DOT fuses
+        // via `otp_memory`.)
+        let mut plaintext = vec![0u8; fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE];
+        let hash_off_in_partition = fuses::VENDOR_RECOVERY_PK_HASH.byte_offset
+            - fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET;
+        plaintext[hash_off_in_partition..hash_off_in_partition + 32]
+            .copy_from_slice(&pk_hash[..32]);
+        let next_off_in_partition =
+            hash_off_in_partition + fuses::VENDOR_RECOVERY_PK_HASH.byte_size;
+        plaintext[next_off_in_partition..next_off_in_partition + 16]
+            .copy_from_slice(&pk_hash[32..48]);
+
+        let key = OTP_SCRAMBLE_KEYS[5];
+        let part_start = fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_OFFSET;
+        let part_end = part_start + fuses::VENDOR_SECRET_PROD_PARTITION_BYTE_SIZE;
+        let end = part_end.min(otp.len());
+        for (off, block) in (part_start..end).step_by(8).zip(plaintext.chunks_exact(8)) {
+            let plain_u64 = u64::from_le_bytes(block.try_into().unwrap());
+            let scrambled = otp_scramble(plain_u64, key);
+            let bytes = scrambled.to_le_bytes();
+            let copy_len = bytes.len().min(otp.len() - off);
+            otp[off..off + copy_len].copy_from_slice(&bytes[..copy_len]);
+        }
         otp
     }
 }
