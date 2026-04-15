@@ -1046,15 +1046,15 @@ mod test {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_LOCK};
         use registers_generated::fuses;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
         let dot_flash = blob.to_flash_contents();
 
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1112,15 +1112,15 @@ mod test {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_LOCK};
         use registers_generated::fuses;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
         let dot_flash = blob.to_flash_contents();
 
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1172,6 +1172,9 @@ mod test {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_UNLOCK};
         use registers_generated::fuses;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
         let dot_flash = blob.to_flash_contents();
@@ -1179,9 +1182,6 @@ mod test {
         // UNLOCK needs a LAK in the manifest for writing the unlock DOT blob.
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_UNLOCK], 0, [0u32; 12], test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1225,15 +1225,15 @@ mod test {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_UNLOCK};
         use registers_generated::fuses;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
         let dot_flash = blob.to_flash_contents();
 
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_UNLOCK], 0, [0u32; 12], test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1278,15 +1278,15 @@ mod test {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_DISABLE};
         use registers_generated::fuses;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
         let dot_flash = blob.to_flash_contents();
 
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_DISABLE], 0, [0u32; 12], test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1328,6 +1328,9 @@ mod test {
         use mcu_rom_common::McuBootMilestones;
         use registers_generated::fuses;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
         let dot_flash = blob.to_flash_contents();
@@ -1336,9 +1339,6 @@ mod test {
         // so DOT manifest processing is entirely skipped.  This verifies
         // that the default ROM configuration never accidentally processes
         // DOT manifests.
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             dot_flash_initial_contents: Some(dot_flash),
@@ -1382,6 +1382,9 @@ mod test {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_ROTATE};
         use registers_generated::fuses;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
         let dot_flash = blob.to_flash_contents();
@@ -1389,9 +1392,6 @@ mod test {
         // ROTATE with min_fuse_count=2 (current burned=0, so rotation will apply)
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_ROTATE], 2, owner_pk_hash, test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1432,6 +1432,9 @@ mod test {
         use mcu_rom_common::{McuBootMilestones, FW_MANIFEST_DOT_CMD_ROTATE};
         use registers_generated::fuses;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
         let dot_flash = blob.to_flash_contents();
@@ -1439,9 +1442,6 @@ mod test {
         // ROTATE with min_fuse_count=1 but device already has 1 fuse burned (locked state)
         let manifest =
             create_manifest_section(&[FW_MANIFEST_DOT_CMD_ROTATE], 1, owner_pk_hash, test_lak());
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
@@ -1493,6 +1493,9 @@ mod test {
         use mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
         use zerocopy::IntoBytes;
 
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         let owner_pk_hash = get_owner_pk_hash();
         let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
         let dot_flash = blob.to_flash_contents();
@@ -1511,9 +1514,6 @@ mod test {
         }
         .with_checksum();
         let manifest = section.as_bytes().to_vec();
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut hw = start_runtime_hw_model(TestParams {
             firmware_prefix: Some(manifest),
