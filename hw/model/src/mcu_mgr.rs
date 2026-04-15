@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use ureg::MmioMut;
+use caliptra_ureg::MmioMut;
 
 pub trait McuManager {
     const I3C_ADDR: u32;

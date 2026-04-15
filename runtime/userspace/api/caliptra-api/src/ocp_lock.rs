@@ -5,13 +5,13 @@ use crate::mailbox_api::execute_mailbox_cmd;
 pub use caliptra_api::mailbox::{
     HpkeAlgorithms, HpkeHandle, OcpLockClearKeyCacheReq, OcpLockClearKeyCacheResp,
     OcpLockDeriveMekReq, OcpLockDeriveMekResp, OcpLockEnableMpkReq, OcpLockEnableMpkResp,
-    OcpLockEndorseHpkePubKeyReq, OcpLockEndorseHpkePubKeyResp, OcpLockEnumerateHpkeHandlesReq,
-    OcpLockEnumerateHpkeHandlesResp, OcpLockGenerateMekReq, OcpLockGenerateMekResp,
-    OcpLockGenerateMpkReq, OcpLockGenerateMpkResp, OcpLockGetAlgorithmsReq,
-    OcpLockGetAlgorithmsResp, OcpLockGetStatusReq, OcpLockGetStatusResp,
-    OcpLockInitializeMekSecretReq, OcpLockInitializeMekSecretResp, OcpLockMixMpkReq,
-    OcpLockMixMpkResp, OcpLockReportHekMetadataReq, OcpLockReportHekMetadataResp,
-    OcpLockRewrapMpkReq, OcpLockRewrapMpkResp, OcpLockRotateHpkeKeyReq, OcpLockRotateHpkeKeyResp,
+    OcpLockEnumerateHpkeHandlesReq, OcpLockEnumerateHpkeHandlesResp, OcpLockGenerateMekReq,
+    OcpLockGenerateMekResp, OcpLockGenerateMpkReq, OcpLockGenerateMpkResp, OcpLockGetAlgorithmsReq,
+    OcpLockGetAlgorithmsResp, OcpLockGetHpkePubKeyReq, OcpLockGetHpkePubKeyResp,
+    OcpLockGetStatusReq, OcpLockGetStatusResp, OcpLockInitializeMekSecretReq,
+    OcpLockInitializeMekSecretResp, OcpLockMixMpkReq, OcpLockMixMpkResp,
+    OcpLockReportHekMetadataReq, OcpLockReportHekMetadataResp, OcpLockRewrapMpkReq,
+    OcpLockRewrapMpkResp, OcpLockRotateHpkeKeyReq, OcpLockRotateHpkeKeyResp,
     OcpLockTestAccessKeyReq, OcpLockTestAccessKeyResp, OcpLockUnloadMekReq, OcpLockUnloadMekResp,
     Request, Response, SealedAccessKey, WrappedKey,
 };
@@ -94,10 +94,10 @@ impl<'a> OcpLock<'a> {
         self.execute(&mut req).await
     }
 
-    pub async fn endorse_hpke_pub_key(
+    pub async fn get_hpke_pub_key(
         &self,
-        req: &mut OcpLockEndorseHpkePubKeyReq,
-    ) -> CaliptraApiResult<OcpLockEndorseHpkePubKeyResp> {
+        req: &mut OcpLockGetHpkePubKeyReq,
+    ) -> CaliptraApiResult<OcpLockGetHpkePubKeyResp> {
         self.execute(req).await
     }
 
