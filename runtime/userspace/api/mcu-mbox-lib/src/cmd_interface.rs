@@ -7,20 +7,22 @@ use caliptra_mcu_external_cmds_common::{
     UnifiedCommandHandler, MAX_UID_LEN,
 };
 use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
-use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
+use caliptra_mcu_libsyscall_caliptra::otp;
+use caliptra_mcu_libsyscall_caliptra::{mailbox::Mailbox, DefaultSyscalls};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DeviceCapsReq, DeviceCapsResp, DeviceIdReq, DeviceIdResp, DeviceInfoReq,
-    DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, MailboxRespHeader,
-    MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq, McuAesEncryptInitReq,
-    McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq,
-    McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq,
-    McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq, McuCmStatusReq, McuEcdhFinishReq,
-    McuEcdhGenerateReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkSignReq, McuEcdsaCmkVerifyReq,
-    McuFipsSelfTestGetResultsReq, McuFipsSelfTestStartReq, McuHkdfExpandReq, McuHkdfExtractReq,
-    McuHmacKdfCounterReq, McuHmacReq, McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq,
-    McuRandomGenerateReq, McuRandomStirReq, McuResponseVarSize, McuShaFinalReq, McuShaInitReq,
-    McuShaUpdateReq, DEVICE_CAPS_SIZE, MAX_FW_VERSION_STR_LEN,
+    DeviceInfoResp, FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq,
+    FuseIncreaseCaliptraMinSvnResp, MailboxRespHeader, MailboxRespHeaderVarSize,
+    McuAesDecryptInitReq, McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq,
+    McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq,
+    McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq,
+    McuCmImportReq, McuCmStatusReq, McuEcdhFinishReq, McuEcdhGenerateReq, McuEcdsaCmkPublicKeyReq,
+    McuEcdsaCmkSignReq, McuEcdsaCmkVerifyReq, McuFipsSelfTestGetResultsReq,
+    McuFipsSelfTestStartReq, McuHkdfExpandReq, McuHkdfExtractReq, McuHmacKdfCounterReq, McuHmacReq,
+    McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq,
+    McuResponseVarSize, McuShaFinalReq, McuShaInitReq, McuShaUpdateReq, DEVICE_CAPS_SIZE,
+    MAX_FW_VERSION_STR_LEN,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -412,7 +414,8 @@ impl<'a> CmdInterface<'a> {
                 )
                 .await
             }
-            cmd_id @ CommandId::MC_ROTATE_VENDOR_PK_HASH => {
+            cmd_id @ CommandId::MC_ROTATE_VENDOR_PK_HASH
+            | cmd_id @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
                 self.handle_authorized_command(cmd_id, req, resp_buf).await
             }
             // TODO: add more command handlers.
@@ -638,6 +641,9 @@ impl<'a> CmdInterface<'a> {
             CommandId::MC_ROTATE_VENDOR_PK_HASH => {
                 self.handle_rotate_vendor_pk_hash(cmd, resp_buf).await
             }
+            CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
+                self.handle_increase_caliptra_min_svn(cmd, resp_buf).await
+            }
             _ => Err(MsgHandlerError::UnsupportedCommand),
         }
     }
@@ -649,6 +655,125 @@ impl<'a> CmdInterface<'a> {
     ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
         // TODO
         Err(MsgHandlerError::UnsupportedCommand)
+    }
+
+    async fn handle_increase_caliptra_min_svn<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> Result<(&'r mut [u8], MbxCmdStatus), MsgHandlerError> {
+        if resp_buf.len() < core::mem::size_of::<FuseIncreaseCaliptraMinSvnResp>() {
+            return Err(MsgHandlerError::InvalidParams);
+        }
+
+        // Decode the request
+        let req = FuseIncreaseCaliptraMinSvnReq::ref_from_bytes(req)
+            .map_err(|_| MsgHandlerError::InvalidParams)?;
+
+        // Check the request has a valid SVN value
+        if req.svn == 0 {
+            return Err(MsgHandlerError::InvalidParams);
+        }
+        if req.svn > 128 {
+            return Err(MsgHandlerError::InvalidParams);
+        }
+
+        let caliptra_fw_info = self.get_caliptra_fw_info().await?;
+
+        // Ensure the requested SVN will allow current Caliptra firmware to run
+        if req.svn > caliptra_fw_info.fw_svn {
+            return Err(MsgHandlerError::InvalidParams);
+        }
+
+        // Get the minimum SVN set in fuses
+        let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
+        let mut current_fuses = [0u32; 4];
+        for (i, fuse) in current_fuses.iter_mut().enumerate() {
+            *fuse = otp
+                .read(otp::reg::CALIPTRA_FW_SVN, i as u32)
+                .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+        }
+
+        // Convert the fuses to the SVN value
+        let fused_min_svn = {
+            // Value is take as the most significant bit set in fuses
+            let fuse: u128 = u128::from_le_bytes(current_fuses.as_bytes().try_into().unwrap());
+            128 - fuse.leading_zeros()
+        };
+
+        // Ensure we are not trying to decrease the SVN
+        if req.svn < fused_min_svn {
+            return Err(MsgHandlerError::InvalidParams);
+        }
+
+        // We are done, if the fuses already match the requested SVN.
+        if fused_min_svn == req.svn {
+            let resp = FuseIncreaseCaliptraMinSvnResp::default();
+            let resp_bytes = resp.as_bytes();
+            resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
+            return Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete));
+        }
+
+        let new_fuse_svn = if req.svn == 128 {
+            u128::MAX
+        } else {
+            !(u128::MAX << req.svn)
+        };
+
+        for (i, (current, new_bytes)) in current_fuses
+            .iter()
+            .zip(new_fuse_svn.as_bytes().chunks_exact(4))
+            .enumerate()
+        {
+            let new_svn_word = u32::from_le_bytes(new_bytes.try_into().unwrap());
+            if *current != new_svn_word {
+                otp.write(otp::reg::CALIPTRA_FW_SVN, i as u32, new_svn_word)
+                    .map_err(|_| MsgHandlerError::InvalidParams)?;
+            }
+        }
+
+        let resp = FuseIncreaseCaliptraMinSvnResp::default();
+        let resp_bytes = resp.as_bytes();
+        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
+        Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
+    }
+
+    async fn get_caliptra_fw_info(
+        &self,
+    ) -> Result<caliptra_api::mailbox::FwInfoResp, MsgHandlerError> {
+        let mut req = caliptra_api::mailbox::MailboxReqHeader::default();
+        let mut caliptra_info = caliptra_api::mailbox::FwInfoResp {
+            hdr: Default::default(),
+            pl0_pauser: Default::default(),
+            fw_svn: Default::default(),
+            min_fw_svn: Default::default(),
+            cold_boot_fw_svn: Default::default(),
+            attestation_disabled: Default::default(),
+            rom_revision: Default::default(),
+            fmc_revision: Default::default(),
+            runtime_revision: Default::default(),
+            rom_sha256_digest: Default::default(),
+            fmc_sha384_digest: Default::default(),
+            runtime_sha384_digest: Default::default(),
+            owner_pub_key_hash: Default::default(),
+            authman_sha384_digest: Default::default(),
+            most_recent_fw_error: Default::default(),
+        };
+
+        // Invoke Caliptra mailbox API
+        let len = execute_mailbox_cmd(
+            &self.caliptra_mbox,
+            caliptra_api::mailbox::CommandId::FW_INFO.into(),
+            req.as_mut_bytes(),
+            caliptra_info.as_mut_bytes(),
+        )
+        .await
+        .map_err(|_| MsgHandlerError::McuMboxCommon)?;
+
+        if len < size_of_val(&caliptra_info) {
+            return Err(MsgHandlerError::McuMboxCommon);
+        }
+        Ok(caliptra_info)
     }
 
     #[cfg(feature = "periodic-fips-self-test")]
