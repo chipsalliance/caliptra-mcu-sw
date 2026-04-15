@@ -6,9 +6,9 @@
 
 use crate::common::{test_constants::*, MockMailbox};
 use caliptra_mcu_core_util_host_command_types::crypto_hash::{ShaAlgorithm, SHA_CONTEXT_SIZE};
+use caliptra_mcu_core_util_host_transport::Mailbox;
 use caliptra_util_host_commands::api::crypto_hash::caliptra_cmd_sha_init;
 use caliptra_util_host_session::CaliptraSession;
-use caliptra_mcu_core_util_host_transport::Mailbox;
 
 /// Test SHA384 init command
 #[test]

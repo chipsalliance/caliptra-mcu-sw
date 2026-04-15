@@ -16,8 +16,8 @@
 //! - `caliptra-osal`: OS abstraction layer (only module with std access)
 
 use crate::common::{test_constants::*, MockMailbox};
-use caliptra_util_host_session::CaliptraSession;
 use caliptra_mcu_core_util_host_transport::Mailbox;
+use caliptra_util_host_session::CaliptraSession;
 
 /// Integration test demonstrating session lifecycle management
 ///

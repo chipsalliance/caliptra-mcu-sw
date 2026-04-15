@@ -35,6 +35,7 @@ use caliptra_mcu_core_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetDeviceIdResponse, GetDeviceInfoResponse,
     GetFirmwareVersionResponse,
 };
+use caliptra_mcu_core_util_host_transport::Mailbox;
 use caliptra_util_host_commands::api::crypto_aes::{
     caliptra_aes_decrypt, caliptra_aes_encrypt, caliptra_aes_gcm_decrypt, caliptra_aes_gcm_encrypt,
     AesEncryptResult, AesGcmDecryptResult, AesGcmEncryptResult,
@@ -56,7 +57,6 @@ use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_firmware_version,
 };
 use caliptra_util_host_session::CaliptraSession;
-use caliptra_mcu_core_util_host_transport::Mailbox;
 
 /// High-level Mailbox Client for communicating with Caliptra devices
 pub struct MailboxClient<'a> {
@@ -65,15 +65,18 @@ pub struct MailboxClient<'a> {
 
 impl<'a> MailboxClient<'a> {
     /// Create a new MailboxClient with the provided mailbox driver
-    pub fn new(mailbox_driver: &'a mut dyn caliptra_mcu_core_util_host_transport::MailboxDriver) -> Self {
+    pub fn new(
+        mailbox_driver: &'a mut dyn caliptra_mcu_core_util_host_transport::MailboxDriver,
+    ) -> Self {
         let transport = Mailbox::new(mailbox_driver);
         Self { transport }
     }
 
     /// Create a new MailboxClient with UDP transport
     pub fn with_udp_driver(udp_driver: &'a mut UdpTransportDriver) -> Self {
-        let transport =
-            Mailbox::new(udp_driver as &mut dyn caliptra_mcu_core_util_host_transport::MailboxDriver);
+        let transport = Mailbox::new(
+            udp_driver as &mut dyn caliptra_mcu_core_util_host_transport::MailboxDriver,
+        );
         Self { transport }
     }
 

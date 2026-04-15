@@ -4,8 +4,8 @@
 
 use std::boxed::Box;
 
-use caliptra_util_host_session::CaliptraSession;
 use caliptra_mcu_core_util_host_transport::{Mailbox, Transport};
+use caliptra_util_host_session::CaliptraSession;
 
 use crate::{CaliptraError, CaliptraTransport};
 

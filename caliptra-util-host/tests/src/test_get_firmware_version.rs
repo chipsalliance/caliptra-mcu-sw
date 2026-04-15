@@ -6,9 +6,9 @@
 //! actual high-level API with CaliptraSession and VDM transport.
 
 use crate::common::{test_constants::*, MockMailbox};
+use caliptra_mcu_core_util_host_transport::Mailbox;
 use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_firmware_version;
 use caliptra_util_host_session::CaliptraSession;
-use caliptra_mcu_core_util_host_transport::Mailbox;
 
 /// Test GetFirmwareVersion command with ROM firmware
 #[test]

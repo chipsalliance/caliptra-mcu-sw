@@ -104,12 +104,12 @@ pub use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_firmware_version,
 };
 // Re-export SHA API functions
+pub use caliptra_mcu_core_util_host_transport::{Mailbox, Transport};
 pub use caliptra_util_host_commands::api::crypto_hash::{
     caliptra_cmd_sha_final, caliptra_cmd_sha_hash, caliptra_cmd_sha_init, caliptra_cmd_sha_update,
 };
 pub use caliptra_util_host_session::CaliptraSession;
-pub use caliptra_mcu_core_util_host_transport::{Mailbox, Transport};
 
 // Re-export error types
-pub use caliptra_util_host_session::SessionError;
 pub use caliptra_mcu_core_util_host_transport::TransportError;
+pub use caliptra_util_host_session::SessionError;
