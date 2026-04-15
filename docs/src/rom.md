@@ -57,6 +57,7 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
 1. Configure MCU mailbox AXI users (see [Security Configuration](#security-configuration) below).
 1. Set mailbox AXI user lock registers.
 1. [2.1] Set [FC_FIPS_ZEROZATION](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.FC_FIPS_ZEROZATION) to the appropriate value.
+1. Configure the MCU SRAM execution region size by writing to the `FW_SRAM_EXEC_REGION_SIZE` register. If not specified in `RomParameters`, it defaults to reserving 32KB at the top of SRAM for the Protected Data Region.
 1. Set `SS_CONFIG_DONE_STICKY`, `SS_CONFIG_DONE` registers to lock MCI configuration.
 1. Verify PK hashes and MCU mailbox AXI users after locking (see [Security Configuration](#security-configuration) below).
 1. Poll on Caliptra `FLOW_STATUS` registers for Caliptra to deassert the Ready for Fuses state.
@@ -102,6 +103,7 @@ sequenceDiagram
     mcu->>caliptra: set non-secret fuses
     mcu->>mci: configure MCU mailbox AXI users
     mcu->>mci: lock MCU mailbox AXI users
+    mcu->>mci: set FW_SRAM_EXEC_REGION_SIZE
     mcu->>mci: set SS_CONFIG_DONE_STICKY
     mcu->>mci: set SS_CONFIG_DONE
     mcu->>mci: verify PK hashes
@@ -198,6 +200,7 @@ Warm Reset Flow occurs when the subsystem reset is toggled while `powergood` is 
 1. Check the MCI `RESET_REASON` register for reset status (it should be in warm reset mode `WarmReset`)
 1. Assert Caliptra boot go signal to bring Caliptra out of reset.
 1. Wait for Caliptra to be ready for fuses (even though fuses won't be rewritten)
+1. Configure the MCU SRAM execution region size by writing to the `FW_SRAM_EXEC_REGION_SIZE` register.
 1. Set `SS_CONFIG_DONE` register to lock MCI configuration until next warm reset.
 1. Signal fuse write done to Caliptra to complete the fuse handshake protocol
 1. Wait for Caliptra to deassert ready for fuses state
@@ -214,7 +217,6 @@ sequenceDiagram
     loop wait for ready for fuses
         mcu->>caliptra: check ready for fuses status
     end
-    mcu->>mci: set SS_CONFIG_DONE
     mcu->>mci: set SS_CONFIG_DONE
     mcu->>caliptra: signal fuse write done
     loop wait for NOT ready for fuses

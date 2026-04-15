@@ -512,6 +512,13 @@ impl BootFlow for ColdBoot {
         );
         mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersConfigured.into());
 
+        let size_value = params.mcu_fw_sram_exec_region_size.unwrap_or(
+            unsafe { MCU_MEMORY_MAP.sram_size }
+                - crate::MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS * 4096
+                - 1,
+        );
+        mci.set_fw_sram_exec_region_size(size_value);
+
         // Set SS_CONFIG_DONE_STICKY to lock MCI configuration registers
         caliptra_mcu_romtime::println!(
             "[mcu-rom] Setting SS_CONFIG_DONE_STICKY to lock configuration"

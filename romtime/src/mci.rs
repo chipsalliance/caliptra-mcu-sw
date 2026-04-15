@@ -193,6 +193,10 @@ impl Mci {
         }
     }
 
+    pub fn set_fw_sram_exec_region_size(&self, size: u32) {
+        self.registers.mci_reg_fw_sram_exec_region_size.set(size);
+    }
+
     pub fn trigger_warm_reset(&self) {
         self.registers.mci_reg_reset_request.set(1);
     }
