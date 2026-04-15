@@ -794,43 +794,68 @@ mod test {
 
     #[test]
     fn test_new_unbooted() {
-        let mcu_rom =
-            caliptra_mcu_builder::rom_build(None, None, None).expect("Could not build MCU ROM");
-        let mcu_runtime =
-            &caliptra_mcu_builder::runtime_build_with_apps(&[], None, false, None, None, None)
+        let (mcu_rom, mcu_runtime, caliptra_rom, caliptra_fw, vendor_pk_hash, soc_manifest) =
+            if let Ok(binaries) = caliptra_mcu_builder::FirmwareBinaries::from_env() {
+                (
+                    binaries.mcu_rom.clone(),
+                    binaries.mcu_runtime.clone(),
+                    binaries.caliptra_rom.clone(),
+                    binaries.caliptra_fw.clone(),
+                    binaries.vendor_pk_hash().unwrap(),
+                    binaries.soc_manifest.clone(),
+                )
+            } else {
+                let mcu_rom = caliptra_mcu_builder::rom_build(None, None, None)
+                    .expect("Could not build MCU ROM");
+                let mcu_runtime = caliptra_mcu_builder::runtime_build_with_apps(
+                    &[],
+                    None,
+                    false,
+                    None,
+                    None,
+                    None,
+                )
                 .expect("Could not build MCU runtime");
-        let mut caliptra_builder = CaliptraBuilder::new(
-            false,
-            false,
-            None,
-            None,
-            None,
-            None,
-            Some(mcu_rom.clone()),
-            None,
-            None,
-            None,
-            None,
-            None,
-        );
-        let caliptra_rom = caliptra_builder
-            .get_caliptra_rom()
-            .expect("Could not build Caliptra ROM");
-        let caliptra_fw = caliptra_builder
-            .get_caliptra_fw()
-            .expect("Could not build Caliptra FW bundle");
-        let vendor_pk_hash = caliptra_builder
-            .get_vendor_pk_hash()
-            .expect("Could not get vendor PK hash");
-        println!("Vendor PK hash: {:x?}", vendor_pk_hash);
-        let vendor_pk_hash = hex::decode(vendor_pk_hash).unwrap().try_into().unwrap();
-        let soc_manifest = caliptra_builder.get_soc_manifest(None).unwrap();
+                let mut caliptra_builder = CaliptraBuilder::new(
+                    false,
+                    false,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(mcu_runtime.clone()),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+                let caliptra_rom = caliptra_builder
+                    .get_caliptra_rom()
+                    .expect("Could not build Caliptra ROM");
+                let caliptra_fw = caliptra_builder
+                    .get_caliptra_fw()
+                    .expect("Could not build Caliptra FW bundle");
+                let vendor_pk_hash = caliptra_builder
+                    .get_vendor_pk_hash()
+                    .expect("Could not get vendor PK hash");
+                let vendor_pk_hash = hex::decode(vendor_pk_hash).unwrap().try_into().unwrap();
+                let soc_manifest = caliptra_builder.get_soc_manifest(None).unwrap();
 
-        let mcu_rom = std::fs::read(mcu_rom).unwrap();
-        let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
-        let soc_manifest = std::fs::read(soc_manifest).unwrap();
-        let caliptra_rom = std::fs::read(caliptra_rom).unwrap();
-        let caliptra_fw = std::fs::read(caliptra_fw).unwrap();
+                let mcu_rom = std::fs::read(mcu_rom).unwrap();
+                let mcu_runtime = std::fs::read(mcu_runtime).unwrap();
+                let soc_manifest = std::fs::read(soc_manifest).unwrap();
+                let caliptra_rom = std::fs::read(caliptra_rom).unwrap();
+                let caliptra_fw = std::fs::read(caliptra_fw).unwrap();
+                (
+                    mcu_rom,
+                    mcu_runtime,
+                    caliptra_rom,
+                    caliptra_fw,
+                    vendor_pk_hash,
+                    soc_manifest,
+                )
+            };
 
         let mut model = ModelEmulated::new_unbooted(InitParams {
             mcu_rom: &mcu_rom,
