@@ -1,0 +1,43 @@
+# Licensed under the Apache-2.0 license
+
+name: FPGA Bitstream build
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/bitstream-build.yml"
+      - "hw/fpga/**"
+      - "hw/caliptra-ss/**"
+      - "hw/*.rdl"
+
+  workflow_dispatch:
+
+jobs:
+  build-bitstream:
+    runs-on: [bitstream-builder]
+    timeout-minutes: 1440 
+    strategy:
+      matrix:
+        segmented: [true, false]
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+        with:
+          submodules: 'recursive'
+
+      - name: Create Subsystem bitstream
+        run: |
+          source /vck190-tools/Vivado/2024.2/settings64.sh
+          cd hw/fpga/
+          /vck190-tools/Vivado/2024.2/bin/vivado -mode batch -source fpga_configuration.tcl -tclargs BUILD=TRUE SEGMENTED=${{ matrix.segmented }}
+          cp caliptra_build/*.xsa /tmp/ || true
+          cp caliptra_build/*.pdi /tmp/ || true
+
+      - name: 'Upload bitstream'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a #v7.0.1
+        with:
+          name: caliptra-bitstream-${{ matrix.segmented }}
+          path: |
+            /tmp/*.xsa
+            /tmp/*.pdi
+          retention-days: 7
