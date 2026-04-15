@@ -11,7 +11,7 @@ offset = 0x8000_0000
 size = 0x2_0000
 
 [platform.runtime_memory]
-sram = { offset = 0x4000_0000, size = 0xC_0000 }
+sram = { offset = 0x4000_0000, size = 0x8_0000 }
 
 [platform.dccm]
 offset = 0x5000_0000

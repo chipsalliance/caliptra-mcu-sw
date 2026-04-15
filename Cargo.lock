@@ -915,10 +915,6 @@ dependencies = [
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-testing-common",
  "clap 4.5.51",
- "ecdsa",
- "fips204",
- "p384",
- "sha2",
  "zerocopy",
 ]
 

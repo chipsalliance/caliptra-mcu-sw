@@ -6,7 +6,7 @@
 use crate::{DynamicI3cAddress, MctpVdmSocketDriver, TestConfig, VdmClient};
 use anyhow::Result;
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
-    ECC_PUBLIC_KEY_WORD_SIZE, MLDSA_PUBLIC_KEY_WORD_SIZE, MLDSA_SIGNATURE_WORD_SIZE,
+    ECC_PUBLIC_KEY_WORD_SIZE, MLDSA_PUBLIC_KEY_WORD_SIZE,
 };
 use std::net::SocketAddr;
 
@@ -204,8 +204,6 @@ impl Validator {
     // ------------------------------------------------------------------
 
     fn validate_prod_debug_unlock(&self, client: &mut VdmClient) -> ValidationResult {
-        use caliptra_mcu_core_util_host_command_types::debug_unlock::ProdDebugUnlockTokenRequest;
-
         let test_name = "ProdDebugUnlock".to_string();
 
         if self.verbose {
@@ -225,69 +223,19 @@ impl Validator {
                     println!("    Challenge: {:02X?}...", &response.challenge[..8]);
                 }
 
-                if let Some(keys) = &self.debug_unlock_keys {
-                    // Full end-to-end: construct and sign a real token.
-                    if self.verbose {
-                        println!("  Signing token with provided keys...");
-                    }
+                // NOTE: The debug unlock token (~7.5KB) exceeds the MCTP
+                // maximum message size (2048 bytes) and cannot be sent over
+                // VDM. Token submission is validated through the MCU mailbox
+                // path instead. Only the challenge request is validated here.
+                if self.verbose {
+                    println!("  Token submission skipped (exceeds MCTP message size limit)");
+                }
 
-                    let token_req =
-                        match Self::sign_debug_unlock_token(&response, unlock_level, keys) {
-                            Ok(t) => t,
-                            Err(e) => {
-                                let msg = format!("Failed to sign token: {}", e);
-                                eprintln!("  {}", msg);
-                                return ValidationResult {
-                                    test_name,
-                                    passed: false,
-                                    error_message: Some(msg),
-                                };
-                            }
-                        };
-
-                    match client.prod_debug_unlock_token(&token_req) {
-                        Ok(_) => {
-                            println!("✓ ProdDebugUnlock validation PASSED (token accepted)");
-                            ValidationResult {
-                                test_name,
-                                passed: true,
-                                error_message: None,
-                            }
-                        }
-                        Err(e) => {
-                            let msg = format!("Signed token rejected by device: {}", e);
-                            eprintln!("✗ ProdDebugUnlock validation FAILED: {}", msg);
-                            ValidationResult {
-                                test_name,
-                                passed: false,
-                                error_message: Some(msg),
-                            }
-                        }
-                    }
-                } else {
-                    // No keys — send a zeroed token (expected to fail).
-                    let token_req = ProdDebugUnlockTokenRequest::default();
-                    match client.prod_debug_unlock_token(&token_req) {
-                        Ok(_) => {
-                            if self.verbose {
-                                println!("  Token submission accepted (unexpected in test mode)");
-                            }
-                        }
-                        Err(_) => {
-                            if self.verbose {
-                                println!(
-                                    "  Token submission correctly rejected (no valid signature) ✓"
-                                );
-                            }
-                        }
-                    }
-
-                    println!("✓ ProdDebugUnlock validation PASSED");
-                    ValidationResult {
-                        test_name,
-                        passed: true,
-                        error_message: None,
-                    }
+                println!("✓ ProdDebugUnlock validation PASSED (challenge received)");
+                ValidationResult {
+                    test_name,
+                    passed: true,
+                    error_message: None,
                 }
             }
             Err(e) => {
@@ -307,90 +255,6 @@ impl Validator {
                 }
             }
         }
-    }
-
-    /// Construct a signed [`ProdDebugUnlockTokenRequest`] from the challenge and keys.
-    fn sign_debug_unlock_token(
-        challenge_resp: &caliptra_mcu_core_util_host_command_types::debug_unlock::ProdDebugUnlockReqResponse,
-        unlock_level: u8,
-        keys: &DebugUnlockKeys,
-    ) -> Result<caliptra_mcu_core_util_host_command_types::debug_unlock::ProdDebugUnlockTokenRequest>
-    {
-        use caliptra_mcu_core_util_host_command_types::debug_unlock::ProdDebugUnlockTokenRequest;
-        use ecdsa::signature::hazmat::PrehashSigner;
-        use ecdsa::{Signature, SigningKey as EcdsaSigningKey};
-        use fips204::traits::SerDes;
-        use sha2::{Digest, Sha384, Sha512};
-
-        let mut token = ProdDebugUnlockTokenRequest {
-            length: ((std::mem::size_of::<ProdDebugUnlockTokenRequest>()) / 4) as u32,
-            unique_device_identifier: challenge_resp.unique_device_identifier,
-            unlock_level,
-            reserved: [0; 3],
-            challenge: challenge_resp.challenge,
-            ecc_public_key: keys.ecc_public_key,
-            mldsa_public_key: keys.mldsa_public_key,
-            ..Default::default()
-        };
-
-        // --- ECDSA (P-384) signature over SHA-384 digest ---
-        let mut hasher = Sha384::new();
-        Digest::update(&mut hasher, token.unique_device_identifier);
-        Digest::update(&mut hasher, [token.unlock_level]);
-        Digest::update(&mut hasher, token.reserved);
-        Digest::update(&mut hasher, token.challenge);
-        let ecdsa_hash: [u8; 48] = hasher.finalize().into();
-
-        let ecc_secret = p384::SecretKey::from_slice(&keys.ecc_private_key_bytes)
-            .map_err(|e| anyhow::anyhow!("Invalid ECC private key: {}", e))?;
-        let signing_key = EcdsaSigningKey::<p384::NistP384>::from(&ecc_secret);
-        let ecdsa_sig: Signature<p384::NistP384> = signing_key
-            .sign_prehash(&ecdsa_hash)
-            .map_err(|e| anyhow::anyhow!("ECDSA signing failed: {}", e))?;
-
-        let r_bytes = ecdsa_sig.r().to_bytes();
-        let s_bytes = ecdsa_sig.s().to_bytes();
-        for (i, chunk) in r_bytes.chunks(4).enumerate() {
-            token.ecc_signature[i] = u32::from_be_bytes(chunk.try_into().unwrap());
-        }
-        for (i, chunk) in s_bytes.chunks(4).enumerate() {
-            token.ecc_signature[i + 12] = u32::from_be_bytes(chunk.try_into().unwrap());
-        }
-
-        // --- ML-DSA-87 signature over SHA-512 digest ---
-        let mut hasher = Sha512::new();
-        Digest::update(&mut hasher, token.unique_device_identifier);
-        Digest::update(&mut hasher, [token.unlock_level]);
-        Digest::update(&mut hasher, token.reserved);
-        Digest::update(&mut hasher, token.challenge);
-        let mldsa_hash: [u8; 64] = hasher.finalize().into();
-
-        let mldsa_priv_key_arr: [u8; 4896] = keys
-            .mldsa_private_key_bytes
-            .as_slice()
-            .try_into()
-            .map_err(|_| {
-                anyhow::anyhow!(
-                    "Invalid MLDSA private key size: expected 4896, got {}",
-                    keys.mldsa_private_key_bytes.len()
-                )
-            })?;
-        let mldsa_private_key = fips204::ml_dsa_87::PrivateKey::try_from_bytes(mldsa_priv_key_arr)
-            .map_err(|_| anyhow::anyhow!("Failed to parse ML-DSA-87 private key"))?;
-
-        use fips204::traits::Signer;
-        let mldsa_sig = mldsa_private_key
-            .try_sign_with_seed(&[0u8; 32], &mldsa_hash, &[])
-            .map_err(|_| anyhow::anyhow!("ML-DSA-87 signing failed"))?;
-
-        // Pad to MLDSA_SIGNATURE_WORD_SIZE * 4 bytes and write as LE u32 words.
-        let mut sig_padded = [0u8; MLDSA_SIGNATURE_WORD_SIZE * 4];
-        sig_padded[..mldsa_sig.len()].copy_from_slice(&mldsa_sig);
-        for (i, chunk) in sig_padded.chunks(4).enumerate() {
-            token.mldsa_signature[i] = u32::from_le_bytes(chunk.try_into().unwrap());
-        }
-
-        Ok(token)
     }
 
     // ------------------------------------------------------------------
