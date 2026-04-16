@@ -17,10 +17,10 @@
 pub mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_api::SocManager;
-    use caliptra_mailbox_client::{DebugUnlockKeys, Validator};
+    use caliptra_mailbox_client::{DebugUnlockKeys, LocalDebugUnlockSigner, Validator};
     use caliptra_mcu_hw_model::{McuHwModel, McuManager};
     use caliptra_mcu_romtime::McuBootMilestones;
-    use fips204::traits::SerDes;
+
     use random_port::PortPicker;
     use std::mem::size_of;
     use std::net::UdpSocket;
@@ -148,13 +148,14 @@ pub mod test {
         // --- Prepare MLDSA private key bytes for signing ---
         let mldsa_priv_key_bytes: Vec<u8> = VENDOR_MLDSA_KEY_0_PRIVATE.0.as_bytes().to_vec();
 
-        // --- Build DebugUnlockKeys to pass to the validator ---
+        // --- Build DebugUnlockKeys and LocalDebugUnlockSigner to pass to the validator ---
         let debug_unlock_keys = DebugUnlockKeys {
             ecc_private_key_bytes: be_ecc_priv_key_bytes,
             ecc_public_key: ecc_pub_key_u32,
             mldsa_private_key_bytes: mldsa_priv_key_bytes,
             mldsa_public_key: <[u32; 648]>::try_from(mldsa_pub_key_u32.as_slice()).unwrap(),
         };
+        let debug_unlock_signer = LocalDebugUnlockSigner::new(debug_unlock_keys);
 
         // --- Start hw_model with keys provisioned in fuses ---
         let mut hw = start_runtime_hw_model(TestParams {
@@ -198,7 +199,7 @@ pub mod test {
             )
             .set_recv_timeout(Duration::from_secs(120))
             .set_verbose(true)
-            .set_debug_unlock_keys(debug_unlock_keys);
+            .set_debug_unlock_signer(Box::new(debug_unlock_signer));
 
             println!("Running Mailbox validator in-process (port={})", udp_port);
 

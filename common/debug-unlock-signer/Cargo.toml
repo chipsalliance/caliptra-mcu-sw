@@ -1,0 +1,15 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-debug-unlock-signer"
+version.workspace = true
+edition.workspace = true
+description = "Debug unlock signer trait and local implementation for Caliptra MCU"
+
+[dependencies]
+anyhow.workspace = true
+ecdsa.workspace = true
+fips204.workspace = true
+p384 = { workspace = true, features = ["ecdsa"] }
+sha2.workspace = true
+zerocopy.workspace = true

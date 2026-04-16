@@ -770,6 +770,7 @@ dependencies = [
  "caliptra-mcu-core-util-host-command-types",
  "caliptra-mcu-core-util-host-mailbox-test-config",
  "caliptra-mcu-core-util-host-transport",
+ "caliptra-mcu-debug-unlock-signer",
  "caliptra-util-host-commands",
  "caliptra-util-host-session",
  "clap 4.5.51",
@@ -954,6 +955,18 @@ dependencies = [
  "caliptra-mcu-core-util-host-command-types",
  "caliptra-mcu-core-util-host-osal",
  "caliptra-mcu-mctp-vdm-common",
+ "zerocopy",
+]
+
+[[package]]
+name = "caliptra-mcu-debug-unlock-signer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ecdsa",
+ "fips204",
+ "p384",
+ "sha2",
  "zerocopy",
 ]
 
@@ -1837,6 +1850,7 @@ dependencies = [
  "caliptra-mcu-core-mctp-vdm-client",
  "caliptra-mcu-core-util-host-mctp-vdm-test-config",
  "caliptra-mcu-core-util-host-transport",
+ "caliptra-mcu-debug-unlock-signer",
  "caliptra-mcu-error",
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-flash-image",

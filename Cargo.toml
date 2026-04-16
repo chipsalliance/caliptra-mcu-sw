@@ -4,6 +4,7 @@
 members = [
     "builder",
     "common/config",
+    "common/debug-unlock-signer",
     "common/flash-image",
     "common/mcu-mbox",
     "common/otp-digest",
@@ -218,6 +219,7 @@ caliptra-mcu-libtockasync = { path = "runtime/userspace/libtockasync" }
 caliptra-mcu-builder = { path = "builder" }
 caliptra-mcu-components = { path = "runtime/kernel/components" }
 caliptra-mcu-config = { path = "common/config" }
+caliptra-mcu-debug-unlock-signer = { path = "common/debug-unlock-signer" }
 caliptra-mcu-config-emulator = { path = "platforms/emulator/config" }
 caliptra-mcu-config-fpga = { path = "platforms/fpga/config" }
 caliptra-mcu-error = { path = "error" }

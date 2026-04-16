@@ -10,8 +10,11 @@ mod network_driver;
 pub mod validator;
 
 pub use network_driver::UdpTransportDriver;
-pub use validator::{
-    run_basic_validation, run_verbose_validation, DebugUnlockKeys, ValidationResult, Validator,
+pub use validator::{run_basic_validation, run_verbose_validation, ValidationResult, Validator};
+
+// Re-export the debug unlock signer trait and types from the common crate
+pub use caliptra_mcu_debug_unlock_signer::{
+    DebugUnlockKeys, DebugUnlockSigner, LocalDebugUnlockSigner,
 };
 
 // Re-export config from the shared library

@@ -35,6 +35,7 @@ caliptra-mailbox-client = { path = "apps/mailbox/client" }
 caliptra-mcu-core-mailbox-server = { path = "apps/mailbox/server" }
 caliptra-mcu-core-util-host-mctp-vdm-test-config = { path = "apps/mctp-vdm/config" }
 caliptra-mcu-core-mctp-vdm-client = { path = "apps/mctp-vdm/client" }
+caliptra-mcu-debug-unlock-signer = { path = "../common/debug-unlock-signer" }
 
 # External dependencies
 anyhow = "1.0.97"
