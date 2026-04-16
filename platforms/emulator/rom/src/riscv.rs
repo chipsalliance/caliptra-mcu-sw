@@ -419,6 +419,8 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
+            #[cfg(feature = "ocp-lock")]
+            ocp_lock_config,
             ..Default::default()
         });
     } else {
