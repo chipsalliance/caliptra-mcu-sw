@@ -179,6 +179,11 @@ enum Commands {
         /// Path to the PLDM manifest TOML file
         #[arg(short, long, value_name = "MANIFEST", required = false)]
         pldm_manifest: Option<String>,
+
+        /// Comma-separated list of ROM-only test features that need separate ROM builds.
+        /// Each feature gets its own ROM binary built with --rom-features plus the test feature.
+        #[arg(long)]
+        rom_test_features: Option<String>,
     },
     /// Generate CoRIM (Concise Reference Integrity Manifest) from build artifacts
     Corim {
@@ -455,6 +460,7 @@ fn main() {
             soc_images,
             mcu_cfgs,
             pldm_manifest,
+            rom_test_features,
         } => mcu_builder::all_build(mcu_builder::AllBuildArgs {
             output: output.as_deref(),
             platform: platform.as_deref(),
@@ -465,6 +471,7 @@ fn main() {
             soc_images: soc_images.clone(),
             mcu_cfgs: mcu_cfgs.clone(),
             pldm_manifest: pldm_manifest.as_deref(),
+            rom_test_features: rom_test_features.as_deref(),
         }),
         Commands::EmulatorBuild { output, features } => {
             mcu_builder::emulator_build(mcu_builder::EmulatorBuildArgs {

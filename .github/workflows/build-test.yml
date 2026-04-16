@@ -109,12 +109,15 @@ jobs:
             test-pldm-discovery,test-pldm-fw-update,test-mci,test-mcu-mbox-driver,
             test-mcu-mbox-soc-requester-loopback,test-mbox-sram,test-warm-reset,test-mcu-mbox-cmds,
             test-ocp-lock,test-exit-immediately,test-mcu-rom-flash-access,test-mcu-svn-gt-fuse,test-mcu-svn-lt-fuse
+          ROM_TEST_FEATURES: >-
+            test-usb-ocp-recovery
         run: |
           # Build all test runtime features used by integration tests
           # Note: nightly tests (test-*-spdm-*, test-caliptra-util-host-validator) are excluded
           cargo xtask all-build --platform emulator \
             --rom-features "hw-2-1,ocp-lock" \
             --runtime-features "${RUNTIME_FEATURES// /}" \
+            --rom-test-features "${ROM_TEST_FEATURES// /}" \
             --separate-runtimes
           sccache --show-stats
 

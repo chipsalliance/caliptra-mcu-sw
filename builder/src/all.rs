@@ -460,6 +460,7 @@ pub struct AllBuildArgs<'a> {
     pub soc_images: Option<Vec<ImageCfg>>,
     pub mcu_cfgs: Option<Vec<ImageCfg>>,
     pub pldm_manifest: Option<&'a str>,
+    pub rom_test_features: Option<&'a str>,
 }
 
 /// Build Caliptra ROM and firmware bundle, MCU ROM and runtime, and SoC manifest, and package them all together in a ZIP file.
@@ -474,6 +475,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         soc_images,
         mcu_cfgs,
         pldm_manifest,
+        rom_test_features,
     } = args;
 
     // TODO: use temp files
@@ -635,6 +637,24 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 );
             }
         }
+    }
+
+    // Build ROM-only test features (e.g. test-usb-ocp-recovery) that aren't runtime
+    // features but need their own ROM binary. Each is built with the base rom_features
+    // combined with the test feature so the resulting binary matches what tests expect.
+    let rom_test_feature_list: Vec<&str> = match rom_test_features {
+        Some(f) if !f.is_empty() => f.split(',').collect(),
+        _ => vec![],
+    };
+    for feature in rom_test_feature_list.iter() {
+        let combined = if rom_features.is_empty() {
+            feature.to_string()
+        } else {
+            format!("{},{}", rom_features, feature)
+        };
+        let rom_path = crate::rom_build(Some(platform.to_string()), Some(combined))?;
+        let rom_name = format!("mcu-test-rom-feature-{}.bin", feature);
+        test_roms.push((rom_path, rom_name));
     }
 
     // Build feature-specific Network ROMs
