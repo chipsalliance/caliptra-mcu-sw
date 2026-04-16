@@ -391,10 +391,11 @@ impl<'a, U: UsbDeviceDriver, V: VendorHandler> RecoveryStateMachine<'a, U, V> {
         self.state.recovery_ctrl.cms
     }
 
-    /// Returns the image size from the current INDIRECT_FIFO_CTRL register.
+    /// Returns the image size from in bytes from the current INDIRECT_FIFO_CTRL register.
     pub fn fifo_image_size(&self) -> u32 {
         // Translate from 4 byte words to bytes.
-        self.state.indirect_fifo_ctrl_image_size * 4
+        const BYTES_PER_ENTRY: u32 = 4;
+        self.state.indirect_fifo_ctrl_image_size * BYTES_PER_ENTRY
     }
 
     /// Returns the CMS index from the current INDIRECT_FIFO_CTRL register.

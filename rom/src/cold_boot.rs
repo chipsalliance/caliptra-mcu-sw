@@ -766,7 +766,7 @@ impl BootFlow for ColdBoot {
             romtime::println!(
                 "Recovery boot requested but missing image provider or AXI bypass not enabled"
             );
-            fatal_error(McuError::ROM_COLD_BOOT_FLASH_NOT_CONFIGURED_ERROR);
+            fatal_error(McuError::ROM_COLD_BOOT_RECOVERY_NOT_CONFIGURED_ERROR);
         }
 
         if recovery_boot {

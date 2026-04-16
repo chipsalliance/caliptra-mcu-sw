@@ -24,7 +24,6 @@ mod test {
     /// Returns the hw model with USB already enumerated.
     fn start_usb_ocp_recovery() -> mcu_hw_model::DefaultHwModel {
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some("test-usb-ocp-recovery"),
             rom_feature: Some("test-usb-ocp-recovery"),
             i3c_port: PortPicker::new().pick().ok(),
             flash_boot: true,

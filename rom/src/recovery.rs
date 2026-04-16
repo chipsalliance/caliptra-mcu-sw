@@ -3,6 +3,8 @@
 pub mod flash;
 pub mod ocp;
 
+use core::num::NonZeroU8;
+
 use bitfield::bitfield;
 use registers_generated::i3c;
 use registers_generated::i3c::bits::{IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess};
@@ -50,7 +52,7 @@ pub enum ErrorPolicy {
     /// On error, skip this provider and try the next one.
     Continue,
     /// Retry up to N times, then fall through to the next provider.
-    Retry(u32),
+    Retry(NonZeroU8),
     /// Retry indefinitely.
     RetryForever,
 }
@@ -66,7 +68,7 @@ pub struct ImageProviderEntry<'a> {
 pub struct ImageProviderManager<'a> {
     entries: &'a mut [ImageProviderEntry<'a>],
     current: usize,
-    retries: u32,
+    retries: u8,
 }
 
 impl<'a> ImageProviderManager<'a> {
@@ -98,7 +100,7 @@ impl<'a> ImageProviderManager<'a> {
                     self.retries = 0;
                 }
                 ErrorPolicy::Retry(n) => {
-                    if self.retries < n {
+                    if self.retries < n.get() {
                         self.retries += 1;
                     } else {
                         self.current += 1;
@@ -106,7 +108,7 @@ impl<'a> ImageProviderManager<'a> {
                     }
                 }
                 ErrorPolicy::RetryForever => {
-                    self.retries += 1;
+                    self.retries = self.retries.saturating_add(1);
                 }
             }
         }
